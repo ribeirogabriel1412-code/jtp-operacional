@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JTP — Programação de Lavagem</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#020817;--surface:#0F172A;--surface2:#0A0F1E;
+    --border:#1E293B;--text:#F1F5F9;--text2:#94A3B8;--text3:#475569;--text4:#334155;
+    --blue:#2563EB;--green:#00C48C;--amber:#F59E0B;--red:#EF4444;--purple:#8B5CF6;
+  }
+  body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh}
+
+  /* TOPBAR */
+  .topbar{background:var(--surface);border-bottom:1px solid var(--border);height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:200}
+  .topbar-brand{font-weight:800;font-size:15px}
+  .topbar-brand span{font-weight:400;color:var(--text3)}
+  .btn-turno{background:none;border:1px solid var(--border);color:var(--text3);border-radius:7px;padding:5px 14px;font-size:12px;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .2s}
+  .btn-turno.active{background:var(--blue);border-color:var(--blue);color:#fff}
+
+  /* HEADER */
+  .page-header{background:linear-gradient(135deg,var(--surface),#1A2540);border-bottom:1px solid var(--border);padding:20px 28px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}
+  .pills{display:flex;gap:10px;flex-wrap:wrap}
+  .pill{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 18px;text-align:center;min-width:90px}
+  .pill-val{font-family:'DM Mono',monospace;font-size:22px;font-weight:700;display:block}
+  .pill-label{font-size:10px;font-weight:600;letter-spacing:.5px;opacity:.7;margin-top:2px}
+
+  /* TABS */
+  .tabs{display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--surface2);padding:0 28px}
+  .tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--text3);padding:14px 20px;font-size:13px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .2s;margin-bottom:-1px}
+  .tab:hover{color:var(--text2)}
+  .tab.active{color:var(--text);border-bottom-color:var(--blue)}
+
+  /* CONTENT */
+  .content{padding:28px}
+
+  /* IMPORT ZONE */
+  .import-zone{border:2px dashed var(--border);border-radius:16px;padding:48px;text-align:center;cursor:pointer;transition:all .2s;background:var(--surface)}
+  .import-zone:hover,.import-zone.drag{border-color:var(--blue);background:#1E293B}
+  .import-icon{font-size:48px;margin-bottom:16px}
+  .import-title{font-size:18px;font-weight:700;color:var(--text);margin-bottom:8px}
+  .import-sub{color:var(--text3);font-size:13px;margin-bottom:20px}
+  .btn-import{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#1D4ED8,#2563EB);color:#fff;border:none;border-radius:10px;padding:11px 24px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;transition:opacity .2s}
+  .btn-import:hover{opacity:.85}
+
+  /* PREVIEW TABLE */
+  .preview-wrap{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-top:20px}
+  .preview-header{background:var(--surface2);padding:14px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)}
+  .preview-title{font-size:14px;font-weight:700;color:var(--text)}
+  .preview-sub{font-size:12px;color:var(--text3)}
+  table{width:100%;border-collapse:collapse}
+  th{padding:10px 14px;text-align:left;color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;background:var(--surface2);border-bottom:1px solid var(--border)}
+  td{padding:11px 14px;border-bottom:1px solid #0F1929;font-size:13px;color:var(--text);vertical-align:middle}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:#0F172A}
+
+  /* BADGE LAVAGEM */
+  .blav{display:inline-flex;align-items:center;gap:6px;border-radius:7px;padding:4px 12px;font-size:11px;font-weight:700;border:1px solid;text-transform:uppercase;letter-spacing:.5px}
+  .blav-simples{color:#3B82F6;background:#3B82F618;border-color:#3B82F640}
+  .blav-escovao{color:var(--amber);background:#F59E0B18;border-color:#F59E0B40}
+  .blav-pesada{color:var(--red);background:#EF444418;border-color:#EF444440}
+  .blav-ok{color:var(--green);background:#00C48C18;border-color:#00C48C40}
+  .blav-pend{color:var(--text3);background:#47556918;border-color:#47556940}
+
+  /* STATUS EXECUTADO */
+  .check-btn{background:none;border:1px solid var(--border);color:var(--text3);border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:6px}
+  .check-btn:hover{border-color:var(--green);color:var(--green)}
+  .check-btn.done{background:#00C48C18;border-color:#00C48C40;color:var(--green)}
+  .check-btn.loading{opacity:.5;cursor:not-allowed}
+
+  /* META CARDS */
+  .meta-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:24px}
+  .meta-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;border-left-width:3px}
+  .meta-card.ok{border-left-color:var(--green)}
+  .meta-card.nok{border-left-color:var(--red)}
+  .meta-card.neu{border-left-color:#475569}
+  .meta-label{color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}
+  .meta-val{font-family:'DM Mono',monospace;font-size:24px;font-weight:700;color:var(--text)}
+  .meta-sub{font-size:11px;font-weight:600;margin-top:4px}
+  .meta-sub.ok{color:var(--green)}
+  .meta-sub.nok{color:var(--red)}
+
+  /* INFO */
+  .info-banner{border-radius:10px;padding:14px 18px;font-size:12px;border-width:1px;border-style:solid;margin-top:16px}
+  .info-blue{background:var(--surface);border-color:#1D4ED830;color:#3B82F6}
+  .info-amber{background:var(--surface);border-color:#F59E0B30;color:var(--amber)}
+  .info-green{background:var(--surface);border-color:#00C48C30;color:var(--green)}
+
+  /* LOADING */
+  .loading{display:flex;align-items:center;justify-content:center;padding:60px;gap:12px;color:var(--text3);font-size:14px}
+  .spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .empty{text-align:center;padding:60px;color:var(--text3)}
+  .empty-icon{font-size:48px;margin-bottom:12px}
+
+  /* TOAST */
+  .toast{position:fixed;bottom:24px;right:24px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;font-size:13px;font-weight:600;color:var(--text);box-shadow:0 10px 40px #00000060;z-index:999;animation:fadeUp .3s ease;display:flex;align-items:center;gap:10px}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+  .toast.ok{border-left:3px solid var(--green)}
+  .toast.err{border-left:3px solid var(--red)}
+
+  /* PROGRESS BAR */
+  .prog-wrap{background:var(--border);border-radius:99px;height:6px;overflow:hidden;margin-top:6px}
+  .prog-bar{height:100%;border-radius:99px;transition:width .5s ease}
+
+  @media(max-width:768px){.content{padding:16px}.page-header{padding:16px}.tabs{padding:0 16px}}
+  ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div style="display:flex;align-items:center;gap:12px">
+    <span style="font-size:20px">🧼</span>
+    <div class="topbar-brand">JTP <span>Programação de Lavagem</span></div>
+    <div style="width:1px;height:20px;background:var(--border)"></div>
+    <span style="color:var(--text3);font-size:12px" id="tb-garagem">—</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <button class="btn-turno active" id="btn-dia" onclick="setTurno('dia')">☀️ Dia</button>
+    <button class="btn-turno" id="btn-noite" onclick="setTurno('noite')">🌙 Noite</button>
+    <span style="color:var(--text3);font-size:11px;margin-left:8px" id="tb-data">—</span>
+  </div>
+</div>
+
+<!-- HEADER -->
+<div class="page-header">
+  <div>
+    <div style="font-size:20px;font-weight:800">🧼 Painel de Lavagem</div>
+    <div style="color:var(--text3);font-size:12px;margin-top:4px" id="sub-info">—</div>
+  </div>
+  <div class="pills" id="pills">
+    <div class="pill"><span class="pill-val" id="p-total" style="color:var(--text2)">—</span><span class="pill-label">Programados</span></div>
+    <div class="pill"><span class="pill-val" id="p-exec" style="color:var(--green)">—</span><span class="pill-label">Executados</span></div>
+    <div class="pill"><span class="pill-val" id="p-pend" style="color:var(--amber)">—</span><span class="pill-label">Pendentes</span></div>
+    <div class="pill"><span class="pill-val" id="p-pct" style="color:var(--blue)">—</span><span class="pill-label">% Concluído</span></div>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="tabs">
+  <button class="tab active" id="tab-painel" onclick="showTab('painel')">📋 Painel do Executor</button>
+  <button class="tab" id="tab-importar" onclick="showTab('importar')">📤 Importar Programação</button>
+  <button class="tab" id="tab-metas" onclick="showTab('metas')">🎯 Metas do Dia</button>
+</div>
+
+<!-- CONTENT -->
+<div class="content" id="content">
+  <div class="loading"><div class="spinner"></div> Carregando...</div>
+</div>
+
+<script>
+const {createClient}=supabase;
+const sb=createClient('https://jboclubugfxmurvhcxgr.supabase.co','sb_publishable_hasmgR_BbXcJC6Xko6DzaA_N7kl7rNT');
+
+const S={turno:'dia',garagem_id:null,garagem_nome:null,registros:[],tab:'painel',updating:new Set()};
+const METAS={simples:84,escovao:999,pesada:10}; // escovao = todos
+
+function hoje(){return new Date().toISOString().split('T')[0]}
+function hojeF(){return new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'})}
+
+function toast(msg,type='ok'){
+  const el=document.createElement('div');
+  el.className=`toast ${type}`;
+  el.innerHTML=`<span>${type==='ok'?'✅':'❌'}</span> ${msg}`;
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(),3000);
+}
+
+function setContent(html){document.getElementById('content').innerHTML=html}
+
+// ── INIT ──────────────────────────────────
+async function init(){
+  const {data:gs}=await sb.from('garagens').select('*').eq('ativa',true).limit(1);
+  if(gs&&gs.length>0){
+    S.garagem_id=gs[0].id; S.garagem_nome=gs[0].nome;
+    document.getElementById('tb-garagem').textContent=`📍 ${gs[0].nome} — ${gs[0].uf}`;
+  }
+  document.getElementById('tb-data').textContent=hojeF();
+  await loadRegistros();
+  renderTab();
+
+  // Realtime
+  sb.channel('prog_lavagem')
+    .on('postgres_changes',{event:'*',schema:'public',table:'programacao_lavagem',filter:`garagem_id=eq.${S.garagem_id}`},
+      ()=>loadRegistros().then(()=>{atualizarPills();if(S.tab==='painel')renderPainel();if(S.tab==='metas')renderMetas();}))
+    .subscribe();
+}
+
+async function loadRegistros(){
+  const {data}=await sb.from('programacao_lavagem').select('*')
+    .eq('garagem_id',S.garagem_id).eq('data',hoje()).eq('turno',S.turno).order('prefixo');
+  S.registros=data||[];
+  atualizarPills();
+}
+
+function atualizarPills(){
+  const total=S.registros.length;
+  const exec=S.registros.filter(r=>r.status==='executado').length;
+  const pend=total-exec;
+  const pct=total>0?Math.round((exec/total)*100):0;
+  document.getElementById('p-total').textContent=total;
+  document.getElementById('p-exec').textContent=exec;
+  document.getElementById('p-pend').textContent=pend;
+  document.getElementById('p-pct').textContent=pct+'%';
+  document.getElementById('sub-info').textContent=
+    `${S.garagem_nome} · ${S.turno==='dia'?'☀️ Dia':'🌙 Noite'} · ${hojeF()} · ${pct}% concluído`;
+}
+
+// ── TURNO ─────────────────────────────────
+function setTurno(t){
+  S.turno=t;
+  document.getElementById('btn-dia').className='btn-turno'+(t==='dia'?' active':'');
+  document.getElementById('btn-noite').className='btn-turno'+(t==='noite'?' active':'');
+  loadRegistros().then(renderTab);
+}
+
+// ── TABS ──────────────────────────────────
+function showTab(tab){
+  S.tab=tab;
+  ['painel','importar','metas'].forEach(t=>{
+    document.getElementById(`tab-${t}`).className='tab'+(t===tab?' active':'');
+  });
+  renderTab();
+}
+
+function renderTab(){
+  if(S.tab==='painel') renderPainel();
+  else if(S.tab==='importar') renderImportar();
+  else if(S.tab==='metas') renderMetas();
+}
+
+// ── PAINEL EXECUTOR ───────────────────────
+function lavBadge(tipo){
+  const cfg={simples:['💧 Simples','blav-simples'],escovao:['🪣 Escovão','blav-escovao'],pesada:['🔴 Pesada','blav-pesada']};
+  const [l,c]=cfg[tipo]||[tipo,'blav-pend'];
+  return `<span class="blav ${c}">${l}</span>`;
+}
+
+function renderPainel(){
+  if(S.registros.length===0){
+    setContent(`
+      <div class="empty">
+        <div class="empty-icon">🧼</div>
+        <div style="color:var(--text2);font-size:16px;font-weight:600;margin-bottom:8px">Nenhuma programação para hoje</div>
+        <p style="font-size:13px;color:var(--text3);margin-bottom:20px">O escalante precisa importar a planilha de programação</p>
+        <button class="btn-import" onclick="showTab('importar')">📤 Ir para Importação</button>
+      </div>`);
+    return;
+  }
+
+  const pend=S.registros.filter(r=>r.status==='pendente');
+  const exec=S.registros.filter(r=>r.status==='executado');
+
+  const rows=S.registros.map(r=>{
+    const done=r.status==='executado';
+    const isUpd=S.updating.has(r.id);
+    const execInfo=done&&r.executado_em
+      ?`<div style="color:var(--text4);font-size:10px;margin-top:4px">✓ ${new Date(r.executado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>`:'';
+    return `
+      <tr style="background:${done?'#00C48C06':''}">
+        <td><span style="font-family:'DM Mono',monospace;font-size:15px;font-weight:600">${r.prefixo}</span></td>
+        <td>${lavBadge(r.tipo_lavagem)}</td>
+        <td style="color:var(--text3);font-size:12px">${r.observacao||'—'}</td>
+        <td>
+          <button class="check-btn ${done?'done':''} ${isUpd?'loading':''}"
+            onclick="toggleExecutado('${r.id}','${r.status}')" ${isUpd?'disabled':''}>
+            ${done?'✅ Executado':'○ Marcar feito'}
+          </button>
+          ${execInfo}
+        </td>
+      </tr>`;
+  }).join('');
+
+  const pct=S.registros.length>0?Math.round((exec.length/S.registros.length)*100):0;
+  const progColor=pct>=80?'var(--green)':pct>=50?'var(--amber)':'var(--red)';
+
+  setContent(`
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:20px">
+      <div style="flex:1">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span style="color:var(--text3);font-size:12px;font-weight:600">PROGRESSO DO TURNO</span>
+          <span style="color:${progColor};font-family:'DM Mono',monospace;font-size:14px;font-weight:700">${pct}%</span>
+        </div>
+        <div class="prog-wrap"><div class="prog-bar" style="width:${pct}%;background:${progColor}"></div></div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px">
+          <span style="color:var(--text4);font-size:11px">${exec.length} executados</span>
+          <span style="color:var(--text4);font-size:11px">${pend.length} pendentes</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="preview-wrap">
+      <div class="preview-header">
+        <div>
+          <div class="preview-title">Lista de Lavagem — ${S.turno==='dia'?'☀️ Turno Dia':'🌙 Turno Noite'}</div>
+          <div class="preview-sub">${S.registros.length} veículos programados · clique para marcar executado</div>
+        </div>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Prefixo</th><th>Tipo</th><th>Observação</th><th>Execução</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div class="info-green info-banner">🔄 Atualização em tempo real — todos os executores veem as marcações simultaneamente.</div>
+  `);
+}
+
+async function toggleExecutado(id,statusAtual){
+  if(S.updating.has(id)) return;
+  S.updating.add(id);
+  renderPainel();
+
+  const novoStatus=statusAtual==='pendente'?'executado':'pendente';
+  const payload={
+    status:novoStatus,
+    executado_em:novoStatus==='executado'?new Date().toISOString():null,
+  };
+
+  const {error}=await sb.from('programacao_lavagem').update(payload).eq('id',id);
+  S.updating.delete(id);
+
+  if(error){toast('Erro ao atualizar','err');renderPainel();return;}
+
+  const reg=S.registros.find(r=>r.id===id);
+  if(reg){reg.status=novoStatus;reg.executado_em=payload.executado_em;}
+  atualizarPills();
+  toast(novoStatus==='executado'?'✅ Lavagem registrada!':'↩️ Marcação revertida');
+  renderPainel();
+}
+
+// ── IMPORTAR ──────────────────────────────
+function renderImportar(){
+  setContent(`
+    <div style="max-width:700px;margin:0 auto">
+      <div class="import-zone" id="drop-zone"
+        ondragover="event.preventDefault();this.classList.add('drag')"
+        ondragleave="this.classList.remove('drag')"
+        ondrop="handleDrop(event)">
+        <div class="import-icon">📊</div>
+        <div class="import-title">Importar Programação de Lavagem</div>
+        <div class="import-sub">Arraste a planilha .xlsx aqui ou clique para selecionar</div>
+        <button class="btn-import" onclick="document.getElementById('file-input').click()">
+          📂 Selecionar Arquivo .xlsx
+        </button>
+        <input type="file" id="file-input" accept=".xlsx" style="display:none" onchange="handleFile(this.files[0])">
+      </div>
+
+      <div class="info-amber info-banner" style="margin-top:16px">
+        ⚠️ A importação substitui a programação atual do turno selecionado. Certifique-se de que o arquivo está correto antes de importar.
+      </div>
+
+      <div class="info-blue info-banner">
+        📋 Use o modelo padrão JTP disponível para download no sistema. A planilha deve ter colunas: <strong>PREFIXO</strong> e <strong>TIPO LAVAGEM</strong>.
+      </div>
+
+      <div id="preview-import"></div>
+    </div>
+  `);
+}
+
+function handleDrop(e){
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.remove('drag');
+  const file=e.dataTransfer.files[0];
+  if(file) handleFile(file);
+}
+
+function handleFile(file){
+  if(!file||!file.name.endsWith('.xlsx')){toast('Selecione um arquivo .xlsx válido','err');return;}
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const wb=XLSX.read(e.target.result,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      processarPlanilha(rows,file.name);
+    }catch(err){toast('Erro ao ler arquivo: '+err.message,'err');}
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function processarPlanilha(rows,filename){
+  // Encontrar linha de cabeçalho (procura por PREFIXO)
+  let headerRow=-1;
+  for(let i=0;i<rows.length;i++){
+    const r=rows[i].map(c=>String(c).toUpperCase().trim());
+    if(r.includes('PREFIXO')){headerRow=i;break;}
+  }
+  if(headerRow===-1){toast('Coluna PREFIXO não encontrada na planilha','err');return;}
+
+  const headers=rows[headerRow].map(c=>String(c).toUpperCase().trim());
+  const iPref=headers.indexOf('PREFIXO');
+  const iTipo=headers.findIndex(h=>h.includes('TIPO')||h.includes('LAVAGEM'));
+
+  if(iPref===-1||iTipo===-1){toast('Colunas PREFIXO e TIPO LAVAGEM são obrigatórias','err');return;}
+
+  const dados=[];
+  const erros=[];
+  const tipos_validos=['simples','escovao','pesada'];
+
+  for(let i=headerRow+1;i<rows.length;i++){
+    const row=rows[i];
+    const pref=String(row[iPref]||'').trim();
+    const tipo=String(row[iTipo]||'').trim().toLowerCase();
+    if(!pref) continue;
+    if(!tipos_validos.includes(tipo)){
+      erros.push(`Linha ${i+1}: tipo "${tipo}" inválido (use: simples, escovao, pesada)`);
+      continue;
+    }
+    dados.push({prefixo:pref,tipo_lavagem:tipo,observacao:String(row[2]||'').trim()});
+  }
+
+  // Preview
+  const rowsHTML=dados.map(d=>`
+    <tr>
+      <td><span style="font-family:'DM Mono',monospace;font-weight:600">${d.prefixo}</span></td>
+      <td>${lavBadge(d.tipo_lavagem)}</td>
+      <td style="color:var(--text3);font-size:12px">${d.observacao||'—'}</td>
+    </tr>`).join('');
+
+  const errosHTML=erros.length>0?`
+    <div class="info-banner" style="background:var(--surface);border-color:#EF444430;color:var(--red);margin-top:12px">
+      ⚠️ ${erros.length} linha(s) ignorada(s): ${erros.join(' | ')}
+    </div>`:'';
+
+  document.getElementById('preview-import').innerHTML=`
+    <div class="preview-wrap" style="margin-top:20px">
+      <div class="preview-header">
+        <div>
+          <div class="preview-title">Preview — ${filename}</div>
+          <div class="preview-sub">${dados.length} veículos válidos encontrados</div>
+        </div>
+        <button class="btn-import" onclick="confirmarImportacao(${JSON.stringify(dados).replace(/"/g,'&quot;')})">
+          ✅ Confirmar Importação
+        </button>
+      </div>
+      <table>
+        <thead><tr><th>Prefixo</th><th>Tipo</th><th>Observação</th></tr></thead>
+        <tbody>${rowsHTML}</tbody>
+      </table>
+    </div>
+    ${errosHTML}
+  `;
+}
+
+async function confirmarImportacao(dados){
+  if(!dados||dados.length===0){toast('Nenhum dado para importar','err');return;}
+
+  // Apaga programação anterior do turno
+  await sb.from('programacao_lavagem').delete()
+    .eq('garagem_id',S.garagem_id).eq('data',hoje()).eq('turno',S.turno);
+
+  // Busca IDs da frota para vincular
+  const {data:frota}=await sb.from('frota').select('id,prefixo').eq('garagem_id',S.garagem_id);
+  const frotaMap=Object.fromEntries((frota||[]).map(v=>[v.prefixo,v.id]));
+
+  const inserir=dados.map(d=>({
+    garagem_id:S.garagem_id,
+    data:hoje(),
+    turno:S.turno,
+    prefixo:d.prefixo,
+    tipo_lavagem:d.tipo_lavagem,
+    observacao:d.observacao||null,
+    veiculo_id:frotaMap[d.prefixo]||null,
+    status:'pendente',
+    importado_por:'Escalante',
+  }));
+
+  const {error}=await sb.from('programacao_lavagem').insert(inserir);
+  if(error){toast('Erro ao importar: '+error.message,'err');return;}
+
+  toast(`✅ ${inserir.length} veículos importados com sucesso!`);
+  await loadRegistros();
+  showTab('painel');
+}
+
+// ── METAS ─────────────────────────────────
+function renderMetas(){
+  const total=S.registros.length;
+  const exec=S.registros.filter(r=>r.status==='executado');
+  const simples=S.registros.filter(r=>r.tipo_lavagem==='simples');
+  const escovao=S.registros.filter(r=>r.tipo_lavagem==='escovao');
+  const pesada=S.registros.filter(r=>r.tipo_lavagem==='pesada');
+  const simplesExec=simples.filter(r=>r.status==='executado').length;
+  const escovaoExec=escovao.filter(r=>r.status==='executado').length;
+  const pesadaExec=pesada.filter(r=>r.status==='executado').length;
+
+  function metaCard(label,icon,exec,total,meta,cor){
+    const pct=total>0?Math.round((exec/total)*100):0;
+    const ok=exec>=meta;
+    const progColor=ok?'var(--green)':pct>=50?'var(--amber)':'var(--red)';
+    return `
+      <div class="meta-card ${ok?'ok':'nok'}">
+        <div class="meta-label">${icon} ${label}</div>
+        <div class="meta-val" style="color:${cor}">${exec}<span style="font-size:14px;color:var(--text3)">/${total}</span></div>
+        <div class="prog-wrap"><div class="prog-bar" style="width:${pct}%;background:${progColor}"></div></div>
+        <div class="meta-sub ${ok?'ok':'nok'}" style="margin-top:6px">
+          ${ok?'✓ Meta atingida':'✗ Meta: '+meta+' veículos'} · ${pct}%
+        </div>
+      </div>`;
+  }
+
+  setContent(`
+    <div style="margin-bottom:8px">
+      <div style="color:var(--text3);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:14px">METAS DO TURNO — ${S.turno==='dia'?'☀️ DIA':'🌙 NOITE'}</div>
+    </div>
+
+    <div class="meta-grid">
+      ${metaCard('Escovão','🪣',escovaoExec,escovao.length,escovao.length,'var(--amber)')}
+      ${metaCard('Simples','💧',simplesExec,simples.length,METAS.simples,'#3B82F6')}
+      ${metaCard('Pesada','🔴',pesadaExec,pesada.length,METAS.pesada,'var(--red)')}
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px">
+      <div style="color:var(--text3);font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:14px">RESUMO GERAL</div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+        <span style="color:var(--text2);font-size:13px">Total programado</span>
+        <span style="font-family:'DM Mono',monospace;font-weight:600">${total}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+        <span style="color:var(--text2);font-size:13px">Executados</span>
+        <span style="font-family:'DM Mono',monospace;font-weight:600;color:var(--green)">${exec.length}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:12px">
+        <span style="color:var(--text2);font-size:13px">Pendentes</span>
+        <span style="font-family:'DM Mono',monospace;font-weight:600;color:var(--amber)">${total-exec.length}</span>
+      </div>
+      <div class="prog-wrap" style="height:8px">
+        <div class="prog-bar" style="width:${total>0?Math.round((exec.length/total)*100):0}%;background:var(--green)"></div>
+      </div>
+    </div>
+
+    <div class="info-blue info-banner">
+      🎯 Metas configuradas: Escovão = todos os veículos · Simples = ${METAS.simples}/dia · Pesada = ${METAS.pesada}/dia
+    </div>
+  `);
+}
+
+// ── START ─────────────────────────────────
+function lavBadge(tipo){
+  const cfg={simples:['💧 Simples','blav-simples'],escovao:['🪣 Escovão','blav-escovao'],pesada:['🔴 Pesada','blav-pesada']};
+  const [l,c]=cfg[tipo]||[tipo,'blav-pend'];
+  return `<span class="blav ${c}">${l}</span>`;
+}
+
+init();
+</script>
+</body>
+</html>
