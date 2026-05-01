@@ -648,50 +648,276 @@ function renderFerramentas(){
   setMain(`${secTitle('🛠️','Ferramentas Operacionais')}<div class="tools-grid">${tools.map(t=>`<div class="tool-card" onclick="navToSub('${t.id}')"><div style="display:flex;justify-content:space-between"><span style="font-size:28px">${t.icon}</span><span class="badge b-ativo">Ativo</span></div><div style="font-size:14px;font-weight:700">${t.name}</div><div style="font-size:12px;color:var(--text3);line-height:1.5">${t.desc}</div></div>`).join('')}</div><div class="info-blue info-banner">💡 Clique em qualquer ferramenta para abrí-la</div>`);
 }
 
-async function renderFerr210(tab='painel'){
-  const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
-  const tabs=`<div class="filtros"><button class="filtro-btn${tab==='painel'?' active':''}" onclick="renderFerr210('painel')">📋 Painel do Líder</button><button class="filtro-btn${tab==='importar'?' active':''}" onclick="renderFerr210('importar')">📤 Importar PDF</button></div>`;
+// ── HELPERS 2.10 ────────────────────────────────────────────
+function amanha(){
+  const d=new Date(); d.setDate(d.getDate()+1);
+  return d.toISOString().split('T')[0];
+}
+function formatData(iso){
+  if(!iso) return '—';
+  const[y,m,d]=iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+function siglaGaragem(gid){
+  const g=S.garagens.find(x=>x.id===gid);
+  if(!g) return 'JTP';
+  const palavras=g.cidade.toUpperCase().split(' ');
+  if(palavras.length===1) return palavras[0].slice(0,3);
+  return palavras.map(p=>p[0]).join('').slice(0,4);
+}
+function gerarNumeroDoc(tipo, data, gid){
+  const[y,m,d]=data.split('-');
+  const sigla=siglaGaragem(gid);
+  return `${tipo}/${d}${m}${y.slice(2)}/${sigla}`;
+}
+function podeVerRelatorios(){
+  const cargosSuper=['diretoria','gerente_garagem','lider_operacional'];
+  return S.perfil?.is_admin || cargosSuper.includes(S.perfil?.cargo);
+}
 
+async function renderFerr210(tab='painel', dataFiltro=null){
+  const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+
+  // Abas — escalante vê importar, líder vê painel, supervisão vê arquivo
+  const tabs=`<div class="filtros">
+    <button class="filtro-btn${tab==='painel'?' active':''}" onclick="renderFerr210('painel')">📋 Painel do Líder</button>
+    <button class="filtro-btn${tab==='importar'?' active':''}" onclick="renderFerr210('importar')">📤 Importar Escala</button>
+    ${podeVerRelatorios()?`<button class="filtro-btn${tab==='arquivo'?' active':''}" onclick="renderFerr210('arquivo')">🗂️ Arquivo</button>`:''}
+  </div>`;
+
+  // ── ABA IMPORTAR ──────────────────────────────────────────
   if(tab==='importar'){
-    // Se admin/diretoria sem garagem, mostra seletor de garagem
-    const precisaGaragem = !S.perfil.garagem_id;
-    const garaSelect = precisaGaragem ? `
-      <div style="margin-bottom:16px">
-        <label class="fl">Selecione a Garagem para importar</label>
+    const precisaGaragem=!S.perfil.garagem_id;
+    const garaSelect=precisaGaragem?`
+      <div style="margin-bottom:14px">
+        <label class="fl">Garagem</label>
         <select class="fs" id="sel-garagem-210" style="margin-bottom:0">
           ${S.garagens.map(g=>`<option value="${g.id}">${g.nome} — ${g.uf}</option>`).join('')}
         </select>
-      </div>` : '';
-    setMain(`${secTitle('📋','2.10 — Soltura de Frota',back)}${tabs}<div style="max-width:560px">${garaSelect}<div class="import-zone" id="drop210" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleDrop210(event)"><div style="font-size:40px;margin-bottom:12px">📄</div><div style="font-size:16px;font-weight:700;margin-bottom:8px">Importar PDF da Escala GPS</div><div style="color:var(--text3);font-size:13px">Arraste o PDF aqui ou clique para selecionar</div><button class="btn-import" id="btn210" onclick="document.getElementById('f210').click()">📄 Selecionar PDF</button><input type="file" id="f210" accept=".pdf" style="display:none" onchange="handle210(this.files[0])"><div id="err210" style="display:none;margin-top:12px;background:#FEE2E2;border:1px solid #FECACA;color:#991B1B;padding:12px;border-radius:10px;font-size:13px"></div><div id="prog210w" style="display:none;margin-top:12px"><div id="prog210m" style="font-size:12px;color:var(--text2);margin-bottom:6px"></div><div class="prog-wrap"><div class="prog-bar" id="prog210b" style="width:0%"></div></div></div></div><div class="info-amber info-banner">⚠️ Substitui a escala do turno ${S.turno==='dia'?'☀️ Dia':'🌙 Noite'} de hoje</div></div>`);
+      </div>`:'';
+
+    // Data padrão = amanhã (D+1)
+    const dataDefault=amanha();
+    setMain(`
+      ${secTitle('📋','2.10 — Soltura de Frota',back)}${tabs}
+      <div style="max-width:580px">
+        ${garaSelect}
+        <div style="margin-bottom:14px">
+          <label class="fl">Data da Operação (D+1) — quando os ônibus vão sair</label>
+          <input class="fi" type="date" id="data-210" value="${dataDefault}" min="${hoje()}" style="margin-bottom:0">
+        </div>
+        <div style="margin-bottom:14px">
+          <label class="fl">Turno</label>
+          <select class="fs" id="turno-210" style="margin-bottom:0">
+            <option value="dia"${S.turno==='dia'?' selected':''}>☀️ Dia</option>
+            <option value="noite"${S.turno==='noite'?' selected':''}>🌙 Noite</option>
+          </select>
+        </div>
+        <div class="import-zone" id="drop210"
+          ondragover="event.preventDefault();this.classList.add('drag')"
+          ondragleave="this.classList.remove('drag')"
+          ondrop="handleDrop210(event)">
+          <div style="font-size:40px;margin-bottom:12px">📄</div>
+          <div style="font-size:16px;font-weight:700;margin-bottom:8px">Importar PDF da Escala GPS</div>
+          <div style="color:var(--text3);font-size:13px;margin-bottom:4px">Arraste o PDF aqui ou clique para selecionar</div>
+          <button class="btn-import" id="btn210" onclick="document.getElementById('f210').click()">📄 Selecionar PDF</button>
+          <input type="file" id="f210" accept=".pdf" style="display:none" onchange="handle210(this.files[0])">
+          <div id="err210" style="display:none;margin-top:12px;background:#FEE2E2;border:1px solid #FECACA;color:#991B1B;padding:12px;border-radius:10px;font-size:13px"></div>
+          <div id="prog210w" style="display:none;margin-top:12px">
+            <div id="prog210m" style="font-size:12px;color:var(--text2);margin-bottom:6px"></div>
+            <div class="prog-wrap"><div class="prog-bar" id="prog210b" style="width:0%"></div></div>
+          </div>
+        </div>
+        <div class="info-amber info-banner">
+          ⚠️ O número do documento será gerado automaticamente no formato <strong>2.10/DDMMAA/SIGLA</strong> após a importação.
+        </div>
+      </div>`);
     return;
   }
 
+  // ── ABA ARQUIVO ───────────────────────────────────────────
+  if(tab==='arquivo'){
+    setMain(`<div class="loading"><div class="spinner"></div> Carregando arquivo...</div>`);
+    const gid=S.perfil.garagem_id;
+    let q=sb.from('relatorios_gerados').select('*,garagens(nome,uf)').eq('tipo','2.10').order('created_at',{ascending:false}).limit(50);
+    if(gid) q=q.eq('garagem_id',gid);
+    const{data:rels}=await q;
+
+    const rows=(rels||[]).map(r=>{
+      const pct=r.pct_soltura?r.pct_soltura.toFixed(1)+'%':'—';
+      const pColor=parseFloat(r.pct_soltura)>=99.5?'var(--green)':parseFloat(r.pct_soltura)>=95?'var(--amber)':'var(--red)';
+      const st=r.status==='fechado'?`<span class="badge b-ok">Fechado</span>`:`<span class="badge b-nok">Aberto</span>`;
+      return`<tr>
+        <td><span style="font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${r.numero}</span></td>
+        <td>${formatData(r.data_evento)} · ${r.turno==='dia'?'☀️':'🌙'}</td>
+        <td style="color:var(--text3);font-size:12px">${r.garagens?.nome||'—'}</td>
+        <td style="font-family:'DM Mono',monospace">${r.total_programado}</td>
+        <td style="color:${pColor};font-weight:700;font-family:'DM Mono',monospace">${pct}</td>
+        <td>${st}</td>
+        <td style="color:var(--text4);font-size:11px">${r.preenchido_por_nome||'—'}</td>
+        <td><button class="btn-sm" onclick="renderFerr210('painel','${r.data_evento}')">Ver →</button></td>
+      </tr>`;
+    }).join('');
+
+    setMain(`
+      ${secTitle('🗂️','Arquivo — Relatórios 2.10',back)}${tabs}
+      ${(rels||[]).length===0
+        ?`<div class="empty"><div style="font-size:40px">🗂️</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Nenhum relatório gerado ainda</div></div>`
+        :`<div class="tbl-wrap"><div class="tbl-head"><div style="font-size:13px;font-weight:700">${(rels||[]).length} relatórios</div></div>
+          <div style="overflow-x:auto"><table>
+            <thead><tr><th>Nº Documento</th><th>Data · Turno</th><th>Garagem</th><th>Prog.</th><th>% Soltura</th><th>Status</th><th>Preenchido por</th><th></th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table></div></div>`}
+      <div class="info-blue info-banner">🔒 Visível apenas para supervisão e diretoria</div>`);
+    return;
+  }
+
+  // ── ABA PAINEL ────────────────────────────────────────────
   setMain(`<div class="loading"><div class="spinner"></div> Carregando...</div>`);
-  const{data}=await sb.from('soltura_2_10').select('*').eq('garagem_id',S.perfil.garagem_id).eq('data',hoje()).eq('turno',S.turno).order('horario_programado');
+  const gid=S.perfil.garagem_id||(S.garagens[0]?.id);
+  const dataConsulta=dataFiltro||hoje();
+
+  // Busca escala da data selecionada
+  const{data}=await sb.from('soltura_2_10').select('*')
+    .eq('garagem_id',gid).eq('data',dataConsulta).eq('turno',S.turno)
+    .order('horario_programado');
   S.soltura210=data||[];
+  S.data210=dataConsulta;
+
+  // Verifica se existe relatório para essa data/turno
+  const{data:relExist}=await sb.from('relatorios_gerados').select('*')
+    .eq('garagem_id',gid).eq('data_evento',dataConsulta).eq('turno',S.turno).eq('tipo','2.10').single();
+  const numDoc=relExist?.numero||gerarNumeroDoc('2.10',dataConsulta,gid);
 
   if(!S.soltura210.length){
-    setMain(`${secTitle('📋','2.10 — Soltura de Frota',back)}${tabs}<div class="empty"><div style="font-size:40px">📋</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Nenhuma escala importada</div><button class="btn-add" onclick="renderFerr210('importar')">📄 Importar PDF</button></div>`);
+    // Mostra seletor de data para ver escala de outro dia
+    setMain(`
+      ${secTitle('📋','2.10 — Soltura de Frota',back)}${tabs}
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px;max-width:400px">
+        <label class="fl">Ver escala de qual data?</label>
+        <input class="fi" type="date" id="data-painel-210" value="${dataConsulta}" style="margin-bottom:12px">
+        <button class="btn-add" onclick="renderFerr210('painel',document.getElementById('data-painel-210').value)">🔍 Buscar</button>
+      </div>
+      <div class="empty"><div style="font-size:40px">📋</div>
+        <div style="color:var(--text2);font-weight:600;margin:12px 0">Nenhuma escala para ${formatData(dataConsulta)}</div>
+        <p style="color:var(--text3);font-size:13px;margin-bottom:16px">O escalante precisa importar o PDF da escala</p>
+        <button class="btn-add" onclick="renderFerr210('importar')">📤 Importar Escala</button>
+      </div>`);
     return;
   }
 
   const saiu=S.soltura210.filter(r=>r.saiu===true).length;
+  const naoSaiu=S.soltura210.filter(r=>r.saiu===false).length;
   const total=S.soltura210.length;
   const pct=total>0?((saiu/total)*100).toFixed(1):'0';
   const pColor=parseFloat(pct)>=99.5?'var(--green)':parseFloat(pct)>=95?'var(--amber)':'var(--red)';
+  const isHoje=dataConsulta===hoje();
+  const isAmanha=dataConsulta===amanha();
 
   const rows=S.soltura210.map(r=>{
-    const sH=r.saiu===true?`<button class="status-btn sb-sim" onclick="openModalSaida('${r.id}','${r.prefixo}','${r.horario_programado}')">✅ ${r.horario_real||'Saiu'}</button>`:r.saiu===false?`<button class="status-btn sb-nao" onclick="openModalSaida('${r.id}','${r.prefixo}','${r.horario_programado}')">❌ Não saiu</button>`:`<button class="status-btn sb-pend" onclick="openModalSaida('${r.id}','${r.prefixo}','${r.horario_programado}')">○ Confirmar</button>`;
-    return`<tr><td><span style="font-family:'DM Mono',monospace;font-weight:700">${r.prefixo}</span></td><td><span style="color:var(--amber);font-family:'DM Mono',monospace">${r.horario_programado||'—'}</span></td><td style="color:var(--text2);font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.linha||'—'}</td><td style="color:var(--text3);font-size:12px">${r.motorista||'—'}</td><td>${sH}</td></tr>`;
+    const sH=r.saiu===true
+      ?`<button class="status-btn sb-sim" onclick="openModalSaida('${r.id}','${r.prefixo}','${r.horario_programado}')">✅ ${r.horario_real||'Saiu'}</button>`
+      :r.saiu===false
+        ?`<button class="status-btn sb-nao" onclick="openModalSaida('${r.id}','${r.prefixo}','${r.horario_programado}')">❌ Não saiu</button>`
+        :`<button class="status-btn sb-pend" onclick="openModalSaida('${r.id}','${r.prefixo}','${r.horario_programado}')">○ Confirmar</button>`;
+    const pontH=r.pontual===true?`<span style="color:var(--green);font-size:11px;font-weight:600">✓</span>`:r.pontual===false?`<span style="color:var(--red);font-size:11px;font-weight:600">⏰</span>`:`<span style="color:var(--text4)">—</span>`;
+    return`<tr style="background:${r.saiu===true?'#00C48C05':r.saiu===false?'#EF444405':''}">
+      <td><span style="font-family:'DM Mono',monospace;font-weight:700">${r.prefixo}</span></td>
+      <td><span style="color:var(--amber);font-family:'DM Mono',monospace">${r.horario_programado||'—'}</span></td>
+      <td style="color:var(--text2);font-size:12px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.linha||'—'}</td>
+      <td style="color:var(--text3);font-size:12px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.motorista||'—'}</td>
+      <td>${sH}</td>
+      <td>${pontH}</td>
+    </tr>`;
   }).join('');
 
-  setMain(`${secTitle('📋','2.10 — Soltura de Frota',back)}${tabs}
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:14px 18px;margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="color:var(--text3);font-size:11px;font-weight:700">SOLTURA ${S.turno==='dia'?'☀️':'🌙'}</span><span style="color:${pColor};font-family:'DM Mono',monospace;font-size:13px;font-weight:700">${pct}% <span style="color:var(--text4);font-size:10px">meta 99,5%</span></span></div>
-      <div class="prog-wrap"><div class="prog-bar" style="width:${pct}%;background:${pColor}"></div></div>
-      <div style="display:flex;justify-content:space-between;margin-top:4px"><span style="color:var(--text4);font-size:10px">${saiu} confirmados</span><span style="color:var(--text4);font-size:10px">${total-saiu} pendentes</span></div>
+  setMain(`
+    ${secTitle('📋','2.10 — Soltura de Frota',back)}${tabs}
+
+    <!-- Seletor de data -->
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="color:var(--text3);font-size:12px;font-weight:600">Data:</label>
+        <input class="fi" type="date" id="data-painel-210" value="${dataConsulta}" style="margin-bottom:0;padding:7px 12px;width:auto">
+        <button class="btn-sm" onclick="renderFerr210('painel',document.getElementById('data-painel-210').value)">🔍 Buscar</button>
+      </div>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 14px">
+        <span style="color:var(--text3);font-size:10px;letter-spacing:1px">Nº DOC</span>
+        <span style="color:var(--blue);font-family:'DM Mono',monospace;font-weight:700;font-size:13px;margin-left:8px">${numDoc}</span>
+        ${relExist?`<span class="badge b-ok" style="margin-left:8px;font-size:9px">Registrado</span>`:`<span class="badge b-breve" style="margin-left:8px;font-size:9px">Pendente</span>`}
+      </div>
+      ${isAmanha?`<span class="badge" style="color:var(--purple);background:#8B5CF618;border-color:#8B5CF640">📅 Escala de amanhã</span>`:''}
+      ${isHoje?`<span class="badge b-ativo">Hoje</span>`:''}
     </div>
-    <div class="tbl-wrap"><div class="tbl-head"><div style="font-size:13px;font-weight:700">${total} veículos — ${S.turno==='dia'?'☀️ Dia':'🌙 Noite'}</div><div style="display:flex;gap:8px"><button onclick="window.print()" class="btn-sm">🖨️ Imprimir</button><button onclick="renderFerr210('importar')" class="btn-sm">📤 Nova escala</button></div></div><div style="overflow-x:auto"><table><thead><tr><th>Prefixo</th><th>Hor.</th><th>Linha</th><th>Motorista</th><th>Saída</th></tr></thead><tbody>${rows}</tbody></table></div></div>`);
+
+    <!-- Progresso -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:14px 18px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+        <span style="color:var(--text3);font-size:11px;font-weight:700">SOLTURA ${S.turno==='dia'?'☀️ DIA':'🌙 NOITE'} — ${formatData(dataConsulta)}</span>
+        <span style="color:${pColor};font-family:'DM Mono',monospace;font-size:13px;font-weight:700">${pct}% <span style="color:var(--text4);font-size:10px">meta 99,5%</span></span>
+      </div>
+      <div class="prog-wrap"><div class="prog-bar" style="width:${pct}%;background:${pColor}"></div></div>
+      <div style="display:flex;gap:20px;margin-top:8px">
+        <span style="color:var(--green);font-size:11px;font-weight:600">✅ ${saiu} saíram</span>
+        <span style="color:var(--red);font-size:11px;font-weight:600">❌ ${naoSaiu} não saíram</span>
+        <span style="color:var(--text4);font-size:11px">${total-saiu-naoSaiu} pendentes</span>
+      </div>
+    </div>
+
+    <!-- Tabela -->
+    <div class="tbl-wrap">
+      <div class="tbl-head">
+        <div style="font-size:13px;font-weight:700">${total} veículos · ${S.turno==='dia'?'☀️ Dia':'🌙 Noite'} · ${formatData(dataConsulta)}</div>
+        <div style="display:flex;gap:8px">
+          <button onclick="fecharRelatorio210('${gid}','${dataConsulta}','${numDoc}')" class="btn-sm" style="color:var(--green)">✅ Fechar Relatório</button>
+          <button onclick="window.print()" class="btn-sm">🖨️ Imprimir</button>
+          <button onclick="renderFerr210('importar')" class="btn-sm">📤 Nova escala</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Prefixo</th><th>Hor. Prog.</th><th>Linha</th><th>Motorista</th><th>Saída</th><th>Pont.</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`);
+}
+
+// Fecha e registra o relatório 2.10
+async function fecharRelatorio210(gid, dataEvento, numero){
+  if(!confirm(`Fechar o relatório ${numero}? Isso registra no arquivo de supervisão.`)) return;
+  const reg=S.soltura210;
+  const total=reg.length;
+  const saiu=reg.filter(r=>r.saiu===true).length;
+  const naoSaiu=reg.filter(r=>r.saiu===false).length;
+  const pct=total>0?((saiu/total)*100):0;
+
+  // Verifica se já existe
+  const{data:exist}=await sb.from('relatorios_gerados').select('id').eq('numero',numero).single();
+
+  if(exist){
+    // Atualiza
+    await sb.from('relatorios_gerados').update({
+      total_programado:total, total_saiu:saiu, total_nao_saiu:naoSaiu,
+      pct_soltura:pct, status:'fechado', fechado_em:new Date().toISOString(),
+      preenchido_por_nome:S.perfil.nome,
+    }).eq('numero',numero);
+  } else {
+    // Cria novo
+    const{error}=await sb.from('relatorios_gerados').insert({
+      numero, tipo:'2.10', data_evento:dataEvento,
+      turno:S.turno, garagem_id:gid,
+      garagem_sigla:siglaGaragem(gid),
+      total_programado:total, total_saiu:saiu, total_nao_saiu:naoSaiu,
+      pct_soltura:pct, status:'fechado',
+      fechado_em:new Date().toISOString(),
+      preenchido_por:S.perfil.id,
+      preenchido_por_nome:S.perfil.nome,
+    });
+    if(error){toast('Erro ao fechar: '+error.message,'err');return;}
+  }
+  toast(`✅ Relatório ${numero} fechado e disponível para supervisão!`);
+  renderFerr210('painel',dataEvento);
 }
 
 function renderFerrLav(){
@@ -787,32 +1013,64 @@ function handleDrop210(e){e.preventDefault();document.getElementById('drop210').
 async function handle210(file){
   if(!file?.name.endsWith('.pdf')){document.getElementById('err210').style.display='block';document.getElementById('err210').textContent='Selecione um PDF válido';return}
 
-  // Pega garagem correta — admin usa seletor, outros usam a própria
-  const gid = S.perfil.garagem_id || document.getElementById('sel-garagem-210')?.value;
+  // Pega garagem, data e turno do formulário
+  const gid=S.perfil.garagem_id||document.getElementById('sel-garagem-210')?.value;
+  const dataImport=document.getElementById('data-210')?.value||amanha();
+  const turnoImport=document.getElementById('turno-210')?.value||S.turno;
+
   if(!gid){document.getElementById('err210').style.display='block';document.getElementById('err210').textContent='Selecione uma garagem antes de importar';return}
 
   const btn=document.getElementById('btn210');btn.disabled=true;btn.textContent='⏳ Processando...';
   document.getElementById('err210').style.display='none';
   const prog=(m,p)=>{document.getElementById('prog210w').style.display='block';document.getElementById('prog210m').textContent=m;const b=document.getElementById('prog210b');b.style.width=p+'%';b.style.background=p>=100?'var(--green)':'var(--blue)'};
+
   try{
-    prog('Lendo PDF...',10);const raw=await parsePDF(file);
-    if(!raw.length) throw new Error('Nenhum dado extraído');
-    prog('Filtrando...',60);
-    const map={};for(const r of raw){if(!r.posicao.endsWith('A'))continue;if(!map[r.veiculo]||r.inicio<map[r.veiculo].inicio)map[r.veiculo]=r}
+    prog('Lendo PDF...',10);
+    const raw=await parsePDF(file);
+    if(!raw.length) throw new Error('Nenhum dado extraído do PDF');
+
+    prog('Filtrando Turno A...',60);
+    const map={};
+    for(const r of raw){if(!r.posicao.endsWith('A'))continue;if(!map[r.veiculo]||r.inicio<map[r.veiculo].inicio)map[r.veiculo]=r}
     const data=Object.values(map).sort((a,b)=>a.inicio.localeCompare(b.inicio));
-    if(!data.length) throw new Error('Nenhum Turno A encontrado');
-    prog('Salvando '+data.length+' veículos...',80);
-    await sb.from('soltura_2_10').delete().eq('garagem_id',gid).eq('data',hoje()).eq('turno',S.turno);
+    if(!data.length) throw new Error('Nenhum registro Turno A encontrado');
+
+    prog(`Salvando ${data.length} veículos para ${formatData(dataImport)}...`,80);
+
+    // Apaga escala anterior da mesma data/turno/garagem
+    await sb.from('soltura_2_10').delete()
+      .eq('garagem_id',gid).eq('data',dataImport).eq('turno',turnoImport);
+
+    // Busca IDs da frota
     const{data:fr}=await sb.from('frota').select('id,prefixo').eq('garagem_id',gid);
     const fMap=Object.fromEntries((fr||[]).map(v=>[v.prefixo,v.id]));
-    const{error}=await sb.from('soltura_2_10').insert(data.map(r=>({garagem_id:gid,data:hoje(),turno:S.turno,prefixo:r.veiculo,veiculo_id:fMap[r.veiculo]||null,linha:r.linha,horario_programado:r.inicio,motorista:r.motorista,saiu:null})));
+
+    // Gera número do documento
+    const numDoc=gerarNumeroDoc('2.10',dataImport,gid);
+
+    const{error}=await sb.from('soltura_2_10').insert(data.map(r=>({
+      garagem_id:gid, data:dataImport, turno:turnoImport,
+      prefixo:r.veiculo, veiculo_id:fMap[r.veiculo]||null,
+      linha:r.linha, horario_programado:r.inicio,
+      motorista:r.motorista, saiu:null,
+      importado_por:S.perfil.nome,
+      numero_relatorio:numDoc,
+    })));
     if(error) throw new Error('Erro ao salvar: '+error.message);
-    prog('✔ '+data.length+' importados!',100);
-    toast('✅ '+data.length+' veículos importados!');
-    // Salva garagem usada para o painel
+
+    prog(`✔ ${data.length} veículos importados para ${formatData(dataImport)}!`,100);
+    toast(`✅ Escala ${numDoc} importada — ${data.length} veículos`);
+
+    // Salva garagem para o painel
     if(!S.perfil.garagem_id) S.perfil.garagem_id=gid;
-    setTimeout(()=>renderFerr210('painel'),1200);
-  }catch(err){document.getElementById('err210').style.display='block';document.getElementById('err210').textContent='ERRO: '+err.message}
+    S.turno=turnoImport;
+
+    setTimeout(()=>renderFerr210('painel',dataImport),1500);
+  }catch(err){
+    document.getElementById('err210').style.display='block';
+    document.getElementById('err210').textContent='ERRO: '+err.message;
+    prog('',0);document.getElementById('prog210w').style.display='none';
+  }
   btn.disabled=false;btn.textContent='📄 Selecionar outro PDF';
 }
 
