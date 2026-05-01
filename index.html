@@ -653,7 +653,16 @@ async function renderFerr210(tab='painel'){
   const tabs=`<div class="filtros"><button class="filtro-btn${tab==='painel'?' active':''}" onclick="renderFerr210('painel')">📋 Painel do Líder</button><button class="filtro-btn${tab==='importar'?' active':''}" onclick="renderFerr210('importar')">📤 Importar PDF</button></div>`;
 
   if(tab==='importar'){
-    setMain(`${secTitle('📋','2.10 — Soltura de Frota',back)}${tabs}<div style="max-width:560px"><div class="import-zone" id="drop210" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleDrop210(event)"><div style="font-size:40px;margin-bottom:12px">📄</div><div style="font-size:16px;font-weight:700;margin-bottom:8px">Importar PDF da Escala GPS</div><div style="color:var(--text3);font-size:13px">Arraste o PDF aqui ou clique para selecionar</div><button class="btn-import" id="btn210" onclick="document.getElementById('f210').click()">📄 Selecionar PDF</button><input type="file" id="f210" accept=".pdf" style="display:none" onchange="handle210(this.files[0])"><div id="err210" style="display:none;margin-top:12px;background:#FEE2E2;border:1px solid #FECACA;color:#991B1B;padding:12px;border-radius:10px;font-size:13px"></div><div id="prog210w" style="display:none;margin-top:12px"><div id="prog210m" style="font-size:12px;color:var(--text2);margin-bottom:6px"></div><div class="prog-wrap"><div class="prog-bar" id="prog210b" style="width:0%"></div></div></div></div><div class="info-amber info-banner">⚠️ Substitui a escala do turno ${S.turno==='dia'?'☀️ Dia':'🌙 Noite'} de hoje</div></div>`);
+    // Se admin/diretoria sem garagem, mostra seletor de garagem
+    const precisaGaragem = !S.perfil.garagem_id;
+    const garaSelect = precisaGaragem ? `
+      <div style="margin-bottom:16px">
+        <label class="fl">Selecione a Garagem para importar</label>
+        <select class="fs" id="sel-garagem-210" style="margin-bottom:0">
+          ${S.garagens.map(g=>`<option value="${g.id}">${g.nome} — ${g.uf}</option>`).join('')}
+        </select>
+      </div>` : '';
+    setMain(`${secTitle('📋','2.10 — Soltura de Frota',back)}${tabs}<div style="max-width:560px">${garaSelect}<div class="import-zone" id="drop210" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleDrop210(event)"><div style="font-size:40px;margin-bottom:12px">📄</div><div style="font-size:16px;font-weight:700;margin-bottom:8px">Importar PDF da Escala GPS</div><div style="color:var(--text3);font-size:13px">Arraste o PDF aqui ou clique para selecionar</div><button class="btn-import" id="btn210" onclick="document.getElementById('f210').click()">📄 Selecionar PDF</button><input type="file" id="f210" accept=".pdf" style="display:none" onchange="handle210(this.files[0])"><div id="err210" style="display:none;margin-top:12px;background:#FEE2E2;border:1px solid #FECACA;color:#991B1B;padding:12px;border-radius:10px;font-size:13px"></div><div id="prog210w" style="display:none;margin-top:12px"><div id="prog210m" style="font-size:12px;color:var(--text2);margin-bottom:6px"></div><div class="prog-wrap"><div class="prog-bar" id="prog210b" style="width:0%"></div></div></div></div><div class="info-amber info-banner">⚠️ Substitui a escala do turno ${S.turno==='dia'?'☀️ Dia':'🌙 Noite'} de hoje</div></div>`);
     return;
   }
 
@@ -777,6 +786,11 @@ async function confirmarSaida(){
 function handleDrop210(e){e.preventDefault();document.getElementById('drop210').classList.remove('drag');handle210(e.dataTransfer.files[0])}
 async function handle210(file){
   if(!file?.name.endsWith('.pdf')){document.getElementById('err210').style.display='block';document.getElementById('err210').textContent='Selecione um PDF válido';return}
+
+  // Pega garagem correta — admin usa seletor, outros usam a própria
+  const gid = S.perfil.garagem_id || document.getElementById('sel-garagem-210')?.value;
+  if(!gid){document.getElementById('err210').style.display='block';document.getElementById('err210').textContent='Selecione uma garagem antes de importar';return}
+
   const btn=document.getElementById('btn210');btn.disabled=true;btn.textContent='⏳ Processando...';
   document.getElementById('err210').style.display='none';
   const prog=(m,p)=>{document.getElementById('prog210w').style.display='block';document.getElementById('prog210m').textContent=m;const b=document.getElementById('prog210b');b.style.width=p+'%';b.style.background=p>=100?'var(--green)':'var(--blue)'};
@@ -788,13 +802,15 @@ async function handle210(file){
     const data=Object.values(map).sort((a,b)=>a.inicio.localeCompare(b.inicio));
     if(!data.length) throw new Error('Nenhum Turno A encontrado');
     prog('Salvando '+data.length+' veículos...',80);
-    await sb.from('soltura_2_10').delete().eq('garagem_id',S.perfil.garagem_id).eq('data',hoje()).eq('turno',S.turno);
-    const{data:fr}=await sb.from('frota').select('id,prefixo').eq('garagem_id',S.perfil.garagem_id);
+    await sb.from('soltura_2_10').delete().eq('garagem_id',gid).eq('data',hoje()).eq('turno',S.turno);
+    const{data:fr}=await sb.from('frota').select('id,prefixo').eq('garagem_id',gid);
     const fMap=Object.fromEntries((fr||[]).map(v=>[v.prefixo,v.id]));
-    const{error}=await sb.from('soltura_2_10').insert(data.map(r=>({garagem_id:S.perfil.garagem_id,data:hoje(),turno:S.turno,prefixo:r.veiculo,veiculo_id:fMap[r.veiculo]||null,linha:r.linha,horario_programado:r.inicio,motorista:r.motorista,saiu:null})));
+    const{error}=await sb.from('soltura_2_10').insert(data.map(r=>({garagem_id:gid,data:hoje(),turno:S.turno,prefixo:r.veiculo,veiculo_id:fMap[r.veiculo]||null,linha:r.linha,horario_programado:r.inicio,motorista:r.motorista,saiu:null})));
     if(error) throw new Error('Erro ao salvar: '+error.message);
     prog('✔ '+data.length+' importados!',100);
     toast('✅ '+data.length+' veículos importados!');
+    // Salva garagem usada para o painel
+    if(!S.perfil.garagem_id) S.perfil.garagem_id=gid;
     setTimeout(()=>renderFerr210('painel'),1200);
   }catch(err){document.getElementById('err210').style.display='block';document.getElementById('err210').textContent='ERRO: '+err.message}
   btn.disabled=false;btn.textContent='📄 Selecionar outro PDF';
