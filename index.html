@@ -4,76 +4,65 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>JTP — Sistema Operacional de Garagem</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=DM+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#020817;--surface:#0F172A;--surface2:#080D1A;
+  --bg:#020817;--surface:#0F172A;--surface2:#0A0F1E;
   --border:#1E293B;--border2:#0F1929;
   --text:#F1F5F9;--text2:#94A3B8;--text3:#475569;--text4:#334155;
   --blue:#2563EB;--blue-d:#1D4ED8;
   --green:#00C48C;--amber:#F59E0B;--red:#EF4444;--purple:#8B5CF6;
   --sidebar:220px;
 }
-body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;overflow-x:hidden}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh}
+*::-webkit-scrollbar{width:5px}*::-webkit-scrollbar-track{background:var(--bg)}*::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
 
-/* ── LOGIN ── */
-#login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative}
-.login-glow{position:fixed;top:10%;left:50%;transform:translateX(-50%);width:800px;height:800px;border-radius:50%;background:radial-gradient(circle,#1D4ED808 0%,transparent 65%);pointer-events:none}
-.login-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:40px 36px;width:380px;box-shadow:0 30px 80px #00000090;animation:fadeUp .5s ease both;position:relative}
-@keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
-.login-logo{text-align:center;margin-bottom:32px}
-.login-icon{display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;background:#1E3A5F;border-radius:16px;font-size:26px;margin-bottom:14px;border:1px solid #2563EB30}
+/* LOGIN */
+#login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center}
+.login-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:40px 36px;width:380px;box-shadow:0 30px 80px #00000090;animation:fadeUp .5s ease both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
 .fl{display:block;color:var(--text3);font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}
 .fi,.fs{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:11px 14px;color:var(--text);font-size:14px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color .2s;margin-bottom:14px;appearance:none}
 .fi:focus,.fs:focus{border-color:var(--blue)}
-.btn-login{width:100%;background:linear-gradient(135deg,var(--blue-d),var(--blue));color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;transition:opacity .2s,transform .1s;margin-top:4px}
-.btn-login:hover{opacity:.9;transform:translateY(-1px)}
+.btn-login{width:100%;background:linear-gradient(135deg,var(--blue-d),var(--blue));color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;transition:opacity .2s}
+.btn-login:hover{opacity:.9}
+.btn-login:disabled{opacity:.5;cursor:not-allowed}
 
-/* ── SHELL ── */
+/* APP */
 #app{display:none;min-height:100vh;flex-direction:column}
 #app.on{display:flex}
 
 /* TOPBAR */
 .topbar{background:var(--surface);border-bottom:1px solid var(--border);height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;position:sticky;top:0;z-index:300;flex-shrink:0}
-.tb-brand{font-weight:800;font-size:15px;letter-spacing:-.3px}
+.tb-brand{font-weight:800;font-size:15px}
 .tb-brand span{font-weight:400;color:var(--text3)}
-.tb-right{display:flex;align-items:center;gap:10px}
-.avatar{background:var(--border);border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;border:1px solid var(--border)}
+.avatar{background:var(--border);border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
 .btn-out{background:none;border:1px solid var(--border);color:var(--text3);border-radius:6px;padding:5px 12px;font-size:11px;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .2s}
 .btn-out:hover{border-color:var(--red);color:var(--red)}
 
-/* BODY */
+/* LAYOUT */
 .app-body{display:flex;flex:1;min-height:0}
 
 /* SIDEBAR */
 .sidebar{width:var(--sidebar);background:var(--surface2);border-right:1px solid var(--border);padding:12px 8px;display:flex;flex-direction:column;position:sticky;top:56px;height:calc(100vh - 56px);overflow-y:auto;flex-shrink:0}
-
-/* NAV ITEMS */
-.nav-section{color:var(--text4);font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:16px 10px 6px;margin-top:4px}
+.nav-section{color:var(--text4);font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:14px 10px 6px;margin-top:2px}
 .nav-section:first-child{padding-top:4px}
-.nav-btn{width:100%;display:flex;align-items:center;gap:9px;background:none;border:1px solid transparent;border-radius:8px;padding:9px 10px;cursor:pointer;color:var(--text3);font-size:13px;font-weight:400;font-family:'DM Sans',sans-serif;margin-bottom:2px;text-align:left;transition:all .15s;position:relative}
+.nav-btn{width:100%;display:flex;align-items:center;gap:9px;background:none;border:1px solid transparent;border-radius:8px;padding:9px 10px;cursor:pointer;color:var(--text3);font-size:13px;font-weight:400;font-family:'DM Sans',sans-serif;margin-bottom:2px;text-align:left;transition:all .15s}
 .nav-btn:hover{background:var(--border2);color:var(--text2)}
 .nav-btn.active{background:var(--border);border-color:#1D4ED825;color:var(--text);font-weight:600}
-.nav-btn .nav-icon{font-size:15px;flex-shrink:0}
-.nav-btn .nav-badge{margin-left:auto;background:var(--blue);color:#fff;border-radius:99px;padding:1px 7px;font-size:10px;font-weight:700}
-.nav-btn .nav-badge.green{background:var(--green)}
-.nav-btn .nav-badge.amber{background:var(--amber);color:#000}
-
-/* SUBMENU */
+.nav-badge{margin-left:auto;background:var(--blue);color:#fff;border-radius:99px;padding:1px 7px;font-size:10px;font-weight:700}
+.nav-badge.green{background:var(--green)}
 .submenu{overflow:hidden;max-height:0;transition:max-height .3s ease}
 .submenu.open{max-height:400px}
 .sub-btn{width:100%;display:flex;align-items:center;gap:8px;background:none;border:none;border-left:2px solid var(--border);margin-left:18px;padding:7px 10px;cursor:pointer;color:var(--text3);font-size:12px;font-family:'DM Sans',sans-serif;text-align:left;transition:all .15s;border-radius:0 6px 6px 0}
 .sub-btn:hover{color:var(--text2);border-left-color:var(--text3)}
 .sub-btn.active{color:var(--blue);border-left-color:var(--blue);font-weight:600}
-
-/* TURNO */
 .sidebar-bottom{margin-top:auto;padding-top:16px;border-top:1px solid var(--border)}
-.turno-label{color:var(--text4);font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;padding:0 4px}
-.turno-btns{display:flex;gap:6px}
+.turno-btns{display:flex;gap:6px;margin-top:8px}
 .turno-btn{flex:1;background:var(--border);border:1px solid var(--border);color:var(--text3);border-radius:7px;padding:7px 4px;font-size:11px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .2s;text-align:center}
 .turno-btn.dia{background:#F59E0B18;border-color:#F59E0B40;color:var(--amber)}
 .turno-btn.noite{background:#3B82F618;border-color:#3B82F640;color:#3B82F6}
@@ -84,11 +73,9 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min
 
 /* COMPONENTS */
 .sec-title{display:flex;align-items:center;gap:10px;margin:0 0 16px}
-.sec-title+.sec-title{margin-top:28px}
-.st-icon{font-size:16px}
+.sec-title+.sec-title,.sec-title~.sec-title{margin-top:28px}
 .st-text{color:var(--text3);font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase}
 .st-line{flex:1;height:1px;background:var(--border)}
-
 .badge{border-radius:6px;padding:2px 10px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap;border:1px solid}
 .b-disp{color:#00C48C;background:#00C48C18;border-color:#00C48C40}
 .b-linha{color:#3B82F6;background:#3B82F618;border-color:#3B82F640}
@@ -98,14 +85,15 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min
 .b-ok{color:#00C48C;background:#00C48C18;border-color:#00C48C40}
 .b-nok{color:#EF4444;background:#EF444418;border-color:#EF444440}
 .b-ativo{color:#00C48C;background:#00C48C18;border-color:#00C48C40}
+.b-inativo{color:#EF4444;background:#EF444418;border-color:#EF444440}
 .b-breve{color:#475569;background:#47556918;border-color:#47556940}
+.b-admin{color:#8B5CF6;background:#8B5CF618;border-color:#8B5CF640}
 
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:4px}
 .kpi{background:var(--surface);border-radius:11px;padding:14px 16px;border:1px solid var(--border);border-left-width:3px;display:flex;flex-direction:column;gap:4px}
 .kpi.ok{border-left-color:var(--green)}.kpi.nok{border-left-color:var(--red)}.kpi.neu{border-left-color:#475569}
 .kpi-label{color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase}
-.kpi-val{font-family:'DM Mono',monospace;font-size:22px;font-weight:600;color:var(--text);display:flex;align-items:baseline;gap:4px}
-.kpi-unit{font-size:12px;color:var(--text4);font-weight:400}
+.kpi-val{font-family:'DM Mono',monospace;font-size:22px;font-weight:600;color:var(--text)}
 .kpi-meta{font-size:11px;font-weight:600}
 .kpi-meta.ok{color:var(--green)}.kpi-meta.nok{color:var(--red)}
 
@@ -120,7 +108,6 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min
 .frota-card:hover{border-color:#2563EB40}
 .fp{font-family:'DM Mono',monospace;font-size:15px;font-weight:600}
 .fm{color:var(--text3);font-size:11px;margin-top:2px}
-.fk{color:var(--text4);font-size:10px;margin-top:2px;font-family:'DM Mono',monospace}
 
 .filtros{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
 .filtro-btn{background:var(--surface);border:1px solid var(--border);color:var(--text3);border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .15s}
@@ -129,34 +116,32 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min
 
 .btn-add{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,var(--blue-d),var(--blue));color:#fff;border:none;border-radius:9px;padding:9px 18px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;transition:opacity .2s}
 .btn-add:hover{opacity:.85}
+.btn-back{background:var(--border);border:none;color:var(--text2);border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
 
-.os-card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:8px}
+/* ADMIN */
+.user-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;display:flex;align-items:center;gap:16px;transition:border-color .2s}
+.user-card:hover{border-color:#2563EB30}
+.user-avatar{width:40px;height:40px;border-radius:10px;background:var(--blue-d);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;flex-shrink:0}
+.user-info{flex:1}
+.user-name{font-size:14px;font-weight:700;color:var(--text)}
+.user-meta{color:var(--text3);font-size:12px;margin-top:3px}
+.user-actions{display:flex;gap:8px}
+.btn-sm{background:var(--border);border:none;color:var(--text2);border-radius:7px;padding:6px 12px;font-size:11px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .2s}
+.btn-sm:hover{color:var(--text)}
+.btn-sm.danger:hover{background:#EF444420;color:var(--red)}
 
-/* FERRAMENTAS */
+/* TOOLS */
 .tools-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
 .tool-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;cursor:pointer;transition:all .2s;display:flex;flex-direction:column;gap:10px}
 .tool-card:hover{border-color:var(--blue);transform:translateY(-2px);box-shadow:0 8px 24px #00000040}
-.tool-icon{font-size:28px}
-.tool-name{font-size:14px;font-weight:700;color:var(--text)}
-.tool-desc{font-size:12px;color:var(--text3);line-height:1.5}
 
 /* RELATÓRIOS */
 .rel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px}
 .rel-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;display:flex;gap:14px;align-items:flex-start;transition:all .18s}
-.rel-card.ativo{cursor:pointer}.rel-card.ativo:hover{border-color:#2563EB60;transform:translateY(-1px);box-shadow:0 8px 24px #00000040}
-.rel-icon-wrap{background:var(--border);border-radius:9px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
-.rel-cod{color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1px}
-.rel-nome{color:var(--text);font-size:13px;font-weight:600;margin-top:3px;line-height:1.35}
-.rel-meta{color:var(--text4);font-size:11px;margin-top:6px}
-
-/* TOOL CONTENT */
-.tool-content{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;margin-top:16px}
-.tool-content-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px}
-.btn-back{background:var(--border);border:none;color:var(--text2);border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
-.btn-back:hover{color:var(--text)}
+.rel-card.ativo{cursor:pointer}.rel-card.ativo:hover{border-color:#2563EB60;transform:translateY(-1px)}
 
 /* IMPORT */
-.import-zone{border:2px dashed var(--border);border-radius:14px;padding:48px 32px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg)}
+.import-zone{border:2px dashed var(--border);border-radius:14px;padding:40px 32px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg)}
 .import-zone:hover,.import-zone.drag{border-color:var(--blue);background:#1E293B}
 .btn-import{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#F5620F,#D4510B);color:#fff;border:none;border-radius:10px;padding:12px 24px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;margin-top:12px}
 .btn-import:disabled{opacity:.5;cursor:not-allowed}
@@ -171,8 +156,6 @@ th{padding:10px 14px;text-align:left;color:var(--text3);font-size:10px;font-weig
 td{padding:11px 14px;border-bottom:1px solid #0A0F1A;font-size:13px;color:var(--text);vertical-align:middle}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:#0F172A80}
-
-/* STATUS BTNS */
 .status-btn{border-radius:7px;padding:5px 11px;font-size:11px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;border:1px solid;transition:all .15s;white-space:nowrap}
 .sb-sim{color:var(--green);background:#00C48C18;border-color:#00C48C40}
 .sb-nao{color:var(--red);background:#EF444418;border-color:#EF444440}
@@ -182,76 +165,51 @@ tr:hover td{background:#0F172A80}
 .modal-ov{position:fixed;inset:0;background:#00000090;z-index:500;display:flex;align-items:center;justify-content:center;padding:16px;animation:fadeIn .2s ease}
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;width:100%;max-width:460px;box-shadow:0 30px 80px #00000090}
 .modal-title{color:var(--text);font-size:16px;font-weight:700;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center}
-.btn-modal-close{background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer}
-.btn-modal-close:hover{color:var(--red)}
+.btn-x{background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer}
+.btn-x:hover{color:var(--red)}
 .btn-success{background:linear-gradient(135deg,#059669,#10B981);color:#fff;border:none;border-radius:10px;padding:11px 20px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer}
 .btn-sec{background:var(--border);color:var(--text2);border:none;border-radius:10px;padding:11px 20px;font-size:14px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer}
+.btn-danger{background:linear-gradient(135deg,#DC2626,#EF4444);color:#fff;border:none;border-radius:10px;padding:11px 20px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.mgrid .full{grid-column:1/-1}
 
 /* TOAST */
 .toast{position:fixed;bottom:24px;right:24px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;font-size:13px;font-weight:600;color:var(--text);box-shadow:0 10px 40px #00000060;z-index:999;animation:fadeUp .3s ease;display:flex;align-items:center;gap:10px;max-width:320px}
-@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 .toast.ok{border-left:3px solid var(--green)}.toast.err{border-left:3px solid var(--red)}
-
 .loading{display:flex;align-items:center;justify-content:center;padding:60px;gap:12px;color:var(--text3);font-size:14px}
 .spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .empty{text-align:center;padding:60px 20px;color:var(--text3)}
-.empty-icon{font-size:48px;margin-bottom:12px}
 .info-banner{border-radius:10px;padding:14px 18px;font-size:12px;border:1px solid;margin-top:14px}
 .info-blue{background:var(--surface);border-color:#1D4ED830;color:#3B82F6}
 .info-amber{background:var(--surface);border-color:#F59E0B30;color:var(--amber)}
 .info-green{background:var(--surface);border-color:#00C48C30;color:var(--green)}
 
-@media(max-width:768px){
-  :root{--sidebar:0px}
-  .sidebar{display:none}
-  .main{padding:16px}
-  .fc-row{gap:6px}
-  .fc{padding:8px 10px}
-  .fc-val{font-size:18px}
-}
-::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+@media(max-width:768px){:root{--sidebar:0px}.sidebar{display:none}.main{padding:16px}}
 </style>
 </head>
 <body>
 
 <!-- LOGIN -->
 <div id="login-screen">
-  <div class="login-glow"></div>
   <div class="login-card">
-    <div class="login-logo">
-      <div class="login-icon">🚌</div>
+    <div style="text-align:center;margin-bottom:28px">
+      <div style="display:inline-flex;align-items:center;justify-content:center;width:52px;height:52px;background:#1E3A5F;border-radius:14px;font-size:24px;margin-bottom:12px;border:1px solid #2563EB30">🚌</div>
       <div style="font-size:22px;font-weight:800;letter-spacing:-.5px">JTP Transportes</div>
-      <div style="color:var(--text3);font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-top:4px">Sistema Operacional de Garagem</div>
+      <div style="color:var(--text3);font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-top:4px">Sistema Operacional</div>
     </div>
     <label class="fl">E-mail</label>
     <input class="fi" id="l-email" type="email" placeholder="seu@email.com">
     <label class="fl">Senha</label>
     <input class="fi" id="l-senha" type="password" placeholder="••••••••">
-    <label class="fl">Cargo</label>
-    <select class="fs" id="l-cargo" onchange="toggleGaragem()">
-      <option value="gerente_garagem">Gerente de Garagem</option>
-      <option value="pcm">PCM</option>
-      <option value="almoxarifado">Almoxarifado</option>
-      <option value="lider_operacional">Líder Operacional</option>
-      <option value="lider_suprimentos">Líder de Suprimentos</option>
-      <option value="operacoes_seguras">Operações Seguras</option>
-      <option value="lider_oficina">Líder de Oficina</option>
-      <option value="diretoria">Diretoria</option>
-    </select>
-    <div id="garagem-field">
-      <label class="fl">Garagem</label>
-      <select class="fs" id="l-garagem"></select>
-    </div>
     <div id="l-erro" style="color:var(--red);font-size:12px;text-align:center;margin-bottom:10px;display:none"></div>
     <button class="btn-login" id="btn-login" onclick="doLogin()">Entrar no Sistema</button>
-    <div style="text-align:center;margin-top:20px;color:var(--text4);font-size:11px">🔒 Acesso restrito — Grupo JTP</div>
+    <div style="text-align:center;margin-top:16px;color:var(--text4);font-size:11px">🔒 Acesso restrito — Grupo JTP</div>
   </div>
 </div>
 
 <!-- APP -->
 <div id="app">
-  <!-- TOPBAR -->
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:12px">
       <span style="font-size:20px">🚌</span>
@@ -259,7 +217,7 @@ tr:hover td{background:#0F172A80}
       <div style="width:1px;height:20px;background:var(--border)"></div>
       <span style="color:var(--text3);font-size:12px" id="tb-loc">—</span>
     </div>
-    <div class="tb-right">
+    <div style="display:flex;align-items:center;gap:10px">
       <span style="color:var(--text3);font-size:12px" id="tb-role">—</span>
       <div class="avatar" id="tb-av">?</div>
       <button class="btn-out" onclick="doLogout()">Sair</button>
@@ -267,57 +225,33 @@ tr:hover td{background:#0F172A80}
   </div>
 
   <div class="app-body">
-    <!-- SIDEBAR -->
-    <div class="sidebar">
-      <!-- PRINCIPAL -->
+    <div class="sidebar" id="sidebar">
       <div class="nav-section">Principal</div>
-      <button class="nav-btn active" data-tela="painel" onclick="navTo('painel',this)">
-        <span class="nav-icon">🏠</span> Painel do Dia
-      </button>
-      <button class="nav-btn" data-tela="frota" onclick="navTo('frota',this)">
-        <span class="nav-icon">🚌</span> Frota
-        <span class="nav-badge green" id="badge-frota">—</span>
-      </button>
-      <button class="nav-btn" data-tela="indicadores" onclick="navTo('indicadores',this)">
-        <span class="nav-icon">📊</span> Indicadores
-      </button>
-      <button class="nav-btn" data-tela="manutencao" onclick="navTo('manutencao',this)">
-        <span class="nav-icon">🔧</span> Manutenção
-      </button>
-      <button class="nav-btn" data-tela="almoxarifado" onclick="navTo('almoxarifado',this)">
-        <span class="nav-icon">📦</span> Almoxarifado
-      </button>
+      <button class="nav-btn active" onclick="navTo('painel',this)"><span>🏠</span> Painel do Dia</button>
+      <button class="nav-btn" onclick="navTo('frota',this)"><span>🚌</span> Frota <span class="nav-badge green" id="badge-frota">—</span></button>
+      <button class="nav-btn" onclick="navTo('indicadores',this)"><span>📊</span> Indicadores</button>
+      <button class="nav-btn" onclick="navTo('manutencao',this)"><span>🔧</span> Manutenção</button>
+      <button class="nav-btn" onclick="navTo('almoxarifado',this)"><span>📦</span> Almoxarifado</button>
 
-      <!-- FERRAMENTAS -->
       <div class="nav-section">Ferramentas</div>
-      <button class="nav-btn" onclick="toggleSubmenu('sub-ferramentas',this)" data-tela="ferramentas">
-        <span class="nav-icon">🛠️</span> Ferramentas
-        <span style="margin-left:auto;font-size:10px;color:var(--text4)" id="arr-ferr">▶</span>
-      </button>
-      <div class="submenu" id="sub-ferramentas">
-        <button class="sub-btn" onclick="navToSub('ferr-soltura210','sub-ferramentas')">📋 2.10 Soltura de Frota</button>
-        <button class="sub-btn" onclick="navToSub('ferr-lavagem','sub-ferramentas')">🧼 Programação Lavagem</button>
-        <button class="sub-btn" onclick="navToSub('ferr-controle','sub-ferramentas')">✅ Controle Soltura/Oficina</button>
+      <button class="nav-btn" onclick="toggleSub('sub-ferr','arr-ferr',this)"><span>🛠️</span> Ferramentas <span id="arr-ferr" style="margin-left:auto;font-size:10px;color:var(--text4)">▶</span></button>
+      <div class="submenu" id="sub-ferr">
+        <button class="sub-btn" onclick="navToSub('ferr-210')">📋 2.10 Soltura de Frota</button>
+        <button class="sub-btn" onclick="navToSub('ferr-lav')">🧼 Programação Lavagem</button>
+        <button class="sub-btn" onclick="navToSub('ferr-ctrl')">✅ Controle Soltura</button>
+      </div>
+      <button class="nav-btn" onclick="toggleSub('sub-rel','arr-rel',this)"><span>📋</span> Relatórios <span id="arr-rel" style="margin-left:auto;font-size:10px;color:var(--text4)">▶</span></button>
+      <div class="submenu" id="sub-rel">
+        <button class="sub-btn" onclick="navToSub('rel-todos')">📂 Todos os Relatórios</button>
       </div>
 
-      <!-- RELATÓRIOS -->
-      <button class="nav-btn" onclick="toggleSubmenu('sub-relatorios',this)" data-tela="relatorios">
-        <span class="nav-icon">📋</span> Relatórios
-        <span style="margin-left:auto;font-size:10px;color:var(--text4)" id="arr-rel">▶</span>
-      </button>
-      <div class="submenu" id="sub-relatorios">
-        <button class="sub-btn" onclick="navToSub('rel-todos','sub-relatorios')">📂 Todos os Relatórios</button>
-      </div>
-
-      <!-- DIRETORIA -->
+      <div class="nav-section" id="sec-admin" style="display:none">Administração</div>
+      <button class="nav-btn admin-only" onclick="navTo('admin',this)" style="display:none"><span>⚙️</span> Gestão de Usuários</button>
       <div class="nav-section dir-only" style="display:none">Gestão</div>
-      <button class="nav-btn dir-only" data-tela="diretoria" onclick="navTo('diretoria',this)" style="display:none">
-        <span class="nav-icon">🏢</span> Diretoria
-      </button>
+      <button class="nav-btn dir-only" onclick="navTo('diretoria',this)" style="display:none"><span>🏢</span> Diretoria</button>
 
-      <!-- TURNO -->
       <div class="sidebar-bottom">
-        <div class="turno-label">Turno Ativo</div>
+        <div style="color:var(--text4);font-size:9px;letter-spacing:2px;text-transform:uppercase">Turno Ativo</div>
         <div class="turno-btns">
           <button class="turno-btn dia" id="btn-dia" onclick="setTurno('dia')">☀️ Dia</button>
           <button class="turno-btn" id="btn-noite" onclick="setTurno('noite')">🌙 Noite</button>
@@ -325,77 +259,76 @@ tr:hover td{background:#0F172A80}
       </div>
     </div>
 
-    <!-- MAIN -->
-    <div class="main" id="main">
-      <div class="loading"><div class="spinner"></div> Carregando...</div>
-    </div>
+    <div class="main" id="main"><div class="loading"><div class="spinner"></div> Carregando...</div></div>
   </div>
 </div>
 
-<!-- MODAL STATUS VEÍCULO -->
-<div class="modal-ov" id="modal-veiculo" style="display:none" onclick="if(event.target===this)closeModalV()">
+<!-- MODAIS -->
+<!-- Status Veículo -->
+<div class="modal-ov" id="modal-v" style="display:none" onclick="if(event.target===this)closeM('modal-v')">
   <div class="modal">
-    <div class="modal-title">
-      <span>Atualizar Status — <span id="mv-pref" style="font-family:'DM Mono',monospace;color:var(--blue)"></span></span>
-      <button class="btn-modal-close" onclick="closeModalV()">✕</button>
-    </div>
+    <div class="modal-title"><span>Status — <span id="mv-pref" style="font-family:'DM Mono',monospace;color:var(--blue)"></span></span><button class="btn-x" onclick="closeM('modal-v')">✕</button></div>
     <label class="fl">Novo Status</label>
-    <select class="fs" id="mv-status">
-      <option value="disponivel">✅ Disponível</option>
-      <option value="em_linha">🔵 Em Linha</option>
-      <option value="manutencao">🟡 Manutenção</option>
-      <option value="aguardando_peca">🔴 Aguardando Peça</option>
-      <option value="sinistro">🟣 Sinistro</option>
-    </select>
+    <select class="fs" id="mv-status"><option value="disponivel">✅ Disponível</option><option value="em_linha">🔵 Em Linha</option><option value="manutencao">🟡 Manutenção</option><option value="aguardando_peca">🔴 Ag. Peça</option><option value="sinistro">🟣 Sinistro</option></select>
     <label class="fl">Observação</label>
     <input class="fi" id="mv-obs" placeholder="Opcional..." style="margin-bottom:20px">
-    <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button class="btn-sec" onclick="closeModalV()">Cancelar</button>
-      <button class="btn-success" onclick="confirmarStatusV()">✓ Confirmar</button>
-    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn-sec" onclick="closeM('modal-v')">Cancelar</button><button class="btn-success" onclick="confirmarStatusV()">✓ Confirmar</button></div>
   </div>
 </div>
 
-<!-- MODAL CADASTRO VEÍCULO -->
-<div class="modal-ov" id="modal-cad" style="display:none" onclick="if(event.target===this)closeModalCad()">
+<!-- Cadastro Veículo -->
+<div class="modal-ov" id="modal-cad" style="display:none" onclick="if(event.target===this)closeM('modal-cad')">
   <div class="modal">
-    <div class="modal-title">
-      <span>Cadastrar Veículo</span>
-      <button class="btn-modal-close" onclick="closeModalCad()">✕</button>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div class="modal-title"><span>Cadastrar Veículo</span><button class="btn-x" onclick="closeM('modal-cad')">✕</button></div>
+    <div class="mgrid">
       <div><label class="fl">Prefixo *</label><input class="fi" id="cad-pref" placeholder="02.001" style="margin-bottom:0"></div>
-      <div><label class="fl">Status</label><select class="fs" id="cad-status" style="margin-bottom:0"><option value="disponivel">Disponível</option><option value="manutencao">Manutenção</option><option value="aguardando_peca">Ag. Peça</option><option value="sinistro">Sinistro</option></select></div>
-      <div style="grid-column:1/-1"><label class="fl">Modelo</label><input class="fi" id="cad-modelo" placeholder="Ex: Mercedes OF-1721" style="margin-bottom:0"></div>
+      <div><label class="fl">Status</label><select class="fs" id="cad-status" style="margin-bottom:0"><option value="disponivel">Disponível</option><option value="manutencao">Manutenção</option><option value="aguardando_peca">Ag. Peça</option></select></div>
+      <div class="full"><label class="fl">Modelo</label><input class="fi" id="cad-modelo" placeholder="Mercedes OF-1721" style="margin-bottom:0"></div>
       <div><label class="fl">Ano</label><input class="fi" id="cad-ano" type="number" placeholder="2023" style="margin-bottom:0"></div>
       <div><label class="fl">Placa</label><input class="fi" id="cad-placa" placeholder="ABC1D23" style="margin-bottom:0"></div>
     </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px"><button class="btn-sec" onclick="closeM('modal-cad')">Cancelar</button><button class="btn-success" onclick="salvarVeiculo()">💾 Salvar</button></div>
+  </div>
+</div>
+
+<!-- Modal Usuário -->
+<div class="modal-ov" id="modal-user" style="display:none" onclick="if(event.target===this)closeM('modal-user')">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-title"><span id="mu-titulo">Novo Usuário</span><button class="btn-x" onclick="closeM('modal-user')">✕</button></div>
+    <div class="mgrid">
+      <div class="full"><label class="fl">Nome Completo *</label><input class="fi" id="mu-nome" placeholder="Nome do usuário" style="margin-bottom:0"></div>
+      <div class="full"><label class="fl">E-mail *</label><input class="fi" id="mu-email" type="email" placeholder="usuario@jtptransportes.com.br" style="margin-bottom:0"></div>
+      <div class="full"><label class="fl">Senha * <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text4)">(mín. 6 caracteres)</span></label><input class="fi" id="mu-senha" type="password" placeholder="••••••••" style="margin-bottom:0"></div>
+      <div><label class="fl">Cargo *</label>
+        <select class="fs" id="mu-cargo" style="margin-bottom:0" onchange="toggleGaraModal()">
+          <option value="gerente_garagem">Gerente de Garagem</option>
+          <option value="pcm">PCM</option>
+          <option value="almoxarifado">Almoxarifado</option>
+          <option value="lider_operacional">Líder Operacional</option>
+          <option value="lider_suprimentos">Líder de Suprimentos</option>
+          <option value="operacoes_seguras">Operações Seguras</option>
+          <option value="lider_oficina">Líder de Oficina</option>
+          <option value="diretoria">Diretoria</option>
+        </select>
+      </div>
+      <div id="mu-gara-wrap"><label class="fl">Garagem *</label><select class="fs" id="mu-garagem" style="margin-bottom:0"></select></div>
+    </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
-      <button class="btn-sec" onclick="closeModalCad()">Cancelar</button>
-      <button class="btn-success" onclick="salvarVeiculo()" id="btn-salvar-cad">💾 Salvar</button>
+      <button class="btn-sec" onclick="closeM('modal-user')">Cancelar</button>
+      <button class="btn-success" id="btn-salvar-user" onclick="salvarUsuario()">💾 Criar Usuário</button>
     </div>
   </div>
 </div>
 
-<!-- MODAL SAÍDA 2.10 -->
-<div class="modal-ov" id="modal-saida" style="display:none" onclick="if(event.target===this)closeModalSaida()">
-  <div class="modal">
-    <div class="modal-title">
-      <span>Confirmar Saída — <span id="ms-info" style="font-family:'DM Mono',monospace;color:var(--blue)"></span></span>
-      <button class="btn-modal-close" onclick="closeModalSaida()">✕</button>
-    </div>
-    <label class="fl">Saiu?</label>
-    <select class="fs" id="ms-saiu"><option value="true">✅ Sim — Saiu</option><option value="false">❌ Não saiu</option></select>
-    <label class="fl">Horário Real</label>
-    <input class="fi" id="ms-horario" type="time">
-    <label class="fl">Pontual?</label>
-    <select class="fs" id="ms-pontual"><option value="">— Não informado —</option><option value="true">✅ Pontual</option><option value="false">⏰ Atrasado</option></select>
-    <label class="fl">Observação</label>
-    <input class="fi" id="ms-obs" placeholder="Ex: Carro reserva...">
-    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
-      <button class="btn-sec" onclick="closeModalSaida()">Cancelar</button>
-      <button class="btn-success" onclick="confirmarSaida()">✓ Confirmar</button>
-    </div>
+<!-- Modal Saída 2.10 -->
+<div class="modal-ov" id="modal-saida" style="display:none" onclick="if(event.target===this)closeM('modal-saida')">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-title"><span>Saída — <span id="ms-info" style="font-family:'DM Mono',monospace;color:var(--blue)"></span></span><button class="btn-x" onclick="closeM('modal-saida')">✕</button></div>
+    <label class="fl">Saiu?</label><select class="fs" id="ms-saiu"><option value="true">✅ Sim</option><option value="false">❌ Não saiu</option></select>
+    <label class="fl">Horário Real</label><input class="fi" id="ms-hora" type="time">
+    <label class="fl">Pontual?</label><select class="fs" id="ms-pont"><option value="">— Não informado —</option><option value="true">✅ Pontual</option><option value="false">⏰ Atrasado</option></select>
+    <label class="fl">Observação</label><input class="fi" id="ms-obs" placeholder="Ex: Carro reserva..." style="margin-bottom:16px">
+    <div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn-sec" onclick="closeM('modal-saida')">Cancelar</button><button class="btn-success" onclick="confirmarSaida()">✓ Confirmar</button></div>
   </div>
 </div>
 
@@ -404,116 +337,124 @@ pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/p
 const {createClient}=supabase;
 const sb=createClient('https://jboclubugfxmurvhcxgr.supabase.co','sb_publishable_hasmgR_BbXcJC6Xko6DzaA_N7kl7rNT');
 
-// ── STATE ──────────────────────────────────
-const S={
-  user:null,tela:'painel',subtela:null,turno:'dia',
-  garagens:[],frota:[],soltura210:[],lavagem:[],
-  filtroFrota:'todos',editVeiculoId:null,editSaidaId:null,
-};
+const S={user:null,perfil:null,tela:'painel',subtela:null,turno:'dia',garagens:[],frota:[],soltura210:[],filtroFrota:'todos',editVId:null,editSaidaId:null,editUserId:null};
 const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',pcm:'PCM',almoxarifado:'Almoxarifado',lider_operacional:'Líder Operacional',lider_suprimentos:'Líder de Suprimentos',operacoes_seguras:'Operações Seguras',lider_oficina:'Líder de Oficina'};
 const ST_CFG={disponivel:{l:'Disponível',cls:'b-disp'},em_linha:{l:'Em Linha',cls:'b-linha'},manutencao:{l:'Manutenção',cls:'b-manut'},aguardando_peca:{l:'Ag. Peça',cls:'b-agpeca'},sinistro:{l:'Sinistro',cls:'b-sinistro'}};
 
-// ── HELPERS ────────────────────────────────
+// HELPERS
 function hoje(){return new Date().toISOString().split('T')[0]}
 function hojeF(){return new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'})}
 function fmt(n){return Number(n||0).toLocaleString('pt-BR')}
 function badge(s){const c=ST_CFG[s]||{l:s,cls:''};return`<span class="badge ${c.cls}">${c.l}</span>`}
 function toast(msg,type='ok'){const el=document.createElement('div');el.className=`toast ${type}`;el.innerHTML=`<span>${type==='ok'?'✅':'❌'}</span> ${msg}`;document.body.appendChild(el);setTimeout(()=>el.remove(),3500)}
 function setMain(html){const m=document.getElementById('main');m.style.animation='none';m.offsetHeight;m.style.animation='fadeIn .25s ease both';m.innerHTML=html}
-function secTitle(icon,text,action=''){return`<div class="sec-title"><span class="st-icon">${icon}</span><span class="st-text">${text}</span><div class="st-line"></div>${action}</div>`}
+function closeM(id){document.getElementById(id).style.display='none'}
+function secTitle(icon,text,action=''){return`<div class="sec-title"><span style="font-size:15px">${icon}</span><span class="st-text">${text}</span><div class="st-line"></div>${action}</div>`}
 function kpi(label,val,meta,unit='%',inv=false,dec=1){
   const n=parseFloat(val);let st='neu',stH='';
   if(meta!==undefined){st=inv?(n<=meta?'ok':'nok'):(n>=meta?'ok':'nok');stH=`<div class="kpi-meta ${st}">${st==='ok'?'✓ OK':'✗ NOK'} — Meta: ${meta}${unit}</div>`}
   const dsp=typeof val==='number'?val.toFixed(dec):val??'—';
-  return`<div class="kpi ${st}"><div class="kpi-label">${label}</div><div class="kpi-val">${dsp}<span class="kpi-unit">${unit}</span></div>${stH}</div>`
+  return`<div class="kpi ${st}"><div class="kpi-label">${label}</div><div class="kpi-val">${dsp}<span style="font-size:12px;color:var(--text4);font-weight:400"> ${unit}</span></div>${stH}</div>`
 }
 
-// ── AUTH ───────────────────────────────────
-async function loadGaragens(){
-  const{data}=await sb.from('garagens').select('*').eq('ativa',true).order('nome');
-  S.garagens=data||[];
-  const sel=document.getElementById('l-garagem');
-  if(sel) sel.innerHTML=S.garagens.map(g=>`<option value="${g.id}">${g.nome} — ${g.uf}</option>`).join('');
-}
-
-function toggleGaragem(){
-  const c=document.getElementById('l-cargo').value;
-  document.getElementById('garagem-field').style.display=c==='diretoria'?'none':'block';
-}
-
+// AUTH — LOGIN REAL
 async function doLogin(){
   const email=document.getElementById('l-email').value.trim();
   const senha=document.getElementById('l-senha').value;
-  const cargo=document.getElementById('l-cargo').value;
-  const gid=document.getElementById('l-garagem')?.value;
   const erro=document.getElementById('l-erro');
   if(!email||!senha){erro.textContent='Preencha e-mail e senha.';erro.style.display='block';return}
   erro.style.display='none';
   const btn=document.getElementById('btn-login');btn.textContent='Entrando...';btn.disabled=true;
-  await new Promise(r=>setTimeout(r,600));
-  const garagem=S.garagens.find(g=>g.id===gid);
-  S.user={nome:email.split('@')[0],email,cargo,garagem_id:gid,garagem};
+
+  const{data,error}=await sb.auth.signInWithPassword({email,password:senha});
   btn.textContent='Entrar no Sistema';btn.disabled=false;
-  document.getElementById('tb-loc').textContent=cargo==='diretoria'?'🏢 Todas as Garagens':`📍 ${garagem?.nome} — ${garagem?.uf}`;
-  document.getElementById('tb-role').textContent=CARGOS[cargo];
-  document.getElementById('tb-av').textContent=email[0].toUpperCase();
-  document.querySelectorAll('.dir-only').forEach(el=>el.style.display=cargo==='diretoria'?'flex':'none');
+
+  if(error){
+    erro.textContent=error.message.includes('Invalid')?'E-mail ou senha incorretos.':error.message;
+    erro.style.display='block';return;
+  }
+
+  S.user=data.user;
+
+  // Busca perfil
+  const{data:perfil}=await sb.from('perfis').select('*').eq('id',data.user.id).single();
+  S.perfil=perfil;
+
+  if(!perfil){
+    erro.textContent='Perfil não encontrado. Contate o administrador.';
+    erro.style.display='block';
+    await sb.auth.signOut();return;
+  }
+
+  if(!perfil.ativo){
+    erro.textContent='Usuário inativo. Contate o administrador.';
+    erro.style.display='block';
+    await sb.auth.signOut();return;
+  }
+
+  // Carrega garagens
+  const{data:gs}=await sb.from('garagens').select('*').eq('ativa',true).order('nome');
+  S.garagens=gs||[];
+
+  const garagem=S.garagens.find(g=>g.id===perfil.garagem_id);
+  const isAdmin=perfil.is_admin;
+  const isDiretoria=perfil.cargo==='diretoria';
+
+  document.getElementById('tb-loc').textContent=isDiretoria||isAdmin?'🏢 Todas as Garagens':`📍 ${garagem?.nome} — ${garagem?.uf}`;
+  document.getElementById('tb-role').textContent=(isAdmin?'👑 Admin — ':'')+CARGOS[perfil.cargo];
+  document.getElementById('tb-av').textContent=perfil.nome[0].toUpperCase();
+
+  // Mostra menus conforme perfil
+  document.querySelectorAll('.dir-only').forEach(el=>el.style.display=isDiretoria||isAdmin?'flex':'none');
+  if(isAdmin){
+    document.getElementById('sec-admin').style.display='block';
+    document.querySelectorAll('.admin-only').forEach(el=>el.style.display='flex');
+  }
+
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').classList.add('on');
+
   await loadFrota();
   navTo('painel',document.querySelector('.nav-btn'));
 }
 
-function doLogout(){
-  S.user=null;
+async function doLogout(){
+  await sb.auth.signOut();
+  S.user=null;S.perfil=null;
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('app').classList.remove('on');
   document.getElementById('l-email').value='';
   document.getElementById('l-senha').value='';
+  document.getElementById('sec-admin').style.display='none';
+  document.querySelectorAll('.admin-only').forEach(el=>el.style.display='none');
 }
 
-// ── NAVIGATION ─────────────────────────────
+// NAVIGATION
 function navTo(tela,el){
   S.tela=tela;S.subtela=null;
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   if(el) el.classList.add('active');
-  const renders={painel:renderPainel,frota:renderFrota,indicadores:renderIndicadores,manutencao:renderManutencao,almoxarifado:renderAlmoxarifado,diretoria:renderDiretoria};
-  if(renders[tela]) renders[tela]();
-  else if(tela==='ferramentas') renderFerramentas();
-  else if(tela==='relatorios') renderRelatorios();
+  const map={painel:renderPainel,frota:renderFrota,indicadores:renderIndicadores,manutencao:renderManutencao,almoxarifado:renderAlmoxarifado,diretoria:renderDiretoria,admin:renderAdmin};
+  if(map[tela]) map[tela]();
 }
 
-function navToSub(sub,menuId){
+function navToSub(sub){
   S.subtela=sub;
   document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
-  const btns=document.querySelectorAll(`#${menuId}~* .sub-btn, #${menuId} .sub-btn`);
-  btns.forEach(b=>{if(b.getAttribute('onclick')?.includes(sub)) b.classList.add('active')});
-  const renders={
-    'ferr-soltura210':renderFerr210,
-    'ferr-lavagem':renderFerrLavagem,
-    'ferr-controle':renderFerrControle,
-    'rel-todos':renderRelatorios,
-  };
-  if(renders[sub]) renders[sub]();
+  document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes(sub))b.classList.add('active')});
+  const map={'ferr-210':renderFerr210,'ferr-lav':renderFerrLav,'ferr-ctrl':renderFerrCtrl,'rel-todos':renderRelatorios};
+  if(map[sub]) map[sub]();
 }
 
-function toggleSubmenu(id,btn){
-  const el=document.getElementById(id);
-  const open=el.classList.contains('open');
-  document.querySelectorAll('.submenu').forEach(s=>{s.classList.remove('open')});
-  document.querySelectorAll('#arr-ferr,#arr-rel').forEach(a=>{a.textContent='▶'});
-  if(!open){
-    el.classList.add('open');
-    const arr=id==='sub-ferramentas'?'arr-ferr':'arr-rel';
-    document.getElementById(arr).textContent='▾';
-  }
-  S.tela=id==='sub-ferramentas'?'ferramentas':'relatorios';
+function toggleSub(id,arrId,btn){
+  const el=document.getElementById(id);const open=el.classList.contains('open');
+  document.querySelectorAll('.submenu').forEach(s=>s.classList.remove('open'));
+  document.querySelectorAll('#arr-ferr,#arr-rel').forEach(a=>a.textContent='▶');
+  if(!open){el.classList.add('open');document.getElementById(arrId).textContent='▾';}
+  S.tela=id==='sub-ferr'?'ferramentas':'relatorios';
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  if(!open){
-    if(id==='sub-ferramentas') renderFerramentas();
-    else renderRelatorios();
-  }
+  if(!open){id==='sub-ferr'?renderFerramentas():renderRelatorios();}
 }
 
 function setTurno(t){
@@ -523,16 +464,39 @@ function setTurno(t){
   if(S.tela==='painel') renderPainel();
 }
 
-// ── FROTA ──────────────────────────────────
+// FROTA
 async function loadFrota(){
-  if(!S.user) return;
+  if(!S.perfil) return;
   let q=sb.from('frota').select('*').order('prefixo');
-  if(S.user.cargo!=='diretoria'&&S.user.garagem_id) q=q.eq('garagem_id',S.user.garagem_id);
-  const{data}=await q;
-  S.frota=data||[];
+  if(S.perfil.cargo!=='diretoria'&&!S.perfil.is_admin&&S.perfil.garagem_id) q=q.eq('garagem_id',S.perfil.garagem_id);
+  const{data}=await q;S.frota=data||[];
+  const el=document.getElementById('badge-frota');if(el) el.textContent=S.frota.length;
+}
+
+// RENDERS
+async function renderPainel(){
+  setMain(`<div class="loading"><div class="spinner"></div> Carregando...</div>`);
+  await loadFrota();
   const disp=S.frota.filter(v=>v.status==='disponivel').length;
-  const el=document.getElementById('badge-frota');
-  if(el) el.textContent=S.frota.length;
+  const linha=S.frota.filter(v=>v.status==='em_linha').length;
+  const manut=S.frota.filter(v=>v.status==='manutencao'||v.status==='aguardando_peca').length;
+  const total=S.frota.length;
+  const pctD=total>0?(((disp+linha)/total)*100).toFixed(1):0;
+  const gNome=S.garagens.find(g=>g.id===S.perfil?.garagem_id)?.nome||'Todas as Garagens';
+  const counters=[{l:'Disponíveis',v:disp,c:'#00C48C'},{l:'Em Linha',v:linha,c:'#3B82F6'},{l:'Manutenção',v:manut,c:'#EF4444'}]
+    .map(b=>`<div class="fc" style="color:${b.c};background:${b.c}15;border-color:${b.c}30"><span class="fc-val" style="color:${b.c}">${b.v}</span><span class="fc-label">${b.l}</span></div>`).join('');
+  const top=S.frota.slice(0,10).map(v=>`<div class="frota-card" onclick="openModalV('${v.id}','${v.prefixo}','${v.status}')"><div><div class="fp">${v.prefixo}</div><div class="fm">${v.modelo||'—'}</div></div>${badge(v.status)}</div>`).join('');
+  setMain(`
+    <div class="painel-hero">
+      <div><div style="color:var(--text2);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Painel do Dia</div>
+      <div style="font-size:20px;font-weight:700;text-transform:capitalize">${hojeF()}</div>
+      <div style="color:var(--text3);font-size:12px;margin-top:4px">📍 ${gNome} · ${S.turno==='dia'?'☀️ Dia':'🌙 Noite'}</div></div>
+      <div class="fc-row">${counters}</div>
+    </div>
+    ${secTitle('📊','Indicadores de Frota')}
+    <div class="kpi-grid">${kpi('Disponibilidade',parseFloat(pctD),95)}${kpi('Total Frota',total,undefined,'',false,0)}${kpi('Em Manutenção',manut,0,'',true,0)}</div>
+    ${secTitle('🚌','Frota — Visão Rápida',`<button class="btn-add" onclick="navTo('frota',null)">Ver Tudo →</button>`)}
+    ${total===0?`<div class="empty"><div style="font-size:40px">🚌</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Nenhum veículo cadastrado</div></div>`:`<div class="frota-grid">${top}</div>`}`);
 }
 
 async function renderFrota(){
@@ -541,221 +505,197 @@ async function renderFrota(){
   const filtros=['todos','disponivel','em_linha','manutencao','aguardando_peca','sinistro'];
   const labels={todos:'Todos',disponivel:'Disponíveis',em_linha:'Em Linha',manutencao:'Manutenção',aguardando_peca:'Ag. Peça',sinistro:'Sinistro'};
   const lista=S.filtroFrota==='todos'?S.frota:S.frota.filter(v=>v.status===S.filtroFrota);
-  const filtrosH=filtros.map(f=>{
-    const cnt=f==='todos'?S.frota.length:S.frota.filter(v=>v.status===f).length;
-    return`<button class="filtro-btn${S.filtroFrota===f?' active':''}" onclick="S.filtroFrota='${f}';renderFrota()">${labels[f]} <span style="opacity:.5;font-size:10px">(${cnt})</span></button>`
-  }).join('');
-  const cardsH=lista.length===0
-    ?`<div class="empty" style="grid-column:1/-1"><div class="empty-icon">🚌</div><div style="color:var(--text2);font-weight:600">Nenhum veículo</div></div>`
-    :lista.map(v=>`<div class="frota-card" onclick="openModalV('${v.id}','${v.prefixo}','${v.status}')"><div><div class="fp">${v.prefixo}</div><div class="fm">${v.modelo||'—'}</div><div class="fk">${v.placa||''} ${v.km_atual?'· '+fmt(v.km_atual)+' km':''}</div></div>${badge(v.status)}</div>`).join('');
-  const addBtn=`<button class="btn-add" onclick="openModalCad()">+ Novo</button>`;
-  setMain(`${secTitle('🚌',`Gestão de Frota — ${S.frota.length} veículo(s)`,addBtn)}<div class="filtros">${filtrosH}</div><div class="frota-grid">${cardsH}</div><div class="info-blue info-banner">💡 Clique em qualquer veículo para atualizar o status em tempo real</div>`);
+  const filtrosH=filtros.map(f=>{const cnt=f==='todos'?S.frota.length:S.frota.filter(v=>v.status===f).length;return`<button class="filtro-btn${S.filtroFrota===f?' active':''}" onclick="S.filtroFrota='${f}';renderFrota()">${labels[f]} <span style="opacity:.5;font-size:10px">(${cnt})</span></button>`}).join('');
+  const cards=lista.length===0?`<div class="empty" style="grid-column:1/-1"><div style="font-size:40px">🚌</div><div style="color:var(--text2);font-weight:600">Nenhum veículo</div></div>`:lista.map(v=>`<div class="frota-card" onclick="openModalV('${v.id}','${v.prefixo}','${v.status}')"><div><div class="fp">${v.prefixo}</div><div class="fm">${v.modelo||'—'}</div><div style="color:var(--text4);font-size:10px;margin-top:2px;font-family:'DM Mono',monospace">${v.placa||''}</div></div>${badge(v.status)}</div>`).join('');
+  setMain(`${secTitle('🚌',`Gestão de Frota — ${S.frota.length} veículo(s)`,`<button class="btn-add" onclick="openModalCad()">+ Novo</button>`)}<div class="filtros">${filtrosH}</div><div class="frota-grid">${cards}</div>`);
 }
 
-// ── PAINEL ─────────────────────────────────
-async function renderPainel(){
-  setMain(`<div class="loading"><div class="spinner"></div> Carregando painel...</div>`);
-  await loadFrota();
-  const disp=S.frota.filter(v=>v.status==='disponivel').length;
-  const linha=S.frota.filter(v=>v.status==='em_linha').length;
-  const manut=S.frota.filter(v=>v.status==='manutencao'||v.status==='aguardando_peca').length;
-  const total=S.frota.length;
-  const pctD=total>0?(((disp+linha)/total)*100).toFixed(1):0;
-  const gNome=S.user.garagem?.nome||'Todas as Garagens';
-  const counters=[{l:'Disponíveis',v:disp,c:'#00C48C'},{l:'Em Linha',v:linha,c:'#3B82F6'},{l:'Manutenção',v:manut,c:'#EF4444'}]
-    .map(b=>`<div class="fc" style="color:${b.c};background:${b.c}15;border-color:${b.c}30"><span class="fc-val" style="color:${b.c}">${b.v}</span><span class="fc-label">${b.l}</span></div>`).join('');
-  const dispSt=parseFloat(pctD)>=95?'ok':'nok';
-  const top=S.frota.slice(0,10).map(v=>`<div class="frota-card" onclick="openModalV('${v.id}','${v.prefixo}','${v.status}')"><div><div class="fp">${v.prefixo}</div><div class="fm">${v.modelo||'—'}</div></div>${badge(v.status)}</div>`).join('');
-  setMain(`
-    <div class="painel-hero">
-      <div><div style="color:var(--text2);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Painel do Dia</div>
-      <div style="font-size:20px;font-weight:700;text-transform:capitalize">${hojeF()}</div>
-      <div style="color:var(--text3);font-size:12px;margin-top:4px">📍 ${gNome} &nbsp;·&nbsp; ${S.turno==='dia'?'☀️ Dia':'🌙 Noite'}</div></div>
-      <div class="fc-row">${counters}</div>
-    </div>
-    ${secTitle('📊','Indicadores de Frota (Banco Real)')}
-    <div class="kpi-grid">
-      ${kpi('Disponibilidade',parseFloat(pctD),95)}
-      ${kpi('Total Frota',total,undefined,'',false,0)}
-      ${kpi('Em Manutenção',manut,0,'',true,0)}
-    </div>
-    ${secTitle('🚌',`Frota — Visão Rápida`,`<button class="btn-add" onclick="navTo('frota',document.querySelectorAll('.nav-btn')[1])">Ver Tudo →</button>`)}
-    ${total===0?`<div class="empty"><div class="empty-icon">🚌</div><div style="color:var(--text2);font-weight:600;margin-bottom:12px">Nenhum veículo cadastrado</div><button class="btn-add" onclick="navTo('frota',document.querySelectorAll('.nav-btn')[1])">Ir para Frota</button></div>`:`<div class="frota-grid">${top}</div>`}
-  `);
-}
-
-// ── INDICADORES ────────────────────────────
-async function renderIndicadores(){
-  setMain(`<div class="loading"><div class="spinner"></div> Carregando...</div>`);
-  await loadFrota();
+function renderIndicadores(){
   const total=S.frota.length,disp=S.frota.filter(v=>v.status==='disponivel').length,linha=S.frota.filter(v=>v.status==='em_linha').length,manut=S.frota.filter(v=>v.status==='manutencao').length,agp=S.frota.filter(v=>v.status==='aguardando_peca').length;
   const pctD=total>0?(((disp+linha)/total)*100).toFixed(1):0;
-  setMain(`
-    ${secTitle('⚙️','Operação — Dados Reais')}
-    <div class="kpi-grid">${kpi('Disponibilidade',parseFloat(pctD),95)}${kpi('Total Frota',total,undefined,'',false,0)}${kpi('Em Linha',linha,undefined,'',false,0)}${kpi('Manutenção',manut,0,'',true,0)}${kpi('Ag. Peça',agp,0,'',true,0)}</div>
-    ${secTitle('🔧','Manutenção')}
-    <div class="kpi-grid">${kpi('CPK R$/km','—',undefined,' R$/km',false,2)}${kpi('Prev. Geral','—',100)}${kpi('OS Abertas','—',undefined,'',false,0)}${kpi('OS Fechadas','—',undefined,'',false,0)}</div>
-    ${secTitle('📦','Suprimentos')}
-    <div class="kpi-grid">${kpi('Valor Estoque','—',undefined,' R$',false,0)}${kpi('Acurácia Inv.','—',98)}${kpi('Ped. Críticos','—',0,'',true,0)}</div>
-    <div class="info-blue info-banner">🔗 Manutenção e Suprimentos conectados ao banco na próxima fase</div>
-  `);
+  setMain(`${secTitle('⚙️','Operação')}<div class="kpi-grid">${kpi('Disponibilidade',parseFloat(pctD),95)}${kpi('Total Frota',total,undefined,'',false,0)}${kpi('Em Linha',linha,undefined,'',false,0)}${kpi('Manutenção',manut,0,'',true,0)}${kpi('Ag. Peça',agp,0,'',true,0)}</div>${secTitle('🔧','Manutenção')}<div class="kpi-grid">${kpi('CPK R$/km','—',undefined,' R$/km',false,2)}${kpi('Prev. Geral','—',100)}${kpi('OS Abertas','—',undefined,'',false,0)}</div>${secTitle('📦','Suprimentos')}<div class="kpi-grid">${kpi('Valor Estoque','—',undefined,' R$',false,0)}${kpi('Acurácia Inv.','—',98)}${kpi('Ped. Críticos','—',0,'',true,0)}</div><div class="info-blue info-banner">🔗 Manutenção e Suprimentos conectados na próxima fase</div>`);
 }
 
-// ── MANUTENÇÃO ─────────────────────────────
-function renderManutencao(){
-  setMain(`${secTitle('🔧','Ordens de Serviço')}<div class="empty"><div class="empty-icon">🔧</div><div style="color:var(--text2);font-weight:600;margin-bottom:6px">Módulo em desenvolvimento</div><p style="font-size:12px">OS serão integradas ao banco na próxima fase</p></div><div class="info-blue info-banner">🔗 Fase 2: cadastro de OS, vínculo com veículo e mecânico, integração Praxio</div>`);
-}
+function renderManutencao(){setMain(`${secTitle('🔧','Ordens de Serviço')}<div class="empty"><div style="font-size:40px">🔧</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Em desenvolvimento</div></div><div class="info-blue info-banner">🔗 Fase 2: OS integradas ao banco + integração Praxio</div>`)}
+function renderAlmoxarifado(){setMain(`${secTitle('📦','Almoxarifado')}<div class="empty"><div style="font-size:40px">📦</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Em desenvolvimento</div></div><div class="info-blue info-banner">🔗 Fase 2: estoque, movimentações, inventário, Praxio/SAP</div>`)}
 
-// ── ALMOXARIFADO ───────────────────────────
-function renderAlmoxarifado(){
-  setMain(`${secTitle('📦','Estoque e Movimentações')}<div class="empty"><div class="empty-icon">📦</div><div style="color:var(--text2);font-weight:600;margin-bottom:6px">Módulo em desenvolvimento</div><p style="font-size:12px">Estoque integrado ao banco na próxima fase</p></div><div class="info-blue info-banner">🔗 Fase 2: saldo de peças, movimentações, inventário, integração Praxio/SAP</div>`);
-}
-
-// ── FERRAMENTAS ────────────────────────────
-function renderFerramentas(){
-  const tools=[
-    {id:'ferr-soltura210',icon:'📋',name:'2.10 Soltura de Frota',desc:'Importe o PDF da escala GPS, confirme saídas em tempo real e imprima o relatório 2.10 completo.',badge:'Ativo'},
-    {id:'ferr-lavagem',icon:'🧼',name:'Programação de Lavagem',desc:'Importe a programação de lavagem via Excel e registre execuções em tempo real. Metas por tipo.',badge:'Ativo'},
-    {id:'ferr-controle',icon:'✅',name:'Controle Soltura / Oficina',desc:'Painel consolidado de liberação: status da oficina + lavagem por veículo. Liberado = pronto para soltura.',badge:'Ativo'},
-  ];
-  const cards=tools.map(t=>`
-    <div class="tool-card" onclick="navToSub('${t.id}','sub-ferramentas')">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between">
-        <div class="tool-icon">${t.icon}</div>
-        <span class="badge b-ativo">${t.badge}</span>
+// ADMIN — GESTÃO DE USUÁRIOS
+async function renderAdmin(){
+  setMain(`<div class="loading"><div class="spinner"></div> Carregando usuários...</div>`);
+  const{data:users}=await sb.from('perfis').select('*,garagens(nome,uf)').order('nome');
+  const cards=(users||[]).map(u=>{
+    const gNome=u.garagens?.nome?`${u.garagens.nome} — ${u.garagens.uf}`:'Todas';
+    const initials=u.nome.split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase();
+    const corCargo={diretoria:'#8B5CF6',gerente_garagem:'#2563EB',pcm:'#F59E0B',almoxarifado:'#00C48C',lider_operacional:'#3B82F6',lider_suprimentos:'#10B981',operacoes_seguras:'#EF4444',lider_oficina:'#F97316'}[u.cargo]||'#475569';
+    return`<div class="user-card" style="margin-bottom:8px">
+      <div class="user-avatar" style="background:${corCargo}20;color:${corCargo};border:1px solid ${corCargo}30">${initials}</div>
+      <div class="user-info">
+        <div class="user-name">${u.nome} ${u.is_admin?'<span class="badge b-admin" style="font-size:9px;padding:1px 7px">Admin</span>':''}</div>
+        <div class="user-meta">📧 ${u.email} &nbsp;·&nbsp; 💼 ${CARGOS[u.cargo]||u.cargo} &nbsp;·&nbsp; 📍 ${gNome}</div>
       </div>
-      <div class="tool-name">${t.name}</div>
-      <div class="tool-desc">${t.desc}</div>
-    </div>`).join('');
-  setMain(`${secTitle('🛠️','Ferramentas Operacionais')}<div class="tools-grid">${cards}</div><div class="info-blue info-banner">💡 Clique em qualquer ferramenta para abrí-la diretamente aqui dentro do app.</div>`);
-}
-
-// ── FERRAMENTA: 2.10 SOLTURA ───────────────
-async function renderFerr210(tab='painel'){
-  if(tab==='painel'){
-    setMain(`<div class="loading"><div class="spinner"></div> Carregando 2.10...</div>`);
-    const{data}=await sb.from('soltura_2_10').select('*').eq('garagem_id',S.user.garagem_id).eq('data',hoje()).eq('turno',S.turno).order('horario_programado');
-    S.soltura210=data||[];
-  }
-  const reg=S.soltura210;
-  const saiu=reg.filter(r=>r.saiu===true).length;
-  const total=reg.length;
-  const pct=total>0?((saiu/total)*100).toFixed(1)+'%':'—';
-  const progColor=parseFloat(pct)>=99.5?'var(--green)':parseFloat(pct)>=95?'var(--amber)':'var(--red)';
-
-  const backBtn=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
-  const tabsH=`<div style="display:flex;gap:8px;margin-bottom:16px">
-    <button class="filtro-btn${tab==='painel'?' active':''}" onclick="renderFerr210('painel')">📋 Painel do Líder</button>
-    <button class="filtro-btn${tab==='importar'?' active':''}" onclick="renderFerr210('importar')">📤 Importar PDF</button>
-  </div>`;
-
-  if(tab==='importar'){
-    setMain(`
-      ${secTitle('📋','2.10 — Soltura de Frota',backBtn)}
-      ${tabsH}
-      <div style="max-width:580px">
-        <div class="import-zone" id="drop210" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleDrop210(event)">
-          <div style="font-size:40px;margin-bottom:12px">📄</div>
-          <div style="font-size:16px;font-weight:700;margin-bottom:8px">Importar PDF da Escala GPS</div>
-          <div style="color:var(--text3);font-size:13px;margin-bottom:4px">Mesmo formato do processador atual — o sistema extrai e salva automaticamente</div>
-          <button class="btn-import" id="btn210" onclick="document.getElementById('f210').click()">📄 Selecionar PDF</button>
-          <input type="file" id="f210" accept=".pdf" style="display:none" onchange="handle210(this.files[0])">
-          <div id="err210" style="display:none;margin-top:12px;background:#FEE2E2;border:1px solid #FECACA;color:#991B1B;padding:12px;border-radius:10px;font-size:13px;font-weight:600"></div>
-          <div id="prog210wrap" style="display:none;margin-top:12px">
-            <div id="prog210msg" style="font-size:12px;color:var(--text2);margin-bottom:6px"></div>
-            <div class="prog-wrap"><div class="prog-bar" id="prog210bar" style="width:0%"></div></div>
-          </div>
-        </div>
-        <div class="info-amber info-banner">⚠️ A importação substitui a escala do turno atual (${S.turno==='dia'?'☀️ Dia':'🌙 Noite'}) de hoje.</div>
-      </div>`);
-    return;
-  }
-
-  // PAINEL
-  if(reg.length===0){
-    setMain(`
-      ${secTitle('📋','2.10 — Soltura de Frota',backBtn)}${tabsH}
-      <div class="empty"><div class="empty-icon">📋</div><div style="color:var(--text2);font-weight:600;margin-bottom:12px">Nenhuma escala importada para hoje</div>
-      <button class="btn-add" onclick="renderFerr210('importar')">📄 Importar PDF da Escala</button></div>`);
-    return;
-  }
-
-  const rows=reg.map(r=>{
-    const sH=r.saiu===true?`<button class="status-btn sb-sim" onclick="openModalSaida('${r.id}','${r.prefixo}','${r.horario_programado}')">✅ Saiu ${r.horario_real||''}</button>`
-      :r.saiu===false?`<button class="status-btn sb-nao" onclick="openModalSaida('${r.id}','${r.prefixo}','${r.horario_programado}')">❌ Não saiu</button>`
-      :`<button class="status-btn sb-pend" onclick="openModalSaida('${r.id}','${r.prefixo}','${r.horario_programado}')">○ Confirmar</button>`;
-    const pH=r.pontual===true?`<span style="color:var(--green);font-size:11px;font-weight:600">✓ Pont.</span>`:r.pontual===false?`<span style="color:var(--red);font-size:11px;font-weight:600">⏰ Atras.</span>`:`<span style="color:var(--text4);font-size:11px">—</span>`;
-    return`<tr style="background:${r.saiu===true?'#00C48C05':r.saiu===false?'#EF444405':''}">
-      <td><span style="font-family:'DM Mono',monospace;font-weight:700">${r.prefixo}</span></td>
-      <td><span style="color:var(--amber);font-family:'DM Mono',monospace;font-weight:600">${r.horario_programado||'—'}</span></td>
-      <td style="color:var(--text2);font-size:12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.linha||'—'}</td>
-      <td style="color:var(--text3);font-size:12px">${r.motorista||'—'}</td>
-      <td>${sH}</td><td>${pH}</td>
-      <td style="color:var(--text4);font-size:11px">${r.observacao||''}</td>
-    </tr>`;
+      <div class="user-actions">
+        <span class="badge ${u.ativo?'b-ativo':'b-inativo'}">${u.ativo?'Ativo':'Inativo'}</span>
+        <button class="btn-sm" onclick="editarUsuario('${u.id}')">✏️ Editar</button>
+        <button class="btn-sm danger" onclick="toggleAtivo('${u.id}',${u.ativo},'${u.nome}')">${u.ativo?'🔒 Desativar':'🔓 Ativar'}</button>
+      </div>
+    </div>`;
   }).join('');
 
   setMain(`
-    ${secTitle('📋','2.10 — Soltura de Frota',backBtn)}${tabsH}
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 18px;margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:7px">
-        <span style="color:var(--text3);font-size:11px;font-weight:700">PROGRESSO DE SOLTURA — ${S.turno==='dia'?'☀️ DIA':'🌙 NOITE'}</span>
-        <span style="color:${progColor};font-family:'DM Mono',monospace;font-size:13px;font-weight:700">${pct} <span style="color:var(--text4);font-size:10px">meta 99,5%</span></span>
-      </div>
-      <div class="prog-wrap"><div class="prog-bar" style="width:${parseFloat(pct)||0}%;background:${progColor}"></div></div>
-      <div style="display:flex;justify-content:space-between;margin-top:5px">
-        <span style="color:var(--text4);font-size:10px">${saiu} confirmados</span>
-        <span style="color:var(--text4);font-size:10px">${total-saiu} pendentes</span>
-      </div>
+    ${secTitle('⚙️',`Gestão de Usuários — ${(users||[]).length} cadastrados`,`<button class="btn-add" onclick="abrirModalUser()">+ Novo Usuário</button>`)}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px">
+      ${['diretoria','gerente_garagem','pcm','almoxarifado','lider_operacional','lider_suprimentos','operacoes_seguras','lider_oficina'].map(c=>{
+        const cnt=(users||[]).filter(u=>u.cargo===c).length;
+        return`<div style="text-align:center"><div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:700;color:var(--text)">${cnt}</div><div style="color:var(--text3);font-size:10px;margin-top:2px">${CARGOS[c]}</div></div>`
+      }).join('')}
     </div>
-    <div class="tbl-wrap">
-      <div class="tbl-head">
-        <div style="font-size:13px;font-weight:700">Escala ${S.turno==='dia'?'☀️ Dia':'🌙 Noite'} — ${total} veículos</div>
-        <div style="display:flex;gap:8px">
-          <button onclick="window.print()" style="background:var(--border);border:none;color:var(--text2);border-radius:7px;padding:7px 14px;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">🖨️ Imprimir</button>
-          <button onclick="renderFerr210('importar')" style="background:var(--border);border:none;color:var(--text2);border-radius:7px;padding:7px 14px;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📤 Nova escala</button>
-        </div>
-      </div>
-      <div style="overflow-x:auto"><table>
-        <thead><tr><th>Prefixo</th><th>Hor. Prog.</th><th>Linha</th><th>Motorista</th><th>Saída</th><th>Pontual.</th><th>Obs.</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table></div>
-    </div>`);
+    ${cards||`<div class="empty"><div style="font-size:40px">👥</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Nenhum usuário cadastrado</div></div>`}
+    <div class="info-blue info-banner">🔐 Usuários criados aqui recebem acesso imediato ao sistema. A senha pode ser alterada pelo próprio usuário após o primeiro login.</div>
+  `);
 }
 
-// ── FERRAMENTA: LAVAGEM ────────────────────
-function renderFerrLavagem(){
-  const backBtn=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
-  setMain(`
-    ${secTitle('🧼','Programação de Lavagem',backBtn)}
-    <div style="max-width:580px">
-      <div class="import-zone" id="drop-lav" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleDropLav(event)">
-        <div style="font-size:40px;margin-bottom:12px">📊</div>
-        <div style="font-size:16px;font-weight:700;margin-bottom:8px">Importar Programação de Lavagem</div>
-        <div style="color:var(--text3);font-size:13px;margin-bottom:4px">Arquivo Excel com colunas PREFIXO e TIPO LAVAGEM (simples/escovao/pesada)</div>
-        <button class="btn-import" id="btn-lav" onclick="document.getElementById('f-lav').click()">📂 Selecionar .xlsx</button>
-        <input type="file" id="f-lav" accept=".xlsx" style="display:none" onchange="handleFileLav(this.files[0])">
-        <div id="err-lav" style="display:none;margin-top:12px;background:#FEE2E2;border:1px solid #FECACA;color:#991B1B;padding:12px;border-radius:10px;font-size:13px"></div>
-        <div id="prog-lavwrap" style="display:none;margin-top:12px">
-          <div id="prog-lavmsg" style="font-size:12px;color:var(--text2);margin-bottom:6px"></div>
-          <div class="prog-wrap"><div class="prog-bar" id="prog-lavbar" style="width:0%"></div></div>
-        </div>
-      </div>
-      <div id="preview-lav"></div>
-      <div class="info-blue info-banner">💡 Metas: Escovão = todos os dias · Simples = 84/dia · Pesada = 10/dia</div>
-    </div>`);
+// MODAL USUÁRIO
+function abrirModalUser(userId=null){
+  S.editUserId=userId;
+  document.getElementById('mu-titulo').textContent=userId?'Editar Usuário':'Novo Usuário';
+  document.getElementById('btn-salvar-user').textContent=userId?'💾 Salvar Alterações':'💾 Criar Usuário';
+  document.getElementById('mu-nome').value='';
+  document.getElementById('mu-email').value='';
+  document.getElementById('mu-senha').value='';
+  document.getElementById('mu-cargo').value='gerente_garagem';
+  const sel=document.getElementById('mu-garagem');
+  sel.innerHTML=S.garagens.map(g=>`<option value="${g.id}">${g.nome} — ${g.uf}</option>`).join('');
+  toggleGaraModal();
+  document.getElementById('modal-user').style.display='flex';
 }
 
-// ── FERRAMENTA: CONTROLE ───────────────────
-function renderFerrControle(){
-  const backBtn=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
-  setMain(`
-    ${secTitle('✅','Controle Soltura / Oficina',backBtn)}
-    <div class="empty"><div class="empty-icon">✅</div><div style="color:var(--text2);font-weight:600;margin-bottom:6px">Painel de controle</div><p style="font-size:12px;color:var(--text3)">Integração com painel de soltura em breve aqui dentro</p></div>
-    <div class="info-blue info-banner">🔗 Em breve: status de oficina + lavagem por veículo integrados aqui dentro do app principal</div>`);
+async function editarUsuario(id){
+  const{data:u}=await sb.from('perfis').select('*').eq('id',id).single();
+  if(!u) return;
+  S.editUserId=id;
+  document.getElementById('mu-titulo').textContent='Editar Usuário';
+  document.getElementById('btn-salvar-user').textContent='💾 Salvar Alterações';
+  document.getElementById('mu-nome').value=u.nome;
+  document.getElementById('mu-email').value=u.email;
+  document.getElementById('mu-senha').value='';
+  document.getElementById('mu-cargo').value=u.cargo;
+  const sel=document.getElementById('mu-garagem');
+  sel.innerHTML=S.garagens.map(g=>`<option value="${g.id}"${g.id===u.garagem_id?' selected':''}>${g.nome} — ${g.uf}</option>`).join('');
+  toggleGaraModal();
+  document.getElementById('modal-user').style.display='flex';
 }
 
-// ── RELATÓRIOS ─────────────────────────────
+function toggleGaraModal(){
+  const c=document.getElementById('mu-cargo').value;
+  document.getElementById('mu-gara-wrap').style.display=c==='diretoria'?'none':'block';
+}
+
+async function salvarUsuario(){
+  const nome=document.getElementById('mu-nome').value.trim();
+  const email=document.getElementById('mu-email').value.trim();
+  const senha=document.getElementById('mu-senha').value;
+  const cargo=document.getElementById('mu-cargo').value;
+  const garagem_id=cargo==='diretoria'?null:document.getElementById('mu-garagem').value;
+  if(!nome||!email){toast('Nome e e-mail são obrigatórios!','err');return}
+
+  const btn=document.getElementById('btn-salvar-user');
+  btn.textContent='Salvando...';btn.disabled=true;
+
+  if(!S.editUserId){
+    // Criar novo usuário
+    if(!senha||senha.length<6){toast('Senha deve ter mínimo 6 caracteres!','err');btn.textContent='💾 Criar Usuário';btn.disabled=false;return}
+    const{data:authData,error:authErr}=await sb.auth.admin?
+      {data:null,error:{message:'Admin API não disponível no client'}}:
+      await createUserViaAPI(email,senha);
+
+    // Usa a API de signup do Supabase
+    const{data:signUp,error:signErr}=await sb.auth.signUp({email,password:senha,options:{data:{nome}}});
+    if(signErr){toast('Erro ao criar: '+signErr.message,'err');btn.textContent='💾 Criar Usuário';btn.disabled=false;return}
+
+    const uid=signUp.user?.id;
+    if(!uid){toast('Erro ao obter ID do usuário','err');btn.textContent='💾 Criar Usuário';btn.disabled=false;return}
+
+    const{error:perfErr}=await sb.from('perfis').insert({id:uid,nome,email,cargo,garagem_id,ativo:true,is_admin:false});
+    if(perfErr){toast('Erro ao salvar perfil: '+perfErr.message,'err');btn.textContent='💾 Criar Usuário';btn.disabled=false;return}
+    toast(`✅ Usuário ${nome} criado com sucesso!`);
+  } else {
+    // Editar existente
+    const{error}=await sb.from('perfis').update({nome,email,cargo,garagem_id}).eq('id',S.editUserId);
+    if(error){toast('Erro: '+error.message,'err');btn.textContent='💾 Salvar Alterações';btn.disabled=false;return}
+    toast(`✅ Usuário ${nome} atualizado!`);
+  }
+
+  btn.textContent=S.editUserId?'💾 Salvar Alterações':'💾 Criar Usuário';btn.disabled=false;
+  closeM('modal-user');
+  renderAdmin();
+}
+
+async function toggleAtivo(id,ativo,nome){
+  if(!confirm(`${ativo?'Desativar':'Ativar'} o usuário ${nome}?`)) return;
+  const{error}=await sb.from('perfis').update({ativo:!ativo}).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return}
+  toast(`✅ Usuário ${ativo?'desativado':'ativado'}!`);
+  renderAdmin();
+}
+
+// FERRAMENTAS
+function renderFerramentas(){
+  const tools=[
+    {id:'ferr-210',icon:'📋',name:'2.10 Soltura de Frota',desc:'Importe o PDF da escala GPS, confirme saídas em tempo real e imprima o relatório 2.10.'},
+    {id:'ferr-lav',icon:'🧼',name:'Programação de Lavagem',desc:'Importe via Excel e registre execuções em tempo real. Acompanha metas por tipo.'},
+    {id:'ferr-ctrl',icon:'✅',name:'Controle Soltura / Oficina',desc:'Status da oficina + lavagem por veículo. Liberado = pronto para soltura.'},
+  ];
+  setMain(`${secTitle('🛠️','Ferramentas Operacionais')}<div class="tools-grid">${tools.map(t=>`<div class="tool-card" onclick="navToSub('${t.id}')"><div style="display:flex;justify-content:space-between"><span style="font-size:28px">${t.icon}</span><span class="badge b-ativo">Ativo</span></div><div style="font-size:14px;font-weight:700">${t.name}</div><div style="font-size:12px;color:var(--text3);line-height:1.5">${t.desc}</div></div>`).join('')}</div><div class="info-blue info-banner">💡 Clique em qualquer ferramenta para abrí-la</div>`);
+}
+
+async function renderFerr210(tab='painel'){
+  const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  const tabs=`<div class="filtros"><button class="filtro-btn${tab==='painel'?' active':''}" onclick="renderFerr210('painel')">📋 Painel do Líder</button><button class="filtro-btn${tab==='importar'?' active':''}" onclick="renderFerr210('importar')">📤 Importar PDF</button></div>`;
+
+  if(tab==='importar'){
+    setMain(`${secTitle('📋','2.10 — Soltura de Frota',back)}${tabs}<div style="max-width:560px"><div class="import-zone" id="drop210" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleDrop210(event)"><div style="font-size:40px;margin-bottom:12px">📄</div><div style="font-size:16px;font-weight:700;margin-bottom:8px">Importar PDF da Escala GPS</div><div style="color:var(--text3);font-size:13px">Arraste o PDF aqui ou clique para selecionar</div><button class="btn-import" id="btn210" onclick="document.getElementById('f210').click()">📄 Selecionar PDF</button><input type="file" id="f210" accept=".pdf" style="display:none" onchange="handle210(this.files[0])"><div id="err210" style="display:none;margin-top:12px;background:#FEE2E2;border:1px solid #FECACA;color:#991B1B;padding:12px;border-radius:10px;font-size:13px"></div><div id="prog210w" style="display:none;margin-top:12px"><div id="prog210m" style="font-size:12px;color:var(--text2);margin-bottom:6px"></div><div class="prog-wrap"><div class="prog-bar" id="prog210b" style="width:0%"></div></div></div></div><div class="info-amber info-banner">⚠️ Substitui a escala do turno ${S.turno==='dia'?'☀️ Dia':'🌙 Noite'} de hoje</div></div>`);
+    return;
+  }
+
+  setMain(`<div class="loading"><div class="spinner"></div> Carregando...</div>`);
+  const{data}=await sb.from('soltura_2_10').select('*').eq('garagem_id',S.perfil.garagem_id).eq('data',hoje()).eq('turno',S.turno).order('horario_programado');
+  S.soltura210=data||[];
+
+  if(!S.soltura210.length){
+    setMain(`${secTitle('📋','2.10 — Soltura de Frota',back)}${tabs}<div class="empty"><div style="font-size:40px">📋</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Nenhuma escala importada</div><button class="btn-add" onclick="renderFerr210('importar')">📄 Importar PDF</button></div>`);
+    return;
+  }
+
+  const saiu=S.soltura210.filter(r=>r.saiu===true).length;
+  const total=S.soltura210.length;
+  const pct=total>0?((saiu/total)*100).toFixed(1):'0';
+  const pColor=parseFloat(pct)>=99.5?'var(--green)':parseFloat(pct)>=95?'var(--amber)':'var(--red)';
+
+  const rows=S.soltura210.map(r=>{
+    const sH=r.saiu===true?`<button class="status-btn sb-sim" onclick="openModalSaida('${r.id}','${r.prefixo}','${r.horario_programado}')">✅ ${r.horario_real||'Saiu'}</button>`:r.saiu===false?`<button class="status-btn sb-nao" onclick="openModalSaida('${r.id}','${r.prefixo}','${r.horario_programado}')">❌ Não saiu</button>`:`<button class="status-btn sb-pend" onclick="openModalSaida('${r.id}','${r.prefixo}','${r.horario_programado}')">○ Confirmar</button>`;
+    return`<tr><td><span style="font-family:'DM Mono',monospace;font-weight:700">${r.prefixo}</span></td><td><span style="color:var(--amber);font-family:'DM Mono',monospace">${r.horario_programado||'—'}</span></td><td style="color:var(--text2);font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.linha||'—'}</td><td style="color:var(--text3);font-size:12px">${r.motorista||'—'}</td><td>${sH}</td></tr>`;
+  }).join('');
+
+  setMain(`${secTitle('📋','2.10 — Soltura de Frota',back)}${tabs}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:14px 18px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="color:var(--text3);font-size:11px;font-weight:700">SOLTURA ${S.turno==='dia'?'☀️':'🌙'}</span><span style="color:${pColor};font-family:'DM Mono',monospace;font-size:13px;font-weight:700">${pct}% <span style="color:var(--text4);font-size:10px">meta 99,5%</span></span></div>
+      <div class="prog-wrap"><div class="prog-bar" style="width:${pct}%;background:${pColor}"></div></div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px"><span style="color:var(--text4);font-size:10px">${saiu} confirmados</span><span style="color:var(--text4);font-size:10px">${total-saiu} pendentes</span></div>
+    </div>
+    <div class="tbl-wrap"><div class="tbl-head"><div style="font-size:13px;font-weight:700">${total} veículos — ${S.turno==='dia'?'☀️ Dia':'🌙 Noite'}</div><div style="display:flex;gap:8px"><button onclick="window.print()" class="btn-sm">🖨️ Imprimir</button><button onclick="renderFerr210('importar')" class="btn-sm">📤 Nova escala</button></div></div><div style="overflow-x:auto"><table><thead><tr><th>Prefixo</th><th>Hor.</th><th>Linha</th><th>Motorista</th><th>Saída</th></tr></thead><tbody>${rows}</tbody></table></div></div>`);
+}
+
+function renderFerrLav(){
+  const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  setMain(`${secTitle('🧼','Programação de Lavagem',back)}<div style="max-width:560px"><div class="import-zone" id="drop-lav" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleDropLav(event)"><div style="font-size:40px;margin-bottom:12px">📊</div><div style="font-size:16px;font-weight:700;margin-bottom:8px">Importar Programação</div><div style="color:var(--text3);font-size:13px">Excel com PREFIXO e TIPO LAVAGEM (simples/escovao/pesada)</div><button class="btn-import" id="btn-lav" onclick="document.getElementById('f-lav').click()">📂 Selecionar .xlsx</button><input type="file" id="f-lav" accept=".xlsx" style="display:none" onchange="handleFileLav(this.files[0])"><div id="err-lav" style="display:none;margin-top:12px;background:#FEE2E2;border:1px solid #FECACA;color:#991B1B;padding:12px;border-radius:10px;font-size:13px"></div><div id="prog-lavw" style="display:none;margin-top:12px"><div id="prog-lavm" style="font-size:12px;color:var(--text2);margin-bottom:6px"></div><div class="prog-wrap"><div class="prog-bar" id="prog-lavb" style="width:0%"></div></div></div></div><div id="preview-lav"></div><div class="info-blue info-banner">💡 Metas: Escovão = todos · Simples = 84/dia · Pesada = 10/dia</div></div>`);
+}
+
+function renderFerrCtrl(){
+  const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  setMain(`${secTitle('✅','Controle Soltura / Oficina',back)}<div class="empty"><div style="font-size:40px">✅</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Em breve</div></div><div class="info-blue info-banner">🔗 Integração com painel de soltura em breve</div>`);
+}
+
+// RELATÓRIOS
 function renderRelatorios(){
   const lista=[
     {cod:'2.1',nome:'Fechamento de Turno – Garagem',resp:'Supervisor',freq:'Diário/Turno',icon:'📋',ativo:false},
@@ -765,7 +705,7 @@ function renderRelatorios(){
     {cod:'2.6',nome:'Previsibilidade de Investimento',resp:'Líder PCM',freq:'Diário',icon:'💰',ativo:false},
     {cod:'2.7',nome:'Fechamento da Oficina',resp:'Líder Oficina',freq:'Diário/Turno',icon:'🏭',ativo:false},
     {cod:'2.9',nome:'Relatório de Inventário',resp:'Almoxarife',freq:'Diário/Turno',icon:'🗂️',ativo:false},
-    {cod:'2.10',nome:'Soltura de Frota',resp:'Líder Pátio',freq:'Diário',icon:'🚌',ativo:true,action:"navToSub('ferr-soltura210','sub-ferramentas')"},
+    {cod:'2.10',nome:'Soltura de Frota',resp:'Líder Pátio',freq:'Diário',icon:'🚌',ativo:true,action:"navToSub('ferr-210')"},
     {cod:'2.11',nome:'Carros Indisponíveis',resp:'Líder PCM',freq:'Diário',icon:'🔴',ativo:false},
     {cod:'2.12',nome:'Indicadores Técnicos',resp:'PCM/Almox/Op',freq:'Diário',icon:'📊',ativo:false},
     {cod:'2.14',nome:'Análise de Desvio – 5 Porquês',resp:'Líderes',freq:'Diário',icon:'🔍',ativo:false},
@@ -776,34 +716,18 @@ function renderRelatorios(){
     {cod:'3.2',nome:'Acompanhamento Manutenção – Hora a Hora',resp:'Líder Oficina',freq:'A cada 1 hora',icon:'⏱️',ativo:false},
   ];
   const ativos=lista.filter(r=>r.ativo).length;
-  const cards=lista.map(r=>`
-    <div class="rel-card${r.ativo?' ativo':''}" ${r.ativo&&r.action?`onclick="${r.action}"`:''}
-      style="${r.ativo?'border-color:#2563EB30':''}">
-      <div class="rel-icon-wrap" style="${r.ativo?'background:#2563EB20':''}">
-        <span>${r.icon}</span>
-      </div>
-      <div style="flex:1">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
-          <div class="rel-cod">${r.cod}</div>
-          ${r.ativo?`<span class="badge b-ativo" style="font-size:9px;padding:1px 7px">Ativo</span>`:`<span class="badge b-breve" style="font-size:9px;padding:1px 7px">Em breve</span>`}
-        </div>
-        <div class="rel-nome">${r.nome}</div>
-        <div class="rel-meta">👤 ${r.resp} &nbsp;·&nbsp; 🔄 ${r.freq}</div>
-      </div>
-      ${r.ativo?`<span style="color:var(--blue);font-size:16px">→</span>`:''}
-    </div>`).join('');
   setMain(`
     ${secTitle('📋','Relatórios Operacionais')}
-    <div style="display:flex;gap:12px;margin-bottom:16px">
-      <div class="kpi neu" style="flex:1"><div class="kpi-label">Total</div><div class="kpi-val">${lista.length}<span class="kpi-unit"> relat.</span></div></div>
-      <div class="kpi ok" style="flex:1"><div class="kpi-label">Ativos</div><div class="kpi-val">${ativos}<span class="kpi-unit"> digital</span></div></div>
-      <div class="kpi neu" style="flex:1"><div class="kpi-label">Em breve</div><div class="kpi-val">${lista.length-ativos}<span class="kpi-unit"> relat.</span></div></div>
+    <div style="display:flex;gap:10px;margin-bottom:16px">
+      <div class="kpi neu" style="flex:1"><div class="kpi-label">Total</div><div class="kpi-val">${lista.length}</div></div>
+      <div class="kpi ok" style="flex:1"><div class="kpi-label">Ativos</div><div class="kpi-val">${ativos}</div></div>
+      <div class="kpi neu" style="flex:1"><div class="kpi-label">Em breve</div><div class="kpi-val">${lista.length-ativos}</div></div>
     </div>
-    <div class="rel-grid">${cards}</div>
-    <div class="info-blue info-banner">💡 Clique nos relatórios marcados como <strong>Ativo</strong> para acessar o formulário digital. Os demais serão digitalizados nas próximas fases.</div>`);
+    <div class="rel-grid">${lista.map(r=>`<div class="rel-card${r.ativo?' ativo':''}" ${r.ativo&&r.action?`onclick="${r.action}"`:''}><div style="background:var(--border);border-radius:9px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${r.icon}</div><div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><span style="color:var(--text3);font-size:10px;font-weight:700">${r.cod}</span><span class="badge ${r.ativo?'b-ativo':'b-breve'}" style="font-size:9px;padding:1px 7px">${r.ativo?'Ativo':'Em breve'}</span></div><div style="color:var(--text);font-size:13px;font-weight:600;line-height:1.35">${r.nome}</div><div style="color:var(--text4);font-size:11px;margin-top:5px">👤 ${r.resp} · 🔄 ${r.freq}</div></div>${r.ativo?'<span style="color:var(--blue);font-size:16px">→</span>':''}</div>`).join('')}</div>
+    <div class="info-blue info-banner">💡 Relatórios marcados como Ativo são clicáveis. Os demais serão digitalizados nas próximas fases.</div>`);
 }
 
-// ── DIRETORIA ──────────────────────────────
+// DIRETORIA
 async function renderDiretoria(){
   setMain(`<div class="loading"><div class="spinner"></div> Carregando...</div>`);
   const{data:gs}=await sb.from('garagens').select('*').eq('ativa',true);
@@ -813,201 +737,121 @@ async function renderDiretoria(){
     const tot=fG.length,d=fG.filter(v=>v.status==='disponivel').length,l=fG.filter(v=>v.status==='em_linha').length;
     const pct=tot>0?(((d+l)/tot)*100).toFixed(1):'—';
     const ok=parseFloat(pct)>=95;
-    return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
-        <div><div style="font-size:15px;font-weight:700">${g.nome}</div><div style="color:var(--text3);font-size:11px;margin-top:2px">📍 ${g.cidade} — ${g.uf}</div></div>
-        <span class="badge ${tot>0?'b-ativo':'b-breve'}">${tot>0?'Online':'Sem dados'}</span>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-        ${[{l:'Disponib.',v:pct+'%',ok},{l:'Frota',v:tot,ok:true},{l:'Em Linha',v:l,ok:true}].map(k=>`
-        <div style="background:var(--bg);border-radius:8px;padding:10px;border-left:3px solid ${k.ok?'var(--green)':'var(--red)'}">
-          <div style="color:var(--text3);font-size:10px">${k.l}</div>
-          <div style="font-family:'DM Mono',monospace;font-size:17px;font-weight:700;color:var(--text);margin-top:2px">${k.v}</div>
-        </div>`).join('')}
-      </div>
-    </div>`;
+    return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px"><div><div style="font-size:15px;font-weight:700">${g.nome}</div><div style="color:var(--text3);font-size:11px;margin-top:2px">📍 ${g.cidade} — ${g.uf}</div></div><span class="badge ${tot>0?'b-ativo':'b-breve'}">${tot>0?'Online':'Sem dados'}</span></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">${[{l:'Disponib.',v:pct+'%',o:ok},{l:'Frota',v:tot,o:true},{l:'Em Linha',v:l,o:true}].map(k=>`<div style="background:var(--bg);border-radius:8px;padding:10px;border-left:3px solid ${k.o?'var(--green)':'var(--red)'}"><div style="color:var(--text3);font-size:10px">${k.l}</div><div style="font-family:'DM Mono',monospace;font-size:17px;font-weight:700;color:var(--text);margin-top:2px">${k.v}</div></div>`).join('')}</div></div>`;
   }).join('');
-  setMain(`${secTitle('🏢','Visão Consolidada — Todas as Garagens')}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px">${cards}</div><div class="info-blue info-banner">📊 Dados em tempo real do banco Supabase</div>`);
+  setMain(`${secTitle('🏢','Visão Consolidada')}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px">${cards}</div>`);
 }
 
-// ── MODAIS VEÍCULO ─────────────────────────
-function openModalV(id,pref,statusAtual){
-  S.editVeiculoId=id;
-  document.getElementById('mv-pref').textContent=pref;
-  document.getElementById('mv-status').value=statusAtual;
-  document.getElementById('mv-obs').value='';
-  document.getElementById('modal-veiculo').style.display='flex';
-}
-function closeModalV(){document.getElementById('modal-veiculo').style.display='none'}
+// MODAIS VEÍCULO
+function openModalV(id,pref,s){S.editVId=id;document.getElementById('mv-pref').textContent=pref;document.getElementById('mv-status').value=s;document.getElementById('mv-obs').value='';document.getElementById('modal-v').style.display='flex'}
 async function confirmarStatusV(){
-  const status=document.getElementById('mv-status').value;
-  const{error}=await sb.from('frota').update({status,updated_at:new Date().toISOString()}).eq('id',S.editVeiculoId);
+  const{error}=await sb.from('frota').update({status:document.getElementById('mv-status').value}).eq('id',S.editVId);
   if(error){toast('Erro: '+error.message,'err');return}
-  toast('Status atualizado!');closeModalV();
-  await loadFrota();
-  if(S.tela==='frota') renderFrota();
-  else if(S.tela==='painel') renderPainel();
+  toast('Status atualizado!');closeM('modal-v');await loadFrota();if(S.tela==='frota')renderFrota();else renderPainel();
 }
 function openModalCad(){document.getElementById('modal-cad').style.display='flex'}
-function closeModalCad(){document.getElementById('modal-cad').style.display='none'}
 async function salvarVeiculo(){
-  const prefixo=document.getElementById('cad-pref').value.trim();
-  if(!prefixo){toast('Prefixo obrigatório!','err');return}
-  const{error}=await sb.from('frota').insert({garagem_id:S.user.garagem_id,prefixo,status:document.getElementById('cad-status').value,modelo:document.getElementById('cad-modelo').value.trim()||null,ano:parseInt(document.getElementById('cad-ano').value)||null,placa:document.getElementById('cad-placa').value.trim()||null});
+  const pref=document.getElementById('cad-pref').value.trim();
+  if(!pref){toast('Prefixo obrigatório!','err');return}
+  const{error}=await sb.from('frota').insert({garagem_id:S.perfil.garagem_id,prefixo:pref,status:document.getElementById('cad-status').value,modelo:document.getElementById('cad-modelo').value.trim()||null,ano:parseInt(document.getElementById('cad-ano').value)||null,placa:document.getElementById('cad-placa').value.trim()||null});
   if(error){toast('Erro: '+error.message,'err');return}
-  toast('Veículo cadastrado!');closeModalCad();renderFrota();
+  toast('Veículo cadastrado!');closeM('modal-cad');renderFrota();
 }
 
-// ── MODAL SAÍDA 2.10 ───────────────────────
-function openModalSaida(id,pref,horario){
-  S.editSaidaId=id;
-  document.getElementById('ms-info').textContent=`${pref} — ${horario}`;
-  const r=S.soltura210.find(x=>x.id===id);
-  document.getElementById('ms-saiu').value=r?.saiu===true?'true':'true';
-  document.getElementById('ms-horario').value=r?.horario_real||horario||'';
-  document.getElementById('ms-pontual').value=r?.pontual===true?'true':r?.pontual===false?'false':'';
-  document.getElementById('ms-obs').value=r?.observacao||'';
+// MODAL SAÍDA
+function openModalSaida(id,pref,h){
+  S.editSaidaId=id;document.getElementById('ms-info').textContent=`${pref} — ${h}`;
+  document.getElementById('ms-saiu').value='true';document.getElementById('ms-hora').value=h||'';
+  document.getElementById('ms-pont').value='';document.getElementById('ms-obs').value='';
   document.getElementById('modal-saida').style.display='flex';
 }
-function closeModalSaida(){document.getElementById('modal-saida').style.display='none'}
 async function confirmarSaida(){
   const saiu=document.getElementById('ms-saiu').value==='true';
-  const horario=document.getElementById('ms-horario').value;
-  const pv=document.getElementById('ms-pontual').value;
-  const{error}=await sb.from('soltura_2_10').update({saiu,horario_real:horario||null,pontual:pv===''?null:pv==='true',observacao:document.getElementById('ms-obs').value||null}).eq('id',S.editSaidaId);
+  const pv=document.getElementById('ms-pont').value;
+  const{error}=await sb.from('soltura_2_10').update({saiu,horario_real:document.getElementById('ms-hora').value||null,pontual:pv===''?null:pv==='true',observacao:document.getElementById('ms-obs').value||null}).eq('id',S.editSaidaId);
   if(error){toast('Erro: '+error.message,'err');return}
-  toast(saiu?'✅ Saída confirmada!':'❌ Não saída registrada');closeModalSaida();
-  const{data}=await sb.from('soltura_2_10').select('*').eq('garagem_id',S.user.garagem_id).eq('data',hoje()).eq('turno',S.turno).order('horario_programado');
-  S.soltura210=data||[];renderFerr210('painel');
+  toast(saiu?'✅ Saída confirmada!':'❌ Não saída registrada');closeM('modal-saida');renderFerr210('painel');
 }
 
-// ── PDF 2.10 ───────────────────────────────
+// PDF 2.10
 function handleDrop210(e){e.preventDefault();document.getElementById('drop210').classList.remove('drag');handle210(e.dataTransfer.files[0])}
 async function handle210(file){
   if(!file?.name.endsWith('.pdf')){document.getElementById('err210').style.display='block';document.getElementById('err210').textContent='Selecione um PDF válido';return}
   const btn=document.getElementById('btn210');btn.disabled=true;btn.textContent='⏳ Processando...';
   document.getElementById('err210').style.display='none';
-  const prog=(msg,pct)=>{document.getElementById('prog210wrap').style.display='block';document.getElementById('prog210msg').textContent=msg;const b=document.getElementById('prog210bar');b.style.width=pct+'%';b.style.background=pct>=100?'var(--green)':'var(--blue)'};
+  const prog=(m,p)=>{document.getElementById('prog210w').style.display='block';document.getElementById('prog210m').textContent=m;const b=document.getElementById('prog210b');b.style.width=p+'%';b.style.background=p>=100?'var(--green)':'var(--blue)'};
   try{
-    prog('Lendo PDF...',10);
-    const raw=await parsePDF210(file);
-    if(!raw.length) throw new Error('Nenhum dado extraído do PDF');
-    prog('Filtrando Turno A...',60);
-    const map={};
-    for(const r of raw){if(!r.posicao.endsWith('A')) continue;if(!map[r.veiculo]||r.inicio<map[r.veiculo].inicio) map[r.veiculo]=r}
+    prog('Lendo PDF...',10);const raw=await parsePDF(file);
+    if(!raw.length) throw new Error('Nenhum dado extraído');
+    prog('Filtrando...',60);
+    const map={};for(const r of raw){if(!r.posicao.endsWith('A'))continue;if(!map[r.veiculo]||r.inicio<map[r.veiculo].inicio)map[r.veiculo]=r}
     const data=Object.values(map).sort((a,b)=>a.inicio.localeCompare(b.inicio));
-    if(!data.length) throw new Error('Nenhum registro Turno A encontrado');
+    if(!data.length) throw new Error('Nenhum Turno A encontrado');
     prog('Salvando '+data.length+' veículos...',80);
-    await sb.from('soltura_2_10').delete().eq('garagem_id',S.user.garagem_id).eq('data',hoje()).eq('turno',S.turno);
-    const{data:fr}=await sb.from('frota').select('id,prefixo').eq('garagem_id',S.user.garagem_id);
+    await sb.from('soltura_2_10').delete().eq('garagem_id',S.perfil.garagem_id).eq('data',hoje()).eq('turno',S.turno);
+    const{data:fr}=await sb.from('frota').select('id,prefixo').eq('garagem_id',S.perfil.garagem_id);
     const fMap=Object.fromEntries((fr||[]).map(v=>[v.prefixo,v.id]));
-    const ins=data.map(r=>({garagem_id:S.user.garagem_id,data:hoje(),turno:S.turno,prefixo:r.veiculo,veiculo_id:fMap[r.veiculo]||null,linha:r.linha,horario_programado:r.inicio,motorista:r.motorista,saiu:null}));
-    const{error}=await sb.from('soltura_2_10').insert(ins);
+    const{error}=await sb.from('soltura_2_10').insert(data.map(r=>({garagem_id:S.perfil.garagem_id,data:hoje(),turno:S.turno,prefixo:r.veiculo,veiculo_id:fMap[r.veiculo]||null,linha:r.linha,horario_programado:r.inicio,motorista:r.motorista,saiu:null})));
     if(error) throw new Error('Erro ao salvar: '+error.message);
-    prog('✔ '+data.length+' veículos importados!',100);
+    prog('✔ '+data.length+' importados!',100);
     toast('✅ '+data.length+' veículos importados!');
-    S.soltura210=ins.map((r,i)=>({...r,id:'temp'+i}));
     setTimeout(()=>renderFerr210('painel'),1200);
-  }catch(err){
-    document.getElementById('err210').style.display='block';document.getElementById('err210').textContent='ERRO: '+err.message;
-    prog('',0);document.getElementById('prog210wrap').style.display='none';
-  }
+  }catch(err){document.getElementById('err210').style.display='block';document.getElementById('err210').textContent='ERRO: '+err.message}
   btn.disabled=false;btn.textContent='📄 Selecionar outro PDF';
 }
 
-// ── LAVAGEM IMPORT ─────────────────────────
+// LAVAGEM
 function handleDropLav(e){e.preventDefault();document.getElementById('drop-lav').classList.remove('drag');handleFileLav(e.dataTransfer.files[0])}
 function handleFileLav(file){
-  if(!file?.name.endsWith('.xlsx')){document.getElementById('err-lav').style.display='block';document.getElementById('err-lav').textContent='Selecione um arquivo .xlsx';return}
+  if(!file?.name.endsWith('.xlsx')){document.getElementById('err-lav').style.display='block';document.getElementById('err-lav').textContent='Arquivo .xlsx obrigatório';return}
   const reader=new FileReader();
   reader.onload=async e=>{
     try{
-      const wb=XLSX.read(e.target.result,{type:'array'});
-      const ws=wb.Sheets[wb.SheetNames[0]];
+      const wb=XLSX.read(e.target.result,{type:'array'});const ws=wb.Sheets[wb.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-      let hi=-1;
-      for(let i=0;i<rows.length;i++){if(rows[i].map(c=>String(c).toUpperCase()).includes('PREFIXO')){hi=i;break}}
+      let hi=-1;for(let i=0;i<rows.length;i++){if(rows[i].map(c=>String(c).toUpperCase()).includes('PREFIXO')){hi=i;break}}
       if(hi===-1){document.getElementById('err-lav').style.display='block';document.getElementById('err-lav').textContent='Coluna PREFIXO não encontrada';return}
       const hdrs=rows[hi].map(c=>String(c).toUpperCase().trim());
       const ip=hdrs.indexOf('PREFIXO'),it=hdrs.findIndex(h=>h.includes('TIPO')||h.includes('LAVAGEM'));
-      if(ip===-1||it===-1){document.getElementById('err-lav').style.display='block';document.getElementById('err-lav').textContent='Colunas PREFIXO e TIPO LAVAGEM obrigatórias';return}
       const dados=[];
-      for(let i=hi+1;i<rows.length;i++){
-        const p=String(rows[i][ip]||'').trim(),t=String(rows[i][it]||'').trim().toLowerCase();
-        if(!p||!['simples','escovao','pesada'].includes(t)) continue;
-        dados.push({prefixo:p,tipo_lavagem:t,observacao:String(rows[i][2]||'').trim()});
-      }
-      if(!dados.length){document.getElementById('err-lav').style.display='block';document.getElementById('err-lav').textContent='Nenhuma linha válida encontrada';return}
-      const lavBadge=t=>({simples:'💧 Simples',escovao:'🪣 Escovão',pesada:'🔴 Pesada'}[t]||t);
-      const prvw=dados.slice(0,8).map(d=>`<tr><td style="font-family:'DM Mono',monospace;font-weight:600">${d.prefixo}</td><td>${lavBadge(d.tipo_lavagem)}</td><td style="color:var(--text3);font-size:12px">${d.observacao||'—'}</td></tr>`).join('');
-      document.getElementById('preview-lav').innerHTML=`
-        <div class="tbl-wrap" style="margin-top:16px">
-          <div class="tbl-head"><div style="font-size:13px;font-weight:700">Preview — ${dados.length} veículos</div>
-          <button class="btn-success" onclick="confirmarLavagem(${JSON.stringify(dados).replace(/"/g,'&quot;')})">✅ Confirmar Importação</button></div>
-          <table><thead><tr><th>Prefixo</th><th>Tipo</th><th>Obs.</th></tr></thead><tbody>${prvw}${dados.length>8?`<tr><td colspan="3" style="color:var(--text4);font-size:11px;text-align:center">... e mais ${dados.length-8} veículos</td></tr>`:''}</tbody></table>
-        </div>`;
-    }catch(err){document.getElementById('err-lav').style.display='block';document.getElementById('err-lav').textContent='Erro ao ler arquivo: '+err.message}
-  };
-  reader.readAsArrayBuffer(file);
+      for(let i=hi+1;i<rows.length;i++){const p=String(rows[i][ip]||'').trim(),t=String(rows[i][it]||'').trim().toLowerCase();if(!p||!['simples','escovao','pesada'].includes(t))continue;dados.push({prefixo:p,tipo_lavagem:t,observacao:String(rows[i][2]||'').trim()})}
+      if(!dados.length){document.getElementById('err-lav').style.display='block';document.getElementById('err-lav').textContent='Nenhuma linha válida';return}
+      const lavB=t=>({simples:'💧 Simples',escovao:'🪣 Escovão',pesada:'🔴 Pesada'}[t]||t);
+      const prvw=dados.slice(0,6).map(d=>`<tr><td style="font-family:'DM Mono',monospace;font-weight:600">${d.prefixo}</td><td>${lavB(d.tipo_lavagem)}</td><td style="color:var(--text3);font-size:12px">${d.observacao||'—'}</td></tr>`).join('');
+      document.getElementById('preview-lav').innerHTML=`<div class="tbl-wrap" style="margin-top:16px"><div class="tbl-head"><div style="font-size:13px;font-weight:700">Preview — ${dados.length} veículos</div><button class="btn-success" onclick='confirmarLavagem(${JSON.stringify(dados).replace(/'/g,"&#39;")})'>✅ Importar</button></div><table><thead><tr><th>Prefixo</th><th>Tipo</th><th>Obs.</th></tr></thead><tbody>${prvw}${dados.length>6?`<tr><td colspan="3" style="color:var(--text4);font-size:11px;text-align:center">... e mais ${dados.length-6}</td></tr>`:''}</tbody></table></div>`;
+    }catch(err){document.getElementById('err-lav').style.display='block';document.getElementById('err-lav').textContent='Erro: '+err.message}
+  };reader.readAsArrayBuffer(file);
 }
 async function confirmarLavagem(dados){
-  await sb.from('programacao_lavagem').delete().eq('garagem_id',S.user.garagem_id).eq('data',hoje()).eq('turno',S.turno);
-  const{data:fr}=await sb.from('frota').select('id,prefixo').eq('garagem_id',S.user.garagem_id);
+  await sb.from('programacao_lavagem').delete().eq('garagem_id',S.perfil.garagem_id).eq('data',hoje()).eq('turno',S.turno);
+  const{data:fr}=await sb.from('frota').select('id,prefixo').eq('garagem_id',S.perfil.garagem_id);
   const fMap=Object.fromEntries((fr||[]).map(v=>[v.prefixo,v.id]));
-  const ins=dados.map(d=>({garagem_id:S.user.garagem_id,data:hoje(),turno:S.turno,prefixo:d.prefixo,tipo_lavagem:d.tipo_lavagem,observacao:d.observacao||null,veiculo_id:fMap[d.prefixo]||null,status:'pendente'}));
-  const{error}=await sb.from('programacao_lavagem').insert(ins);
+  const{error}=await sb.from('programacao_lavagem').insert(dados.map(d=>({garagem_id:S.perfil.garagem_id,data:hoje(),turno:S.turno,prefixo:d.prefixo,tipo_lavagem:d.tipo_lavagem,observacao:d.observacao||null,veiculo_id:fMap[d.prefixo]||null,status:'pendente'})));
   if(error){toast('Erro: '+error.message,'err');return}
-  toast(`✅ ${ins.length} veículos importados!`);renderFerrLavagem();
+  toast(`✅ ${dados.length} veículos importados!`);renderFerrLav();
 }
 
-// ── PDF PARSER (original algorithm) ────────
-async function parsePDF210(file){
-  const buf=await file.arrayBuffer();
-  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
-  const all=[];
-  for(let p=1;p<=pdf.numPages;p++){
-    const pg=await pdf.getPage(p);const tc=await pg.getTextContent();const vp=pg.getViewport({scale:1});
+// PDF PARSER
+async function parsePDF(file){
+  const buf=await file.arrayBuffer();const pdf=await pdfjsLib.getDocument({data:buf}).promise;const all=[];
+  for(let p=1;p<=pdf.numPages;p++){const pg=await pdf.getPage(p);const tc=await pg.getTextContent();const vp=pg.getViewport({scale:1});
     const items=tc.items.map(it=>({t:it.str.trim(),x:Math.round(it.transform[4]),y:Math.round(vp.height-it.transform[5])})).filter(it=>it.t.length>0);
-    all.push(...groupRows210(items));
-  }
-  return extractData210(all);
+    all.push(...groupRows(items));}return extractData(all);
 }
-function groupRows210(items){
-  if(!items.length) return[];
-  items.sort((a,b)=>a.y!==b.y?a.y-b.y:a.x-b.x);
-  const rows=[];let cur=[items[0]],baseY=items[0].y;
-  for(let i=1;i<items.length;i++){if(Math.abs(items[i].y-baseY)<=3)cur.push(items[i]);else{rows.push(cur.sort((a,b)=>a.x-b.x));cur=[items[i]];baseY=items[i].y;}}
-  if(cur.length) rows.push(cur.sort((a,b)=>a.x-b.x));
-  return rows;
-}
-function extractData210(rows){
-  const data=[];let linha='';
-  const rPos=/^\d\d[AB]$/,rVeh=/^\d\d\.\d\d\d$/,rTime=/^\d\d:\d\d$/;
-  const rHdr=/^(\d\d\d[A-Z]?(?:\.\d)?)\s*[-–]\s*(.+)$/;
-  const skip=['Relat','Quinta','Segunda','Terç','Quarta','Sexta','Sáb','Dom','Posiç','Empresa','Motorista','Filtros','Veíc','Início','Fim','JTP','COOL'];
-  for(const row of rows){
-    const ts=row.map(r=>r.t).filter(t=>t.length>0);
-    if(!ts.length) continue;const ft=ts.join(' ');
-    if(ts.length<2&&ts[0].length<5) continue;
-    if(skip.some(w=>ft.startsWith(w))) continue;
-    if(/^\d+\s*[-–]\s*\d+$/.test(ft)) continue;
-    if(/\d\d\/\d\d\/\d\d\d\d/.test(ft)) continue;
-    if(/\d\d:\d\d:\d\d/.test(ft)) continue;
-    if(rHdr.test(ft)&&!rPos.test(ts[0])){linha=ft.trim();continue;}
-    if(!rPos.test(ts[0])||!rVeh.test(ts[1])||ts.length<4) continue;
-    let fi=-1,ii=-1;
-    for(let i=ts.length-1;i>=2;i--){if(rTime.test(ts[i])){if(fi===-1)fi=i;else if(ii===-1){ii=i;break;}}}
-    if(ii<0||fi<0) continue;
-    const mot=ts.slice(2,ii).join(' ').trim();
-    if(!mot||!linha) continue;
-    data.push({linha,posicao:ts[0],veiculo:ts[1],motorista:mot,inicio:ts[ii]});
-  }
-  return data;
-}
+function groupRows(items){if(!items.length)return[];items.sort((a,b)=>a.y!==b.y?a.y-b.y:a.x-b.x);const rows=[];let cur=[items[0]],bY=items[0].y;for(let i=1;i<items.length;i++){if(Math.abs(items[i].y-bY)<=3)cur.push(items[i]);else{rows.push(cur.sort((a,b)=>a.x-b.x));cur=[items[i]];bY=items[i].y;}}if(cur.length)rows.push(cur.sort((a,b)=>a.x-b.x));return rows;}
+function extractData(rows){const data=[];let linha='';const rP=/^\d\d[AB]$/,rV=/^\d\d\.\d\d\d$/,rT=/^\d\d:\d\d$/,rH=/^(\d\d\d[A-Z]?(?:\.\d)?)\s*[-–]\s*(.+)$/;const sk=['Relat','Quinta','Segunda','Terç','Quarta','Sexta','Sáb','Dom','Posiç','Empresa','Motorista','Filtros','Veíc','Início','Fim','JTP','COOL'];for(const row of rows){const ts=row.map(r=>r.t).filter(t=>t.length>0);if(!ts.length)continue;const ft=ts.join(' ');if(ts.length<2&&ts[0].length<5)continue;if(sk.some(w=>ft.startsWith(w)))continue;if(/^\d+\s*[-–]\s*\d+$/.test(ft))continue;if(/\d\d\/\d\d\/\d\d\d\d/.test(ft))continue;if(rH.test(ft)&&!rP.test(ts[0])){linha=ft.trim();continue;}if(!rP.test(ts[0])||!rV.test(ts[1])||ts.length<4)continue;let fi=-1,ii=-1;for(let i=ts.length-1;i>=2;i--){if(rT.test(ts[i])){if(fi===-1)fi=i;else if(ii===-1){ii=i;break;}}}if(ii<0||fi<0)continue;const mot=ts.slice(2,ii).join(' ').trim();if(!mot||!linha)continue;data.push({linha,posicao:ts[0],veiculo:ts[1],motorista:mot,inicio:ts[ii]});}return data;}
 
-// ── START ──────────────────────────────────
+// INIT
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none')doLogin()});
-loadGaragens();
+
+// Verifica sessão ativa
+(async()=>{
+  const{data:{session}}=await sb.auth.getSession();
+  if(session){
+    document.getElementById('l-email').value=session.user.email;
+    // Auto-login silencioso se sessão ativa
+  }
+})();
 </script>
 </body>
 </html>
