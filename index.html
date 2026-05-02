@@ -305,6 +305,7 @@ tr:hover td{background:#0F172A80}
           <option value="pcm">PCM</option>
           <option value="almoxarifado">Almoxarifado</option>
           <option value="lider_operacional">Líder Operacional</option>
+          <option value="lider_patio">Líder de Pátio</option>
           <option value="lider_suprimentos">Líder de Suprimentos</option>
           <option value="operacoes_seguras">Operações Seguras</option>
           <option value="lider_oficina">Líder de Oficina</option>
@@ -406,7 +407,7 @@ const S={user:null,perfil:null,tela:'painel',subtela:null,turno:'dia',garagens:[
 // Perfis que podem importar escala
 function isEscalante(){return S.perfil?.cargo==='lider_operacional'||S.perfil?.is_admin||S.perfil?.cargo==='diretoria'||S.perfil?.cargo==='gerente_garagem'}
 // Perfis que preenchem soltura
-function isLiderPatio(){return S.perfil?.cargo==='lider_operacional'||S.perfil?.cargo==='operacoes_seguras'||S.perfil?.is_admin||S.perfil?.cargo==='gerente_garagem'||S.perfil?.cargo==='diretoria'}
+function isLiderPatio(){return ['lider_patio','lider_operacional','operacoes_seguras','gerente_garagem','diretoria'].includes(S.perfil?.cargo)||S.perfil?.is_admin}
 // Perfis de supervisão que veem arquivo
 function isSupervisao(){return ['diretoria','gerente_garagem','lider_operacional','pcm'].includes(S.perfil?.cargo)||S.perfil?.is_admin}
 
@@ -430,7 +431,7 @@ async function carregarReservasDisponiveis(){
   sel.innerHTML=`<option value="">Selecione o reserva...</option>`+
     disponiveis.map(v=>`<option value="${v.prefixo}">${v.prefixo} — ${v.modelo||'—'} (${v.status==='disponivel'?'✅ Disponível':'🔧 '+v.status})</option>`).join('');
 }
-const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',pcm:'PCM',almoxarifado:'Almoxarifado',lider_operacional:'Líder Operacional',lider_suprimentos:'Líder de Suprimentos',operacoes_seguras:'Operações Seguras',lider_oficina:'Líder de Oficina'};
+const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',pcm:'PCM',almoxarifado:'Almoxarifado',lider_operacional:'Líder Operacional',lider_suprimentos:'Líder de Suprimentos',operacoes_seguras:'Operações Seguras',lider_oficina:'Líder de Oficina',lider_patio:'Líder de Pátio'};
 const ST_CFG={disponivel:{l:'Disponível',cls:'b-disp'},em_linha:{l:'Em Linha',cls:'b-linha'},manutencao:{l:'Manutenção',cls:'b-manut'},aguardando_peca:{l:'Ag. Peça',cls:'b-agpeca'},sinistro:{l:'Sinistro',cls:'b-sinistro'}};
 
 // HELPERS
