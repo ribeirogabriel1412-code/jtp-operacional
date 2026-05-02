@@ -322,22 +322,114 @@ tr:hover td{background:#0F172A80}
 
 <!-- Modal Saída 2.10 -->
 <div class="modal-ov" id="modal-saida" style="display:none" onclick="if(event.target===this)closeM('modal-saida')">
-  <div class="modal" style="max-width:400px">
-    <div class="modal-title"><span>Saída — <span id="ms-info" style="font-family:'DM Mono',monospace;color:var(--blue)"></span></span><button class="btn-x" onclick="closeM('modal-saida')">✕</button></div>
-    <label class="fl">Saiu?</label><select class="fs" id="ms-saiu"><option value="true">✅ Sim</option><option value="false">❌ Não saiu</option></select>
-    <label class="fl">Horário Real</label><input class="fi" id="ms-hora" type="time">
-    <label class="fl">Pontual?</label><select class="fs" id="ms-pont"><option value="">— Não informado —</option><option value="true">✅ Pontual</option><option value="false">⏰ Atrasado</option></select>
-    <label class="fl">Observação</label><input class="fi" id="ms-obs" placeholder="Ex: Carro reserva..." style="margin-bottom:16px">
-    <div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn-sec" onclick="closeM('modal-saida')">Cancelar</button><button class="btn-success" onclick="confirmarSaida()">✓ Confirmar</button></div>
+  <div class="modal" style="max-width:440px">
+    <div class="modal-title">
+      <span>Saída — <span id="ms-info" style="font-family:'DM Mono',monospace;color:var(--blue)"></span></span>
+      <button class="btn-x" onclick="closeM('modal-saida')">✕</button>
+    </div>
+
+    <label class="fl">Saiu?</label>
+    <select class="fs" id="ms-saiu" onchange="toggleReserva()">
+      <option value="true">✅ Sim — Saiu no horário</option>
+      <option value="false">❌ Não saiu</option>
+      <option value="reserva">🔄 Saiu com carro reserva</option>
+    </select>
+
+    <!-- Campo reserva — aparece só quando "Saiu com reserva" -->
+    <div id="ms-reserva-wrap" style="display:none">
+      <label class="fl">Prefixo do Carro Reserva</label>
+      <select class="fs" id="ms-reserva" style="margin-bottom:14px">
+        <option value="">Selecione o reserva...</option>
+      </select>
+    </div>
+
+    <label class="fl">Horário Real de Saída</label>
+    <input class="fi" id="ms-hora" type="time">
+
+    <label class="fl">Pontual?</label>
+    <select class="fs" id="ms-pont">
+      <option value="">— Não informado —</option>
+      <option value="true">✅ Pontual</option>
+      <option value="false">⏰ Atrasado</option>
+    </select>
+
+    <!-- Motivo não saída — aparece só quando "Não saiu" -->
+    <div id="ms-motivo-wrap" style="display:none">
+      <label class="fl">Motivo de Não Saída</label>
+      <select class="fs" id="ms-motivo">
+        <option value="">Selecione o motivo...</option>
+        <option value="problema_mecanico">🔧 Problema mecânico</option>
+        <option value="sem_motorista">👤 Sem motorista</option>
+        <option value="sem_reserva">🚫 Sem carro reserva disponível</option>
+        <option value="sinistro">💥 Sinistro</option>
+        <option value="aguardando_peca">⏳ Aguardando peça</option>
+        <option value="outro">📝 Outro</option>
+      </select>
+    </div>
+
+    <label class="fl">Observação</label>
+    <input class="fi" id="ms-obs" placeholder="Informações adicionais..." style="margin-bottom:16px">
+
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn-sec" onclick="closeM('modal-saida')">Cancelar</button>
+      <button class="btn-success" onclick="confirmarSaida()">✓ Confirmar</button>
+    </div>
   </div>
 </div>
+
+<!-- PRINT STYLES -->
+<style>
+@media print {
+  body * { visibility: hidden }
+  #print-210, #print-210 * { visibility: visible }
+  #print-210 {
+    position: fixed; top: 0; left: 0; width: 100%;
+    background: white; color: black;
+    font-family: Arial, sans-serif; font-size: 11px;
+  }
+  .no-print { display: none !important }
+}
+#print-210 { display: none }
+@media print { #print-210 { display: block } }
+</style>
+
+<!-- ÁREA DE IMPRESSÃO 2.10 -->
+<div id="print-210"></div>
 
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 const {createClient}=supabase;
 const sb=createClient('https://jboclubugfxmurvhcxgr.supabase.co','sb_publishable_hasmgR_BbXcJC6Xko6DzaA_N7kl7rNT');
 
-const S={user:null,perfil:null,tela:'painel',subtela:null,turno:'dia',garagens:[],frota:[],soltura210:[],filtroFrota:'todos',editVId:null,editSaidaId:null,editUserId:null};
+const S={user:null,perfil:null,tela:'painel',subtela:null,turno:'dia',garagens:[],frota:[],soltura210:[],filtroFrota:'todos',editVId:null,editSaidaId:null,editUserId:null,data210:null};
+
+// Perfis que podem importar escala
+function isEscalante(){return S.perfil?.cargo==='lider_operacional'||S.perfil?.is_admin||S.perfil?.cargo==='diretoria'||S.perfil?.cargo==='gerente_garagem'}
+// Perfis que preenchem soltura
+function isLiderPatio(){return S.perfil?.cargo==='lider_operacional'||S.perfil?.cargo==='operacoes_seguras'||S.perfil?.is_admin||S.perfil?.cargo==='gerente_garagem'||S.perfil?.cargo==='diretoria'}
+// Perfis de supervisão que veem arquivo
+function isSupervisao(){return ['diretoria','gerente_garagem','lider_operacional','pcm'].includes(S.perfil?.cargo)||S.perfil?.is_admin}
+
+// Toggle campos do modal saída
+function toggleReserva(){
+  const v=document.getElementById('ms-saiu').value;
+  document.getElementById('ms-reserva-wrap').style.display=v==='reserva'?'block':'none';
+  document.getElementById('ms-motivo-wrap').style.display=v==='false'?'block':'none';
+  if(v==='reserva') carregarReservasDisponiveis();
+}
+
+async function carregarReservasDisponiveis(){
+  const gid=S.perfil.garagem_id||(S.garagens[0]?.id);
+  const data=S.data210||hoje();
+  // Busca prefixos que já saíram hoje
+  const{data:jaFoiam}=await sb.from('soltura_2_10').select('prefixo').eq('garagem_id',gid).eq('data',data).eq('saiu',true);
+  const prefixosSaidos=new Set((jaFoiam||[]).map(r=>r.prefixo));
+  // Frota disponível = todos menos os que já saíram
+  const disponiveis=S.frota.filter(v=>!prefixosSaidos.has(v.prefixo)&&v.status!=='sinistro');
+  const sel=document.getElementById('ms-reserva');
+  sel.innerHTML=`<option value="">Selecione o reserva...</option>`+
+    disponiveis.map(v=>`<option value="${v.prefixo}">${v.prefixo} — ${v.modelo||'—'} (${v.status==='disponivel'?'✅ Disponível':'🔧 '+v.status})</option>`).join('');
+}
 const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',pcm:'PCM',almoxarifado:'Almoxarifado',lider_operacional:'Líder Operacional',lider_suprimentos:'Líder de Suprimentos',operacoes_seguras:'Operações Seguras',lider_oficina:'Líder de Oficina'};
 const ST_CFG={disponivel:{l:'Disponível',cls:'b-disp'},em_linha:{l:'Em Linha',cls:'b-linha'},manutencao:{l:'Manutenção',cls:'b-manut'},aguardando_peca:{l:'Ag. Peça',cls:'b-agpeca'},sinistro:{l:'Sinistro',cls:'b-sinistro'}};
 
@@ -678,11 +770,12 @@ function podeVerRelatorios(){
 async function renderFerr210(tab='painel', dataFiltro=null){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
 
-  // Abas — escalante vê importar, líder vê painel, supervisão vê arquivo
+  // Abas por perfil
   const tabs=`<div class="filtros">
-    <button class="filtro-btn${tab==='painel'?' active':''}" onclick="renderFerr210('painel')">📋 Painel do Líder</button>
-    <button class="filtro-btn${tab==='importar'?' active':''}" onclick="renderFerr210('importar')">📤 Importar Escala</button>
-    ${podeVerRelatorios()?`<button class="filtro-btn${tab==='arquivo'?' active':''}" onclick="renderFerr210('arquivo')">🗂️ Arquivo</button>`:''}
+    <button class="filtro-btn${tab==='painel'?' active':''}" onclick="renderFerr210('painel')">📋 ${isLiderPatio()?'Painel do Líder':'Visualizar'}</button>
+    ${isEscalante()?`<button class="filtro-btn${tab==='importar'?' active':''}" onclick="renderFerr210('importar')">📤 Importar Escala</button>`:''}
+    ${isEscalante()?`<button class="filtro-btn${tab==='historico'?' active':''}" onclick="renderFerr210('historico')">📅 Histórico de Importações</button>`:''}
+    ${isSupervisao()?`<button class="filtro-btn${tab==='arquivo'?' active':''}" onclick="renderFerr210('arquivo')">🗂️ Arquivo Supervisão</button>`:''}
   </div>`;
 
   // ── ABA IMPORTAR ──────────────────────────────────────────
@@ -772,6 +865,81 @@ async function renderFerr210(tab='painel', dataFiltro=null){
     return;
   }
 
+  // ── ABA HISTÓRICO (Escalante) ──────────────────────────────
+  if(tab==='historico'){
+    setMain(`<div class="loading"><div class="spinner"></div> Carregando histórico...</div>`);
+    const gid=S.perfil.garagem_id||(S.garagens[0]?.id);
+    // Busca as datas já importadas nos últimos 14 dias
+    const dataLimite=new Date(); dataLimite.setDate(dataLimite.getDate()-14);
+    const{data:escalas}=await sb.from('soltura_2_10').select('data,turno,numero_relatorio,importado_por')
+      .eq('garagem_id',gid).gte('data',dataLimite.toISOString().split('T')[0])
+      .order('data',{ascending:false});
+
+    // Agrupa por data+turno
+    const grupos={};
+    (escalas||[]).forEach(r=>{
+      const k=`${r.data}_${r.turno}`;
+      if(!grupos[k]) grupos[k]={data:r.data,turno:r.turno,num:r.numero_relatorio,importado_por:r.importado_por,total:0};
+      grupos[k].total++;
+    });
+
+    const items=Object.values(grupos).sort((a,b)=>b.data.localeCompare(a.data));
+
+    const rows=items.map(g=>{
+      const isAmanha=g.data===amanha();
+      const isHoje=g.data===hoje();
+      return`<tr>
+        <td>
+          <div style="font-weight:700">${formatData(g.data)}</div>
+          ${isAmanha?'<span class="badge" style="color:var(--purple);background:#8B5CF618;border-color:#8B5CF640;font-size:9px">D+1</span>':''}
+          ${isHoje?'<span class="badge b-ativo" style="font-size:9px">Hoje</span>':''}
+        </td>
+        <td>${g.turno==='dia'?'☀️ Dia':'🌙 Noite'}</td>
+        <td style="font-family:'DM Mono',monospace;color:var(--blue)">${g.num||'—'}</td>
+        <td style="font-family:'DM Mono',monospace">${g.total}</td>
+        <td style="color:var(--text3);font-size:12px">${g.importado_por||'—'}</td>
+        <td><span class="badge b-ok">✅ Importado</span></td>
+        <td><button class="btn-sm" onclick="renderFerr210('painel','${g.data}')">Ver painel →</button></td>
+      </tr>`;
+    }).join('');
+
+    // Próximos dias que ainda não têm escala
+    const proximosDias=[];
+    for(let i=1;i<=7;i++){
+      const d=new Date(); d.setDate(d.getDate()+i);
+      const ds=d.toISOString().split('T')[0];
+      if(!grupos[`${ds}_dia`]&&!grupos[`${ds}_noite`]){
+        proximosDias.push(ds);
+      }
+    }
+
+    const pendentes=proximosDias.slice(0,5).map(ds=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border2)">
+        <div style="font-weight:600">${formatData(ds)}</div>
+        <span class="badge b-nok" style="font-size:9px">⚠️ Sem escala</span>
+        <button class="btn-sm" onclick="renderFerr210('importar')" style="color:var(--amber)">Importar →</button>
+      </div>`).join('');
+
+    setMain(`
+      ${secTitle('📅','Histórico de Importações',back)}${tabs}
+      ${proximosDias.length>0?`
+        <div style="background:var(--surface);border:1px solid #F59E0B30;border-radius:12px;margin-bottom:16px;overflow:hidden">
+          <div style="background:#F59E0B18;padding:10px 14px;border-bottom:1px solid #F59E0B30">
+            <span style="color:var(--amber);font-size:12px;font-weight:700">⚠️ Próximos dias sem escala importada</span>
+          </div>
+          ${pendentes}
+        </div>`:''}
+      ${items.length===0
+        ?`<div class="empty"><div style="font-size:40px">📅</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Nenhuma importação nos últimos 14 dias</div><button class="btn-add" onclick="renderFerr210('importar')">📤 Importar primeira escala</button></div>`
+        :`<div class="tbl-wrap"><div class="tbl-head"><div style="font-size:13px;font-weight:700">${items.length} escalas importadas</div><button class="btn-add" onclick="renderFerr210('importar')">+ Importar nova</button></div>
+          <div style="overflow-x:auto"><table>
+            <thead><tr><th>Data</th><th>Turno</th><th>Nº Documento</th><th>Veículos</th><th>Importado por</th><th>Status</th><th></th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table></div></div>`}
+    `);
+    return;
+  }
+
   // ── ABA PAINEL ────────────────────────────────────────────
   setMain(`<div class="loading"><div class="spinner"></div> Carregando...</div>`);
   const gid=S.perfil.garagem_id||(S.garagens[0]?.id);
@@ -815,19 +983,24 @@ async function renderFerr210(tab='painel', dataFiltro=null){
   const isAmanha=dataConsulta===amanha();
 
   const rows=S.soltura210.map(r=>{
+    const usouReserva=r.observacao&&r.observacao.startsWith('Reserva:');
     const sH=r.saiu===true
       ?`<button class="status-btn sb-sim" onclick="openModalSaida('${r.id}','${r.prefixo}','${r.horario_programado}')">✅ ${r.horario_real||'Saiu'}</button>`
       :r.saiu===false
         ?`<button class="status-btn sb-nao" onclick="openModalSaida('${r.id}','${r.prefixo}','${r.horario_programado}')">❌ Não saiu</button>`
         :`<button class="status-btn sb-pend" onclick="openModalSaida('${r.id}','${r.prefixo}','${r.horario_programado}')">○ Confirmar</button>`;
     const pontH=r.pontual===true?`<span style="color:var(--green);font-size:11px;font-weight:600">✓</span>`:r.pontual===false?`<span style="color:var(--red);font-size:11px;font-weight:600">⏰</span>`:`<span style="color:var(--text4)">—</span>`;
-    return`<tr style="background:${r.saiu===true?'#00C48C05':r.saiu===false?'#EF444405':''}">
+    const reservaH=usouReserva?`<span style="color:var(--purple);font-family:'DM Mono',monospace;font-size:11px">🔄 ${r.observacao.split('Reserva:')[1].split('|')[0].trim()}</span>`:`<span style="color:var(--text4)">—</span>`;
+    const obsH=r.observacao&&!usouReserva?`<span style="color:var(--text3);font-size:11px">${r.observacao.substring(0,30)}</span>`:'';
+    return`<tr style="background:${r.saiu===true?(usouReserva?'#8B5CF608':'#00C48C05'):r.saiu===false?'#EF444405':''}">
       <td><span style="font-family:'DM Mono',monospace;font-weight:700">${r.prefixo}</span></td>
       <td><span style="color:var(--amber);font-family:'DM Mono',monospace">${r.horario_programado||'—'}</span></td>
-      <td style="color:var(--text2);font-size:12px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.linha||'—'}</td>
-      <td style="color:var(--text3);font-size:12px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.motorista||'—'}</td>
+      <td style="color:var(--text2);font-size:12px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.linha||'—'}</td>
+      <td style="color:var(--text3);font-size:12px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.motorista||'—'}</td>
       <td>${sH}</td>
       <td>${pontH}</td>
+      <td>${reservaH}</td>
+      <td>${obsH}</td>
     </tr>`;
   }).join('');
 
@@ -870,13 +1043,13 @@ async function renderFerr210(tab='painel', dataFiltro=null){
         <div style="font-size:13px;font-weight:700">${total} veículos · ${S.turno==='dia'?'☀️ Dia':'🌙 Noite'} · ${formatData(dataConsulta)}</div>
         <div style="display:flex;gap:8px">
           <button onclick="fecharRelatorio210('${gid}','${dataConsulta}','${numDoc}')" class="btn-sm" style="color:var(--green)">✅ Fechar Relatório</button>
-          <button onclick="window.print()" class="btn-sm">🖨️ Imprimir</button>
+          <button onclick="imprimir210('${numDoc}','${dataConsulta}','${S.turno}','${S.garagens.find(g=>g.id===gid)?.nome||'JTP'}')" class="btn-sm">🖨️ Imprimir Formulário</button>
           <button onclick="renderFerr210('importar')" class="btn-sm">📤 Nova escala</button>
         </div>
       </div>
       <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>Prefixo</th><th>Hor. Prog.</th><th>Linha</th><th>Motorista</th><th>Saída</th><th>Pont.</th></tr></thead>
+            <thead><tr><th>Prefixo</th><th>Hor. Prog.</th><th>Linha</th><th>Motorista</th><th>Saída</th><th>Pont.</th><th>Reserva</th><th>Obs.</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -995,17 +1168,100 @@ async function salvarVeiculo(){
 
 // MODAL SAÍDA
 function openModalSaida(id,pref,h){
-  S.editSaidaId=id;document.getElementById('ms-info').textContent=`${pref} — ${h}`;
-  document.getElementById('ms-saiu').value='true';document.getElementById('ms-hora').value=h||'';
-  document.getElementById('ms-pont').value='';document.getElementById('ms-obs').value='';
+  S.editSaidaId=id;
+  document.getElementById('ms-info').textContent=`${pref} — ${h}`;
+  document.getElementById('ms-saiu').value='true';
+  document.getElementById('ms-hora').value=h||'';
+  document.getElementById('ms-pont').value='';
+  document.getElementById('ms-obs').value='';
+  document.getElementById('ms-reserva-wrap').style.display='none';
+  document.getElementById('ms-motivo-wrap').style.display='none';
   document.getElementById('modal-saida').style.display='flex';
 }
+
 async function confirmarSaida(){
-  const saiu=document.getElementById('ms-saiu').value==='true';
+  const saiuVal=document.getElementById('ms-saiu').value;
+  const saiu=saiuVal!=='false';
+  const usouReserva=saiuVal==='reserva';
+  const reserva=document.getElementById('ms-reserva')?.value||'';
   const pv=document.getElementById('ms-pont').value;
-  const{error}=await sb.from('soltura_2_10').update({saiu,horario_real:document.getElementById('ms-hora').value||null,pontual:pv===''?null:pv==='true',observacao:document.getElementById('ms-obs').value||null}).eq('id',S.editSaidaId);
+  const motivo=document.getElementById('ms-motivo')?.value||'';
+  const hora=document.getElementById('ms-hora').value;
+  let obs=document.getElementById('ms-obs').value||'';
+  if(usouReserva&&reserva) obs=`Reserva: ${reserva}${obs?' | '+obs:''}`;
+  if(!saiu&&motivo) obs=`Motivo: ${motivo}${obs?' | '+obs:''}`;
+
+  const{error}=await sb.from('soltura_2_10').update({
+    saiu, horario_real:hora||null,
+    pontual:pv===''?null:pv==='true',
+    observacao:obs||null,
+  }).eq('id',S.editSaidaId);
+
   if(error){toast('Erro: '+error.message,'err');return}
-  toast(saiu?'✅ Saída confirmada!':'❌ Não saída registrada');closeM('modal-saida');renderFerr210('painel');
+  toast(saiu?(usouReserva?`🔄 Reserva ${reserva} confirmada!`:'✅ Saída confirmada!'):'❌ Não saída registrada');
+  closeM('modal-saida');
+  renderFerr210('painel',S.data210);
+}
+
+// Gera impressão formulário físico 2.10
+function imprimir210(numDoc, dataEvento, turno, garagem){
+  const reg=S.soltura210;
+  const rows=reg.map((r,i)=>`
+    <tr style="height:28px">
+      <td style="text-align:center;font-weight:700;font-family:monospace">${r.prefixo}</td>
+      <td style="text-align:center;font-family:monospace">${r.horario_programado||''}</td>
+      <td>${r.linha||''}</td>
+      <td style="font-size:10px">${r.motorista||''}</td>
+      <td style="text-align:center;border:1px solid #ccc;width:40px"></td>
+      <td style="text-align:center;border:1px solid #ccc;width:50px"></td>
+      <td style="text-align:center;border:1px solid #ccc;width:50px"></td>
+      <td style="text-align:center;border:1px solid #ccc;width:60px"></td>
+      <td style="border:1px solid #ccc;width:100px"></td>
+    </tr>`).join('');
+
+  const html=`
+    <div style="padding:16px;font-family:Arial,sans-serif;font-size:11px">
+      <div style="text-align:center;margin-bottom:10px">
+        <div style="font-size:15px;font-weight:bold">JTP TRANSPORTES — RELATÓRIO DE SOLTURA DE FROTA</div>
+        <div style="font-size:13px;margin-top:4px">Documento Nº <strong>${numDoc}</strong></div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:10px">
+        <tr>
+          <td style="border:1px solid #999;padding:4px 8px"><strong>Garagem:</strong> ${garagem}</td>
+          <td style="border:1px solid #999;padding:4px 8px"><strong>Data:</strong> ${formatData(dataEvento)}</td>
+          <td style="border:1px solid #999;padding:4px 8px"><strong>Turno:</strong> ${turno==='dia'?'☀️ Dia':'🌙 Noite'}</td>
+          <td style="border:1px solid #999;padding:4px 8px"><strong>Total programado:</strong> ${reg.length}</td>
+        </tr>
+      </table>
+      <table style="width:100%;border-collapse:collapse;font-size:10px">
+        <thead>
+          <tr style="background:#f0f0f0">
+            <th style="border:1px solid #999;padding:5px;text-align:center">PREFIXO</th>
+            <th style="border:1px solid #999;padding:5px;text-align:center">HOR. PROG.</th>
+            <th style="border:1px solid #999;padding:5px">LINHA</th>
+            <th style="border:1px solid #999;padding:5px">MOTORISTA</th>
+            <th style="border:1px solid #999;padding:5px;text-align:center">SAIU<br>S/N</th>
+            <th style="border:1px solid #999;padding:5px;text-align:center">HOR.<br>REAL</th>
+            <th style="border:1px solid #999;padding:5px;text-align:center">PONT.<br>S/N</th>
+            <th style="border:1px solid #999;padding:5px;text-align:center">PREFIXO<br>RESERVA</th>
+            <th style="border:1px solid #999;padding:5px">OBSERVAÇÃO</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div style="margin-top:16px;display:flex;gap:40px">
+        <div style="flex:1">Preenchido por: ___________________________</div>
+        <div style="flex:1">Assinatura: ___________________________</div>
+        <div style="flex:1">Hora de fechamento: ___________</div>
+      </div>
+      <div style="margin-top:8px;font-size:9px;color:#666;text-align:center">
+        JTP Transportes · ${numDoc} · Gerado em ${new Date().toLocaleString('pt-BR')}
+      </div>
+    </div>`;
+
+  document.getElementById('print-210').innerHTML=html;
+  window.print();
+  setTimeout(()=>{document.getElementById('print-210').innerHTML=''},2000);
 }
 
 // PDF 2.10
