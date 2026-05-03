@@ -305,7 +305,8 @@ tr:hover td{background:#0F172A80}
       <div><label class="fl">Cargo *</label>
         <select class="fs" id="mu-cargo" style="margin-bottom:0" onchange="toggleGaraModal()">
           <option value="gerente_garagem">Gerente de Garagem</option>
-          <option value="pcm">PCM</option>
+          <option value="lider_pcm">Líder PCM</option>
+          <option value="assistente_pcm">Assistente PCM</option>
           <option value="almoxarifado">Almoxarifado</option>
           <option value="lider_operacional">Líder Operacional</option>
           <option value="lider_patio">Líder de Pátio</option>
@@ -492,11 +493,11 @@ const sb=createClient('https://jboclubugfxmurvhcxgr.supabase.co','sb_publishable
 const S={user:null,perfil:null,tela:'painel',subtela:null,turno:'dia',garagens:[],frota:[],soltura210:[],filtroFrota:'todos',editVId:null,editSaidaId:null,editUserId:null,data210:null};
 
 // Perfis que podem importar escala
-function isEscalante(){return S.perfil?.cargo==='lider_operacional'||S.perfil?.is_admin||S.perfil?.cargo==='diretoria'||S.perfil?.cargo==='gerente_garagem'}
+function isEscalante(){return ['lider_operacional','gerente_garagem','diretoria','lider_pcm'].includes(S.perfil?.cargo)||S.perfil?.is_admin}
 // Perfis que preenchem soltura
 function isLiderPatio(){return ['lider_patio','lider_operacional','operacoes_seguras','gerente_garagem','diretoria'].includes(S.perfil?.cargo)||S.perfil?.is_admin}
 // Perfis de supervisão que veem arquivo
-function isSupervisao(){return ['diretoria','gerente_garagem','lider_operacional','pcm'].includes(S.perfil?.cargo)||S.perfil?.is_admin}
+function isSupervisao(){return ['diretoria','gerente_garagem','lider_operacional','lider_pcm','assistente_pcm'].includes(S.perfil?.cargo)||S.perfil?.is_admin}
 
 // Toggle campos do modal saída
 function toggleReserva(){
@@ -518,7 +519,7 @@ async function carregarReservasDisponiveis(){
   sel.innerHTML=`<option value="">Selecione o reserva...</option>`+
     disponiveis.map(v=>`<option value="${v.prefixo}">${v.prefixo} — ${v.modelo||'—'} (${v.status==='disponivel'?'✅ Disponível':'🔧 '+v.status})</option>`).join('');
 }
-const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',pcm:'PCM',almoxarifado:'Almoxarifado',lider_operacional:'Líder Operacional',lider_suprimentos:'Líder de Suprimentos',operacoes_seguras:'Operações Seguras',lider_oficina:'Líder de Oficina',lider_patio:'Líder de Pátio'};
+const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',lider_pcm:'Líder PCM',assistente_pcm:'Assistente PCM',almoxarifado:'Almoxarifado',lider_operacional:'Líder Operacional',lider_suprimentos:'Líder de Suprimentos',operacoes_seguras:'Operações Seguras',lider_oficina:'Líder de Oficina',lider_patio:'Líder de Pátio'};
 const ST_CFG={disponivel:{l:'Disponível',cls:'b-disp'},em_linha:{l:'Em Linha',cls:'b-linha'},manutencao:{l:'Manutenção',cls:'b-manut'},aguardando_peca:{l:'Ag. Peça',cls:'b-agpeca'},sinistro:{l:'Sinistro',cls:'b-sinistro'}};
 
 // HELPERS
@@ -895,7 +896,7 @@ async function renderAdmin(){
   setMain(`
     ${secTitle('⚙️',`Gestão de Usuários — ${(users||[]).length} cadastrados`,`<button class="btn-add" onclick="abrirModalUser()">+ Novo Usuário</button>`)}
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px">
-      ${['diretoria','gerente_garagem','pcm','almoxarifado','lider_operacional','lider_suprimentos','operacoes_seguras','lider_oficina'].map(c=>{
+      ${['diretoria','gerente_garagem','lider_pcm','assistente_pcm','almoxarifado','lider_operacional','lider_patio','lider_suprimentos','operacoes_seguras','lider_oficina'].map(c=>{
         const cnt=(users||[]).filter(u=>u.cargo===c).length;
         return`<div style="text-align:center"><div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:700;color:var(--text)">${cnt}</div><div style="color:var(--text3);font-size:10px;margin-top:2px">${CARGOS[c]}</div></div>`
       }).join('')}
@@ -1533,7 +1534,7 @@ function tempoDecorrido(iso){
 async function renderFerr22(aba='ativas'){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
   const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
-  const isPCM=['pcm','lider_oficina','gerente_garagem','diretoria'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
+  const isPCM=['lider_pcm','assistente_pcm','lider_oficina','gerente_garagem','diretoria'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
 
   const tabs=`<div class="filtros">
     <button class="filtro-btn${aba==='ativas'?' active':''}" onclick="renderFerr22('ativas')">🔧 Em Aberto</button>
