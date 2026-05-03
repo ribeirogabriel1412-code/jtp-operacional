@@ -239,6 +239,7 @@ tr:hover td{background:#0F172A80}
       <button class="nav-btn" onclick="toggleSub('sub-ferr','arr-ferr',this)"><span>🛠️</span> Ferramentas <span id="arr-ferr" style="margin-left:auto;font-size:10px;color:var(--text4)">▶</span></button>
       <div class="submenu" id="sub-ferr">
         <button class="sub-btn" onclick="navToSub('ferr-210')">📋 2.10 Soltura de Frota</button>
+        <button class="sub-btn" onclick="navToSub('ferr-22')">🔧 2.2 Priorização Oficina</button>
         <button class="sub-btn" onclick="navToSub('ferr-lav')">🧼 Programação Lavagem</button>
         <button class="sub-btn" onclick="navToSub('ferr-ctrl')">✅ Controle Soltura</button>
       </div>
@@ -380,7 +381,91 @@ tr:hover td{background:#0F172A80}
   </div>
 </div>
 
-<!-- PRINT STYLES -->
+<!-- MODAL OCORRÊNCIA 2.2 -->
+<div class="modal-ov" id="modal-22" style="display:none" onclick="if(event.target===this)closeM('modal-22')">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-title">
+      <span id="m22-titulo">Nova Ocorrência</span>
+      <button class="btn-x" onclick="closeM('modal-22')">✕</button>
+    </div>
+    <div class="mgrid">
+      <div>
+        <label class="fl">Prefixo *</label>
+        <select class="fs" id="m22-prefixo" style="margin-bottom:0">
+          <option value="">Selecione o veículo...</option>
+        </select>
+      </div>
+      <div>
+        <label class="fl">Tipo *</label>
+        <select class="fs" id="m22-tipo" style="margin-bottom:0">
+          <option value="corretiva">🔴 Corretiva</option>
+          <option value="preventiva_leve">🟡 Preventiva Leve</option>
+          <option value="preventiva_pesada">🟠 Preventiva Pesada</option>
+        </select>
+      </div>
+      <div class="full">
+        <label class="fl">Descrição do Problema</label>
+        <input class="fi" id="m22-desc" placeholder="Ex: Motor superaquecendo, troca de embreagem..." style="margin-bottom:0">
+      </div>
+      <div>
+        <label class="fl">Mecânico Responsável</label>
+        <input class="fi" id="m22-mecanico" placeholder="Nome do mecânico" style="margin-bottom:0">
+      </div>
+      <div>
+        <label class="fl">Status Inicial</label>
+        <select class="fs" id="m22-status" style="margin-bottom:0">
+          <option value="em_manutencao">🔧 Em Manutenção</option>
+          <option value="aguardando_peca">📦 Aguardando Peça</option>
+          <option value="aguardando_aprovacao">⏳ Aguardando Aprovação</option>
+        </select>
+      </div>
+      <div>
+        <label class="fl">Hora de Entrada</label>
+        <input class="fi" id="m22-entrada" type="datetime-local" style="margin-bottom:0">
+      </div>
+      <div>
+        <label class="fl">Previsão de Liberação</label>
+        <input class="fi" id="m22-previsao" type="datetime-local" style="margin-bottom:0">
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+      <button class="btn-sec" onclick="closeM('modal-22')">Cancelar</button>
+      <button class="btn-success" id="btn-salvar-22" onclick="salvarOcorrencia22()">💾 Abrir Ocorrência</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL ATUALIZAR STATUS 2.2 -->
+<div class="modal-ov" id="modal-22-status" style="display:none" onclick="if(event.target===this)closeM('modal-22-status')">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-title">
+      <span>Atualizar — <span id="m22s-info" style="font-family:'DM Mono',monospace;color:var(--blue)"></span></span>
+      <button class="btn-x" onclick="closeM('modal-22-status')">✕</button>
+    </div>
+    <label class="fl">Novo Status</label>
+    <select class="fs" id="m22s-status">
+      <option value="em_manutencao">🔧 Em Manutenção</option>
+      <option value="aguardando_peca">📦 Aguardando Peça</option>
+      <option value="aguardando_aprovacao">⏳ Aguardando Aprovação</option>
+      <option value="liberado">✅ Liberado</option>
+    </select>
+    <div id="m22s-lib-wrap" style="display:none">
+      <label class="fl">Hora de Liberação</label>
+      <input class="fi" id="m22s-hora-lib" type="datetime-local">
+      <div style="background:#00C48C15;border:1px solid #00C48C30;border-radius:10px;padding:12px;font-size:12px;color:var(--green);margin-bottom:14px">
+        ✅ Ao liberar, o status do veículo na frota será atualizado automaticamente para <strong>Disponível</strong>
+      </div>
+    </div>
+    <label class="fl">Mecânico Responsável</label>
+    <input class="fi" id="m22s-mecanico" placeholder="Nome do mecânico">
+    <label class="fl">Observação</label>
+    <input class="fi" id="m22s-obs" placeholder="Ex: Aguardando peça do fornecedor X..." style="margin-bottom:20px">
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn-sec" onclick="closeM('modal-22-status')">Cancelar</button>
+      <button class="btn-success" onclick="atualizarStatus22()">✓ Confirmar</button>
+    </div>
+  </div>
+</div>
 <style>
 @media print {
   body * { visibility: hidden }
@@ -537,7 +622,7 @@ function navToSub(sub){
   S.subtela=sub;
   document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes(sub))b.classList.add('active')});
-  const map={'ferr-210':renderFerr210,'ferr-lav':renderFerrLav,'ferr-ctrl':renderFerrCtrl,'rel-todos':renderRelatorios};
+  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-lav':renderFerrLav,'ferr-ctrl':renderFerrCtrl,'rel-todos':renderRelatorios};
   if(map[sub]) map[sub]();
 }
 
@@ -908,6 +993,7 @@ async function toggleAtivo(id,ativo,nome){
 function renderFerramentas(){
   const tools=[
     {id:'ferr-210',icon:'📋',name:'2.10 Soltura de Frota',desc:'Importe o PDF da escala GPS, confirme saídas em tempo real e imprima o relatório 2.10.'},
+    {id:'ferr-22',icon:'🔧',name:'2.2 Priorização Oficina',desc:'Gerencie carros parados por ocorrência. PCM lança, acompanha e libera. Futuro: integração Praxio.'},
     {id:'ferr-lav',icon:'🧼',name:'Programação de Lavagem',desc:'Importe via Excel e registre execuções em tempo real. Acompanha metas por tipo.'},
     {id:'ferr-ctrl',icon:'✅',name:'Controle Soltura / Oficina',desc:'Status da oficina + lavagem por veículo. Liberado = pronto para soltura.'},
   ];
@@ -1397,7 +1483,260 @@ async function fecharRelatorio210(gid, dataEvento, numero){
   renderFerr210('painel',dataEvento);
 }
 
-function renderFerrLav(){
+// ── 2.2 PRIORIZAÇÃO OFICINA ────────────────────────────────
+const STATUS22={
+  em_manutencao:  {l:'Em Manutenção',   ic:'🔧', c:'var(--amber)',  cls:'b-manut'},
+  aguardando_peca:{l:'Ag. Peça',        ic:'📦', c:'var(--red)',    cls:'b-agpeca'},
+  aguardando_aprovacao:{l:'Ag. Aprovação',ic:'⏳',c:'var(--purple)',cls:'b-sinistro'},
+  liberado:       {l:'Liberado',         ic:'✅', c:'var(--green)', cls:'b-ok'},
+};
+const TIPO22={
+  corretiva:        {l:'Corretiva',       ic:'🔴', c:'var(--red)'},
+  preventiva_leve:  {l:'Prev. Leve',      ic:'🟡', c:'var(--amber)'},
+  preventiva_pesada:{l:'Prev. Pesada',    ic:'🟠', c:'#F97316'},
+};
+
+function sigla22(gid){
+  const g=S.garagens.find(x=>x.id===gid);
+  if(!g) return 'JTP';
+  return g.cidade.toUpperCase().split(' ').map(p=>p[0]).join('').slice(0,4);
+}
+
+function gerarNum22(gid){
+  const d=new Date();
+  const dd=String(d.getDate()).padStart(2,'0');
+  const mm=String(d.getMonth()+1).padStart(2,'0');
+  const yy=String(d.getFullYear()).slice(2);
+  const hh=String(d.getHours()).padStart(2,'0');
+  const min=String(d.getMinutes()).padStart(2,'0');
+  return `2.2/${dd}${mm}${yy}-${hh}${min}/${sigla22(gid)}`;
+}
+
+function dtLocal(){
+  const now=new Date();
+  return new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,16);
+}
+
+function formatDT(iso){
+  if(!iso) return '—';
+  return new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+}
+
+function tempoDecorrido(iso){
+  if(!iso) return '';
+  const diff=Math.round((Date.now()-new Date(iso).getTime())/60000);
+  if(diff<60) return `${diff}min`;
+  const h=Math.floor(diff/60),m=diff%60;
+  return `${h}h${m>0?m+'min':''}`;
+}
+
+async function renderFerr22(aba='ativas'){
+  const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const isPCM=['pcm','lider_oficina','gerente_garagem','diretoria'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
+
+  const tabs=`<div class="filtros">
+    <button class="filtro-btn${aba==='ativas'?' active':''}" onclick="renderFerr22('ativas')">🔧 Em Aberto</button>
+    <button class="filtro-btn${aba==='hoje'?' active':''}" onclick="renderFerr22('hoje')">📅 Hoje</button>
+    <button class="filtro-btn${aba==='historico'?' active':''}" onclick="renderFerr22('historico')">🗂️ Histórico</button>
+  </div>`;
+
+  setMain(`<div class="loading"><div class="spinner"></div> Carregando...</div>`);
+
+  // Busca ocorrências conforme aba
+  let q=sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).order('created_at',{ascending:false});
+  if(aba==='ativas') q=q.neq('status','liberado');
+  else if(aba==='hoje'){
+    const ini=new Date(); ini.setHours(0,0,0,0);
+    const fim=new Date(); fim.setHours(23,59,59,999);
+    q=q.gte('created_at',ini.toISOString()).lte('created_at',fim.toISOString());
+  } else q=q.limit(50);
+
+  const{data:ocs}=await q;
+  const lista=ocs||[];
+
+  // Estatísticas rápidas
+  const{data:todas}=await sb.from('ocorrencias_22').select('status,tipo').eq('garagem_id',gid).neq('status','liberado');
+  const t=todas||[];
+  const emMan=t.filter(o=>o.status==='em_manutencao').length;
+  const agPeca=t.filter(o=>o.status==='aguardando_peca').length;
+  const agAprov=t.filter(o=>o.status==='aguardando_aprovacao').length;
+  const corr=t.filter(o=>o.tipo==='corretiva').length;
+  const prevL=t.filter(o=>o.tipo==='preventiva_leve').length;
+  const prevP=t.filter(o=>o.tipo==='preventiva_pesada').length;
+
+  const addBtn=isPCM?`<button class="btn-add" onclick="abrirModal22()">+ Nova Ocorrência</button>`:'';
+
+  const cards=lista.map(o=>{
+    const st=STATUS22[o.status]||{l:o.status,ic:'?',c:'#475569',cls:''};
+    const tp=TIPO22[o.tipo]||{l:o.tipo,ic:'?',c:'#475569'};
+    const tempo=o.status!=='liberado'?tempoDecorrido(o.hora_entrada):'';
+    const previsaoColor=o.hora_previsao&&new Date(o.hora_previsao)<new Date()&&o.status!=='liberado'?'var(--red)':'var(--text3)';
+    return`<div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${st.c};border-radius:12px;padding:16px 18px;margin-bottom:10px;cursor:pointer;transition:all .2s" onclick="abrirModalStatus22('${o.id}','${o.prefixo}','${o.status}','${o.mecanico||''}')" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700">${o.prefixo}</span>
+          <span style="color:${tp.c};font-size:12px;font-weight:600">${tp.ic} ${tp.l}</span>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          ${tempo?`<span style="color:var(--text4);font-size:11px">⏱️ ${tempo}</span>`:''}
+          <span class="badge ${st.cls}">${st.ic} ${st.l}</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px">
+        <div><span style="color:var(--text3)">Nº Doc:</span> <span style="font-family:'DM Mono',monospace;color:var(--blue)">${o.numero}</span></div>
+        <div><span style="color:var(--text3)">Mecânico:</span> <span>${o.mecanico||'—'}</span></div>
+        <div><span style="color:var(--text3)">Entrada:</span> <span>${formatDT(o.hora_entrada)}</span></div>
+        <div><span style="color:${previsaoColor}">Previsão:</span> <span style="color:${previsaoColor}">${formatDT(o.hora_previsao)}${o.hora_previsao&&new Date(o.hora_previsao)<new Date()&&o.status!=='liberado'?' ⚠️':''}</span></div>
+        ${o.descricao?`<div style="grid-column:1/-1;color:var(--text3)">📝 ${o.descricao}</div>`:''}
+        ${o.status==='liberado'&&o.hora_liberacao?`<div style="grid-column:1/-1;color:var(--green)">✅ Liberado em ${formatDT(o.hora_liberacao)}</div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+
+  setMain(`
+    ${secTitle('🔧','2.2 — Priorização Oficina',back)}
+
+    <!-- Stats rápidas -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:16px">
+      ${[
+        {l:'Em Manutenção',v:emMan,c:'var(--amber)'},
+        {l:'Ag. Peça',v:agPeca,c:'var(--red)'},
+        {l:'Ag. Aprovação',v:agAprov,c:'var(--purple)'},
+        {l:'Corretivas',v:corr,c:'var(--red)'},
+        {l:'Prev. Leve',v:prevL,c:'var(--amber)'},
+        {l:'Prev. Pesada',v:prevP,c:'#F97316'},
+      ].map(k=>`<div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${k.c};border-radius:10px;padding:10px 12px">
+        <div style="color:var(--text3);font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase">${k.l}</div>
+        <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:${k.c};margin-top:2px">${k.v}</div>
+      </div>`).join('')}
+    </div>
+
+    ${tabs}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <span style="color:var(--text3);font-size:12px">${lista.length} ocorrência(s)</span>
+      ${addBtn}
+    </div>
+
+    ${lista.length===0
+      ?`<div class="empty"><div style="font-size:40px">🔧</div>
+          <div style="color:var(--text2);font-weight:600;margin:12px 0">
+            ${aba==='ativas'?'Nenhum carro em aberto no momento':aba==='hoje'?'Nenhuma ocorrência hoje':'Nenhuma ocorrência encontrada'}
+          </div>
+          ${isPCM?`<button class="btn-add" onclick="abrirModal22()">+ Abrir Primeira Ocorrência</button>`:''}
+        </div>`
+      :cards}
+
+    <div class="info-blue info-banner">🔗 Fase 2: integração Praxio alimenta automaticamente · Líder de Manutenção preenche checklist de liberação</div>
+  `);
+}
+
+// Abre modal nova ocorrência
+async function abrirModal22(){
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  // Popula frota em manutenção ou disponível
+  const{data:frota}=await sb.from('frota').select('id,prefixo,modelo,status').eq('garagem_id',gid).in('status',['manutencao','aguardando_peca','disponivel']).order('prefixo');
+  const sel=document.getElementById('m22-prefixo');
+  sel.innerHTML=`<option value="">Selecione o veículo...</option>`+
+    (frota||[]).map(v=>`<option value="${v.id}|${v.prefixo}">${v.prefixo} — ${v.modelo||'—'} (${STATUS22[v.status]?.l||v.status})</option>`).join('');
+  document.getElementById('m22-desc').value='';
+  document.getElementById('m22-mecanico').value='';
+  document.getElementById('m22-tipo').value='corretiva';
+  document.getElementById('m22-status').value='em_manutencao';
+  document.getElementById('m22-entrada').value=dtLocal();
+  document.getElementById('m22-previsao').value='';
+  document.getElementById('m22-titulo').textContent='Nova Ocorrência';
+  document.getElementById('btn-salvar-22').textContent='💾 Abrir Ocorrência';
+  document.getElementById('modal-22').style.display='flex';
+}
+
+async function salvarOcorrencia22(){
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const prefixoSel=document.getElementById('m22-prefixo').value;
+  if(!prefixoSel){toast('Selecione um veículo!','err');return}
+  const[vid,prefixo]=prefixoSel.split('|');
+  const tipo=document.getElementById('m22-tipo').value;
+  const status=document.getElementById('m22-status').value;
+  const desc=document.getElementById('m22-desc').value.trim();
+  const mecanico=document.getElementById('m22-mecanico').value.trim();
+  const entrada=document.getElementById('m22-entrada').value;
+  const previsao=document.getElementById('m22-previsao').value;
+  const numero=gerarNum22(gid);
+
+  const btn=document.getElementById('btn-salvar-22');
+  btn.textContent='Salvando...';btn.disabled=true;
+
+  // Atualiza status da frota
+  const statusFrota=status==='aguardando_peca'?'aguardando_peca':'manutencao';
+  await sb.from('frota').update({status:statusFrota,updated_at:new Date().toISOString()}).eq('id',vid);
+
+  const{error}=await sb.from('ocorrencias_22').insert({
+    garagem_id:gid, veiculo_id:vid, prefixo, numero, tipo, status,
+    descricao:desc||null, mecanico:mecanico||null,
+    hora_entrada:entrada?new Date(entrada).toISOString():new Date().toISOString(),
+    hora_previsao:previsao?new Date(previsao).toISOString():null,
+    aberto_por:S.perfil.id, aberto_por_nome:S.perfil.nome,
+  });
+
+  btn.textContent='💾 Abrir Ocorrência';btn.disabled=false;
+  if(error){toast('Erro: '+error.message,'err');return}
+  toast(`✅ Ocorrência ${numero} aberta!`);
+  closeM('modal-22');
+  renderFerr22('ativas');
+}
+
+// Modal atualização de status
+function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
+  S.editId22=id;
+  document.getElementById('m22s-info').textContent=`${prefixo}`;
+  document.getElementById('m22s-status').value=statusAtual;
+  document.getElementById('m22s-mecanico').value=mecanico||'';
+  document.getElementById('m22s-obs').value='';
+  document.getElementById('m22s-hora-lib').value=dtLocal();
+  document.getElementById('m22s-lib-wrap').style.display=statusAtual==='liberado'?'block':'none';
+  document.getElementById('m22s-status').onchange=function(){
+    document.getElementById('m22s-lib-wrap').style.display=this.value==='liberado'?'block':'none';
+  };
+  document.getElementById('modal-22-status').style.display='flex';
+}
+
+async function atualizarStatus22(){
+  const novoStatus=document.getElementById('m22s-status').value;
+  const mecanico=document.getElementById('m22s-mecanico').value.trim();
+  const obs=document.getElementById('m22s-obs').value.trim();
+  const horaLib=document.getElementById('m22s-hora-lib').value;
+  const isLib=novoStatus==='liberado';
+
+  const payload={
+    status:novoStatus,
+    mecanico:mecanico||null,
+    updated_at:new Date().toISOString(),
+    ...(isLib&&{hora_liberacao:horaLib?new Date(horaLib).toISOString():new Date().toISOString(),fechado_por_nome:S.perfil.nome}),
+    ...(obs&&{descricao:obs}),
+  };
+
+  const{data:oc}=await sb.from('ocorrencias_22').select('veiculo_id').eq('id',S.editId22).single();
+  const{error}=await sb.from('ocorrencias_22').update(payload).eq('id',S.editId22);
+  if(error){toast('Erro: '+error.message,'err');return}
+
+  // Se liberado → atualiza frota para disponível
+  if(isLib&&oc?.veiculo_id){
+    await sb.from('frota').update({status:'disponivel',updated_at:new Date().toISOString()}).eq('id',oc.veiculo_id);
+    toast('✅ Veículo liberado e frota atualizada!');
+  } else {
+    // Atualiza status da frota conforme novo status
+    if(oc?.veiculo_id){
+      const statusFrota=novoStatus==='aguardando_peca'?'aguardando_peca':'manutencao';
+      await sb.from('frota').update({status:statusFrota,updated_at:new Date().toISOString()}).eq('id',oc.veiculo_id);
+    }
+    toast(`✅ Status atualizado para ${STATUS22[novoStatus]?.l||novoStatus}!`);
+  }
+
+  closeM('modal-22-status');
+  renderFerr22('ativas');
+}
+
+S.editId22=null;
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
   setMain(`${secTitle('🧼','Programação de Lavagem',back)}<div style="max-width:560px"><div class="import-zone" id="drop-lav" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleDropLav(event)"><div style="font-size:40px;margin-bottom:12px">📊</div><div style="font-size:16px;font-weight:700;margin-bottom:8px">Importar Programação</div><div style="color:var(--text3);font-size:13px">Excel com PREFIXO e TIPO LAVAGEM (simples/escovao/pesada)</div><button class="btn-import" id="btn-lav" onclick="document.getElementById('f-lav').click()">📂 Selecionar .xlsx</button><input type="file" id="f-lav" accept=".xlsx" style="display:none" onchange="handleFileLav(this.files[0])"><div id="err-lav" style="display:none;margin-top:12px;background:#FEE2E2;border:1px solid #FECACA;color:#991B1B;padding:12px;border-radius:10px;font-size:13px"></div><div id="prog-lavw" style="display:none;margin-top:12px"><div id="prog-lavm" style="font-size:12px;color:var(--text2);margin-bottom:6px"></div><div class="prog-wrap"><div class="prog-bar" id="prog-lavb" style="width:0%"></div></div></div></div><div id="preview-lav"></div><div class="info-blue info-banner">💡 Metas: Escovão = todos · Simples = 84/dia · Pesada = 10/dia</div></div>`);
 }
@@ -1418,6 +1757,7 @@ function renderRelatorios(){
     {cod:'2.7',nome:'Fechamento da Oficina',resp:'Líder Oficina',freq:'Diário/Turno',icon:'🏭',ativo:false},
     {cod:'2.9',nome:'Relatório de Inventário',resp:'Almoxarife',freq:'Diário/Turno',icon:'🗂️',ativo:false},
     {cod:'2.10',nome:'Soltura de Frota',resp:'Líder Pátio',freq:'Diário',icon:'🚌',ativo:true,action:"navToSub('ferr-210')"},
+    {cod:'2.2',nome:'Priorização Oficina — Carros Parados',resp:'Líder PCM',freq:'Por ocorrência',icon:'🔧',ativo:true,action:"navToSub('ferr-22')"},
     {cod:'2.11',nome:'Carros Indisponíveis',resp:'Líder PCM',freq:'Diário',icon:'🔴',ativo:false},
     {cod:'2.12',nome:'Indicadores Técnicos',resp:'PCM/Almox/Op',freq:'Diário',icon:'📊',ativo:false},
     {cod:'2.14',nome:'Análise de Desvio – 5 Porquês',resp:'Líderes',freq:'Diário',icon:'🔍',ativo:false},
