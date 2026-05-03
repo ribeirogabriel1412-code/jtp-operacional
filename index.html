@@ -1737,6 +1737,8 @@ async function atualizarStatus22(){
 }
 
 S.editId22=null;
+
+function renderFerrLav(){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
   setMain(`${secTitle('🧼','Programação de Lavagem',back)}<div style="max-width:560px"><div class="import-zone" id="drop-lav" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleDropLav(event)"><div style="font-size:40px;margin-bottom:12px">📊</div><div style="font-size:16px;font-weight:700;margin-bottom:8px">Importar Programação</div><div style="color:var(--text3);font-size:13px">Excel com PREFIXO e TIPO LAVAGEM (simples/escovao/pesada)</div><button class="btn-import" id="btn-lav" onclick="document.getElementById('f-lav').click()">📂 Selecionar .xlsx</button><input type="file" id="f-lav" accept=".xlsx" style="display:none" onchange="handleFileLav(this.files[0])"><div id="err-lav" style="display:none;margin-top:12px;background:#FEE2E2;border:1px solid #FECACA;color:#991B1B;padding:12px;border-radius:10px;font-size:13px"></div><div id="prog-lavw" style="display:none;margin-top:12px"><div id="prog-lavm" style="font-size:12px;color:var(--text2);margin-bottom:6px"></div><div class="prog-wrap"><div class="prog-bar" id="prog-lavb" style="width:0%"></div></div></div></div><div id="preview-lav"></div><div class="info-blue info-banner">💡 Metas: Escovão = todos · Simples = 84/dia · Pesada = 10/dia</div></div>`);
 }
