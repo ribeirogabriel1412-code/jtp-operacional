@@ -89,7 +89,9 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min
 .b-breve{color:#475569;background:#47556918;border-color:#47556940}
 .b-admin{color:#8B5CF6;background:#8B5CF618;border-color:#8B5CF640}
 
-.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:4px}
+.kpi-card-big{background:var(--surface);border-radius:14px;padding:18px 20px;border:1px solid var(--border);border-left-width:3px;display:flex;flex-direction:column;gap:4px;transition:border-color .2s}
+.kpi-card-big:hover{border-color:var(--blue)!important}
+.kpi-card-big.ok{border-left-color:var(--green)}.kpi-card-big.nok{border-left-color:var(--red)}.kpi-card-big.neu{border-left-color:#475569}
 .kpi{background:var(--surface);border-radius:11px;padding:14px 16px;border:1px solid var(--border);border-left-width:3px;display:flex;flex-direction:column;gap:4px}
 .kpi.ok{border-left-color:var(--green)}.kpi.nok{border-left-color:var(--red)}.kpi.neu{border-left-color:#475569}
 .kpi-label{color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase}
@@ -576,9 +578,24 @@ async function renderPainel(){
   const total=S.frota.length;
   const pctD=total>0?(((disp+linha)/total)*100).toFixed(1):0;
   const gNome=S.garagens.find(g=>g.id===S.perfil?.garagem_id)?.nome||'Todas as Garagens';
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+
+  // Busca resumo do 2.10 de hoje
+  const{data:soltura}=await sb.from('soltura_2_10').select('saiu,pontual,observacao')
+    .eq('garagem_id',gid).eq('data',hoje()).eq('turno',S.turno);
+  const s=soltura||[];
+  const sProg=s.length;
+  const sSaiu=s.filter(r=>r.saiu===true).length;
+  const sNao=s.filter(r=>r.saiu===false).length;
+  const sPend=s.filter(r=>r.saiu===null).length;
+  const sReserva=s.filter(r=>r.observacao?.startsWith('Reserva:')).length;
+  const pctS=sProg>0?((sSaiu/sProg)*100).toFixed(1):null;
+  const sColor=pctS===null?'#475569':parseFloat(pctS)>=99.5?'var(--green)':'var(--red)';
+
   const counters=[{l:'Disponíveis',v:disp,c:'#00C48C'},{l:'Em Linha',v:linha,c:'#3B82F6'},{l:'Manutenção',v:manut,c:'#EF4444'}]
     .map(b=>`<div class="fc" style="color:${b.c};background:${b.c}15;border-color:${b.c}30"><span class="fc-val" style="color:${b.c}">${b.v}</span><span class="fc-label">${b.l}</span></div>`).join('');
   const top=S.frota.slice(0,10).map(v=>`<div class="frota-card" onclick="openModalV('${v.id}','${v.prefixo}','${v.status}')"><div><div class="fp">${v.prefixo}</div><div class="fm">${v.modelo||'—'}</div></div>${badge(v.status)}</div>`).join('');
+
   setMain(`
     <div class="painel-hero">
       <div><div style="color:var(--text2);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Painel do Dia</div>
@@ -586,8 +603,42 @@ async function renderPainel(){
       <div style="color:var(--text3);font-size:12px;margin-top:4px">📍 ${gNome} · ${S.turno==='dia'?'☀️ Dia':'🌙 Noite'}</div></div>
       <div class="fc-row">${counters}</div>
     </div>
-    ${secTitle('📊','Indicadores de Frota')}
-    <div class="kpi-grid">${kpi('Disponibilidade',parseFloat(pctD),95)}${kpi('Total Frota',total,undefined,'',false,0)}${kpi('Em Manutenção',manut,0,'',true,0)}</div>
+
+    ${secTitle('📊','Indicadores do Dia')}
+    <div class="kpi-grid">
+      ${kpi('Disponibilidade',parseFloat(pctD),95)}
+      ${kpi('Total Frota',total,undefined,'',false,0)}
+      ${kpi('Em Manutenção',manut,0,'',true,0)}
+    </div>
+
+    <!-- Card de Soltura clicável -->
+    <div onclick="navTo('indicadores',null)" style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${sColor};border-radius:12px;padding:16px 20px;margin-top:10px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase">🚌 Soltura de Frota — ${S.turno==='dia'?'☀️ Dia':'🌙 Noite'}</div>
+          <div style="font-family:'DM Mono',monospace;font-size:28px;font-weight:700;color:var(--text);margin-top:4px">${pctS??'—'}<span style="font-size:14px;color:var(--text4)"> %</span></div>
+          <div style="font-size:11px;font-weight:600;color:${sColor};margin-top:2px">
+            ${pctS===null?'Aguardando escala':parseFloat(pctS)>=99.5?'✓ OK — Meta 99,5%':'✗ NOK — Meta 99,5%'}
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          ${[
+            {l:'Saíram',v:sSaiu,c:'var(--green)'},
+            {l:'Não saíram',v:sNao,c:'var(--red)'},
+            {l:'Reservas',v:sReserva,c:'var(--purple)'},
+            {l:'Pendentes',v:sPend,c:'var(--amber)'},
+          ].map(b=>`<div style="text-align:center;min-width:60px">
+            <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:${b.c}">${b.v}</div>
+            <div style="font-size:10px;color:${b.c};opacity:.7">${b.l}</div>
+          </div>`).join('')}
+          <span style="color:var(--blue);font-size:20px;align-self:center">→</span>
+        </div>
+      </div>
+      ${sProg>0?`<div style="background:var(--border);border-radius:99px;height:5px;overflow:hidden;margin-top:12px">
+        <div style="height:100%;width:${((sSaiu/sProg)*100).toFixed(1)}%;background:var(--green);border-radius:99px"></div>
+      </div>`:''}
+    </div>
+
     ${secTitle('🚌','Frota — Visão Rápida',`<button class="btn-add" onclick="navTo('frota',null)">Ver Tudo →</button>`)}
     ${total===0?`<div class="empty"><div style="font-size:40px">🚌</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Nenhum veículo cadastrado</div></div>`:`<div class="frota-grid">${top}</div>`}`);
 }
@@ -603,10 +654,132 @@ async function renderFrota(){
   setMain(`${secTitle('🚌',`Gestão de Frota — ${S.frota.length} veículo(s)`,`<button class="btn-add" onclick="openModalCad()">+ Novo</button>`)}<div class="filtros">${filtrosH}</div><div class="frota-grid">${cards}</div>`);
 }
 
-function renderIndicadores(){
-  const total=S.frota.length,disp=S.frota.filter(v=>v.status==='disponivel').length,linha=S.frota.filter(v=>v.status==='em_linha').length,manut=S.frota.filter(v=>v.status==='manutencao').length,agp=S.frota.filter(v=>v.status==='aguardando_peca').length;
+async function renderIndicadores(){
+  setMain(`<div class="loading"><div class="spinner"></div> Carregando indicadores...</div>`);
+  await loadFrota();
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const total=S.frota.length;
+  const disp=S.frota.filter(v=>v.status==='disponivel').length;
+  const linha=S.frota.filter(v=>v.status==='em_linha').length;
+  const manut=S.frota.filter(v=>v.status==='manutencao').length;
+  const agp=S.frota.filter(v=>v.status==='aguardando_peca').length;
   const pctD=total>0?(((disp+linha)/total)*100).toFixed(1):0;
-  setMain(`${secTitle('⚙️','Operação')}<div class="kpi-grid">${kpi('Disponibilidade',parseFloat(pctD),95)}${kpi('Total Frota',total,undefined,'',false,0)}${kpi('Em Linha',linha,undefined,'',false,0)}${kpi('Manutenção',manut,0,'',true,0)}${kpi('Ag. Peça',agp,0,'',true,0)}</div>${secTitle('🔧','Manutenção')}<div class="kpi-grid">${kpi('CPK R$/km','—',undefined,' R$/km',false,2)}${kpi('Prev. Geral','—',100)}${kpi('OS Abertas','—',undefined,'',false,0)}</div>${secTitle('📦','Suprimentos')}<div class="kpi-grid">${kpi('Valor Estoque','—',undefined,' R$',false,0)}${kpi('Acurácia Inv.','—',98)}${kpi('Ped. Críticos','—',0,'',true,0)}</div><div class="info-blue info-banner">🔗 Manutenção e Suprimentos conectados na próxima fase</div>`);
+
+  // Busca dados do 2.10 de hoje
+  const{data:soltura}=await sb.from('soltura_2_10').select('*')
+    .eq('garagem_id',gid).eq('data',hoje()).eq('turno',S.turno);
+  const s=soltura||[];
+  const sProg=s.length;
+  const sSaiu=s.filter(r=>r.saiu===true).length;
+  const sNao=s.filter(r=>r.saiu===false).length;
+  const sPend=s.filter(r=>r.saiu===null).length;
+  const sReserva=s.filter(r=>r.observacao&&r.observacao.startsWith('Reserva:')).length;
+  const sPontual=s.filter(r=>r.pontual===true).length;
+  const sAtrasado=s.filter(r=>r.pontual===false).length;
+  const pctSoltura=sProg>0?((sSaiu/sProg)*100).toFixed(1):null;
+  const pctPont=sSaiu>0?((sPontual/sSaiu)*100).toFixed(1):null;
+
+  // Card de soltura clicável com detalhes
+  const solturaCard=`
+    <div class="kpi-card-big ${pctSoltura!==null?(parseFloat(pctSoltura)>=99.5?'ok':'nok'):'neu'}"
+      onclick="toggleSolturaDetalhe()" style="cursor:pointer;grid-column:1/-1">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+        <div>
+          <div class="kpi-label">% Soltura do Dia — ${S.turno==='dia'?'☀️ Dia':'🌙 Noite'} <span style="font-size:10px;opacity:.6">(clique para detalhes)</span></div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px">
+            <span style="font-family:'DM Mono',monospace;font-size:36px;font-weight:700;color:var(--text)">${pctSoltura??'—'}</span>
+            <span style="color:var(--text4);font-size:14px">% &nbsp; meta 99,5%</span>
+          </div>
+          ${pctSoltura!==null
+            ?`<div class="kpi-meta ${parseFloat(pctSoltura)>=99.5?'ok':'nok'}" style="margin-top:4px">${parseFloat(pctSoltura)>=99.5?'✓ OK':'✗ NOK'} — ${sSaiu} saíram de ${sProg} programados</div>`
+            :`<div style="color:var(--text4);font-size:12px;margin-top:4px">Nenhuma escala importada para hoje</div>`}
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${[
+            {l:'Saíram',v:sSaiu,c:'var(--green)'},
+            {l:'Não Saíram',v:sNao,c:'var(--red)'},
+            {l:'Pendentes',v:sPend,c:'var(--amber)'},
+          ].map(b=>`<div style="background:${b.c}15;border:1px solid ${b.c}30;border-radius:9px;padding:8px 14px;text-align:center;min-width:70px">
+            <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:700;color:${b.c}">${b.v}</div>
+            <div style="font-size:10px;font-weight:600;color:${b.c};opacity:.8">${b.l}</div>
+          </div>`).join('')}
+        </div>
+      </div>
+      <!-- Barra de progresso -->
+      <div style="margin-top:14px">
+        <div style="background:var(--border);border-radius:99px;height:8px;overflow:hidden;position:relative">
+          <div style="position:absolute;height:100%;width:${sProg>0?((sSaiu/sProg)*100).toFixed(1):0}%;background:var(--green);border-radius:99px;transition:width .5s"></div>
+          <div style="position:absolute;height:100%;left:${sProg>0?((sSaiu/sProg)*100).toFixed(1):0}%;width:${sProg>0?((sNao/sProg)*100).toFixed(1):0}%;background:var(--red);border-radius:99px;transition:width .5s"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detalhes expandíveis -->
+    <div id="soltura-detalhe" style="display:none;grid-column:1/-1">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:18px 20px">
+        <div style="color:var(--text3);font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:14px">📊 DETALHES DA SOLTURA — ${formatData(hoje())}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px">
+          ${[
+            {l:'Saíram Limpos',v:sSaiu-sReserva,ic:'✅',c:'var(--green)'},
+            {l:'Com Carro Reserva',v:sReserva,ic:'🔄',c:'var(--purple)'},
+            {l:'Não Saíram',v:sNao,ic:'❌',c:'var(--red)'},
+            {l:'Pendentes',v:sPend,ic:'⏳',c:'var(--amber)'},
+            {l:'Pontuais',v:sPontual,ic:'⏰',c:'var(--green)'},
+            {l:'Atrasados',v:sAtrasado,ic:'🕐',c:'var(--amber)'},
+          ].map(k=>`
+            <div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${k.c};border-radius:9px;padding:12px 14px">
+              <div style="color:var(--text3);font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase">${k.ic} ${k.l}</div>
+              <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:var(--text);margin-top:4px">${k.v}</div>
+            </div>`).join('')}
+        </div>
+        ${sNao>0?`
+          <div style="margin-top:14px">
+            <div style="color:var(--text3);font-size:11px;font-weight:600;margin-bottom:8px">❌ Veículos que não saíram:</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              ${s.filter(r=>r.saiu===false).map(r=>`
+                <div style="background:var(--surface);border:1px solid #EF444430;border-radius:8px;padding:5px 12px;font-size:12px">
+                  <span style="font-family:'DM Mono',monospace;font-weight:700">${r.prefixo}</span>
+                  ${r.observacao?`<span style="color:var(--text4);font-size:10px"> · ${r.observacao.substring(0,30)}</span>`:''}
+                </div>`).join('')}
+            </div>
+          </div>`:''}
+        <div style="margin-top:12px;text-align:right">
+          <button class="btn-sm" onclick="navToSub('ferr-210')">Ver 2.10 Completo →</button>
+        </div>
+      </div>
+    </div>`;
+
+  setMain(`
+    ${secTitle('⚙️','Operação')}
+    <div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">
+      ${kpi('Disponibilidade',parseFloat(pctD),95)}
+      ${kpi('Total Frota',total,undefined,'',false,0)}
+      ${kpi('Em Linha',linha,undefined,'',false,0)}
+      ${kpi('Manutenção',manut,0,'',true,0)}
+      ${kpi('Ag. Peça',agp,0,'',true,0)}
+      ${solturaCard}
+    </div>
+
+    ${secTitle('🔧','Manutenção')}
+    <div class="kpi-grid">
+      ${kpi('CPK R$/km','—',undefined,' R$/km',false,2)}
+      ${kpi('Prev. Geral','—',100)}
+      ${kpi('OS Abertas','—',undefined,'',false,0)}
+    </div>
+
+    ${secTitle('📦','Suprimentos')}
+    <div class="kpi-grid">
+      ${kpi('Valor Estoque','—',undefined,' R$',false,0)}
+      ${kpi('Acurácia Inv.','—',98)}
+      ${kpi('Ped. Críticos','—',0,'',true,0)}
+    </div>
+    <div class="info-blue info-banner">🔗 Manutenção e Suprimentos conectados na próxima fase · Checklist 3.1 e Priorização 2.2 em desenvolvimento</div>
+  `);
+}
+
+function toggleSolturaDetalhe(){
+  const el=document.getElementById('soltura-detalhe');
+  if(el) el.style.display=el.style.display==='none'?'block':'none';
 }
 
 function renderManutencao(){setMain(`${secTitle('🔧','Ordens de Serviço')}<div class="empty"><div style="font-size:40px">🔧</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Em desenvolvimento</div></div><div class="info-blue info-banner">🔗 Fase 2: OS integradas ao banco + integração Praxio</div>`)}
