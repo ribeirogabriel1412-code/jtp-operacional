@@ -1951,9 +1951,25 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
 }
 
 async function carregarChecklistModal(ocId){
+  const{data:oc}=await sb.from('ocorrencias_22').select('tipo').eq('id',ocId).single();
   const{data:items}=await sb.from('checklist_22').select('*')
     .eq('ocorrencia_id',ocId).order('ordem');
-  if(!items||!items.length) return;
+
+  // Se não tem checklist ainda, gera automaticamente
+  if(!items||!items.length){
+    const tipo=oc?.tipo||'corretiva';
+    const defaultItems=CHECKLIST_ITEMS[tipo]||[];
+    if(defaultItems.length>0){
+      const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+      await sb.from('checklist_22').insert(defaultItems.map(it=>({
+        ocorrencia_id:ocId, garagem_id:gid,
+        tipo, item:it.item, ordem:it.ordem, concluido:false,
+      })));
+      // Recarrega
+      return carregarChecklistModal(ocId);
+    }
+    return;
+  }
 
   const total=items.length;
   const feitos=items.filter(i=>i.concluido).length;
@@ -2000,14 +2016,54 @@ async function toggleCheckItem(itemId, ocId){
   // Recarrega checklist
   carregarChecklistModal(ocId);
 
-  // Verifica se etapa principal foi concluída e envia WhatsApp
+  // Busca progresso atualizado
   const{data:items}=await sb.from('checklist_22').select('*').eq('ocorrencia_id',ocId).order('ordem');
   const total=items?.length||0;
   const feitos=items?.filter(i=>i.concluido).length||0;
-  // Envia mensagem nos marcos: 33%, 66%, 100%
   const pct=Math.round((feitos/total)*100);
+
+  // Envia WhatsApp nos marcos
   if(concluido&&(pct===33||pct===66||pct===100)){
     notificarWhatsAppChecklist(ocId, pct, feitos, total);
+  }
+
+  // ── AUTO-FECHAR quando 100% concluído ──────────────────
+  if(pct===100&&concluido){
+    const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+    const horaLib=new Date().toISOString();
+
+    // Busca ocorrência para pegar veiculo_id
+    const{data:oc}=await sb.from('ocorrencias_22').select('*').eq('id',ocId).single();
+    if(!oc) return;
+
+    // Atualiza ocorrência para liberado
+    await sb.from('ocorrencias_22').update({
+      status:'liberado',
+      hora_liberacao:horaLib,
+      fechado_por_nome:S.perfil?.nome,
+      updated_at:horaLib,
+    }).eq('id',ocId);
+
+    // Atualiza frota para disponível
+    if(oc.veiculo_id){
+      await sb.from('frota').update({status:'disponivel',updated_at:horaLib}).eq('id',oc.veiculo_id);
+    }
+
+    // Grava histórico
+    await sb.from('historico_22').insert({
+      ocorrencia_id:ocId, garagem_id:gid,
+      evento:'Veículo liberado automaticamente — Checklist 100% concluído',
+      status_anterior:oc.status, status_novo:'liberado',
+      usuario_nome:S.perfil?.nome,
+    });
+
+    // Notifica WhatsApp
+    notificarWhatsApp(ocId,'liberado');
+
+    toast('✅ Checklist concluído! Veículo liberado automaticamente!');
+    closeM('modal-22-status');
+    await loadFrota();
+    renderFerr22('ativas');
   }
 }
 
