@@ -1998,7 +1998,10 @@ async function renderFerr22(aba='ativas'){
   const prevL=t.filter(o=>o.tipo==='preventiva_leve').length;
   const prevP=t.filter(o=>o.tipo==='preventiva_pesada').length;
 
-  const addBtn=isPCM?`<button class="btn-add" onclick="abrirModal22()">+ Nova Ocorrência</button>`:'';
+  const addBtn=isPCM?`<div style="display:flex;gap:8px">
+    <button class="btn-sm" onclick="gerarResumoTurno()" style="background:#8B5CF618;border-color:#8B5CF640;color:#8B5CF6">📊 Resumo de Turno</button>
+    <button class="btn-add" onclick="abrirModal22()">+ Nova Ocorrência</button>
+  </div>`:'<button class="btn-add" onclick="abrirModal22()">+ Nova Ocorrência</button>';
 
   // Busca progresso dos checklists
   const{data:cks}=await sb.from('checklist_22').select('ocorrencia_id,concluido')
@@ -2494,53 +2497,31 @@ async function toggleCheckItem(itemId, ocId){
   }).eq('id',itemId);
   if(error){toast('Erro: '+error.message,'err');cb.checked=!concluido;return}
 
-  // Recarrega checklist
   carregarChecklistModal(ocId);
 
-  // Busca progresso atualizado
   const{data:items}=await sb.from('checklist_22').select('*').eq('ocorrencia_id',ocId).order('ordem');
   const total=items?.length||0;
   const feitos=items?.filter(i=>i.concluido).length||0;
   const pct=Math.round((feitos/total)*100);
 
-  // Envia WhatsApp nos marcos
-  if(concluido&&(pct===33||pct===66||pct===100)){
-    notificarWhatsAppChecklist(ocId, pct, feitos, total);
-  }
-
-  // ── AUTO-FECHAR quando 100% concluído ──────────────────
+  // ── Auto-fecha ocorrência ao completar 100% ──
   if(pct===100&&concluido){
     const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
     const horaLib=new Date().toISOString();
-
-    // Busca ocorrência para pegar veiculo_id
     const{data:oc}=await sb.from('ocorrencias_22').select('*').eq('id',ocId).single();
     if(!oc) return;
-
-    // Atualiza ocorrência para liberado
     await sb.from('ocorrencias_22').update({
-      status:'liberado',
-      hora_liberacao:horaLib,
-      fechado_por_nome:S.perfil?.nome,
-      updated_at:horaLib,
+      status:'liberado', hora_liberacao:horaLib,
+      fechado_por_nome:S.perfil?.nome, updated_at:horaLib,
     }).eq('id',ocId);
-
-    // Atualiza frota para disponível
-    if(oc.veiculo_id){
-      await sb.from('frota').update({status:'disponivel',updated_at:horaLib}).eq('id',oc.veiculo_id);
-    }
-
-    // Grava histórico
+    if(oc.veiculo_id) await sb.from('frota').update({status:'disponivel',updated_at:horaLib}).eq('id',oc.veiculo_id);
     await sb.from('historico_22').insert({
       ocorrencia_id:ocId, garagem_id:gid,
       evento:'Veículo liberado automaticamente — Checklist 100% concluído',
-      status_anterior:oc.status, status_novo:'liberado',
-      usuario_nome:S.perfil?.nome,
+      status_anterior:oc.status, status_novo:'liberado', usuario_nome:S.perfil?.nome,
     });
-
-    // Notifica WhatsApp
+    // Notifica WhatsApp APENAS ao completar 100%
     notificarWhatsApp(ocId,'liberado');
-
     toast('✅ Checklist concluído! Veículo liberado automaticamente!');
     closeM('modal-22-status');
     await loadFrota();
@@ -2688,6 +2669,99 @@ async function verHistorico22(){
     <div style="display:flex;justify-content:flex-end;margin-top:16px">
       <button class="btn-sec" onclick="closeM('modal-22-hist');document.getElementById('modal-22-status').style.display='flex'">← Voltar</button>
     </div>`;
+}
+
+async function gerarResumoTurno(){
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const agora=new Date();
+  const garagem=S.garagens.find(g=>g.id===gid);
+  const ini=new Date();ini.setHours(0,0,0,0);
+
+  const{data:todas}=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).gte('hora_entrada',ini.toISOString()).order('hora_entrada',{ascending:true});
+  const{data:abertas}=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado');
+  const t=todas||[];const a=abertas||[];
+  const liberadas=t.filter(o=>o.status==='liberado');
+  const pendentes=a;
+  const tempos=liberadas.filter(o=>o.hora_entrada&&o.hora_liberacao).map(o=>Math.round((new Date(o.hora_liberacao)-new Date(o.hora_entrada))/60000));
+  const tempoMedio=tempos.length>0?Math.round(tempos.reduce((a,b)=>a+b,0)/tempos.length):0;
+  const tempoMedioStr=tempoMedio>=60?`${Math.floor(tempoMedio/60)}h ${tempoMedio%60}min`:`${tempoMedio}min`;
+  const horaAtual=agora.toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+
+  const entraramRows=t.map(o=>{
+    const tempo=o.hora_entrada&&o.hora_liberacao?Math.round((new Date(o.hora_liberacao)-new Date(o.hora_entrada))/60000):o.hora_entrada?Math.round((agora-new Date(o.hora_entrada))/60000):0;
+    const tempoStr=tempo>=60?`${Math.floor(tempo/60)}h${tempo%60>0?tempo%60+'m':''}`:tempo>0?`${tempo}min`:'—';
+    return`<tr>
+      <td><span style="font-family:'DM Mono',monospace;font-weight:700">${o.prefixo}</span></td>
+      <td style="font-size:11px">${TIPO22[o.tipo]?.ic||''} ${TIPO22[o.tipo]?.l||o.tipo}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px">${o.hora_entrada?new Date(o.hora_entrada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—'}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px">${o.hora_liberacao?new Date(o.hora_liberacao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—'}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px">${tempoStr}</td>
+      <td><span class="badge ${STATUS22[o.status]?.cls||''}">${STATUS22[o.status]?.ic||''} ${STATUS22[o.status]?.l||o.status}</span></td>
+      <td style="font-size:11px;color:var(--text3)">${o.mecanico||'—'}</td>
+      <td style="font-size:11px;color:var(--text3)">${o.descricao||'—'}</td>
+    </tr>`;
+  }).join('');
+
+  const msgLinhas=[
+    `📊 *RESUMO DE FECHAMENTO DE TURNO — ${horaAtual}*`,
+    `📍 ${garagem?.nome||'JTP'} · ${S.turno==='dia'?'☀️ Dia':'🌙 Noite'}`,``,
+    `🔧 *Movimentação:*`,
+    `• Entraram: ${t.length} · Liberados: ${liberadas.length} · Em aberto: ${pendentes.length}`,
+    `• Tempo médio de reparo: ${tempoMedioStr}`,``,
+  ];
+  if(pendentes.length>0){
+    msgLinhas.push(`⏳ *Em aberto (${pendentes.length}):*`);
+    pendentes.forEach(o=>{
+      const prev=o.hora_previsao?new Date(o.hora_previsao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
+      const venc=o.hora_previsao&&new Date(o.hora_previsao)<agora?'⚠️':'•';
+      msgLinhas.push(`${venc} *${o.prefixo}* | ${TIPO22[o.tipo]?.l||o.tipo} | Prev: ${prev} | ${STATUS22[o.status]?.l||o.status} | ${o.mecanico||'—'}`);
+    });
+    msgLinhas.push('');
+  }
+  if(liberadas.length>0){
+    msgLinhas.push(`✅ *Liberados (${liberadas.length}):*`);
+    liberadas.forEach(o=>{
+      const lib=o.hora_liberacao?new Date(o.hora_liberacao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
+      msgLinhas.push(`• *${o.prefixo}* | ${TIPO22[o.tipo]?.l||o.tipo} | Saiu: ${lib} | ${o.mecanico||'—'}`);
+    });
+    msgLinhas.push('');
+  }
+  msgLinhas.push('━━━━━━━━━━━━━━━━━━━━');
+  msgLinhas.push(`_JTP Operacional · Fechamento ${horaAtual}_`);
+  S._resumoMsg=msgLinhas;
+
+  let m=document.getElementById('modal-resumo-turno');
+  if(!m){m=document.createElement('div');m.id='modal-resumo-turno';m.className='modal-ov';m.style.display='none';m.onclick=function(e){if(e.target===this)this.style.display='none'};m.innerHTML=`<div class="modal" style="max-width:780px;max-height:85vh;overflow-y:auto"><div id="resumo-content"></div></div>`;document.body.appendChild(m);}
+
+  document.getElementById('resumo-content').innerHTML=`
+    <div class="modal-title"><span>📊 Resumo de Fechamento de Turno</span><button class="btn-x" onclick="document.getElementById('modal-resumo-turno').style.display='none'">✕</button></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:16px">
+      ${[{l:'Entraram',v:t.length,c:'var(--blue)'},{l:'Liberados',v:liberadas.length,c:'var(--green)'},{l:'Em aberto',v:pendentes.length,c:pendentes.length>0?'var(--amber)':'var(--green)'},{l:'Tempo médio',v:tempoMedioStr,c:'var(--text)'}]
+        .map(k=>`<div style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid ${k.c};border-radius:10px;padding:12px"><div style="color:var(--text3);font-size:10px;font-weight:700;text-transform:uppercase">${k.l}</div><div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:700;color:${k.c};margin-top:4px">${k.v}</div></div>`).join('')}
+    </div>
+    <div style="overflow-x:auto;margin-bottom:16px"><table>
+      <thead><tr><th>Prefixo</th><th>Tipo</th><th>Entrada</th><th>Saída</th><th>Tempo</th><th>Status</th><th>Mecânico</th><th>Observação</th></tr></thead>
+      <tbody>${entraramRows||`<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:20px">Nenhuma movimentação hoje</td></tr>`}</tbody>
+    </table></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn-sec" onclick="document.getElementById('modal-resumo-turno').style.display='none'">Fechar</button>
+      <button class="btn-success" onclick="enviarResumoWpp()">📱 Enviar para WhatsApp</button>
+    </div>`;
+  m.style.display='flex';
+}
+
+async function enviarResumoWpp(){
+  const msg=(S._resumoMsg||[]).join('\n');
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  try{
+    await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${SUPABASE_ANON_KEY}`,'apikey':SUPABASE_ANON_KEY},
+      body:JSON.stringify({ocorrencia_id:'00000000-0000-0000-0000-000000000000',garagem_id:gid,usuario_nome:S.perfil?.nome,status_novo:'resumo',mensagem_custom:msg}),
+    });
+    toast('📱 Resumo enviado para o grupo!');
+    document.getElementById('modal-resumo-turno').style.display='none';
+  }catch(err){toast('Erro: '+err.message,'err');}
 }
 
 async function renderFerrLav(aba='painel'){
