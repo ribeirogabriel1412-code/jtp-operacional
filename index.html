@@ -2447,7 +2447,7 @@ async function confirmarSaida(){
 }
 
 // Gera impressão formulário físico 2.10
-function imprimir210(numDoc, dataEvento, turno, garagem){
+async function imprimir210(numDoc, dataEvento, turno, garagem){
   const reg=S.soltura210;
   const saiu=reg.filter(r=>r.saiu===true).length;
   const nao=reg.filter(r=>r.saiu===false).length;
@@ -2567,6 +2567,36 @@ function imprimir210(numDoc, dataEvento, turno, garagem){
         </thead>
         <tbody>${dataRows}</tbody>
       </table>
+
+      <!-- RESERVAS -->
+      ${await (async()=>{
+        const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+        const{data:escalados}=await sb.from('soltura_2_10').select('prefixo')
+          .eq('garagem_id',gid).eq('data',dataEvento).eq('turno',turno);
+        const escalSet=new Set((escalados||[]).map(r=>r.prefixo));
+        const{data:frota}=await sb.from('frota').select('prefixo,modelo,placa')
+          .eq('garagem_id',gid).eq('status','disponivel').order('prefixo');
+        const reservas=(frota||[]).filter(v=>!escalSet.has(v.prefixo));
+        if(!reservas.length) return '';
+        const rows=reservas.map(v=>`<tr style="height:18px">
+          <td style="border:1.5px solid #111;padding:2px 4px;font-family:monospace;font-weight:700;font-size:10px;color:#000">${v.prefixo}</td>
+          <td style="border:1.5px solid #111;padding:2px 4px;font-size:9px;color:#000">${v.modelo||'—'}</td>
+          <td style="border:1.5px solid #111;padding:2px 4px;font-family:monospace;font-size:9px;color:#000">${v.placa||'—'}</td>
+          <td style="border:1.5px solid #111;padding:2px 4px;font-size:9px;color:#000"></td>
+        </tr>`).join('');
+        return`<div style="margin-top:10px">
+          <div style="font-weight:900;background:#888;color:#fff;border:1.5px solid #111;padding:3px 8px;margin-bottom:2px;font-size:10px">■ CARROS RESERVA DISPONÍVEIS (${reservas.length})</div>
+          <table style="width:100%;border-collapse:collapse">
+            <thead><tr>
+              <th style="border:1.5px solid #111;background:#bbb;padding:3px;text-align:center;width:55px;font-size:9px;color:#000">PREFIXO</th>
+              <th style="border:1.5px solid #111;background:#bbb;padding:3px;text-align:left;font-size:9px;color:#000">MODELO</th>
+              <th style="border:1.5px solid #111;background:#bbb;padding:3px;text-align:center;width:70px;font-size:9px;color:#000">PLACA</th>
+              <th style="border:1.5px solid #111;background:#bbb;padding:3px;text-align:left;font-size:9px;color:#000">OBSERVAÇÃO</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+      })()}
 
       <!-- RODAPÉ -->
       <div style="margin-top:8px;display:flex;gap:20px">
