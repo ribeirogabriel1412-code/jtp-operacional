@@ -442,7 +442,7 @@ tr:hover td{background:#0F172A80}
 
 <!-- MODAL ATUALIZAR STATUS 2.2 -->
 <div class="modal-ov" id="modal-22-status" style="display:none" onclick="if(event.target===this)closeM('modal-22-status')">
-  <div class="modal" style="max-width:480px">
+  <div class="modal" style="max-width:480px;max-height:85vh;overflow-y:auto">
     <div class="modal-title">
       <span>Atualizar — <span id="m22s-info" style="font-family:'DM Mono',monospace;color:var(--blue)"></span></span>
       <div style="display:flex;gap:8px;align-items:center">
@@ -1619,6 +1619,39 @@ const TIPO22={
   preventiva_pesada:{l:'Prev. Pesada',    ic:'🟠', c:'#F97316'},
 };
 
+// Checklists fixos por tipo
+const CHECKLIST_ITEMS={
+  corretiva:[
+    {item:'Diagnóstico do problema realizado',ordem:1},
+    {item:'Peças necessárias identificadas',ordem:2},
+    {item:'Peças disponíveis em estoque',ordem:3},
+    {item:'Serviço iniciado pelo mecânico',ordem:4},
+    {item:'Serviço concluído',ordem:5},
+    {item:'Teste funcional realizado',ordem:6},
+    {item:'Veículo aprovado para liberação',ordem:7},
+  ],
+  preventiva_leve:[
+    {item:'Checklist de itens preventivos iniciado',ordem:1},
+    {item:'Troca de óleo e filtros realizada',ordem:2},
+    {item:'Freios verificados e ajustados',ordem:3},
+    {item:'Nível de fluidos verificado',ordem:4},
+    {item:'Itens elétricos verificados',ordem:5},
+    {item:'Teste de rodagem realizado',ordem:6},
+    {item:'Veículo aprovado para liberação',ordem:7},
+  ],
+  preventiva_pesada:[
+    {item:'Avaliação técnica inicial realizada',ordem:1},
+    {item:'Peças e insumos disponíveis confirmados',ordem:2},
+    {item:'Serviço de motor iniciado',ordem:3},
+    {item:'Sistema de freios revisado',ordem:4},
+    {item:'Sistema de transmissão revisado',ordem:5},
+    {item:'Sistema elétrico revisado',ordem:6},
+    {item:'Itens de carroceria/funilaria verificados',ordem:7},
+    {item:'Teste de rodagem completo realizado',ordem:8},
+    {item:'Veículo aprovado para liberação',ordem:9},
+  ],
+};
+
 function sigla22(gid){
   const g=S.garagens.find(x=>x.id===gid);
   if(!g) return 'JTP';
@@ -1690,6 +1723,16 @@ async function renderFerr22(aba='ativas'){
 
   const addBtn=isPCM?`<button class="btn-add" onclick="abrirModal22()">+ Nova Ocorrência</button>`:'';
 
+  // Busca progresso dos checklists
+  const{data:cks}=await sb.from('checklist_22').select('ocorrencia_id,concluido')
+    .in('ocorrencia_id',lista.map(o=>o.id));
+  const ckMap={};
+  (cks||[]).forEach(c=>{
+    if(!ckMap[c.ocorrencia_id]) ckMap[c.ocorrencia_id]={total:0,feitos:0};
+    ckMap[c.ocorrencia_id].total++;
+    if(c.concluido) ckMap[c.ocorrencia_id].feitos++;
+  });
+
   const cards=lista.map(o=>{
     const st=STATUS22[o.status]||{l:o.status,ic:'?',c:'#475569',cls:''};
     const tp=TIPO22[o.tipo]||{l:o.tipo,ic:'?',c:'#475569'};
@@ -1714,6 +1757,16 @@ async function renderFerr22(aba='ativas'){
         ${o.descricao?`<div style="grid-column:1/-1;color:var(--text3)">📝 ${o.descricao}</div>`:''}
         ${o.status==='liberado'&&o.hora_liberacao?`<div style="grid-column:1/-1;color:var(--green)">✅ Liberado em ${formatDT(o.hora_liberacao)}</div>`:''}
       </div>
+      ${ckMap[o.id]?.total>0?`
+        <div style="margin-top:10px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <span style="color:var(--text4);font-size:10px">📋 Checklist: ${ckMap[o.id].feitos}/${ckMap[o.id].total} itens</span>
+            <span style="color:${ckMap[o.id].feitos===ckMap[o.id].total?'var(--green)':ckMap[o.id].feitos>0?'var(--amber)':'var(--text4)'};font-size:10px;font-weight:700">${Math.round((ckMap[o.id].feitos/ckMap[o.id].total)*100)}%</span>
+          </div>
+          <div style="background:var(--border);border-radius:99px;height:4px;overflow:hidden">
+            <div style="height:100%;width:${Math.round((ckMap[o.id].feitos/ckMap[o.id].total)*100)}%;background:${ckMap[o.id].feitos===ckMap[o.id].total?'var(--green)':'var(--amber)'};border-radius:99px"></div>
+          </div>
+        </div>`:''}
     </div>`;
   }).join('');
 
@@ -1774,15 +1827,16 @@ async function abrirModal22(){
 }
 
 // ── NOTIFICAÇÃO WHATSAPP ──────────────────────────────────
+const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impib2NsdWJ1Z2Z4bXVydmhjeGdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU3MDI1NTEsImV4cCI6MjA2MTI3ODU1MX0.LqMwJZxKh8nuMdyN37KZOR3knBH7s6hZSwB6SHvFnmQ';
 async function notificarWhatsApp(ocorrencia_id, status_novo){
   try{
     const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
-    await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
+    const resp=await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
       method:'POST',
       headers:{
         'Content-Type':'application/json',
-        'Authorization':`Bearer ${sb.supabaseKey||'sb_publishable_hasmgR_BbXcJC6Xko6DzaA_N7kl7rNT'}`,
-        'apikey':'sb_publishable_hasmgR_BbXcJC6Xko6DzaA_N7kl7rNT',
+        'Authorization':`Bearer ${SUPABASE_ANON_KEY}`,
+        'apikey':SUPABASE_ANON_KEY,
       },
       body:JSON.stringify({
         tipo:'atualizacao_22',
@@ -1792,7 +1846,8 @@ async function notificarWhatsApp(ocorrencia_id, status_novo){
         status_novo,
       }),
     });
-    console.log('WhatsApp notificado ✅');
+    const data=await resp.json();
+    console.log('WhatsApp notificado ✅',data);
   }catch(err){
     console.warn('Erro ao notificar WhatsApp:',err.message);
   }
@@ -1812,6 +1867,14 @@ async function salvarOcorrencia22(){
   const previsao=document.getElementById('m22-previsao').value;
   const numero=gerarNum22(gid);
 
+  // ── TRAVA DUPLICATA ──────────────────────────────────────
+  const{data:exist}=await sb.from('ocorrencias_22').select('id,numero')
+    .eq('garagem_id',gid).eq('prefixo',prefixo).neq('status','liberado').single();
+  if(exist){
+    toast(`⚠️ ${prefixo} já tem ocorrência em aberto: ${exist.numero}!`,'err');
+    return;
+  }
+
   const btn=document.getElementById('btn-salvar-22');
   btn.textContent='Salvando...';btn.disabled=true;
 
@@ -1828,20 +1891,28 @@ async function salvarOcorrencia22(){
   }).select().single();
 
   if(!error&&novaOc){
-    // Cria entrada no histórico
+    // Cria histórico
     await sb.from('historico_22').insert({
       ocorrencia_id:novaOc.id, garagem_id:gid,
       evento:'Ocorrência aberta',
       status_novo:status, mecanico:mecanico||null,
       observacao:desc||null, usuario_nome:S.perfil.nome,
     });
+    // Cria checklist automático por tipo
+    const items=CHECKLIST_ITEMS[tipo]||[];
+    if(items.length>0){
+      await sb.from('checklist_22').insert(items.map(it=>({
+        ocorrencia_id:novaOc.id, garagem_id:gid,
+        tipo, item:it.item, ordem:it.ordem,
+        concluido:false,
+      })));
+    }
   }
 
   btn.textContent='💾 Abrir Ocorrência';btn.disabled=false;
   if(error){toast('Erro: '+error.message,'err');return}
   toast(`✅ Ocorrência ${numero} aberta!`);
   closeM('modal-22');
-  // Notifica WhatsApp
   if(novaOc) notificarWhatsApp(novaOc.id, status);
   renderFerr22('ativas');
 }
@@ -1863,7 +1934,7 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
   document.getElementById('m22s-hora-lib').value=dtLocal();
   document.getElementById('m22s-lib-wrap').style.display=statusAtual==='liberado'?'block':'none';
 
-  // Busca dados completos da ocorrência
+  // Busca dados completos
   sb.from('ocorrencias_22').select('*').eq('id',id).single().then(({data:oc})=>{
     if(!oc) return;
     document.getElementById('m22s-os-atual').textContent=oc.praxio_os_id||'—';
@@ -1874,7 +1945,85 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
     if(oc.mecanico) document.getElementById('m22s-mecanico').value=oc.mecanico;
   });
 
+  // Carrega checklist no modal
+  carregarChecklistModal(id);
   document.getElementById('modal-22-status').style.display='flex';
+}
+
+async function carregarChecklistModal(ocId){
+  const{data:items}=await sb.from('checklist_22').select('*')
+    .eq('ocorrencia_id',ocId).order('ordem');
+  if(!items||!items.length) return;
+
+  const total=items.length;
+  const feitos=items.filter(i=>i.concluido).length;
+  const pct=Math.round((feitos/total)*100);
+  const pColor=pct===100?'var(--green)':pct>=50?'var(--amber)':'var(--red)';
+
+  const ckHTML=`
+    <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="color:var(--text3);font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase">📋 CHECKLIST DE ACOMPANHAMENTO</span>
+        <span style="color:${pColor};font-family:'DM Mono',monospace;font-size:13px;font-weight:700">${feitos}/${total} · ${pct}%</span>
+      </div>
+      <div style="background:var(--border);border-radius:99px;height:5px;overflow:hidden;margin-bottom:12px">
+        <div style="height:100%;width:${pct}%;background:${pColor};border-radius:99px;transition:width .5s"></div>
+      </div>
+      ${items.map(it=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;margin-bottom:4px;background:${it.concluido?'#00C48C08':'var(--surface2)'}">
+          <input type="checkbox" id="ck-${it.id}" ${it.concluido?'checked':''} 
+            onchange="toggleCheckItem('${it.id}','${ocId}')"
+            style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
+          <label for="ck-${it.id}" style="flex:1;cursor:pointer;font-size:13px;color:${it.concluido?'var(--text3)':'var(--text)'};text-decoration:${it.concluido?'line-through':''}">${it.ordem}. ${it.item}</label>
+          ${it.concluido?`<span style="color:var(--text4);font-size:10px">${it.concluido_por||''} ${it.concluido_em?'·'+formatDT(it.concluido_em):''}</span>`:''}
+        </div>`).join('')}
+    </div>`;
+
+  // Injeta no modal
+  const existing=document.getElementById('checklist-modal-area');
+  if(existing) existing.remove();
+  const wrap=document.createElement('div');
+  wrap.id='checklist-modal-area';
+  wrap.innerHTML=ckHTML;
+  document.querySelector('#modal-22-status .modal').appendChild(wrap);
+}
+
+async function toggleCheckItem(itemId, ocId){
+  const cb=document.getElementById(`ck-${itemId}`);
+  const concluido=cb.checked;
+  const{error}=await sb.from('checklist_22').update({
+    concluido, concluido_por:concluido?S.perfil?.nome:null,
+    concluido_em:concluido?new Date().toISOString():null,
+  }).eq('id',itemId);
+  if(error){toast('Erro: '+error.message,'err');cb.checked=!concluido;return}
+
+  // Recarrega checklist
+  carregarChecklistModal(ocId);
+
+  // Verifica se etapa principal foi concluída e envia WhatsApp
+  const{data:items}=await sb.from('checklist_22').select('*').eq('ocorrencia_id',ocId).order('ordem');
+  const total=items?.length||0;
+  const feitos=items?.filter(i=>i.concluido).length||0;
+  // Envia mensagem nos marcos: 33%, 66%, 100%
+  const pct=Math.round((feitos/total)*100);
+  if(concluido&&(pct===33||pct===66||pct===100)){
+    notificarWhatsAppChecklist(ocId, pct, feitos, total);
+  }
+}
+
+async function notificarWhatsAppChecklist(ocId, pct, feitos, total){
+  try{
+    const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+    await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${SUPABASE_ANON_KEY}`,'apikey':SUPABASE_ANON_KEY},
+      body:JSON.stringify({
+        tipo:'checklist_22', ocorrencia_id:ocId, garagem_id:gid,
+        usuario_nome:S.perfil?.nome, pct, feitos, total,
+        status_novo:'em_manutencao',
+      }),
+    });
+  }catch(err){console.warn('Erro WhatsApp checklist:',err.message);}
 }
 
 async function atualizarStatus22(){
