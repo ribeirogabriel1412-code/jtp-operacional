@@ -242,7 +242,6 @@ tr:hover td{background:#0F172A80}
         <button class="sub-btn" onclick="navToSub('ferr-210')">📋 2.10 Soltura de Frota</button>
         <button class="sub-btn" onclick="navToSub('ferr-22')">🔧 2.2 Priorização Oficina</button>
         <button class="sub-btn" onclick="navToSub('ferr-lav')">🧼 3.2 Checklist Lavagem</button>
-        <button class="sub-btn" onclick="navToSub('ferr-rotina')">📅 Rotina Operacional (BOK)</button>
         <button class="sub-btn" onclick="navToSub('ferr-ctrl')">✅ Controle Soltura</button>
       </div>
       <button class="nav-btn" onclick="toggleSub('sub-rel','arr-rel',this)"><span>📋</span> Relatórios <span id="arr-rel" style="margin-left:auto;font-size:10px;color:var(--text4)">▶</span></button>
@@ -573,6 +572,29 @@ async function carregarReservasDisponiveis(){
     disponiveis.map(v=>`<option value="${v.prefixo}">${v.prefixo} — ${v.modelo||'—'} (${v.status==='disponivel'?'✅ Disponível':'🔧 '+v.status})</option>`).join('');
 }
 const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',lider_pcm:'Líder PCM',assistente_pcm:'Assistente PCM',almoxarifado:'Almoxarifado',lider_operacional:'Líder Operacional',lider_suprimentos:'Líder de Suprimentos',operacoes_seguras:'Operações Seguras',lider_oficina:'Líder de Oficina',lider_patio:'Líder de Pátio'};
+
+// ── FERRAMENTAS E PERMISSÕES ──────────────────────────────
+const FERRAMENTAS_DEF=[
+  {id:'ferr-210',icon:'📋',nome:'2.10 Soltura de Frota',padrão:['lider_patio','lider_operacional','gerente_garagem','diretoria','lider_pcm']},
+  {id:'ferr-22', icon:'🔧',nome:'2.2 Priorização Oficina',padrão:['lider_pcm','assistente_pcm','lider_oficina','gerente_garagem','diretoria']},
+  {id:'ferr-lav',icon:'🧼',nome:'3.2 Checklist Lavagem',padrão:['lider_patio','lider_operacional','gerente_garagem','diretoria']},
+  {id:'ferr-ctrl',icon:'✅',nome:'Controle Soltura',padrão:['lider_patio','lider_operacional','gerente_garagem','diretoria']},
+];
+
+// Carrega permissões do localStorage (admin pode customizar)
+function getPermsFerr(){
+  try{ return JSON.parse(localStorage.getItem('jtp_perms_ferr')||'null')||null; }catch{return null;}
+}
+function setPermsFerr(perms){ localStorage.setItem('jtp_perms_ferr',JSON.stringify(perms)); }
+
+function temAcessoFerr(ferrId){
+  if(S.perfil?.is_admin) return true;
+  const cargo=S.perfil?.cargo;
+  const perms=getPermsFerr();
+  if(perms&&perms[ferrId]) return perms[ferrId].includes(cargo);
+  const ferr=FERRAMENTAS_DEF.find(f=>f.id===ferrId);
+  return ferr?.padrão.includes(cargo)||false;
+}
 const ST_CFG={disponivel:{l:'Disponível',cls:'b-disp'},em_linha:{l:'Em Linha',cls:'b-linha'},manutencao:{l:'Manutenção',cls:'b-manut'},aguardando_peca:{l:'Ag. Peça',cls:'b-agpeca'},sinistro:{l:'Sinistro',cls:'b-sinistro'}};
 
 // HELPERS
@@ -650,6 +672,7 @@ async function doLogin(){
 
   await loadFrota();
   navTo('painel',document.querySelector('.nav-btn'));
+  atualizarSubmenuFerramentas();
 }
 
 async function doLogout(){
@@ -1025,9 +1048,65 @@ async function renderAdmin(){
         return`<div style="text-align:center"><div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:700;color:var(--text)">${cnt}</div><div style="color:var(--text3);font-size:10px;margin-top:2px">${CARGOS[c]}</div></div>`
       }).join('')}
     </div>
+
+    <!-- Permissões por ferramenta -->
+    ${secTitle('🔒','Permissões de Ferramentas por Cargo')}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:20px">
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="background:var(--surface2)">
+              <th style="padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-size:11px;white-space:nowrap">Ferramenta</th>
+              ${Object.entries(CARGOS).map(([,l])=>`<th style="padding:8px 6px;text-align:center;border-bottom:1px solid var(--border);color:var(--text3);font-size:10px;white-space:nowrap;min-width:60px">${l.replace('Líder ','L. ').replace('Assistente ','Ass. ').replace('Gerente de ','Ger. ').replace('Operações Seguras','Op. Seg.')}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${FERRAMENTAS_DEF.map(f=>{
+              const perms=getPermsFerr();
+              const ativos=perms&&perms[f.id]?perms[f.id]:f.padrão;
+              return`<tr style="border-bottom:1px solid var(--border)">
+                <td style="padding:10px 14px;font-weight:600">${f.icon} ${f.nome}</td>
+                ${Object.keys(CARGOS).map(cargo=>{
+                  const tem=ativos.includes(cargo);
+                  return`<td style="text-align:center;padding:6px">
+                    <button onclick="togglePermFerr('${f.id}','${cargo}')"
+                      style="width:28px;height:28px;border-radius:6px;border:1px solid ${tem?'#00C48C40':'var(--border)'};background:${tem?'#00C48C18':'transparent'};cursor:pointer;font-size:14px;transition:all .2s"
+                      title="${CARGOS[cargo]}">
+                      ${tem?'✅':'○'}
+                    </button>
+                  </td>`;
+                }).join('')}
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="padding:10px 14px;background:var(--surface2);border-top:1px solid var(--border);font-size:11px;color:var(--text3);display:flex;justify-content:space-between;align-items:center">
+        <span>✅ = acesso permitido · ○ = sem acesso · Admin sempre tem acesso total</span>
+        <button onclick="resetPermsFerr()" class="btn-sm danger">↺ Restaurar Padrão</button>
+      </div>
+    </div>
+
     ${cards||`<div class="empty"><div style="font-size:40px">👥</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Nenhum usuário cadastrado</div></div>`}
     <div class="info-blue info-banner">🔐 Usuários criados aqui recebem acesso imediato ao sistema. A senha pode ser alterada pelo próprio usuário após o primeiro login.</div>
   `);
+}
+
+function togglePermFerr(ferrId, cargo){
+  const perms=getPermsFerr()||Object.fromEntries(FERRAMENTAS_DEF.map(f=>[f.id,[...f.padrão]]));
+  if(!perms[ferrId]) perms[ferrId]=[...FERRAMENTAS_DEF.find(f=>f.id===ferrId)?.padrão||[]];
+  const idx=perms[ferrId].indexOf(cargo);
+  if(idx>=0) perms[ferrId].splice(idx,1);
+  else perms[ferrId].push(cargo);
+  setPermsFerr(perms);
+  renderAdmin();
+}
+
+function resetPermsFerr(){
+  if(!confirm('Restaurar todas as permissões para o padrão?')) return;
+  localStorage.removeItem('jtp_perms_ferr');
+  toast('✅ Permissões restauradas para o padrão!');
+  renderAdmin();
 }
 
 // MODAL USUÁRIO
@@ -1119,10 +1198,35 @@ function renderFerramentas(){
   const tools=[
     {id:'ferr-210',icon:'📋',name:'2.10 Soltura de Frota',desc:'Importe o PDF da escala GPS, confirme saídas em tempo real e imprima o relatório 2.10.'},
     {id:'ferr-22',icon:'🔧',name:'2.2 Priorização Oficina',desc:'Gerencie carros parados por ocorrência. PCM lança, acompanha e libera. Futuro: integração Praxio.'},
-    {id:'ferr-lav',icon:'🧼',name:'Programação de Lavagem',desc:'Importe via Excel e registre execuções em tempo real. Acompanha metas por tipo.'},
+    {id:'ferr-lav',icon:'🧼',name:'3.2 Checklist Lavagem',desc:'Importe via Excel e registre execuções em tempo real. Acompanha metas por tipo.'},
     {id:'ferr-ctrl',icon:'✅',name:'Controle Soltura / Oficina',desc:'Status da oficina + lavagem por veículo. Liberado = pronto para soltura.'},
-  ];
+  ].filter(t=>temAcessoFerr(t.id));
+
+  // Atualiza submenu lateral com ferramentas permitidas
+  atualizarSubmenuFerramentas();
+
+  if(tools.length===0){
+    setMain(`${secTitle('🛠️','Ferramentas Operacionais')}<div class="empty"><div style="font-size:40px">🔒</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Nenhuma ferramenta disponível</div><p style="color:var(--text3)">Contate o administrador para habilitar acesso.</p></div>`);
+    return;
+  }
   setMain(`${secTitle('🛠️','Ferramentas Operacionais')}<div class="tools-grid">${tools.map(t=>`<div class="tool-card" onclick="navToSub('${t.id}')"><div style="display:flex;justify-content:space-between"><span style="font-size:28px">${t.icon}</span><span class="badge b-ativo">Ativo</span></div><div style="font-size:14px;font-weight:700">${t.name}</div><div style="font-size:12px;color:var(--text3);line-height:1.5">${t.desc}</div></div>`).join('')}</div><div class="info-blue info-banner">💡 Clique em qualquer ferramenta para abrí-la</div>`);
+}
+
+function atualizarSubmenuFerramentas(){
+  const ferrMap={
+    'ferr-210':'📋 2.10 Soltura de Frota',
+    'ferr-22':'🔧 2.2 Priorização Oficina',
+    'ferr-lav':'🧼 3.2 Checklist Lavagem',
+    'ferr-ctrl':'✅ Controle Soltura',
+  };
+  const subFerr=document.getElementById('sub-ferr');
+  if(!subFerr) return;
+  const btns=subFerr.querySelectorAll('.sub-btn[onclick*="ferr-"]');
+  btns.forEach(btn=>{
+    const onclick=btn.getAttribute('onclick')||'';
+    const match=onclick.match(/'(ferr-[^']+)'/);
+    if(match) btn.style.display=temAcessoFerr(match[1])?'':'none';
+  });
 }
 
 // ── HELPERS 2.10 ────────────────────────────────────────────
