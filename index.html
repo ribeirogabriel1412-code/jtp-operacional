@@ -1161,8 +1161,98 @@ async function renderFerr210(tab='painel', dataFiltro=null){
     ${isSupervisao()?`<button class="filtro-btn${tab==='arquivo'?' active':''}" onclick="renderFerr210('arquivo')">🗂️ Arquivo Supervisão</button>`:''}
   </div>`;
 
-  // ── ABA IMPORTAR ──────────────────────────────────────────
-  if(tab==='importar'){
+  // Abas por perfil
+  const tabs=`<div class="filtros">
+    <button class="filtro-btn${tab==='painel'?' active':''}" onclick="renderFerr210('painel')">📋 ${isLiderPatio()?'Painel do Líder':'Visualizar'}</button>
+    <button class="filtro-btn${tab==='reservas'?' active':''}" onclick="renderFerr210('reservas')">🚌 Carros Reserva</button>
+    ${isEscalante()?`<button class="filtro-btn${tab==='importar'?' active':''}" onclick="renderFerr210('importar')">📤 Importar Escala</button>`:''}
+    ${isEscalante()?`<button class="filtro-btn${tab==='historico'?' active':''}" onclick="renderFerr210('historico')">📅 Histórico de Importações</button>`:''}
+    ${isSupervisao()?`<button class="filtro-btn${tab==='arquivo'?' active':''}" onclick="renderFerr210('arquivo')">🗂️ Arquivo Supervisão</button>`:''}
+  </div>`;
+
+  // ── ABA CARROS RESERVA ────────────────────────────────────
+  if(tab==='reservas'){
+    setMain(`<div class="loading"><div class="spinner"></div> Carregando reservas...</div>`);
+    const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+    const dataConsulta=S.data210||hoje();
+
+    // Busca prefixos já escalados para hoje/data selecionada
+    const{data:escalados}=await sb.from('soltura_2_10').select('prefixo,saiu,horario_programado,linha')
+      .eq('garagem_id',gid).eq('data',dataConsulta).eq('turno',S.turno);
+    const prefixosEscalados=new Set((escalados||[]).map(r=>r.prefixo));
+
+    // Busca frota disponível que NÃO está na escala
+    const{data:frota}=await sb.from('frota').select('*').eq('garagem_id',gid).order('prefixo');
+    const reservas=(frota||[]).filter(v=>!prefixosEscalados.has(v.prefixo)&&v.status==='disponivel');
+    const emManut=(frota||[]).filter(v=>v.status==='manutencao'||v.status==='aguardando_peca');
+
+    // Estatísticas
+    const totalFrota=(frota||[]).length;
+    const totalEscalados=prefixosEscalados.size;
+    const sairam=(escalados||[]).filter(r=>r.saiu===true).length;
+
+    const reservaCards=reservas.map(v=>`
+      <div style="background:var(--surface);border:1px solid #00C48C30;border-left:3px solid var(--green);border-radius:11px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="openModalV('${v.id}','${v.prefixo}','${v.status}')">
+        <div>
+          <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700">${v.prefixo}</div>
+          <div style="color:var(--text3);font-size:11px;margin-top:2px">${v.modelo||'—'} ${v.placa?'· '+v.placa:''}</div>
+        </div>
+        <div style="text-align:right">
+          <span class="badge b-disp">✅ Disponível</span>
+          <div style="color:var(--text4);font-size:10px;margin-top:4px">Reserva</div>
+        </div>
+      </div>`).join('');
+
+    const manutCards=emManut.map(v=>{
+      const st=STATUS22?.[v.status]||{l:v.status,c:'var(--amber)'};
+      return`<div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${v.status==='aguardando_peca'?'var(--red)':'var(--amber)'};border-radius:11px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700">${v.prefixo}</div>
+          <div style="color:var(--text3);font-size:11px;margin-top:2px">${v.modelo||'—'}</div>
+        </div>
+        <span class="badge ${v.status==='aguardando_peca'?'b-agpeca':'b-manut'}">${v.status==='aguardando_peca'?'📦 Ag. Peça':'🔧 Manutenção'}</span>
+      </div>`;
+    }).join('');
+
+    setMain(`
+      ${secTitle('🚌','Quadro de Carros Reserva',back)}${tabs}
+
+      <!-- Resumo do dia -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:20px">
+        ${[
+          {l:'Total Frota',v:totalFrota,c:'#475569'},
+          {l:'Escalados hoje',v:totalEscalados,c:'var(--blue)'},
+          {l:'Já saíram',v:sairam,c:'var(--green)'},
+          {l:'Disponíveis p/ Reserva',v:reservas.length,c:'var(--green)'},
+          {l:'Em Manutenção',v:emManut.length,c:'var(--red)'},
+        ].map(k=>`<div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${k.c};border-radius:10px;padding:12px 14px">
+          <div style="color:var(--text3);font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase">${k.l}</div>
+          <div style="font-family:'DM Mono',monospace;font-size:24px;font-weight:700;color:${k.c};margin-top:4px">${k.v}</div>
+        </div>`).join('')}
+      </div>
+
+      <!-- Carros disponíveis para reserva -->
+      <div style="font-weight:700;font-size:13px;color:var(--green);margin-bottom:10px">
+        ✅ Disponíveis para Reserva (${reservas.length})
+      </div>
+      ${reservas.length===0
+        ?`<div style="background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:20px;text-align:center;color:var(--text3);margin-bottom:16px">Todos os veículos disponíveis estão na escala</div>`
+        :`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:20px">${reservaCards}</div>`}
+
+      <!-- Em manutenção -->
+      ${emManut.length>0?`
+        <div style="font-weight:700;font-size:13px;color:var(--amber);margin-bottom:10px">
+          🔧 Em Manutenção / Aguardando Peça (${emManut.length})
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px">
+          ${manutCards}
+        </div>`:''}
+
+      <div class="info-blue info-banner" style="margin-top:16px">
+        💡 Atualização em tempo real · Data: ${formatData(dataConsulta)} · ${S.turno==='dia'?'☀️ Dia':'🌙 Noite'} · Clique em qualquer veículo para atualizar o status
+      </div>`);
+    return;
+  }
     const precisaGaragem=!S.perfil.garagem_id;
     const garaSelect=precisaGaragem?`
       <div style="margin-bottom:14px">
@@ -1566,7 +1656,45 @@ async function renderFerr210(tab='painel', dataFiltro=null){
           <tbody>${rows}</tbody>
         </table>
       </div>
-    </div>`);
+    </div>
+
+    <!-- BLOCO RESERVAS -->
+    ${await gerarBlocoReservas(gid, dataConsulta)}
+    `);
+}
+
+// Gera bloco de carros reserva
+async function gerarBlocoReservas(gid, dataConsulta){
+  const{data:escalados}=await sb.from('soltura_2_10').select('prefixo')
+    .eq('garagem_id',gid).eq('data',dataConsulta).eq('turno',S.turno);
+  const prefixosEscalados=new Set((escalados||[]).map(r=>r.prefixo));
+
+  const{data:frota}=await sb.from('frota').select('*').eq('garagem_id',gid).order('prefixo');
+  const reservas=(frota||[]).filter(v=>!prefixosEscalados.has(v.prefixo)&&v.status==='disponivel');
+
+  if(!reservas.length) return `<div class="info-blue info-banner" style="margin-top:12px">✅ Sem carros reserva disponíveis — toda a frota disponível está escalada!</div>`;
+
+  const rows=reservas.map(v=>`<tr>
+    <td><span style="font-family:'DM Mono',monospace;font-weight:700">${v.prefixo}</span></td>
+    <td style="color:var(--text2);font-size:12px">${v.modelo||'—'}</td>
+    <td style="font-family:'DM Mono',monospace;font-size:12px;color:var(--text3)">${v.placa||'—'}</td>
+    <td><span class="badge b-disp">✅ Disponível</span></td>
+  </tr>`).join('');
+
+  return`<div class="tbl-wrap" style="margin-top:14px">
+    <div class="tbl-head">
+      <div>
+        <div style="font-size:13px;font-weight:700">🚌 Carros Reserva Disponíveis — ${reservas.length} veículos</div>
+        <div style="color:var(--text3);font-size:12px;margin-top:2px">Frota disponível não escalada para ${formatData(dataConsulta)}</div>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>Prefixo</th><th>Modelo</th><th>Placa</th><th>Status</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`;
 }
 
 // Fecha e registra o relatório 2.10
