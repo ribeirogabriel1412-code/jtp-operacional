@@ -234,6 +234,7 @@ tr:hover td{background:#0F172A80}
       <button class="nav-btn" onclick="navTo('indicadores',this)"><span>📊</span> Indicadores</button>
       <button class="nav-btn" onclick="navTo('manutencao',this)"><span>🔧</span> Manutenção</button>
       <button class="nav-btn" onclick="navTo('almoxarifado',this)"><span>📦</span> Almoxarifado</button>
+      <button class="nav-btn" onclick="navTo('rotina',this)"><span>📅</span> Minha Rotina</button>
 
       <div class="nav-section">Ferramentas</div>
       <button class="nav-btn" onclick="toggleSub('sub-ferr','arr-ferr',this)"><span>🛠️</span> Ferramentas <span id="arr-ferr" style="margin-left:auto;font-size:10px;color:var(--text4)">▶</span></button>
@@ -667,7 +668,7 @@ function navTo(tela,el){
   S.tela=tela;S.subtela=null;
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   if(el) el.classList.add('active');
-  const map={painel:renderPainel,frota:renderFrota,indicadores:renderIndicadores,manutencao:renderManutencao,almoxarifado:renderAlmoxarifado,diretoria:renderDiretoria,admin:renderAdmin};
+  const map={painel:renderPainel,frota:renderFrota,indicadores:renderIndicadores,manutencao:renderManutencao,almoxarifado:renderAlmoxarifado,diretoria:renderDiretoria,admin:renderAdmin,rotina:()=>renderFerrRotina(S.perfil?.cargo)};
   if(map[tela]) map[tela]();
 }
 
@@ -2784,15 +2785,19 @@ function renderFerrRotina(cargoSel=null){
   };
 
   // Determina cargo a mostrar baseado no perfil ou seleção
-  const cargo=cargoSel||S.perfil?.cargo||'gerente_garagem';
-  const rotina=ROTINAS[cargo]||ROTINAS.gerente_garagem;
+  const meuCargo=S.perfil?.cargo||'gerente_garagem';
+  const isAdmin=S.perfil?.is_admin||['diretoria','gerente_garagem'].includes(meuCargo);
+  const cargo=cargoSel||(isAdmin?'gerente_garagem':meuCargo);
+  const rotina=ROTINAS[cargo]||ROTINAS[meuCargo]||ROTINAS.gerente_garagem;
   const agora=new Date();
   const horaAtual=`${String(agora.getHours()).padStart(2,'0')}:${String(agora.getMinutes()).padStart(2,'0')}`;
 
-  // Seletor de cargo
-  const seletorCargo=Object.entries(ROTINAS).map(([k,v])=>
-    `<button class="filtro-btn${cargo===k?' active':''}" onclick="renderFerrRotina('${k}')">${v.label.split(' ')[0]} ${v.label.split(' ')[1]||''}</button>`
-  ).join('');
+  // Seletor de cargo — só admin/gerente vê todos
+  const seletorCargo=isAdmin
+    ? Object.entries(ROTINAS).map(([k,v])=>
+        `<button class="filtro-btn${cargo===k?' active':''}" onclick="renderFerrRotina('${k}')">${v.label.split(' ').slice(0,2).join(' ')}</button>`
+      ).join('')
+    : `<div style="color:var(--text3);font-size:12px;padding:4px 0">📋 Exibindo a rotina do seu cargo</div>`;
 
   // Verifica atividade atual
   const atividadeAtual=rotina.atividades.find(a=>{
