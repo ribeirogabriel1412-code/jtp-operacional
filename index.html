@@ -1772,6 +1772,31 @@ async function abrirModal22(){
   document.getElementById('modal-22').style.display='flex';
 }
 
+// ── NOTIFICAÇÃO WHATSAPP ──────────────────────────────────
+async function notificarWhatsApp(ocorrencia_id, status_novo){
+  try{
+    const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+    await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization':`Bearer ${sb.supabaseKey||'sb_publishable_hasmgR_BbXcJC6Xko6DzaA_N7kl7rNT'}`,
+        'apikey':'sb_publishable_hasmgR_BbXcJC6Xko6DzaA_N7kl7rNT',
+      },
+      body:JSON.stringify({
+        tipo:'atualizacao_22',
+        ocorrencia_id,
+        garagem_id:gid,
+        usuario_nome:S.perfil?.nome||'Sistema',
+        status_novo,
+      }),
+    });
+    console.log('WhatsApp notificado ✅');
+  }catch(err){
+    console.warn('Erro ao notificar WhatsApp:',err.message);
+  }
+}
+
 async function salvarOcorrencia22(){
   const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
   const prefixoSel=document.getElementById('m22-prefixo').value;
@@ -1815,6 +1840,8 @@ async function salvarOcorrencia22(){
   if(error){toast('Erro: '+error.message,'err');return}
   toast(`✅ Ocorrência ${numero} aberta!`);
   closeM('modal-22');
+  // Notifica WhatsApp
+  if(novaOc) notificarWhatsApp(novaOc.id, status);
   renderFerr22('ativas');
 }
 
@@ -1897,6 +1924,8 @@ async function atualizarStatus22(){
 
   toast(isLib?'✅ Veículo liberado e frota atualizada!':'✅ Status atualizado!');
   closeM('modal-22-status');
+  // Notifica WhatsApp
+  notificarWhatsApp(S.editId22, novoStatus);
   renderFerr22('ativas');
 }
 
