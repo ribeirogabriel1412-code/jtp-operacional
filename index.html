@@ -2405,6 +2405,8 @@ async function notificarWhatsAppLiberacao(ocId, liderNome, gid){
     });
   }catch(err){console.warn('Erro WhatsApp liberação:',err.message);}
 }
+
+async function aprovarChecklistLib(ocId,aprovado){
   const msg=aprovado?'Aprovar a liberação do veículo?':'Devolver para o Líder de Oficina revisar?';
   if(!confirm(msg)) return;
   const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
