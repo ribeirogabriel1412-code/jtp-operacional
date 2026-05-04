@@ -447,7 +447,8 @@ tr:hover td{background:#0F172A80}
     <div class="modal-title">
       <span>Atualizar — <span id="m22s-info" style="font-family:'DM Mono',monospace;color:var(--blue)"></span></span>
       <div style="display:flex;gap:8px;align-items:center">
-        <button onclick="verHistorico22()" style="background:var(--border);border:none;color:var(--text2);border-radius:7px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">📋 Histórico</button>
+        <button onclick="verChecklistLib()" id="btn-cklib" style="background:#00C48C18;border:1px solid #00C48C40;color:var(--green);border-radius:7px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;display:none">📋 Cheklist Lib.</button>
+        <button onclick="verHistorico22()" style="background:var(--border);border:none;color:var(--text2);border-radius:7px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">🕐 Histórico</button>
         <button class="btn-x" onclick="closeM('modal-22-status')">✕</button>
       </div>
     </div>
@@ -535,6 +536,17 @@ tr:hover td{background:#0F172A80}
 </style>
 
 <!-- ÁREA DE IMPRESSÃO 2.10 -->
+<!-- MODAL CHECKLIST LIBERAÇÃO -->
+<div class="modal-ov" id="modal-22-cklib" style="display:none" onclick="if(event.target===this)closeM('modal-22-cklib')">
+  <div class="modal" style="max-width:520px;max-height:85vh;overflow-y:auto">
+    <div class="modal-title">
+      <span>📋 Checklist de Liberação — <span id="mckl-info" style="font-family:'DM Mono',monospace;color:var(--green)"></span></span>
+      <button class="btn-x" onclick="closeM('modal-22-cklib');document.getElementById('modal-22-status').style.display='flex'">✕</button>
+    </div>
+    <div id="cklib-content"><div class="loading"><div class="spinner"></div></div></div>
+  </div>
+</div>
+
 <div id="print-210"></div>
 
 <script>
@@ -1884,6 +1896,39 @@ const CHECKLIST_ITEMS={
   ],
 };
 
+// Checklist de LIBERAÇÃO — preenchido pelo Líder de Oficina
+const CHECKLIST_LIB_ITEMS={
+  corretiva:[
+    {item:'Serviço executado conforme OS do Praxio',ordem:1},
+    {item:'Causa raiz identificada e documentada',ordem:2},
+    {item:'Peças substituídas registradas no sistema',ordem:3},
+    {item:'Teste funcional realizado com sucesso',ordem:4},
+    {item:'Sem vazamentos de óleo, água ou ar',ordem:5},
+    {item:'Sem ruídos ou vibrações anormais',ordem:6},
+    {item:'Veículo limpo e em condições de operação',ordem:7},
+  ],
+  preventiva_leve:[
+    {item:'Todos os itens do plano preventivo executados',ordem:1},
+    {item:'Óleo e filtros trocados conforme especificação',ordem:2},
+    {item:'Freios verificados e dentro do padrão',ordem:3},
+    {item:'Nível de todos os fluidos correto',ordem:4},
+    {item:'Sistema elétrico e iluminação OK',ordem:5},
+    {item:'Teste de rodagem realizado sem ocorrências',ordem:6},
+    {item:'Documentação atualizada no Praxio',ordem:7},
+  ],
+  preventiva_pesada:[
+    {item:'Todos os itens do plano preventivo pesado executados',ordem:1},
+    {item:'Motor revisado conforme especificação',ordem:2},
+    {item:'Sistema de freios revisado e aprovado',ordem:3},
+    {item:'Transmissão revisada e funcionando',ordem:4},
+    {item:'Sistema elétrico completo verificado',ordem:5},
+    {item:'Funilaria e carroceria aprovadas',ordem:6},
+    {item:'Teste de rodagem completo sem ocorrências',ordem:7},
+    {item:'Documentação e OS atualizada no Praxio',ordem:8},
+    {item:'Aprovação final do Líder de Oficina',ordem:9},
+  ],
+};
+
 function sigla22(gid){
   const g=S.garagens.find(x=>x.id===gid);
   if(!g) return 'JTP';
@@ -2166,6 +2211,10 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
   document.getElementById('m22s-hora-lib').value=dtLocal();
   document.getElementById('m22s-lib-wrap').style.display=statusAtual==='liberado'?'block':'none';
 
+  // Mostra botão checklist liberação
+  const btnCklib=document.getElementById('btn-cklib');
+  if(btnCklib) btnCklib.style.display='block';
+
   // Busca dados completos
   sb.from('ocorrencias_22').select('*').eq('id',id).single().then(({data:oc})=>{
     if(!oc) return;
@@ -2180,6 +2229,154 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
   // Carrega checklist no modal
   carregarChecklistModal(id);
   document.getElementById('modal-22-status').style.display='flex';
+}
+
+// ── CHECKLIST DE LIBERAÇÃO ────────────────────────────────
+const isLiderOficina=()=>['lider_oficina','gerente_garagem','diretoria'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
+const isPCMLib=()=>['lider_pcm','assistente_pcm','gerente_garagem','diretoria'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
+
+async function verChecklistLib(){
+  document.getElementById('modal-22-status').style.display='none';
+  document.getElementById('modal-22-cklib').style.display='flex';
+  document.getElementById('mckl-info').textContent='';
+  await carregarChecklistLib(S.editId22);
+}
+
+async function carregarChecklistLib(ocId){
+  document.getElementById('cklib-content').innerHTML=`<div class="loading"><div class="spinner"></div></div>`;
+  const{data:oc}=await sb.from('ocorrencias_22').select('*').eq('id',ocId).single();
+  if(!oc) return;
+  document.getElementById('mckl-info').textContent=`${oc.prefixo}`;
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+
+  let{data:items}=await sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem');
+  if(!items||!items.length){
+    const defaultItems=CHECKLIST_LIB_ITEMS[oc.tipo]||CHECKLIST_LIB_ITEMS.corretiva;
+    await sb.from('checklist_liberacao').insert(defaultItems.map(it=>({
+      ocorrencia_id:ocId,garagem_id:gid,tipo:oc.tipo,item:it.item,ordem:it.ordem,concluido:false,
+    })));
+    const{data:novo}=await sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem');
+    items=novo||[];
+  }
+
+  const total=items.length;
+  const feitos=items.filter(i=>i.concluido).length;
+  const pct=Math.round((feitos/total)*100);
+  const pColor=pct===100?'var(--green)':pct>=50?'var(--amber)':'var(--red)';
+  const submetido=items[0]?.submetido;
+  const aprovado=items[0]?.aprovado;
+
+  let statusBanner='';
+  if(aprovado===true){
+    statusBanner=`<div style="background:#00C48C15;border:1px solid #00C48C40;border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:20px">✅</span>
+      <div><div style="color:var(--green);font-weight:700;font-size:13px">Liberação Aprovada pelo PCM</div>
+      <div style="color:var(--text3);font-size:11px;margin-top:2px">Aprovado por ${items[0]?.aprovado_por||'—'} · ${formatDT(items[0]?.aprovado_em)}</div></div>
+    </div>`;
+  } else if(submetido){
+    statusBanner=`<div style="background:#F59E0B15;border:1px solid #F59E0B40;border-radius:10px;padding:12px 14px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:20px">⏳</span>
+        <div style="flex:1"><div style="color:var(--amber);font-weight:700;font-size:13px">Aguardando Aprovação do PCM</div>
+        <div style="color:var(--text3);font-size:11px;margin-top:2px">Submetido por ${items[0]?.submetido_por||'—'} · ${formatDT(items[0]?.submetido_em)}</div></div>
+      </div>
+      ${isPCMLib()?`<div style="display:flex;gap:8px;margin-top:10px">
+        <button onclick="aprovarChecklistLib('${ocId}',true)" class="btn-success" style="flex:1">✅ Aprovar Liberação</button>
+        <button onclick="aprovarChecklistLib('${ocId}',false)" class="btn-sec" style="flex:1">↩ Devolver para Oficina</button>
+      </div>`:''}
+    </div>`;
+  }
+
+  const ckRows=items.map(it=>`
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:9px 10px;border-radius:8px;margin-bottom:4px;background:${it.concluido?'#00C48C08':'var(--surface2)'}">
+      <input type="checkbox" id="ckl-${it.id}" ${it.concluido?'checked':''}
+        ${!isLiderOficina()||submetido?'disabled':''}
+        onchange="toggleCheckLib('${it.id}','${ocId}')"
+        style="width:16px;height:16px;flex-shrink:0;margin-top:2px;accent-color:var(--green)">
+      <div style="flex:1">
+        <label for="ckl-${it.id}" style="font-size:13px;color:${it.concluido?'var(--text3)':'var(--text)'};text-decoration:${it.concluido?'line-through':''}">
+          ${it.ordem}. ${it.item}
+        </label>
+        ${it.concluido&&it.concluido_por?`<div style="color:var(--text4);font-size:10px;margin-top:2px">✓ ${it.concluido_por} · ${formatDT(it.concluido_em)}</div>`:''}
+      </div>
+    </div>`).join('');
+
+  const btnSubmeter=isLiderOficina()&&pct===100&&!submetido
+    ?`<button onclick="submeterChecklistLib('${ocId}')" class="btn-success" style="width:100%;margin-top:12px">📤 Submeter para Aprovação do PCM</button>`
+    :!isLiderOficina()&&!submetido
+    ?`<div style="color:var(--text3);font-size:12px;text-align:center;margin-top:12px;padding:10px;background:var(--surface2);border-radius:8px">🔒 Preenchimento exclusivo do Líder de Oficina</div>`
+    :'';
+
+  document.getElementById('cklib-content').innerHTML=`
+    ${statusBanner}
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:12px">
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div><span style="color:var(--text3)">Veículo:</span> <span style="font-family:'DM Mono',monospace;font-weight:700">${oc.prefixo}</span></div>
+        <div><span style="color:var(--text3)">Tipo:</span> <span style="color:${TIPO22[oc.tipo]?.c||'var(--text)'}">${TIPO22[oc.tipo]?.ic} ${TIPO22[oc.tipo]?.l}</span></div>
+        <div><span style="color:var(--text3)">OS Praxio:</span> <span style="font-family:'DM Mono',monospace;color:var(--blue)">${oc.praxio_os_id||'—'}</span></div>
+        <div><span style="color:var(--text3)">Mecânico:</span> ${oc.mecanico||'—'}</div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+      <span style="color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase">CHECKLIST DE LIBERAÇÃO</span>
+      <span style="color:${pColor};font-family:'DM Mono',monospace;font-size:13px;font-weight:700">${feitos}/${total} · ${pct}%</span>
+    </div>
+    <div class="prog-wrap" style="margin-bottom:12px"><div class="prog-bar" style="width:${pct}%;background:${pColor}"></div></div>
+    ${ckRows}
+    ${btnSubmeter}
+    <button onclick="closeM('modal-22-cklib');document.getElementById('modal-22-status').style.display='flex'" class="btn-sec" style="width:100%;margin-top:8px">← Voltar</button>`;
+}
+
+async function toggleCheckLib(itemId,ocId){
+  const cb=document.getElementById(`ckl-${itemId}`);
+  await sb.from('checklist_liberacao').update({
+    concluido:cb.checked,
+    concluido_por:cb.checked?S.perfil?.nome:null,
+    concluido_em:cb.checked?new Date().toISOString():null,
+  }).eq('id',itemId);
+  await carregarChecklistLib(ocId);
+}
+
+async function submeterChecklistLib(ocId){
+  if(!confirm('Submeter o checklist de liberação para aprovação do PCM?')) return;
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  await sb.from('checklist_liberacao').update({
+    submetido:true,submetido_por:S.perfil?.nome,submetido_em:new Date().toISOString(),
+  }).eq('ocorrencia_id',ocId);
+  await sb.from('ocorrencias_22').update({status:'aguardando_aprovacao',updated_at:new Date().toISOString()}).eq('id',ocId);
+  await sb.from('historico_22').insert({
+    ocorrencia_id:ocId,garagem_id:gid,
+    evento:'Checklist de liberação submetido — aguardando aprovação PCM',
+    status_novo:'aguardando_aprovacao',usuario_nome:S.perfil?.nome,
+  });
+  notificarWhatsApp(ocId,'aguardando_aprovacao');
+  toast('📤 Checklist submetido! PCM notificado.');
+  await carregarChecklistLib(ocId);
+}
+
+async function aprovarChecklistLib(ocId,aprovado){
+  const msg=aprovado?'Aprovar a liberação do veículo?':'Devolver para o Líder de Oficina revisar?';
+  if(!confirm(msg)) return;
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  await sb.from('checklist_liberacao').update({
+    aprovado,aprovado_por:S.perfil?.nome,aprovado_em:new Date().toISOString(),
+  }).eq('ocorrencia_id',ocId);
+
+  if(aprovado){
+    const{data:oc}=await sb.from('ocorrencias_22').select('veiculo_id').eq('id',ocId).single();
+    await sb.from('ocorrencias_22').update({status:'liberado',hora_liberacao:new Date().toISOString(),fechado_por_nome:S.perfil?.nome,updated_at:new Date().toISOString()}).eq('id',ocId);
+    if(oc?.veiculo_id) await sb.from('frota').update({status:'disponivel',updated_at:new Date().toISOString()}).eq('id',oc.veiculo_id);
+    await sb.from('historico_22').insert({ocorrencia_id:ocId,garagem_id:gid,evento:'Veículo liberado — Checklist aprovado pelo PCM',status_anterior:'aguardando_aprovacao',status_novo:'liberado',usuario_nome:S.perfil?.nome});
+    notificarWhatsApp(ocId,'liberado');
+    toast('✅ Veículo liberado e frota atualizada!');
+  } else {
+    await sb.from('checklist_liberacao').update({submetido:false,aprovado:null}).eq('ocorrencia_id',ocId);
+    await sb.from('ocorrencias_22').update({status:'em_manutencao',updated_at:new Date().toISOString()}).eq('id',ocId);
+    await sb.from('historico_22').insert({ocorrencia_id:ocId,garagem_id:gid,evento:'Checklist devolvido pelo PCM — revisão necessária',status_novo:'em_manutencao',usuario_nome:S.perfil?.nome});
+    toast('↩ Checklist devolvido para o Líder de Oficina.');
+  }
+  closeM('modal-22-cklib');
+  renderFerr22('ativas');
 }
 
 async function carregarChecklistModal(ocId){
