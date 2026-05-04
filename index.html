@@ -2340,6 +2340,7 @@ async function toggleCheckLib(itemId,ocId){
 async function submeterChecklistLib(ocId){
   if(!confirm('Submeter o checklist de liberação para aprovação do PCM?')) return;
   const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+
   await sb.from('checklist_liberacao').update({
     submetido:true,submetido_por:S.perfil?.nome,submetido_em:new Date().toISOString(),
   }).eq('ocorrencia_id',ocId);
@@ -2349,12 +2350,61 @@ async function submeterChecklistLib(ocId){
     evento:'Checklist de liberação submetido — aguardando aprovação PCM',
     status_novo:'aguardando_aprovacao',usuario_nome:S.perfil?.nome,
   });
-  notificarWhatsApp(ocId,'aguardando_aprovacao');
+
+  // Notificação WhatsApp específica de conclusão do Líder de Oficina
+  notificarWhatsAppLiberacao(ocId, S.perfil?.nome, gid);
+
   toast('📤 Checklist submetido! PCM notificado.');
   await carregarChecklistLib(ocId);
 }
 
-async function aprovarChecklistLib(ocId,aprovado){
+async function notificarWhatsAppLiberacao(ocId, liderNome, gid){
+  try{
+    // Busca dados da ocorrência para montar mensagem completa
+    const{data:oc}=await sb.from('ocorrencias_22').select('*').eq('id',ocId).single();
+    const{data:garagem}=await sb.from('garagens').select('nome').eq('id',gid).single();
+    const{data:ckItems}=await sb.from('checklist_liberacao').select('item,concluido,concluido_por,concluido_em').eq('ocorrencia_id',ocId).order('ordem');
+
+    const agora=new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+    const tp=TIPO22[oc?.tipo]||{l:oc?.tipo,ic:'🔧'};
+    const tempoParado=oc?.hora_entrada?Math.round((Date.now()-new Date(oc.hora_entrada).getTime())/60000):0;
+    const tempoStr=tempoParado>=60?`${Math.floor(tempoParado/60)}h ${tempoParado%60}min`:`${tempoParado}min`;
+
+    // Lista dos itens concluídos
+    const itensLista=(ckItems||[]).map(it=>`✅ ${it.item}`).join('\n');
+
+    const mensagem=[
+      `🔧 *SERVIÇO CONCLUÍDO — ${oc?.prefixo}*`,
+      `📍 ${garagem?.nome||'JTP'} | ${agora}`,
+      ``,
+      `*Líder de Oficina:* ${liderNome}`,
+      `*Veículo:* ${oc?.prefixo}`,
+      `*Tipo:* ${tp.ic} ${tp.l}`,
+      ...(oc?.praxio_os_id?[`*OS Praxio:* ${oc.praxio_os_id}`]:[]),
+      ...(oc?.mecanico?[`*Mecânico:* ${oc.mecanico}`]:[]),
+      `*Tempo na oficina:* ${tempoStr}`,
+      ``,
+      `━━━━━━━━━━━━━━━━━━━━`,
+      `📋 *Checklist de Liberação — 100% Concluído:*`,
+      ``,
+      itensLista,
+      ``,
+      `━━━━━━━━━━━━━━━━━━━━`,
+      `⏳ *Aguardando aprovação do Líder PCM para liberação*`,
+      `_JTP Operacional · Sistema Automático_`,
+    ].join('\n');
+
+    await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${SUPABASE_ANON_KEY}`,'apikey':SUPABASE_ANON_KEY},
+      body:JSON.stringify({
+        ocorrencia_id:ocId, garagem_id:gid,
+        usuario_nome:liderNome, status_novo:'aguardando_aprovacao',
+        mensagem_custom:mensagem,
+      }),
+    });
+  }catch(err){console.warn('Erro WhatsApp liberação:',err.message);}
+}
   const msg=aprovado?'Aprovar a liberação do veículo?':'Devolver para o Líder de Oficina revisar?';
   if(!confirm(msg)) return;
   const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
