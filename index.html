@@ -241,6 +241,7 @@ tr:hover td{background:#0F172A80}
         <button class="sub-btn" onclick="navToSub('ferr-210')">📋 2.10 Soltura de Frota</button>
         <button class="sub-btn" onclick="navToSub('ferr-22')">🔧 2.2 Priorização Oficina</button>
         <button class="sub-btn" onclick="navToSub('ferr-lav')">🧼 3.2 Checklist Lavagem</button>
+        <button class="sub-btn" onclick="navToSub('ferr-rotina')">📅 Rotina Operacional (BOK)</button>
         <button class="sub-btn" onclick="navToSub('ferr-ctrl')">✅ Controle Soltura</button>
       </div>
       <button class="nav-btn" onclick="toggleSub('sub-rel','arr-rel',this)"><span>📋</span> Relatórios <span id="arr-rel" style="margin-left:auto;font-size:10px;color:var(--text4)">▶</span></button>
@@ -674,7 +675,7 @@ function navToSub(sub){
   S.subtela=sub;
   document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes(sub))b.classList.add('active')});
-  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-lav':renderFerrLav,'ferr-ctrl':renderFerrCtrl,'rel-todos':renderRelatorios};
+  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-lav':renderFerrLav,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'rel-todos':renderRelatorios};
   if(map[sub]) map[sub]();
 }
 
@@ -2630,7 +2631,238 @@ async function deleteCronograma(id){
   renderFerrLav('cronograma');
 }
 
-function renderFerrCtrl(){
+// ── ROTINA OPERACIONAL (BOK) ──────────────────────────────
+function renderFerrRotina(cargoSel=null){
+  const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+
+  // Dados completos do BOK
+  const ROTINAS={
+    gerente_garagem:{
+      label:'Coordenador de Garagem',
+      horario:'07:00 ~ 17:00 (5x2)',
+      superior:'Diretoria',
+      equipe:'Supervisor de Garagem, Líder PCM, Líder Almoxarifado, Líder Operacional',
+      desc:'Responsável pela gestão estratégica e operacional da garagem. Lidera o Drumbeat Operacional e realiza o Gemba Walk para identificar oportunidades de eficiência.',
+      atividades:[
+        {hora:'07:00 - 07:30',ativ:'Checkpoint de Liderança',com:'Supervisor de Garagem / Líderes',desc:'Passagem de bastão do turno noturno. Alinhamento das ocorrências e prioridades do dia.',tools:['2.1 Fechamento de Turno']},
+        {hora:'07:30 - 08:00',ativ:'Priorização CPK / Lider PCM',com:'Líder PCM',desc:'Reunião de priorização de custos e manutenção.',tools:['2.2 Priorização']},
+        {hora:'08:00 - 09:00',ativ:'Demandas não programadas',com:'Equipe',desc:'Tratativa de demandas emergenciais e não programadas.',tools:[]},
+        {hora:'09:00 - 09:45',ativ:'Gemba Walk Rodada 1',com:'Equipe',desc:'Ronda operacional: verificação de prioridade, conformidade e processos.',tools:['3.3 Ronda Operacional']},
+        {hora:'09:45 - 11:00',ativ:'Fechamento orçamento',com:'Líder PCM',desc:'Consolidação e análise do orçamento de manutenção.',tools:['2.6 Previsibilidade']},
+        {hora:'11:00 - 12:00',ativ:'Fechamento Técnico',com:'Líder PCM & Operações',desc:'Revisão dos indicadores técnicos e operacionais.',tools:['2.12 Indicadores']},
+        {hora:'12:00 - 13:00',ativ:'Refeição',com:'—',desc:'Intervalo para refeição.',tools:[]},
+        {hora:'13:00 - 14:00',ativ:'Drumbeat Matricial',com:'Matriz / Líder PCM',desc:'Drumbeat Operacional: reunião de alinhamento com a matriz.',tools:['2.12 Indicadores']},
+        {hora:'14:00 - 14:30',ativ:'Distribuição de tarefas',com:'Líder PCM & Operações',desc:'Distribuição e acompanhamento de tarefas prioritárias.',tools:[]},
+        {hora:'14:30 - 15:00',ativ:'Follow-up Matricial',com:'Matriz',desc:'Interface direta com a Matriz. Defesa do orçamento e pendências.',tools:[]},
+        {hora:'15:30 - 16:00',ativ:'Gemba Walk Rodada 2',com:'Equipe',desc:'Segunda ronda operacional do dia.',tools:['3.3 Ronda Operacional']},
+        {hora:'16:00 - 17:00',ativ:'Fechamento do Dia',com:'Supervisor de Garagem',desc:'Consolidação dos indicadores e passagem de bastão para o supervisor noturno.',tools:['2.1 Fechamento Turno','2.12 Indicadores']},
+      ]
+    },
+    gerente_garagem_noite:{
+      label:'Supervisor de Garagem',
+      horario:'22:30 ~ 07:30',
+      superior:'Coordenador de Garagem',
+      equipe:'Líder PCM, Líder Pátio, Almoxarife',
+      desc:'Responsável pela gestão do turno noturno. Audita os processos de Almoxarifado, PCM e Oficina durante a madrugada para garantir a meta de soltura da manhã.',
+      atividades:[
+        {hora:'22:30 - 23:00',ativ:'Atualização e planejamento',com:'Líder PCM',desc:'Recebimento das informações do turno anterior e planejamento da noite.',tools:[]},
+        {hora:'23:00 - 23:30',ativ:'Previsibilidade de manutenção',com:'Líder PCM',desc:'Análise da previsibilidade de liberação dos veículos.',tools:['2.6 Previsibilidade']},
+        {hora:'23:30 - 00:15',ativ:'Supervisão da oficina',com:'Líder Oficina',desc:'Acompanhamento das atividades de manutenção em andamento.',tools:['2.2 Priorização']},
+        {hora:'00:15 - 00:45',ativ:'Auditoria Almoxarifado Rodada 1',com:'Almoxarife',desc:'Supervisão do processo de almoxarifado noturno.',tools:['3.3 Ronda Operacional']},
+        {hora:'00:45 - 01:30',ativ:'Pré-soltura / Ronda',com:'Líder Pátio',desc:'Verificação das condições dos veículos para soltura.',tools:['3.3 Ronda Operacional']},
+        {hora:'01:30 - 01:45',ativ:'Começo do processo de soltura',com:'Líder Pátio',desc:'Início formal do processo de soltura de frota.',tools:['2.10 Soltura']},
+        {hora:'01:45 - 02:30',ativ:'Fechamento pré-soltura de frota',com:'Líder Pátio',desc:'Fechamento do turno para previsibilidade de soltura.',tools:['2.10 Soltura']},
+        {hora:'02:30 - 03:30',ativ:'Refeição',com:'—',desc:'Intervalo para refeição.',tools:[]},
+        {hora:'03:30 - 04:30',ativ:'Alinhamento Soltura',com:'Líder Pátio',desc:'Definição dos carros reserva e confirmação da escala de soltura.',tools:['2.10 Soltura']},
+        {hora:'04:30 - 05:00',ativ:'Fechamento Setorial / Lider PCM',com:'Líder PCM',desc:'Encerramento da oficina com balanço das OS.',tools:['2.2 Priorização','2.6 Custo']},
+        {hora:'05:00 - 05:20',ativ:'Fechamento Almoxarifado',com:'Almoxarife',desc:'Fechamento do turno de almoxarifado.',tools:['2.3 Fechamento Almox']},
+        {hora:'05:20 - 06:20',ativ:'Gemba Walk Rodada 2',com:'Equipe',desc:'Gemba Walk de fechamento — verificação pós-soltura.',tools:['3.3 Ronda','2.10 Soltura']},
+        {hora:'06:20 - 07:00',ativ:'Relatório SOS',com:'—',desc:'Consolidação do relatório de ocorrências.',tools:['2.1 Fechamento Turno']},
+        {hora:'07:00 - 07:30',ativ:'Checkpoint de Liderança',com:'Coordenador / Líderes',desc:'Passagem de bastão para o turno diurno.',tools:['2.1 Fechamento Turno']},
+      ]
+    },
+    lider_pcm:{
+      label:'Líder PCM Diurno',
+      horario:'07:00 ~ 17:00 (5x2)',
+      superior:'Coordenador de Garagem',
+      equipe:'Assistentes PCM, Líder de Oficina',
+      desc:'Responsável pelo Planejamento e Controle de Manutenção. Garante a disponibilidade da frota através do acompanhamento das OS, controle de custos e previsibilidade.',
+      atividades:[
+        {hora:'07:00 - 07:30',ativ:'Checkpoint de Liderança',com:'Coordenador / Supervisores',desc:'Passagem de bastão e alinhamento das prioridades do dia.',tools:['2.1 Fechamento Turno']},
+        {hora:'07:30 - 08:00',ativ:'Priorização CPK',com:'Coordenador de Garagem',desc:'Reunião de priorização de custos por km.',tools:['2.2 Priorização']},
+        {hora:'08:00 - 09:00',ativ:'Levantamento de Indicadores',com:'Assistentes PCM',desc:'Coleta de dados técnicos e operacionais.',tools:['2.12 Indicadores']},
+        {hora:'09:00 - 10:00',ativ:'Supervisão das tarefas',com:'Líder Oficina & Assistentes',desc:'Suporte na oficina para agilizar liberação dos veículos.',tools:['2.2 Priorização']},
+        {hora:'10:00 - 11:00',ativ:'Análise e priorização',com:'Assistentes PCM',desc:'Análise das OS em aberto e repriorização.',tools:['2.2 Priorização','2.11 Indisponíveis']},
+        {hora:'11:00 - 11:45',ativ:'Fechamento Técnico',com:'Coordenador de Garagem',desc:'Revisão dos indicadores técnicos.',tools:['2.12 Indicadores']},
+        {hora:'11:45 - 12:00',ativ:'Fechamento da Oficina',com:'Líder Oficina',desc:'Fechamento com previsibilidade de soltura e próximas ações.',tools:['2.7 Fechamento Oficina']},
+        {hora:'12:00 - 13:00',ativ:'Refeição',com:'—',desc:'Intervalo para refeição.',tools:[]},
+        {hora:'13:00 - 14:00',ativ:'Drumbeat Matricial',com:'Coordenador / Matriz',desc:'Drumbeat Operacional — reunião de performance.',tools:['2.12 Indicadores']},
+        {hora:'14:00 - 15:00',ativ:'FUP preventiva vs peças',com:'Líder Suprimentos',desc:'Acompanhamento de peças críticas para preventivas.',tools:['2.5 Preditivo']},
+        {hora:'15:00 - 16:00',ativ:'Supervisão das tarefas',com:'Líder Oficina',desc:'Acompanhamento final das OS do dia.',tools:['2.2 Priorização']},
+        {hora:'16:00 - 16:20',ativ:'Fechamento da Oficina',com:'Líder Oficina',desc:'Fechamento do dia com previsibilidade noturna.',tools:['2.7 Fechamento Oficina']},
+        {hora:'16:20 - 17:00',ativ:'Fechamento PCM',com:'Coordenador de Garagem',desc:'Consolidação final do PCM e passagem para o turno noturno.',tools:['2.12 Indicadores','2.6 Previsibilidade']},
+      ]
+    },
+    assistente_pcm:{
+      label:'Assistente PCM',
+      horario:'21:00~05:20 / 05:00~13:20 / 13:00~21:20 (6x1)',
+      superior:'Líder PCM',
+      equipe:'Líder de Oficina',
+      desc:'Responsável pela conformidade sistêmica das OS no Praxio, fechamento de combustível, lubrificantes e suporte ao Líder PCM.',
+      atividades:[
+        {hora:'21:00 - 21:30',ativ:'Passagem de Bastão',com:'Assistente PCM anterior',desc:'Recebimento das demandas e pendências do turno anterior.',tools:[]},
+        {hora:'21:30 - 22:00',ativ:'Entendimento das Demandas',com:'Líder PCM',desc:'Leitura das demandas de manutenção e prioridades.',tools:['2.2 Priorização']},
+        {hora:'22:00 - 23:30',ativ:'Conformidade Sistêmica',com:'Sistema Praxio',desc:'Atualização e conformidade das OS no sistema.',tools:['2.2 Priorização']},
+        {hora:'23:30 - 23:45',ativ:'Distribuição (Atualizado)',com:'Líder Oficina & PCM',desc:'Distribuição atualizada das OS para a oficina.',tools:[]},
+        {hora:'23:45 - 01:15',ativ:'Supervisão das tarefas',com:'Líder Oficina & PCM',desc:'Suporte direto na oficina para agilizar liberações.',tools:['2.2 Priorização']},
+        {hora:'01:15 - 02:00',ativ:'Fechamento da oficina',com:'Líder Oficina & PCM',desc:'Fechamento com previsibilidade de soltura.',tools:['2.7 Fechamento Oficina']},
+        {hora:'02:00 - 03:00',ativ:'Fechamento de custo',com:'—',desc:'Consolidação dos custos de manutenção.',tools:['2.6 Previsibilidade']},
+        {hora:'03:00 - 03:30',ativ:'Conformidade Sistêmica',com:'Sistema Praxio',desc:'Segunda rodada de conformidade no sistema.',tools:[]},
+        {hora:'03:30 - 04:00',ativ:'Combustível',com:'—',desc:'Fechamento e conformidade sistêmica do combustível.',tools:['2.16 Abastecimento']},
+        {hora:'04:00 - 04:45',ativ:'Lubrificantes',com:'—',desc:'Utilização e conformidade de lubrificantes.',tools:['2.17 Lubrificantes']},
+        {hora:'04:45 - 05:00',ativ:'Inspeção final',com:'—',desc:'Inspeção dos processos antes da passagem de bastão.',tools:[]},
+        {hora:'05:00 - 05:20',ativ:'Passagem de Bastão',com:'Próximo Assistente',desc:'Passagem formal do turno.',tools:[]},
+        {hora:'07:00 - 07:30',ativ:'Checkpoint de Liderança',com:'Coordenador / Líderes',desc:'Alinhamento matinal com toda a liderança.',tools:['2.1 Fechamento Turno']},
+        {hora:'08:00 - 09:00',ativ:'Fechamento Requisição',com:'Almoxarife',desc:'Fechamento das requisições de peças.',tools:['2.21 RJNP']},
+        {hora:'10:00 - 11:00',ativ:'Reprogramação de OS',com:'Líder PCM',desc:'Reprogramação das OS não concluídas.',tools:['2.2 Priorização']},
+        {hora:'18:30 - 19:30',ativ:'Fechamento RJNP',com:'—',desc:'Consolidação do Relatório de Justificativa de Necessidade de Peças.',tools:['2.21 RJNP']},
+      ]
+    },
+    lider_patio:{
+      label:'Líder de Pátio',
+      horario:'21:30 ~ 05:50 (6x1)',
+      superior:'Supervisor de Garagem',
+      equipe:'Operadores de pátio',
+      desc:'Responsável pela soltura de frota, organização do pátio e controle dos veículos disponíveis para operação.',
+      atividades:[
+        {hora:'21:30 - 22:00',ativ:'Passagem de Bastão',com:'Líder Pátio anterior',desc:'Recebimento do status do pátio e veículos.',tools:[]},
+        {hora:'22:00 - 23:00',ativ:'Organização do Pátio',com:'Equipe',desc:'Posicionamento dos veículos e preparação para soltura.',tools:[]},
+        {hora:'23:00 - 00:00',ativ:'Verificação dos veículos',com:'Supervisor',desc:'Verificação das condições dos veículos programados para soltura.',tools:['2.10 Soltura']},
+        {hora:'00:00 - 01:30',ativ:'Pré-soltura / Ronda',com:'Supervisor',desc:'Ronda operacional e preparação para início da soltura.',tools:['3.3 Ronda Operacional']},
+        {hora:'01:30 - 05:00',ativ:'Soltura de Frota',com:'Supervisor',desc:'Acompanhamento e confirmação das saídas dos veículos conforme escala.',tools:['2.10 Soltura']},
+        {hora:'03:30 - 04:30',ativ:'Alinhamento Soltura',com:'Supervisor de Garagem',desc:'Definição de carros reserva e ajustes finais da soltura.',tools:['2.10 Soltura']},
+        {hora:'05:00 - 05:50',ativ:'Fechamento e Passagem de Bastão',com:'Próximo Líder',desc:'Fechamento do relatório 2.10 e passagem formal do turno.',tools:['2.10 Soltura','2.1 Fechamento Turno']},
+      ]
+    },
+    lider_operacional:{
+      label:'Líder Operacional / Escalante',
+      horario:'08:00 ~ 18:00 (6x1)',
+      superior:'Coordenador de Garagem',
+      equipe:'Motoristas escalados',
+      desc:'Responsável pela escala dos motoristas, importação da programação de soltura e acompanhamento da operação de campo.',
+      atividades:[
+        {hora:'08:00 - 09:00',ativ:'Planejamento da escala D+1',com:'—',desc:'Elaboração e importação da escala de motoristas para o dia seguinte.',tools:['2.10 Soltura']},
+        {hora:'09:00 - 10:00',ativ:'Acompanhamento de campo',com:'Motoristas',desc:'Verificação das operações em andamento e resolução de ocorrências.',tools:[]},
+        {hora:'10:00 - 11:30',ativ:'Confirmação escala D+1',com:'Supervisão',desc:'Confirmação e ajustes da escala do dia seguinte.',tools:['2.10 Soltura']},
+        {hora:'12:00 - 13:00',ativ:'Refeição',com:'—',desc:'Intervalo para refeição.',tools:[]},
+        {hora:'13:00 - 14:00',ativ:'Acompanhamento de recolha',com:'Motoristas',desc:'Monitoramento de SOS e recolhas anormais.',tools:['2.18 SOS Recolha']},
+        {hora:'14:00 - 16:00',ativ:'Fechamento de turno operacional',com:'Supervisor',desc:'Consolidação dos dados operacionais do dia.',tools:['2.1 Fechamento Turno','2.10 Soltura']},
+        {hora:'16:00 - 18:00',ativ:'Escala e programação D+1',com:'—',desc:'Finalização da programação do dia seguinte e importação no sistema.',tools:['2.10 Soltura']},
+      ]
+    },
+    almoxarifado:{
+      label:'Almoxarife',
+      horario:'21:00~05:20 / 05:00~13:20 / 13:00~21:20 (6x1)',
+      superior:'Líder de Suprimentos',
+      equipe:'—',
+      desc:'Responsável pelo controle do estoque, atendimento das requisições de peças, inventário e conformidade sistêmica no Praxio.',
+      atividades:[
+        {hora:'21:00 - 21:20',ativ:'Passagem de Bastão',com:'Almoxarife anterior',desc:'Recebimento do status do estoque e pendências.',tools:[]},
+        {hora:'21:30 - 22:00',ativ:'Entendimento das Demandas',com:'Assistente PCM',desc:'Leitura das demandas de manutenção e peças necessárias.',tools:['2.2 Priorização']},
+        {hora:'22:00 - 23:30',ativ:'Inventário',com:'—',desc:'Contagem e verificação do inventário.',tools:['2.9 Inventário']},
+        {hora:'23:30 - 23:45',ativ:'Previsibilidade de manutenção',com:'Assistente PCM',desc:'Alinhamento das peças necessárias para a madrugada.',tools:['2.6 Previsibilidade']},
+        {hora:'00:15 - 00:45',ativ:'Solicitações',com:'Mecânicos',desc:'Atendimento das solicitações de peças da oficina.',tools:['2.21 RJNP']},
+        {hora:'01:00 - 02:00',ativ:'Conformidade Sistêmica',com:'Sistema Praxio',desc:'Atualização das movimentações no sistema.',tools:[]},
+        {hora:'03:00 - 04:00',ativ:'Garantia / Recon',com:'—',desc:'Evidenciar e subir tratativas de garantia e recondicionamento.',tools:['2.8 RJNP']},
+        {hora:'04:00 - 05:00',ativ:'Separação de peças',com:'—',desc:'Separação antecipada de peças para manutenções previstas.',tools:[]},
+        {hora:'05:00 - 05:20',ativ:'Passagem de Bastão',com:'Próximo Almoxarife',desc:'Passagem formal do turno.',tools:[]},
+        {hora:'09:00 - 10:00',ativ:'Solicitações',com:'Mecânicos',desc:'Atendimento de solicitações de peças.',tools:['2.21 RJNP']},
+        {hora:'15:30 - 16:30',ativ:'Checklist PPS',com:'—',desc:'Preenchimento de checklist e preparação do processo.',tools:[]},
+        {hora:'17:30 - 19:30',ativ:'Conformidade Sistêmica',com:'Sistema Praxio',desc:'Atualização de movimentações no sistema.',tools:[]},
+      ]
+    },
+  };
+
+  // Determina cargo a mostrar baseado no perfil ou seleção
+  const cargo=cargoSel||S.perfil?.cargo||'gerente_garagem';
+  const rotina=ROTINAS[cargo]||ROTINAS.gerente_garagem;
+  const agora=new Date();
+  const horaAtual=`${String(agora.getHours()).padStart(2,'0')}:${String(agora.getMinutes()).padStart(2,'0')}`;
+
+  // Seletor de cargo
+  const seletorCargo=Object.entries(ROTINAS).map(([k,v])=>
+    `<button class="filtro-btn${cargo===k?' active':''}" onclick="renderFerrRotina('${k}')">${v.label.split(' ')[0]} ${v.label.split(' ')[1]||''}</button>`
+  ).join('');
+
+  // Verifica atividade atual
+  const atividadeAtual=rotina.atividades.find(a=>{
+    const [ini,fim]=a.hora.split(' - ');
+    return horaAtual>=ini&&horaAtual<=fim;
+  });
+
+  const rows=rotina.atividades.map((a,i)=>{
+    const [ini,fim]=a.hora.split(' - ');
+    const isAtiva=horaAtual>=ini&&horaAtual<=(fim||'23:59');
+    return`<tr style="background:${isAtiva?'#2563EB08':''}">
+      <td style="font-family:'DM Mono',monospace;font-weight:700;color:${isAtiva?'var(--blue)':'var(--amber)'};white-space:nowrap">
+        ${a.hora} ${isAtiva?'🔵':''}
+      </td>
+      <td style="font-weight:600;color:var(--text)">${a.ativ}</td>
+      <td style="color:var(--text3);font-size:12px">${a.com}</td>
+      <td style="color:var(--text2);font-size:12px;max-width:250px">${a.desc}</td>
+      <td style="font-size:11px">${a.tools.map(t=>`<span style="background:var(--border);border-radius:5px;padding:2px 7px;margin-right:3px;color:var(--text3)">${t}</span>`).join('')}</td>
+    </tr>`;
+  }).join('');
+
+  setMain(`
+    ${secTitle('📅','Rotina Operacional — BOK Garagem',back)}
+
+    <!-- Seletor de cargo -->
+    <div class="filtros" style="flex-wrap:wrap">${seletorCargo}</div>
+
+    <!-- Card do cargo -->
+    <div style="background:linear-gradient(135deg,var(--surface),#1A2540);border:1px solid var(--border);border-radius:14px;padding:20px 24px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="font-size:18px;font-weight:800">${rotina.label}</div>
+          <div style="color:var(--amber);font-size:12px;font-family:'DM Mono',monospace;margin-top:4px">⏰ ${rotina.horario}</div>
+          <div style="color:var(--text3);font-size:12px;margin-top:4px">👆 Superior: ${rotina.superior}</div>
+          <div style="color:var(--text3);font-size:12px;margin-top:2px">👥 Equipe: ${rotina.equipe}</div>
+        </div>
+        ${atividadeAtual?`<div style="background:#2563EB15;border:1px solid #2563EB30;border-radius:10px;padding:10px 16px;max-width:260px">
+          <div style="color:var(--blue);font-size:10px;font-weight:700;letter-spacing:1px">🔵 ATIVIDADE AGORA</div>
+          <div style="font-size:14px;font-weight:700;margin-top:4px">${atividadeAtual.ativ}</div>
+          <div style="color:var(--text3);font-size:11px;margin-top:2px">${atividadeAtual.hora}</div>
+        </div>`:''}
+      </div>
+      <div style="color:var(--text2);font-size:13px;margin-top:14px;line-height:1.6">${rotina.desc}</div>
+    </div>
+
+    <!-- Tabela de rotina -->
+    <div class="tbl-wrap">
+      <div class="tbl-head">
+        <div>
+          <div style="font-size:13px;font-weight:700">Agenda de Atividades — ${rotina.atividades.length} atividades</div>
+          <div style="color:var(--text3);font-size:12px;margin-top:2px">Baseado no BOK.GAR.001 v4 — Estrutura, Rotina e Encadeamento</div>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>Horário</th>
+            <th>Atividade</th>
+            <th>Com quem</th>
+            <th>Descrição</th>
+            <th>Ferramentas</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+    <div class="info-blue info-banner">📖 Fonte: BOK.GAR.001 v4 — Emissão 07/04/2026 · A atividade atual é destacada em azul 🔵</div>
+  `);
+}
+
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
   setMain(`${secTitle('✅','Controle Soltura / Oficina',back)}<div class="empty"><div style="font-size:40px">✅</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Em breve</div></div><div class="info-blue info-banner">🔗 Integração com painel de soltura em breve</div>`);
 }
