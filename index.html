@@ -1574,6 +1574,9 @@ async function renderFerr210(tab='painel', dataFiltro=null){
   const isHoje=dataConsulta===hoje();
   const isAmanha=dataConsulta===amanha();
 
+  // Pré-computa bloco de reservas (async)
+  const blocoReservas=await gerarBlocoReservas(gid, dataConsulta);
+
   const rows=S.soltura210.map(r=>{
     const usouReserva=r.observacao&&r.observacao.startsWith('Reserva:');
     const sH=r.saiu===true
@@ -1652,9 +1655,8 @@ async function renderFerr210(tab='painel', dataFiltro=null){
     </div>
 
     <!-- BLOCO RESERVAS -->
-    ${await gerarBlocoReservas(gid, dataConsulta)}
-    `);
-}
+    ${blocoReservas}
+    `);}
 
 // Gera bloco de carros reserva
 async function gerarBlocoReservas(gid, dataConsulta){
