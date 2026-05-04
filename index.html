@@ -2132,14 +2132,17 @@ function imprimir210(numDoc, dataEvento, turno, garagem){
     '08:00 +':       reg.filter(r=>r.horario_programado>='08:00'),
   };
 
-  const resumoRows=Object.entries(faixas).filter(([,v])=>v.length>0).map(([faixa,veics])=>`
-    <tr>
+  const resumoRows=Object.entries(faixas).filter(([,v])=>v.length>0).map(([faixa,veics])=>{
+    const real=veics.filter(r=>r.saiu===true).length;
+    const res=veics.filter(r=>r.observacao?.startsWith('Reserva:')).length;
+    return`<tr>
       <td style="border:1px solid #999;padding:3px 6px">${faixa}</td>
       <td style="border:1px solid #999;padding:3px 6px;text-align:center">${veics.length}</td>
-      <td style="border:1px solid #999;padding:3px 6px;text-align:center">${veics.filter(r=>r.saiu===true).length}</td>
-      <td style="border:1px solid #999;padding:3px 6px;text-align:center">${veics.filter(r=>r.observacao?.startsWith('Reserva:')).length}</td>
+      <td style="border:1px solid #999;padding:3px 6px;text-align:center">${real||''}</td>
+      <td style="border:1px solid #999;padding:3px 6px;text-align:center">${res||''}</td>
       <td style="border:1px solid #999;padding:3px 6px"></td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   const dataRows=reg.map(r=>{
     const reserva=r.observacao?.startsWith('Reserva:')?r.observacao.split('Reserva:')[1].split('|')[0].trim():'';
@@ -2201,9 +2204,9 @@ function imprimir210(numDoc, dataEvento, turno, garagem){
         <tr style="font-weight:bold;background:#f0f0f0">
           <td style="border:1px solid #999;padding:3px 6px">TOTAL</td>
           <td style="border:1px solid #999;padding:3px 6px;text-align:center">${reg.length}</td>
-          <td style="border:1px solid #999;padding:3px 6px;text-align:center">${saiu}</td>
-          <td style="border:1px solid #999;padding:3px 6px;text-align:center">${reservas}</td>
-          <td style="border:1px solid #999;padding:3px 6px;font-size:9px">Pontuais: ${pontuais} · Não saíram: ${nao}</td>
+          <td style="border:1px solid #999;padding:3px 6px;text-align:center">${saiu||''}</td>
+          <td style="border:1px solid #999;padding:3px 6px;text-align:center">${reservas||''}</td>
+          <td style="border:1px solid #999;padding:3px 6px;font-size:9px">${pontuais>0?'Pontuais: '+pontuais+' · ':''}${nao>0?'Não saíram: '+nao:''}</td>
         </tr>
       </table>
 
