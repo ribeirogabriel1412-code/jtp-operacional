@@ -1246,6 +1246,9 @@ async function renderFerr210(tab='painel', dataFiltro=null){
       </div>`);
     return;
   }
+
+  // ── ABA IMPORTAR ──────────────────────────────────────────
+  if(tab==='importar'){
     const precisaGaragem=!S.perfil.garagem_id;
     const garaSelect=precisaGaragem?`
       <div style="margin-bottom:14px">
