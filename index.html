@@ -1153,13 +1153,6 @@ function podeVerRelatorios(){
 async function renderFerr210(tab='painel', dataFiltro=null){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
 
-  // Abas por perfil
-  const tabs=`<div class="filtros">
-    <button class="filtro-btn${tab==='painel'?' active':''}" onclick="renderFerr210('painel')">📋 ${isLiderPatio()?'Painel do Líder':'Visualizar'}</button>
-    ${isEscalante()?`<button class="filtro-btn${tab==='importar'?' active':''}" onclick="renderFerr210('importar')">📤 Importar Escala</button>`:''}
-    ${isEscalante()?`<button class="filtro-btn${tab==='historico'?' active':''}" onclick="renderFerr210('historico')">📅 Histórico de Importações</button>`:''}
-    ${isSupervisao()?`<button class="filtro-btn${tab==='arquivo'?' active':''}" onclick="renderFerr210('arquivo')">🗂️ Arquivo Supervisão</button>`:''}
-  </div>`;
 
   // Abas por perfil
   const tabs=`<div class="filtros">
