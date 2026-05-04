@@ -240,7 +240,7 @@ tr:hover td{background:#0F172A80}
       <div class="submenu" id="sub-ferr">
         <button class="sub-btn" onclick="navToSub('ferr-210')">📋 2.10 Soltura de Frota</button>
         <button class="sub-btn" onclick="navToSub('ferr-22')">🔧 2.2 Priorização Oficina</button>
-        <button class="sub-btn" onclick="navToSub('ferr-lav')">🧼 Programação Lavagem</button>
+        <button class="sub-btn" onclick="navToSub('ferr-lav')">🧼 3.2 Checklist Lavagem</button>
         <button class="sub-btn" onclick="navToSub('ferr-ctrl')">✅ Controle Soltura</button>
       </div>
       <button class="nav-btn" onclick="toggleSub('sub-rel','arr-rel',this)"><span>📋</span> Relatórios <span id="arr-rel" style="margin-left:auto;font-size:10px;color:var(--text4)">▶</span></button>
@@ -2335,9 +2335,299 @@ async function verHistorico22(){
     </div>`;
 }
 
-function renderFerrLav(){
+async function renderFerrLav(aba='painel'){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
-  setMain(`${secTitle('🧼','Programação de Lavagem',back)}<div style="max-width:560px"><div class="import-zone" id="drop-lav" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleDropLav(event)"><div style="font-size:40px;margin-bottom:12px">📊</div><div style="font-size:16px;font-weight:700;margin-bottom:8px">Importar Programação</div><div style="color:var(--text3);font-size:13px">Excel com PREFIXO e TIPO LAVAGEM (simples/escovao/pesada)</div><button class="btn-import" id="btn-lav" onclick="document.getElementById('f-lav').click()">📂 Selecionar .xlsx</button><input type="file" id="f-lav" accept=".xlsx" style="display:none" onchange="handleFileLav(this.files[0])"><div id="err-lav" style="display:none;margin-top:12px;background:#FEE2E2;border:1px solid #FECACA;color:#991B1B;padding:12px;border-radius:10px;font-size:13px"></div><div id="prog-lavw" style="display:none;margin-top:12px"><div id="prog-lavm" style="font-size:12px;color:var(--text2);margin-bottom:6px"></div><div class="prog-wrap"><div class="prog-bar" id="prog-lavb" style="width:0%"></div></div></div></div><div id="preview-lav"></div><div class="info-blue info-banner">💡 Metas: Escovão = todos · Simples = 84/dia · Pesada = 10/dia</div></div>`);
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+
+  const tabs=`<div class="filtros">
+    <button class="filtro-btn${aba==='painel'?' active':''}" onclick="renderFerrLav('painel')">📋 Painel</button>
+    <button class="filtro-btn${aba==='importar'?' active':''}" onclick="renderFerrLav('importar')">📤 Importar Programação</button>
+    <button class="filtro-btn${aba==='cronograma'?' active':''}" onclick="renderFerrLav('cronograma')">🕐 Cronograma</button>
+  </div>`;
+
+  // ── ABA IMPORTAR ──────────────────────────────────────────
+  if(aba==='importar'){
+    setMain(`${secTitle('🧼','3.2 — Checklist de Lavagem',back)}${tabs}
+    <div style="max-width:560px">
+      <div style="margin-bottom:14px">
+        <label class="fl">Turno</label>
+        <select class="fs" id="lav-turno" style="margin-bottom:0">
+          <option value="dia"${S.turno==='dia'?' selected':''}>☀️ Dia</option>
+          <option value="noite"${S.turno==='noite'?' selected':''}>🌙 Noite</option>
+        </select>
+      </div>
+      <div class="import-zone" id="drop-lav"
+        ondragover="event.preventDefault();this.classList.add('drag')"
+        ondragleave="this.classList.remove('drag')"
+        ondrop="handleDropLav(event)">
+        <div style="font-size:40px;margin-bottom:12px">📊</div>
+        <div style="font-size:16px;font-weight:700;margin-bottom:8px">Importar Programação de Lavagem</div>
+        <div style="color:var(--text3);font-size:13px">Excel com colunas: PREFIXO e TIPO LAVAGEM (simples/escovao/pesada)</div>
+        <button class="btn-import" id="btn-lav" onclick="document.getElementById('f-lav').click()">📂 Selecionar .xlsx</button>
+        <input type="file" id="f-lav" accept=".xlsx" style="display:none" onchange="handleFileLav(this.files[0])">
+        <div id="err-lav" style="display:none;margin-top:12px;background:#FEE2E2;border:1px solid #FECACA;color:#991B1B;padding:12px;border-radius:10px;font-size:13px"></div>
+        <div id="prog-lavw" style="display:none;margin-top:12px">
+          <div id="prog-lavm" style="font-size:12px;color:var(--text2);margin-bottom:6px"></div>
+          <div class="prog-wrap"><div class="prog-bar" id="prog-lavb" style="width:0%"></div></div>
+        </div>
+      </div>
+      <div id="preview-lav"></div>
+      <div class="info-blue info-banner">💡 Metas diárias: Escovão = todos os carros · Simples = 84 · Pesada = 10</div>
+    </div>`);
+    return;
+  }
+
+  // ── ABA CRONOGRAMA ────────────────────────────────────────
+  if(aba==='cronograma'){
+    const{data:cronos}=await sb.from('cronograma_lavagem').select('*')
+      .eq('garagem_id',gid).eq('ativo',true).order('hora_inicio');
+
+    const rows=(cronos||[]).map(c=>`<tr>
+      <td style="font-family:'DM Mono',monospace;font-weight:600">${c.hora_inicio} – ${c.hora_fim}</td>
+      <td>${CARGOS[c.cargo]||c.cargo}</td>
+      <td>${c.turno==='dia'?'☀️ Dia':'🌙 Noite'}</td>
+      <td style="text-align:center;color:var(--blue)">${c.meta_escovao}</td>
+      <td style="text-align:center;color:var(--text2)">${c.meta_simples}</td>
+      <td style="text-align:center;color:var(--amber)">${c.meta_pesada}</td>
+      <td><button class="btn-sm danger" onclick="deleteCronograma('${c.id}')">✕</button></td>
+    </tr>`).join('');
+
+    setMain(`${secTitle('🕐','Cronograma de Lavagem',back)}${tabs}
+    <div class="tbl-wrap" style="margin-bottom:16px">
+      <div class="tbl-head">
+        <div style="font-size:13px;font-weight:700">${(cronos||[]).length} faixas configuradas</div>
+        <button class="btn-add" onclick="abrirModalCronograma()">+ Nova Faixa</button>
+      </div>
+      ${(cronos||[]).length===0
+        ?`<div class="empty"><div style="font-size:40px">🕐</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Nenhuma faixa configurada</div><p style="color:var(--text3);font-size:13px">Configure os horários por cargo para acompanhar as metas</p></div>`
+        :`<div style="overflow-x:auto"><table>
+          <thead><tr><th>Horário</th><th>Cargo</th><th>Turno</th><th style="text-align:center">Escovão</th><th style="text-align:center">Simples</th><th style="text-align:center">Pesada</th><th></th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>`}
+    </div>
+    <div class="info-blue info-banner">💡 Configure as faixas horárias e metas por cargo. O painel mostrará o progresso em tempo real a cada hora.</div>`);
+    return;
+  }
+
+  // ── ABA PAINEL ────────────────────────────────────────────
+  setMain(`<div class="loading"><div class="spinner"></div> Carregando...</div>`);
+
+  const{data:prog}=await sb.from('checklist_lavagem').select('*')
+    .eq('garagem_id',gid).eq('data',hoje()).eq('turno',S.turno)
+    .order('tipo_lavagem').order('prefixo');
+
+  const lista=prog||[];
+  const total=lista.length;
+  const exec=lista.filter(r=>r.status==='executado').length;
+  const pend=lista.filter(r=>r.status==='pendente').length;
+  const nReal=lista.filter(r=>r.status==='nao_realizado').length;
+  const pct=total>0?Math.round((exec/total)*100):0;
+  const pColor=pct>=100?'var(--green)':pct>=70?'var(--amber)':'var(--red)';
+
+  // Agrupa por tipo
+  const porTipo={escovao:lista.filter(r=>r.tipo_lavagem==='escovao'),simples:lista.filter(r=>r.tipo_lavagem==='simples'),pesada:lista.filter(r=>r.tipo_lavagem==='pesada')};
+  const metas={escovao:128,simples:84,pesada:10};
+  const tipoLabel={escovao:'🪣 Escovão',simples:'💧 Simples',pesada:'🔴 Pesada'};
+  const tipoColor={escovao:'var(--blue)',simples:'var(--green)',pesada:'var(--red)'};
+
+  // Busca cronograma do turno
+  const{data:cronos}=await sb.from('cronograma_lavagem').select('*')
+    .eq('garagem_id',gid).eq('turno',S.turno).eq('ativo',true).order('hora_inicio');
+
+  // Hora atual para destacar faixa ativa
+  const agora=new Date();
+  const horaAtual=`${String(agora.getHours()).padStart(2,'0')}:${String(agora.getMinutes()).padStart(2,'0')}`;
+
+  const cronoRows=(cronos||[]).map(c=>{
+    const isAtiva=horaAtual>=c.hora_inicio&&horaAtual<=c.hora_fim;
+    // Conta execuções nessa faixa
+    const execFaixa=lista.filter(r=>{
+      if(r.status!=='executado'||!r.hora_executado) return false;
+      const h=new Date(r.hora_executado);
+      const hs=`${String(h.getHours()).padStart(2,'0')}:${String(h.getMinutes()).padStart(2,'0')}`;
+      return hs>=c.hora_inicio&&hs<=c.hora_fim;
+    }).length;
+    const metaFaixa=c.meta_escovao+c.meta_simples+c.meta_pesada;
+    const okFaixa=execFaixa>=metaFaixa;
+    return`<tr style="background:${isAtiva?'#2563EB08':''}">
+      <td style="font-family:'DM Mono',monospace;font-weight:700;color:${isAtiva?'var(--blue)':'var(--text)'}">${c.hora_inicio}–${c.hora_fim}${isAtiva?' 🔵':''}</td>
+      <td style="color:var(--text3);font-size:12px">${CARGOS[c.cargo]||c.cargo}</td>
+      <td style="text-align:center;font-family:'DM Mono',monospace">${execFaixa}/${metaFaixa}</td>
+      <td><span class="badge ${okFaixa?'b-ok':horaAtual>c.hora_fim?'b-nok':'b-breve'}">${okFaixa?'✅ OK':horaAtual>c.hora_fim?'✗ NOK':'⏳'}</span></td>
+    </tr>`;
+  }).join('');
+
+  const veicRows=lista.map(r=>{
+    const cor=r.status==='executado'?'var(--green)':r.status==='nao_realizado'?'var(--red)':'var(--text3)';
+    const btnCls=r.status==='executado'?'sb-sim':r.status==='nao_realizado'?'sb-nao':'sb-pend';
+    const btnTxt=r.status==='executado'?`✅ ${r.hora_executado?new Date(r.hora_executado).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'OK'}`:r.status==='nao_realizado'?'❌ N/R':'○ Marcar';
+    return`<tr style="background:${r.status==='executado'?'#00C48C05':r.status==='nao_realizado'?'#EF444405':''}">
+      <td><span style="font-family:'DM Mono',monospace;font-weight:700">${r.prefixo}</span></td>
+      <td><span style="color:${tipoColor[r.tipo_lavagem]};font-weight:600;font-size:12px">${tipoLabel[r.tipo_lavagem]||r.tipo_lavagem}</span></td>
+      <td><button class="status-btn ${btnCls}" onclick="marcarLavagem('${r.id}','${r.prefixo}')">${btnTxt}</button></td>
+      <td style="color:var(--text4);font-size:11px">${r.executado_por||''}</td>
+    </tr>`;
+  }).join('');
+
+  setMain(`
+    ${secTitle('🧼','3.2 — Checklist de Lavagem',back)}${tabs}
+
+    <!-- Progresso geral -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+        <span style="color:var(--text3);font-size:11px;font-weight:700">PROGRESSO — ${S.turno==='dia'?'☀️ DIA':'🌙 NOITE'} · ${formatData(hoje())}</span>
+        <span style="color:${pColor};font-family:'DM Mono',monospace;font-size:14px;font-weight:700">${pct}%</span>
+      </div>
+      <div class="prog-wrap"><div class="prog-bar" style="width:${pct}%;background:${pColor}"></div></div>
+      <div style="display:flex;gap:20px;margin-top:8px;flex-wrap:wrap">
+        <span style="color:var(--green);font-size:11px;font-weight:600">✅ ${exec} lavados</span>
+        <span style="color:var(--amber);font-size:11px;font-weight:600">⏳ ${pend} pendentes</span>
+        ${nReal>0?`<span style="color:var(--red);font-size:11px;font-weight:600">❌ ${nReal} não realizados</span>`:''}
+      </div>
+    </div>
+
+    <!-- Metas por tipo -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+      ${Object.entries(porTipo).map(([tipo,veics])=>{
+        const execT=veics.filter(v=>v.status==='executado').length;
+        const metaT=metas[tipo];
+        const pctT=total>0?Math.round((execT/Math.max(veics.length,1))*100):0;
+        const ok=execT>=metaT;
+        return`<div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${ok?'var(--green)':veics.length===0?'#475569':'var(--amber)'};border-radius:10px;padding:12px">
+          <div style="color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1px">${tipoLabel[tipo]}</div>
+          <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:700;margin-top:4px">${execT}<span style="font-size:12px;color:var(--text4)">/${veics.length}</span></div>
+          <div style="color:var(--text4);font-size:10px">Meta: ${metaT}</div>
+        </div>`;
+      }).join('')}
+    </div>
+
+    <!-- Cronograma hora a hora -->
+    ${(cronos||[]).length>0?`
+    <div class="tbl-wrap" style="margin-bottom:16px">
+      <div class="tbl-head"><div style="font-size:13px;font-weight:700">🕐 Cronograma Hora a Hora</div></div>
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Faixa</th><th>Cargo</th><th>Realizado/Meta</th><th>Status</th></tr></thead>
+        <tbody>${cronoRows}</tbody>
+      </table></div>
+    </div>`:''}
+
+    <!-- Lista de veículos -->
+    ${total===0
+      ?`<div class="empty"><div style="font-size:40px">🧼</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Nenhuma programação importada</div><button class="btn-add" onclick="renderFerrLav('importar')">📤 Importar Programação</button></div>`
+      :`<div class="tbl-wrap">
+        <div class="tbl-head">
+          <div style="font-size:13px;font-weight:700">${total} veículos programados</div>
+          <button onclick="renderFerrLav('importar')" class="btn-sm">📤 Nova programação</button>
+        </div>
+        <div style="overflow-x:auto"><table>
+          <thead><tr><th>Prefixo</th><th>Tipo</th><th>Status</th><th>Executado por</th></tr></thead>
+          <tbody>${veicRows}</tbody>
+        </table></div>
+      </div>`}
+  `);
+}
+
+// Marca lavagem como executada
+function marcarLavagem(id, prefixo){
+  // Abre sheet de confirmação
+  const sheet=`
+    <div style="font-size:17px;font-weight:700;margin-bottom:16px">🧼 Marcar Lavagem — <span style="font-family:'DM Mono',monospace;color:var(--blue)">${prefixo}</span></div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+      <button onclick="confirmarLavagemItem('${id}','executado')" style="background:#00C48C18;border:1px solid #00C48C40;color:var(--green);border-radius:10px;padding:14px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer">✅ Lavagem Concluída</button>
+      <button onclick="confirmarLavagemItem('${id}','nao_realizado')" style="background:#EF444418;border:1px solid #EF444440;color:var(--red);border-radius:10px;padding:14px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer">❌ Não Realizado</button>
+      <button onclick="confirmarLavagemItem('${id}','pendente')" style="background:var(--border);border:none;color:var(--text2);border-radius:10px;padding:12px;font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer">↩ Voltar para Pendente</button>
+    </div>
+    <button onclick="closeM('modal-lav-confirm')" style="width:100%;background:var(--border);border:none;color:var(--text3);border-radius:10px;padding:12px;font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer">Cancelar</button>`;
+
+  // Usa modal genérico
+  let m=document.getElementById('modal-lav-confirm');
+  if(!m){
+    m=document.createElement('div');
+    m.id='modal-lav-confirm';
+    m.className='modal-ov';
+    m.style.display='none';
+    m.onclick=function(e){if(e.target===this)this.style.display='none'};
+    m.innerHTML=`<div class="modal" style="max-width:380px"><div id="modal-lav-body"></div></div>`;
+    document.body.appendChild(m);
+  }
+  document.getElementById('modal-lav-body').innerHTML=sheet;
+  m.style.display='flex';
+}
+
+async function confirmarLavagemItem(id, status){
+  const{error}=await sb.from('checklist_lavagem').update({
+    status,
+    hora_executado:status==='executado'?new Date().toISOString():null,
+    executado_por:status==='executado'?S.perfil?.nome:null,
+  }).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return}
+  document.getElementById('modal-lav-confirm').style.display='none';
+  toast(status==='executado'?'✅ Lavagem confirmada!':status==='nao_realizado'?'❌ Marcado como não realizado':'↩ Voltou para pendente');
+  renderFerrLav('painel');
+}
+
+// Modal cronograma
+function abrirModalCronograma(){
+  let m=document.getElementById('modal-crono');
+  if(!m){
+    m=document.createElement('div');
+    m.id='modal-crono';
+    m.className='modal-ov';
+    m.style.display='none';
+    m.onclick=function(e){if(e.target===this)this.style.display='none'};
+    m.innerHTML=`<div class="modal" style="max-width:420px">
+      <div class="modal-title"><span>Nova Faixa de Cronograma</span><button class="btn-x" onclick="document.getElementById('modal-crono').style.display='none'">✕</button></div>
+      <div class="mgrid">
+        <div><label class="fl">Hora Início</label><input class="fi" id="crono-ini" type="time" style="margin-bottom:0"></div>
+        <div><label class="fl">Hora Fim</label><input class="fi" id="crono-fim" type="time" style="margin-bottom:0"></div>
+        <div><label class="fl">Cargo</label>
+          <select class="fs" id="crono-cargo" style="margin-bottom:0">
+            ${Object.entries(CARGOS).map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}
+          </select>
+        </div>
+        <div><label class="fl">Turno</label>
+          <select class="fs" id="crono-turno" style="margin-bottom:0">
+            <option value="dia">☀️ Dia</option>
+            <option value="noite">🌙 Noite</option>
+          </select>
+        </div>
+        <div><label class="fl">Meta Escovão</label><input class="fi" id="crono-esc" type="number" value="0" min="0" style="margin-bottom:0"></div>
+        <div><label class="fl">Meta Simples</label><input class="fi" id="crono-sim" type="number" value="0" min="0" style="margin-bottom:0"></div>
+        <div class="full"><label class="fl">Meta Pesada</label><input class="fi" id="crono-pes" type="number" value="0" min="0" style="margin-bottom:0"></div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+        <button class="btn-sec" onclick="document.getElementById('modal-crono').style.display='none'">Cancelar</button>
+        <button class="btn-success" onclick="salvarCronograma()">💾 Salvar</button>
+      </div>
+    </div>`;
+    document.body.appendChild(m);
+  }
+  m.style.display='flex';
+}
+
+async function salvarCronograma(){
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const{error}=await sb.from('cronograma_lavagem').insert({
+    garagem_id:gid,
+    hora_inicio:document.getElementById('crono-ini').value,
+    hora_fim:document.getElementById('crono-fim').value,
+    cargo:document.getElementById('crono-cargo').value,
+    turno:document.getElementById('crono-turno').value,
+    meta_escovao:parseInt(document.getElementById('crono-esc').value)||0,
+    meta_simples:parseInt(document.getElementById('crono-sim').value)||0,
+    meta_pesada:parseInt(document.getElementById('crono-pes').value)||0,
+  });
+  if(error){toast('Erro: '+error.message,'err');return}
+  toast('✅ Faixa de cronograma salva!');
+  document.getElementById('modal-crono').style.display='none';
+  renderFerrLav('cronograma');
+}
+
+async function deleteCronograma(id){
+  if(!confirm('Remover esta faixa?')) return;
+  await sb.from('cronograma_lavagem').delete().eq('id',id);
+  toast('✅ Faixa removida!');
+  renderFerrLav('cronograma');
 }
 
 function renderFerrCtrl(){
@@ -2364,7 +2654,7 @@ function renderRelatorios(){
     {cod:'2.17',nome:'Utilização de Lubrificantes',resp:'Assist. PCM',freq:'Diário/Turno',icon:'🛢️',ativo:false},
     {cod:'2.18',nome:'SOS – Recolha Anormal',resp:'Assist. PCM',freq:'Por ocorrência',icon:'🆘',ativo:false},
     {cod:'2.21',nome:'RJNP – Justif. Necessidade de Peças',resp:'Assist. PCM',freq:'Diário/Turno',icon:'🔩',ativo:false},
-    {cod:'3.2',nome:'Acompanhamento Manutenção – Hora a Hora',resp:'Líder Oficina',freq:'A cada 1 hora',icon:'⏱️',ativo:false},
+    {cod:'3.2',nome:'Checklist de Lavagem — Hora a Hora',resp:'Líder Oficina',freq:'A cada 1 hora',icon:'🧼',ativo:true,action:"navToSub('ferr-lav')"},
   ];
   const ativos=lista.filter(r=>r.ativo).length;
   setMain(`
@@ -2705,12 +2995,21 @@ function handleFileLav(file){
   };reader.readAsArrayBuffer(file);
 }
 async function confirmarLavagem(dados){
-  await sb.from('programacao_lavagem').delete().eq('garagem_id',S.perfil.garagem_id).eq('data',hoje()).eq('turno',S.turno);
-  const{data:fr}=await sb.from('frota').select('id,prefixo').eq('garagem_id',S.perfil.garagem_id);
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const turno=document.getElementById('lav-turno')?.value||S.turno;
+  // Salva na nova tabela checklist_lavagem
+  await sb.from('checklist_lavagem').delete().eq('garagem_id',gid).eq('data',hoje()).eq('turno',turno);
+  const{data:fr}=await sb.from('frota').select('id,prefixo').eq('garagem_id',gid);
   const fMap=Object.fromEntries((fr||[]).map(v=>[v.prefixo,v.id]));
-  const{error}=await sb.from('programacao_lavagem').insert(dados.map(d=>({garagem_id:S.perfil.garagem_id,data:hoje(),turno:S.turno,prefixo:d.prefixo,tipo_lavagem:d.tipo_lavagem,observacao:d.observacao||null,veiculo_id:fMap[d.prefixo]||null,status:'pendente'})));
+  const{error}=await sb.from('checklist_lavagem').insert(dados.map(d=>({
+    garagem_id:gid, data:hoje(), turno,
+    prefixo:d.prefixo, tipo_lavagem:d.tipo_lavagem,
+    veiculo_id:fMap[d.prefixo]||null,
+    status:'pendente', observacao:d.observacao||null,
+  })));
   if(error){toast('Erro: '+error.message,'err');return}
-  toast(`✅ ${dados.length} veículos importados!`);renderFerrLav();
+  toast(`✅ ${dados.length} veículos importados!`);
+  renderFerrLav('painel');
 }
 
 // PDF PARSER
