@@ -559,7 +559,9 @@ tr:hover td{background:#0F172A80}
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 const {createClient}=supabase;
 const SUPABASE_URL='https://jboclubugfxmurvhcxgr.supabase.co';
-const sb=createClient(SUPABASE_URL,'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impib2NsdWJ1Z2Z4bXVydmhjeGdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU3MDI1NTEsImV4cCI6MjA2MTI3ODU1MX0.LqMwJZxKh8nuMdyN37KZOR3knBH7s6hZSwB6SHvFnmQ');
+// Publishable Key para auth + Anon Key JWT para operações RLS
+const SUPABASE_PK='sb_publishable_hasmgR_BbXcJC6Xko6DzaA_N7kl7rNT';
+const sb=createClient(SUPABASE_URL,SUPABASE_PK);
 
 const S={user:null,perfil:null,tela:'painel',subtela:null,turno:'dia',garagens:[],frota:[],soltura210:[],filtroFrota:'todos',editVId:null,editSaidaId:null,editUserId:null,data210:null};
 
@@ -668,14 +670,14 @@ async function doLogin(){
   }
 
   // Carrega garagens
-  const{data:gs}=await sb.from('garagens').select('*').eq('ativa',true).order('nome');
+  const{data:gs}=await sb.from('garagens').select('*').order('nome');
   S.garagens=gs||[];
 
   const garagem=S.garagens.find(g=>g.id===perfil.garagem_id);
   const isAdmin=perfil.is_admin;
   const isDiretoria=perfil.cargo==='diretoria';
 
-  document.getElementById('tb-loc').textContent=isDiretoria||isAdmin?'🏢 Todas as Garagens':`📍 ${garagem?.nome} — ${garagem?.uf}`;
+  document.getElementById('tb-loc').textContent=isDiretoria||isAdmin?'🏢 Todas as Garagens':`📍 ${garagem?.nome||'—'}`;
   document.getElementById('tb-role').textContent=(isAdmin?'👑 Admin — ':'')+CARGOS[perfil.cargo];
   document.getElementById('tb-av').textContent=perfil.nome[0].toUpperCase();
 
@@ -2700,27 +2702,45 @@ async function carregarChecklistLib(ocId){
   log('precisaRecriar='+precisaRecriar);
 
   if(precisaRecriar&&items?.length){
-    const{error:errDel}=await sb.from('checklist_liberacao').delete().eq('ocorrencia_id',ocId);
-    log('delete: '+(errDel?.message||'ok'));
+    // Delete via REST com Anon Key
+    try{
+      const delResp=await fetch(`${SUPABASE_URL}/rest/v1/checklist_liberacao?ocorrencia_id=eq.${ocId}`,{
+        method:'DELETE',
+        headers:{'apikey':SUPABASE_ANON_KEY,'Authorization':'Bearer '+SUPABASE_ANON_KEY},
+      });
+      log('delete: '+delResp.status);
+    }catch(e){log('delete err: '+e.message);}
     items=[];
   }
 
   if(!items||!items.length){
     const defaultItems=CHECKLIST_LIB_ITEMS[oc.tipo]||CHECKLIST_LIB_ITEMS.corretiva;
-    // Insere em lotes de 50 para evitar timeout no Supabase
-    document.getElementById('cklib-content').innerHTML=`<div style="text-align:center;padding:30px;color:var(--text3)"><div class="spinner" style="margin:0 auto 12px"></div><div style="font-size:12px">Carregando ${defaultItems.length} itens de checklist...</div></div>`;
+    // Insere via REST com Anon Key (garante compatibilidade com RLS)
+    document.getElementById('cklib-content').innerHTML=`<div style="text-align:center;padding:30px;color:var(--text3)"><div class="spinner" style="margin:0 auto 12px"></div><div style="font-size:12px">Criando ${defaultItems.length} itens de checklist...</div></div>`;
     const LOTE=50;
     let erroInsert=false;
     for(let i=0;i<defaultItems.length;i+=LOTE){
-      const lote=defaultItems.slice(i,i+LOTE);
-      const{error}=await sb.from('checklist_liberacao').insert(lote.map(it=>({
+      const lote=defaultItems.slice(i,i+LOTE).map(it=>({
         ocorrencia_id:ocId,garagem_id:gid,tipo:oc.tipo,item:it.item,ordem:it.ordem,
         concluido:false,verificado:false,trocado:false,nao_se_aplica:false,
-      })));
-      if(error){console.error('Erro insert lote',i,error);erroInsert=true;break;}
+      }));
+      try{
+        const resp=await fetch(`${SUPABASE_URL}/rest/v1/checklist_liberacao`,{
+          method:'POST',
+          headers:{
+            'Content-Type':'application/json',
+            'apikey':SUPABASE_ANON_KEY,
+            'Authorization':'Bearer '+SUPABASE_ANON_KEY,
+            'Prefer':'return=minimal',
+          },
+          body:JSON.stringify(lote),
+        });
+        if(!resp.ok){const txt=await resp.text();log('insert REST erro lote '+i+': '+txt);erroInsert=true;break;}
+        log('insert lote '+i+' ok ('+lote.length+' itens)');
+      }catch(e){log('insert fetch err: '+e.message);erroInsert=true;break;}
     }
     if(erroInsert){
-      document.getElementById('cklib-content').innerHTML=`<div style="text-align:center;padding:20px;color:var(--red)">❌ Erro ao criar checklist. Tente fechar e abrir novamente.</div>`;
+      document.getElementById('cklib-content').innerHTML=`<div style="text-align:center;padding:20px;color:var(--red)">❌ Erro ao criar checklist. Veja o painel de debug abaixo.</div>`;
       return;
     }
     const{data:novo,error:errNovo}=await sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem');
