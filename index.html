@@ -2684,14 +2684,11 @@ async function carregarChecklistLib(ocId){
 
   let{data:items}=await sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem');
 
-  // Detecta itens antigos (sem campo verificado = null) ou lista vazia → regenera
-  // Detecta itens no formato antigo (verificado=null significa campo não existia ou nunca foi setado)
-  const precisaRecriar=!items||!items.length||
-    !items[0]?.hasOwnProperty('verificado')||
-    items.every(i=>i.verificado===null&&i.trocado===null);
+  // Recria se: sem itens OU count diferente da lista esperada (lista foi atualizada)
+  const esperado=(CHECKLIST_LIB_ITEMS[oc.tipo]||CHECKLIST_LIB_ITEMS.corretiva).length;
+  const precisaRecriar=!items||!items.length||(items.length!==esperado);
 
   if(precisaRecriar&&items?.length){
-    // Deleta itens antigos e recria com formato V/T
     await sb.from('checklist_liberacao').delete().eq('ocorrencia_id',ocId);
     items=[];
   }
@@ -2706,7 +2703,6 @@ async function carregarChecklistLib(ocId){
     items=novo||[];
   }
 
-  const total=items.filter(i=>!i.nao_se_aplica).length;
   const totalItens=items.length;
   const verificados=items.filter(i=>i.verificado||i.nao_se_aplica).length;
   const trocados=items.filter(i=>i.trocado||i.nao_se_aplica).length;
@@ -2718,40 +2714,31 @@ async function carregarChecklistLib(ocId){
   const submetidoEm=items.find(i=>i.submetido_em)?.submetido_em||null;
   const aprovadoPor=items.find(i=>i.aprovado_por)?.aprovado_por||'—';
   const aprovadoEm=items.find(i=>i.aprovado_em)?.aprovado_em||null;
-
-  // Fase atual
-  const faseV=pctV<100; // ainda no diagnóstico
-  const faseT=pctV===100&&pctT<100; // executando
-  const faseFim=pctV===100&&pctT===100; // pronto para submeter
+  const faseV=pctV<100;
+  const faseT=pctV===100&&pctT<100;
+  const faseFim=pctV===100&&pctT===100;
 
   let statusBanner='';
   if(aprovado===true){
-    statusBanner=`<div style="background:#00C48C15;border:1px solid #00C48C40;border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
-      <span style="font-size:20px">✅</span>
-      <div><div style="color:var(--green);font-weight:700">Liberação Aprovada pelo PCM</div>
-      <div style="color:var(--text3);font-size:11px">Aprovado por ${aprovadoPor} · ${formatDT(aprovadoEm)}</div></div>
-    </div>`;
+    statusBanner=`<div style="background:#00C48C15;border:1px solid #00C48C40;border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">✅</span><div><div style="color:var(--green);font-weight:700">Liberação Aprovada pelo PCM</div><div style="color:var(--text3);font-size:11px">Aprovado por ${aprovadoPor} · ${formatDT(aprovadoEm)}</div></div></div>`;
   } else if(submetido){
-    statusBanner=`<div style="background:#F59E0B15;border:1px solid #F59E0B40;border-radius:10px;padding:12px 14px;margin-bottom:14px">
-      <div style="display:flex;align-items:center;gap:10px">
-        <span style="font-size:20px">⏳</span>
-        <div style="flex:1"><div style="color:var(--amber);font-weight:700">Aguardando Aprovação do PCM</div>
-        <div style="color:var(--text3);font-size:11px">Submetido por ${submetidoPor} · ${formatDT(submetidoEm)}</div></div>
-      </div>
-      ${isPCMLib()?`<div style="display:flex;gap:8px;margin-top:10px">
-        <button onclick="aprovarChecklistLib('${ocId}',true)" class="btn-success" style="flex:1">✅ Aprovar Liberação</button>
-        <button onclick="aprovarChecklistLib('${ocId}',false)" class="btn-sec" style="flex:1">↩ Devolver para Oficina</button>
-      </div>`:''}
-    </div>`;
+    statusBanner=`<div style="background:#F59E0B15;border:1px solid #F59E0B40;border-radius:10px;padding:12px 14px;margin-bottom:14px"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">⏳</span><div style="flex:1"><div style="color:var(--amber);font-weight:700">Aguardando Aprovação do PCM</div><div style="color:var(--text3);font-size:11px">Submetido por ${submetidoPor} · ${formatDT(submetidoEm)}</div></div></div>${isPCMLib()?`<div style="display:flex;gap:8px;margin-top:10px"><button onclick="aprovarChecklistLib('${ocId}',true)" class="btn-success" style="flex:1">✅ Aprovar Liberação</button><button onclick="aprovarChecklistLib('${ocId}',false)" class="btn-sec" style="flex:1">↩ Devolver para Oficina</button></div>`:''}</div>`;
   } else if(faseFim&&!submetido){
-    statusBanner=`<div style="background:#00C48C15;border:1px solid #00C48C40;border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
-      <span style="font-size:20px">🎉</span>
-      <div><div style="color:var(--green);font-weight:700">Todos os itens verificados e executados!</div>
-      <div style="color:var(--text3);font-size:11px">Pronto para submeter ao PCM</div></div>
-    </div>`;
+    statusBanner=`<div style="background:#00C48C15;border:1px solid #00C48C40;border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">🎉</span><div><div style="color:var(--green);font-weight:700">Todos os itens verificados e executados!</div><div style="color:var(--text3);font-size:11px">Pronto para submeter ao PCM</div></div></div>`;
   }
 
-  // Agrupa por seção (prefixo entre colchetes)
+  // SUPERGRUPOS
+  const SUPERGRUPOS=[
+    {key:'MECÂNICA',ic:'🔧',c:'#F59E0B',grupos:['MOTOR','CÂMBIO','TRANSMISSÃO','EMBREAGEM','DIFERENCIAL','EIXO TRASEIRO','EIXO DIANTEIRO','CHASSIS']},
+    {key:'FREIO & SUSPENSÃO',ic:'🛑',c:'#EF4444',grupos:['FREIO','SUSPENSÃO','PNEUMÁTICO']},
+    {key:'ELÉTRICA & ELETRÔNICA',ic:'⚡',c:'#3B82F6',grupos:['ELÉTRICA','PREDITIVA']},
+    {key:'DIREÇÃO',ic:'🎯',c:'#8B5CF6',grupos:['DIREÇÃO']},
+    {key:'CLIMATIZAÇÃO',ic:'❄️',c:'#06B6D4',grupos:['AR COND.']},
+    {key:'ARREFECIMENTO & ALIMENTAÇÃO',ic:'🌡️',c:'#10B981',grupos:['ARREFECIMENTO','ALIMENTAÇÃO','PÓS TRATAMENTO']},
+    {key:'CARROCERIA & ACABAMENTO',ic:'🚌',c:'#6366F1',grupos:['CARROCERIA','PINTURA','TAPEÇARIA','BORRACHARIA','ELEVADOR']},
+    {key:'DIAGNÓSTICO',ic:'🔍',c:'#F97316',grupos:['DIAGNÓSTICO','EXECUÇÃO','QUALIDADE','ENTREGA','GERAL']},
+  ];
+
   const grupos={};
   items.forEach(it=>{
     const match=it.item.match(/^\[([^\]]+)\]/);
@@ -2762,73 +2749,76 @@ async function carregarChecklistLib(ocId){
 
   const podePreencher=isLiderOficina()&&!submetido&&!aprovado;
 
-  const gruposHTML=Object.keys(grupos).length===0
-    ?`<div style="text-align:center;padding:30px;color:var(--text3)"><div style="font-size:32px;margin-bottom:8px">📋</div>Carregando itens...</div>`
-    :Object.entries(grupos).map(([grupo,gitens])=>{
+  const renderItem=(it)=>{
+    const nsa=it.nao_se_aplica;
+    const rowBg=nsa?'#47556908':it.trocado?'#00C48C08':it.verificado?'#2563EB08':'var(--surface2)';
+    return`<tr style="background:${rowBg};opacity:${nsa?'.5':'1'}">
+      <td style="font-size:11px;color:var(--text);padding:6px 8px">${it.item.replace(/^\[[^\]]+\]\s*/,'')}</td>
+      <td style="text-align:center;padding:4px"><button onclick="toggleVT('${it.id}','v','${ocId}')" ${!podePreencher?'disabled':''} title="Verificado (V)" style="width:32px;height:28px;border-radius:6px;border:1px solid ${it.verificado?'#2563EB':'var(--border)'};background:${it.verificado?'#2563EB18':'transparent'};cursor:${podePreencher?'pointer':'default'};font-size:13px;transition:all .15s">${it.verificado?'✓':'V'}</button></td>
+      <td style="text-align:center;padding:4px"><button onclick="toggleVT('${it.id}','t','${ocId}')" ${!podePreencher||!it.verificado?'disabled':''} title="Trocado/Executado (T)" style="width:32px;height:28px;border-radius:6px;border:1px solid ${it.trocado?'#00C48C':'var(--border)'};background:${it.trocado?'#00C48C18':'transparent'};cursor:${podePreencher&&it.verificado?'pointer':'default'};font-size:13px;transition:all .15s;opacity:${!it.verificado&&!it.trocado?'.4':'1'}">${it.trocado?'✓':'T'}</button></td>
+      <td style="text-align:center;padding:4px"><button onclick="toggleVT('${it.id}','nsa','${ocId}')" ${!podePreencher?'disabled':''} title="Não se aplica" style="width:32px;height:28px;border-radius:6px;border:1px solid ${nsa?'#47556940':'var(--border)'};background:${nsa?'#47556918':'transparent'};cursor:${podePreencher?'pointer':'default'};font-size:11px">N/A</button></td>
+      <td style="padding:4px"><input type="text" placeholder="Obs..." value="${it.observacao_item||''}" ${!podePreencher?'disabled':''} onblur="salvarObsItem('${it.id}',this.value,'${ocId}')" style="width:100%;min-width:80px;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:10px;padding:2px 4px;outline:none"></td>
+      <td style="text-align:center;padding:4px;font-size:10px;color:var(--text4)">${it.verificado?`<div style="color:var(--blue)">${it.verificado_por?.split(' ')[0]||''}${it.verificado_em?' '+new Date(it.verificado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):''}${it.trocado?`<div style="color:var(--green)">${it.trocado_por?.split(' ')[0]||''}${it.trocado_em?' '+new Date(it.trocado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):''}`:''}</div>`:it.nao_se_aplica?'<span style="color:var(--text4)">N/A</span>':''}</td>
+    </tr>`;
+  };
+
+  const renderSubgrupo=(grupo,gitens)=>{
     const vG=gitens.filter(i=>i.verificado||i.nao_se_aplica).length;
     const tG=gitens.filter(i=>i.trocado||i.nao_se_aplica).length;
     const totalG=gitens.length;
     const grupoOk=vG===totalG&&tG===totalG;
-
-    const itensHTML=gitens.map(it=>{
-      const nsa=it.nao_se_aplica;
-      const rowBg=nsa?'#47556908':it.trocado?'#00C48C08':it.verificado?'#2563EB08':'var(--surface2)';
-      return`<tr style="background:${rowBg};opacity:${nsa?'.5':'1'}">
-        <td style="font-size:11px;color:var(--text);padding:6px 8px">${it.item.replace(/^\[[^\]]+\]\s*/,'')}</td>
-        <td style="text-align:center;padding:4px">
-          <button onclick="toggleVT('${it.id}','v','${ocId}')" 
-            ${!podePreencher?'disabled':''} title="Verificado (V)"
-            style="width:32px;height:28px;border-radius:6px;border:1px solid ${it.verificado?'#2563EB':'var(--border)'};background:${it.verificado?'#2563EB18':'transparent'};cursor:${podePreencher?'pointer':'default'};font-size:13px;transition:all .15s">
-            ${it.verificado?'✓':'V'}
-          </button>
-        </td>
-        <td style="text-align:center;padding:4px">
-          <button onclick="toggleVT('${it.id}','t','${ocId}')" 
-            ${!podePreencher||!it.verificado?'disabled':''} title="Trocado/Executado (T)"
-            style="width:32px;height:28px;border-radius:6px;border:1px solid ${it.trocado?'#00C48C':'var(--border)'};background:${it.trocado?'#00C48C18':'transparent'};cursor:${podePreencher&&it.verificado?'pointer':'default'};font-size:13px;transition:all .15s;opacity:${!it.verificado&&!it.trocado?'.4':'1'}">
-            ${it.trocado?'✓':'T'}
-          </button>
-        </td>
-        <td style="text-align:center;padding:4px">
-          <button onclick="toggleVT('${it.id}','nsa','${ocId}')" 
-            ${!podePreencher?'disabled':''} title="Não se aplica"
-            style="width:32px;height:28px;border-radius:6px;border:1px solid ${nsa?'#47556940':'var(--border)'};background:${nsa?'#47556918':'transparent'};cursor:${podePreencher?'pointer':'default'};font-size:11px">
-            N/A
-          </button>
-        </td>
-        <td style="padding:4px">
-          <input type="text" placeholder="Obs..." value="${it.observacao_item||''}"
-            ${!podePreencher?'disabled':''}
-            onblur="salvarObsItem('${it.id}',this.value,'${ocId}')"
-            style="width:100%;min-width:80px;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:10px;padding:2px 4px;outline:none">
-        </td>
-        <td style="text-align:center;padding:4px;font-size:10px;color:var(--text4)">
-          ${it.verificado?`<div style="color:var(--blue)">${it.verificado_por?.split(' ')[0]||''}${it.verificado_em?' '+new Date(it.verificado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):''}${it.trocado?`<div style="color:var(--green)">${it.trocado_por?.split(' ')[0]||''}${it.trocado_em?' '+new Date(it.trocado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):''}`:''}</div>`:it.nao_se_aplica?'<span style="color:var(--text4)">N/A</span>':''}
-        </td>
-      </tr>`;
-    }).join('');
-
-    return`<div style="margin-bottom:12px">
-      <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:${grupoOk?'#00C48C12':'var(--border)'};border-radius:8px 8px 0 0;cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
-        <span style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px">${grupo}</span>
-        <span style="font-size:10px;color:var(--text4);margin-left:auto">V: ${vG}/${totalG} · T: ${tG}/${totalG}</span>
-        ${grupoOk?'<span style="color:var(--green);font-size:14px">✅</span>':''}
+    const sgId='sg_'+grupo.replace(/[^a-zA-Z0-9]/g,'_');
+    return`<div style="margin-bottom:2px">
+      <div onclick="document.getElementById('${sgId}').style.display=document.getElementById('${sgId}').style.display==='none'?'block':'none'" style="display:flex;align-items:center;gap:8px;padding:5px 12px;background:${grupoOk?'#00C48C10':'var(--surface2)'};border-left:3px solid ${grupoOk?'var(--green)':'var(--border)'};cursor:pointer">
+        <span style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;flex:1">${grupo}</span>
+        <span style="font-size:10px;color:var(--text4)">V:${vG}/${totalG} · T:${tG}/${totalG}</span>
+        ${grupoOk?'<span style="color:var(--green);font-size:12px">✅</span>':''}
       </div>
-      <div style="border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
+      <div id="${sgId}" style="overflow:hidden">
         <table style="width:100%;border-collapse:collapse">
-          <thead><tr style="background:var(--surface2)">
-            <th style="padding:4px 8px;text-align:left;font-size:10px;color:var(--text4)">Item</th>
+          <thead><tr style="background:var(--bg)">
+            <th style="padding:4px 8px;text-align:left;font-size:9px;color:var(--text4)">Item</th>
             <th style="padding:4px;text-align:center;font-size:10px;color:var(--blue);width:36px">V</th>
             <th style="padding:4px;text-align:center;font-size:10px;color:var(--green);width:36px">T</th>
-            <th style="padding:4px;text-align:center;font-size:10px;color:var(--text4);width:36px">N/A</th>
-            <th style="padding:4px;text-align:left;font-size:10px;color:var(--text4)">Obs.</th>
-            <th style="padding:4px;text-align:center;font-size:10px;color:var(--text4);width:80px">Registro</th>
+            <th style="padding:4px;text-align:center;font-size:9px;color:var(--text4);width:36px">N/A</th>
+            <th style="padding:4px;text-align:left;font-size:9px;color:var(--text4)">Obs.</th>
+            <th style="padding:4px;text-align:center;font-size:9px;color:var(--text4);width:80px">Registro</th>
           </tr></thead>
-          <tbody>${itensHTML}</tbody>
+          <tbody>${gitens.map(renderItem).join('')}</tbody>
         </table>
       </div>
     </div>`;
-  }).join('');
+  };
+
+  const gruposUsados=new Set(Object.keys(grupos));
+  let gruposHTML='';
+
+  SUPERGRUPOS.forEach(sg=>{
+    const subgruposPresentes=sg.grupos.filter(g=>gruposUsados.has(g));
+    if(!subgruposPresentes.length) return;
+    const todosItens=subgruposPresentes.flatMap(g=>grupos[g]);
+    const vSG=todosItens.filter(i=>i.verificado||i.nao_se_aplica).length;
+    const tSG=todosItens.filter(i=>i.trocado||i.nao_se_aplica).length;
+    const totSG=todosItens.length;
+    const sgOk=vSG===totSG&&tSG===totSG;
+    const pctVsg=totSG>0?Math.round((vSG/totSG)*100):0;
+    const sgId='super_'+sg.key.replace(/[^a-zA-Z0-9]/g,'_');
+    gruposHTML+=`<div style="margin-bottom:8px;border:1px solid ${sgOk?'#00C48C30':'var(--border)'};border-radius:10px;overflow:hidden">
+      <div onclick="var el=document.getElementById('${sgId}');el.style.display=el.style.display==='none'?'block':'none'" style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:${sgOk?'#00C48C12':sg.c+'12'};cursor:pointer">
+        <span style="font-size:16px">${sg.ic}</span>
+        <div style="flex:1"><div style="font-weight:700;font-size:12px;color:${sgOk?'var(--green)':sg.c}">${sg.key}</div><div style="font-size:10px;color:var(--text4);margin-top:1px">${totSG} itens · V:${vSG}/${totSG} · T:${tSG}/${totSG}</div></div>
+        <div style="width:50px;height:4px;background:var(--border);border-radius:99px;overflow:hidden"><div style="width:${pctVsg}%;height:100%;background:${sgOk?'var(--green)':sg.c}"></div></div>
+        ${sgOk?'<span style="color:var(--green);font-size:14px">✅</span>':''}
+      </div>
+      <div id="${sgId}">${subgruposPresentes.map(g=>renderSubgrupo(g,grupos[g])).join('')}</div>
+    </div>`;
+  });
+
+  Object.keys(grupos).forEach(g=>{
+    if(!SUPERGRUPOS.some(sg=>sg.grupos.includes(g))){
+      gruposHTML+=`<div style="margin-bottom:8px;border:1px solid var(--border);border-radius:10px;overflow:hidden"><div style="padding:9px 12px;background:var(--surface2);font-weight:700;font-size:12px">🔧 ${g}</div><div>${renderSubgrupo(g,grupos[g])}</div></div>`;
+    }
+  });
 
   const btnSubmeter=podePreencher&&faseFim
     ?`<button onclick="submeterChecklistLib('${ocId}')" class="btn-success" style="width:100%;margin-top:12px">📤 Submeter para Aprovação do PCM</button>`
@@ -2838,8 +2828,6 @@ async function carregarChecklistLib(ocId){
 
   document.getElementById('cklib-content').innerHTML=`
     ${statusBanner}
-
-    <!-- Info cabeçalho -->
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:12px">
       <div style="display:flex;gap:16px;flex-wrap:wrap">
         <div><span style="color:var(--text3)">Veículo:</span> <span style="font-family:'DM Mono',monospace;font-weight:700">${oc.prefixo}</span></div>
@@ -2848,33 +2836,22 @@ async function carregarChecklistLib(ocId){
         <div><span style="color:var(--text3)">Mecânico:</span> ${oc.mecanico||'—'}</div>
       </div>
     </div>
-
-    <!-- Legenda e progresso -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
       <div style="background:var(--surface2);border:1px solid #2563EB30;border-radius:10px;padding:10px 12px">
         <div style="color:var(--blue);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px">V — Verificado (Diagnóstico)</div>
-        <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:700;color:var(--blue);margin-top:3px">${verificados}/${items.length}</div>
+        <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:700;color:var(--blue);margin-top:3px">${verificados}/${totalItens}</div>
         <div style="background:var(--border);border-radius:99px;height:4px;overflow:hidden;margin-top:6px"><div style="height:100%;width:${pctV}%;background:var(--blue)"></div></div>
         <div style="color:var(--text3);font-size:10px;margin-top:4px">Líder + Mecânico identificam o que precisa de troca</div>
       </div>
       <div style="background:var(--surface2);border:1px solid #00C48C30;border-radius:10px;padding:10px 12px">
         <div style="color:var(--green);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px">T — Trocado/Executado (Qualificação)</div>
-        <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:700;color:var(--green);margin-top:3px">${trocados}/${items.length}</div>
+        <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:700;color:var(--green);margin-top:3px">${trocados}/${totalItens}</div>
         <div style="background:var(--border);border-radius:99px;height:4px;overflow:hidden;margin-top:6px"><div style="height:100%;width:${pctT}%;background:var(--green)"></div></div>
         <div style="color:var(--text3);font-size:10px;margin-top:4px">Líder confirma o que foi realmente feito</div>
       </div>
     </div>
-
-    <!-- Aviso de fase -->
-    ${faseV?`<div style="background:#2563EB12;border:1px solid #2563EB30;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--blue)">
-      📋 <strong>Fase 1 — Diagnóstico:</strong> Marque V em cada item verificado. Após verificar todos, a fase T será liberada.
-    </div>`:faseT?`<div style="background:#F59E0B12;border:1px solid #F59E0B30;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--amber)">
-      🔧 <strong>Fase 2 — Qualificação:</strong> Marque T nos itens que foram efetivamente trocados/executados. N/A para itens que não se aplicam.
-    </div>`:''}
-
-    <!-- Grupos de itens -->
+    ${faseV?`<div style="background:#2563EB12;border:1px solid #2563EB30;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--blue)">📋 <strong>Fase 1 — Diagnóstico:</strong> Marque V em cada item verificado. Após verificar todos, a fase T será liberada.</div>`:faseT?`<div style="background:#F59E0B12;border:1px solid #F59E0B30;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--amber)">🔧 <strong>Fase 2 — Qualificação:</strong> Marque T nos itens que foram efetivamente trocados/executados. N/A para itens que não se aplicam.</div>`:''}
     ${gruposHTML}
-
     ${btnSubmeter}
     <button onclick="closeM('modal-22-cklib');document.getElementById('modal-22-status').style.display='flex'" class="btn-sec" style="width:100%;margin-top:8px">← Voltar</button>`;
 }
