@@ -652,6 +652,7 @@ async function doLogin(){
   }
 
   S.user=data.user;
+  S.accessToken=data.session?.access_token; // JWT do usuário para REST calls
 
   // Busca perfil
   const{data:perfil}=await sb.from('perfis').select('*').eq('id',data.user.id).single();
@@ -2498,7 +2499,8 @@ async function abrirModal22(){
 }
 
 // ── NOTIFICAÇÃO WHATSAPP ──────────────────────────────────
-const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impib2NsdWJ1Z2Z4bXVydmhjeGdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU3MDI1NTEsImV4cCI6MjA2MTI3ODU1MX0.LqMwJZxKh8nuMdyN37KZOR3knBH7s6hZSwB6SHvFnmQ'; // mesma key usada no createClient
+// Retorna o melhor token disponível: JWT do usuário logado ou Publishable Key
+function getAuthKey(){return S?.accessToken||SUPABASE_PK;}
 async function notificarWhatsApp(ocorrencia_id, status_novo){
   try{
     const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
@@ -2506,8 +2508,8 @@ async function notificarWhatsApp(ocorrencia_id, status_novo){
       method:'POST',
       headers:{
         'Content-Type':'application/json',
-        'Authorization':`Bearer ${SUPABASE_ANON_KEY}`,
-        'apikey':SUPABASE_ANON_KEY,
+        'Authorization':'Bearer '+getAuthKey(),
+        'apikey':getAuthKey(),
       },
       body:JSON.stringify({
         tipo:'atualizacao_22',
@@ -2702,21 +2704,15 @@ async function carregarChecklistLib(ocId){
   log('precisaRecriar='+precisaRecriar);
 
   if(precisaRecriar&&items?.length){
-    // Delete via REST com Anon Key
-    try{
-      const delResp=await fetch(`${SUPABASE_URL}/rest/v1/checklist_liberacao?ocorrencia_id=eq.${ocId}`,{
-        method:'DELETE',
-        headers:{'apikey':SUPABASE_ANON_KEY,'Authorization':'Bearer '+SUPABASE_ANON_KEY},
-      });
-      log('delete: '+delResp.status);
-    }catch(e){log('delete err: '+e.message);}
+    const{error:eDel}=await sb.from('checklist_liberacao').delete().eq('ocorrencia_id',ocId);
+    log('delete: '+(eDel?.message||'ok'));
     items=[];
   }
 
   if(!items||!items.length){
     const defaultItems=CHECKLIST_LIB_ITEMS[oc.tipo]||CHECKLIST_LIB_ITEMS.corretiva;
-    // Insere via REST com Anon Key (garante compatibilidade com RLS)
-    document.getElementById('cklib-content').innerHTML=`<div style="text-align:center;padding:30px;color:var(--text3)"><div class="spinner" style="margin:0 auto 12px"></div><div style="font-size:12px">Criando ${defaultItems.length} itens de checklist...</div></div>`;
+    // Insere via sb client usando session do usuário logado
+    document.getElementById('cklib-content').innerHTML=`<div style="text-align:center;padding:30px;color:var(--text3)"><div class="spinner" style="margin:0 auto 12px"></div><div style="font-size:12px">Criando ${defaultItems.length} itens...</div></div>`;
     const LOTE=50;
     let erroInsert=false;
     for(let i=0;i<defaultItems.length;i+=LOTE){
@@ -2724,27 +2720,16 @@ async function carregarChecklistLib(ocId){
         ocorrencia_id:ocId,garagem_id:gid,tipo:oc.tipo,item:it.item,ordem:it.ordem,
         concluido:false,verificado:false,trocado:false,nao_se_aplica:false,
       }));
-      try{
-        const resp=await fetch(`${SUPABASE_URL}/rest/v1/checklist_liberacao`,{
-          method:'POST',
-          headers:{
-            'Content-Type':'application/json',
-            'apikey':SUPABASE_ANON_KEY,
-            'Authorization':'Bearer '+SUPABASE_ANON_KEY,
-            'Prefer':'return=minimal',
-          },
-          body:JSON.stringify(lote),
-        });
-        if(!resp.ok){const txt=await resp.text();log('insert REST erro lote '+i+': '+txt);erroInsert=true;break;}
-        log('insert lote '+i+' ok ('+lote.length+' itens)');
-      }catch(e){log('insert fetch err: '+e.message);erroInsert=true;break;}
+      const{error:eIns}=await sb.from('checklist_liberacao').insert(lote);
+      if(eIns){log('insert erro lote '+i+': '+eIns.message+' | code:'+eIns.code);erroInsert=true;break;}
+      log('insert lote '+i+' ok ('+lote.length+' itens)');
     }
     if(erroInsert){
       document.getElementById('cklib-content').innerHTML=`<div style="text-align:center;padding:20px;color:var(--red)">❌ Erro ao criar checklist. Veja o painel de debug abaixo.</div>`;
       return;
     }
     const{data:novo,error:errNovo}=await sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem');
-    log('pos-insert select: '+(novo?.length??'null')+' erro='+(errNovo?.message||'none'));
+    log('pos-insert: '+(novo?.length??'null')+' erro='+(errNovo?.message||'none'));
     items=novo||[];
   }
 
@@ -3011,7 +2996,7 @@ async function notificarWhatsAppLiberacao(ocId, liderNome, gid){
 
     await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
       method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':`Bearer ${SUPABASE_ANON_KEY}`,'apikey':SUPABASE_ANON_KEY},
+      headers:{'Content-Type':'application/json','apikey':getAuthKey(),'Authorization':'Bearer '+getAuthKey()},
       body:JSON.stringify({
         ocorrencia_id:ocId, garagem_id:gid,
         usuario_nome:liderNome, status_novo:'aguardando_aprovacao',
@@ -3091,7 +3076,7 @@ async function notificarWhatsAppChecklist(ocId, pct, feitos, total){
     const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
     await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
       method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':`Bearer ${SUPABASE_ANON_KEY}`,'apikey':SUPABASE_ANON_KEY},
+      headers:{'Content-Type':'application/json','apikey':getAuthKey(),'Authorization':'Bearer '+getAuthKey()},
       body:JSON.stringify({
         tipo:'checklist_22', ocorrencia_id:ocId, garagem_id:gid,
         usuario_nome:S.perfil?.nome, pct, feitos, total,
@@ -3565,7 +3550,7 @@ async function salvarFechamentoPCM(){
 
   try{
     await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
-      method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${SUPABASE_ANON_KEY}`,'apikey':SUPABASE_ANON_KEY},
+      method:'POST',headers:{'Content-Type':'application/json','apikey':getAuthKey(),'Authorization':'Bearer '+getAuthKey()},
       body:JSON.stringify({ocorrencia_id:'00000000-0000-0000-0000-000000000000',garagem_id:gid,usuario_nome:S.perfil?.nome,status_novo:'fechamento_pcm',mensagem_custom:msg.join('\n')}),
     });
   }catch(err){console.warn('Erro WPP:',err.message);}
@@ -3661,7 +3646,7 @@ async function enviarResumoWpp(){
   try{
     await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
       method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':`Bearer ${SUPABASE_ANON_KEY}`,'apikey':SUPABASE_ANON_KEY},
+      headers:{'Content-Type':'application/json','apikey':getAuthKey(),'Authorization':'Bearer '+getAuthKey()},
       body:JSON.stringify({ocorrencia_id:'00000000-0000-0000-0000-000000000000',garagem_id:gid,usuario_nome:S.perfil?.nome,status_novo:'resumo',mensagem_custom:msg}),
     });
     toast('📱 Resumo enviado para o grupo!');
@@ -3845,7 +3830,7 @@ async function enviar211WhatsApp(){
   try{
     await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
       method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':`Bearer ${SUPABASE_ANON_KEY}`,'apikey':SUPABASE_ANON_KEY},
+      headers:{'Content-Type':'application/json','apikey':getAuthKey(),'Authorization':'Bearer '+getAuthKey()},
       body:JSON.stringify({ocorrencia_id:'00000000-0000-0000-0000-000000000000',garagem_id:gid,usuario_nome:S.perfil?.nome,status_novo:'211',mensagem_custom:msg}),
     });
     toast('📱 Relatório 2.11 enviado para o grupo!');
@@ -4026,7 +4011,7 @@ async function enviar212WhatsApp(){
   try{
     await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
       method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':`Bearer ${SUPABASE_ANON_KEY}`,'apikey':SUPABASE_ANON_KEY},
+      headers:{'Content-Type':'application/json','apikey':getAuthKey(),'Authorization':'Bearer '+getAuthKey()},
       body:JSON.stringify({ocorrencia_id:'00000000-0000-0000-0000-000000000000',garagem_id:gid,usuario_nome:S.perfil?.nome,status_novo:'212',mensagem_custom:msg}),
     });
     toast('📱 Indicadores enviados para o grupo!');
