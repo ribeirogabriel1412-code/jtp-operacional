@@ -549,6 +549,7 @@ tr:hover td{background:#0F172A80}
       <button class="btn-x" onclick="closeM('modal-22-cklib');document.getElementById('modal-22-status').style.display='flex'">✕</button>
     </div>
     <div id="cklib-content"><div class="loading"><div class="spinner"></div></div></div>
+    <div id="cklib-debug" style="display:none;padding:10px;background:#EF444415;border:1px solid #EF444430;border-radius:8px;margin-top:8px;font-size:11px;font-family:monospace;color:var(--text2);white-space:pre-wrap;max-height:150px;overflow-y:auto"></div>
   </div>
 </div>
 
@@ -557,7 +558,8 @@ tr:hover td{background:#0F172A80}
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 const {createClient}=supabase;
-const sb=createClient('https://jboclubugfxmurvhcxgr.supabase.co','sb_publishable_hasmgR_BbXcJC6Xko6DzaA_N7kl7rNT');
+const SUPABASE_URL='https://jboclubugfxmurvhcxgr.supabase.co';
+const sb=createClient(SUPABASE_URL,'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impib2NsdWJ1Z2Z4bXVydmhjeGdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU3MDI1NTEsImV4cCI6MjA2MTI3ODU1MX0.LqMwJZxKh8nuMdyN37KZOR3knBH7s6hZSwB6SHvFnmQ');
 
 const S={user:null,perfil:null,tela:'painel',subtela:null,turno:'dia',garagens:[],frota:[],soltura210:[],filtroFrota:'todos',editVId:null,editSaidaId:null,editUserId:null,data210:null};
 
@@ -2494,7 +2496,7 @@ async function abrirModal22(){
 }
 
 // ── NOTIFICAÇÃO WHATSAPP ──────────────────────────────────
-const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impib2NsdWJ1Z2Z4bXVydmhjeGdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU3MDI1NTEsImV4cCI6MjA2MTI3ODU1MX0.LqMwJZxKh8nuMdyN37KZOR3knBH7s6hZSwB6SHvFnmQ';
+const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impib2NsdWJ1Z2Z4bXVydmhjeGdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU3MDI1NTEsImV4cCI6MjA2MTI3ODU1MX0.LqMwJZxKh8nuMdyN37KZOR3knBH7s6hZSwB6SHvFnmQ'; // mesma key usada no createClient
 async function notificarWhatsApp(ocorrencia_id, status_novo){
   try{
     const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
@@ -2682,24 +2684,47 @@ async function carregarChecklistLib(ocId){
   document.getElementById('mckl-info').textContent=`${oc.prefixo}`;
   const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
 
-  let{data:items}=await sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem');
+  const{data:items0,error:errSelect}=await sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem');
+  let items=items0;
+
+  // Log de diagnóstico
+  const dbg=document.getElementById('cklib-debug');
+  const log=(msg)=>{console.log('[CKL]',msg);if(dbg){dbg.style.display='block';dbg.textContent+='\n'+msg;}};
+  log('tipo='+oc.tipo+' | ocId='+ocId.slice(0,8));
+  log('select: items='+(items?.length??'null')+' erro='+(errSelect?.message||'none'));
 
   // Recria se: sem itens OU count diferente da lista esperada (lista foi atualizada)
   const esperado=(CHECKLIST_LIB_ITEMS[oc.tipo]||CHECKLIST_LIB_ITEMS.corretiva).length;
+  log('esperado='+esperado);
   const precisaRecriar=!items||!items.length||(items.length!==esperado);
+  log('precisaRecriar='+precisaRecriar);
 
   if(precisaRecriar&&items?.length){
-    await sb.from('checklist_liberacao').delete().eq('ocorrencia_id',ocId);
+    const{error:errDel}=await sb.from('checklist_liberacao').delete().eq('ocorrencia_id',ocId);
+    log('delete: '+(errDel?.message||'ok'));
     items=[];
   }
 
   if(!items||!items.length){
     const defaultItems=CHECKLIST_LIB_ITEMS[oc.tipo]||CHECKLIST_LIB_ITEMS.corretiva;
-    await sb.from('checklist_liberacao').insert(defaultItems.map(it=>({
-      ocorrencia_id:ocId,garagem_id:gid,tipo:oc.tipo,item:it.item,ordem:it.ordem,
-      concluido:false,verificado:false,trocado:false,nao_se_aplica:false,
-    })));
-    const{data:novo}=await sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem');
+    // Insere em lotes de 50 para evitar timeout no Supabase
+    document.getElementById('cklib-content').innerHTML=`<div style="text-align:center;padding:30px;color:var(--text3)"><div class="spinner" style="margin:0 auto 12px"></div><div style="font-size:12px">Carregando ${defaultItems.length} itens de checklist...</div></div>`;
+    const LOTE=50;
+    let erroInsert=false;
+    for(let i=0;i<defaultItems.length;i+=LOTE){
+      const lote=defaultItems.slice(i,i+LOTE);
+      const{error}=await sb.from('checklist_liberacao').insert(lote.map(it=>({
+        ocorrencia_id:ocId,garagem_id:gid,tipo:oc.tipo,item:it.item,ordem:it.ordem,
+        concluido:false,verificado:false,trocado:false,nao_se_aplica:false,
+      })));
+      if(error){console.error('Erro insert lote',i,error);erroInsert=true;break;}
+    }
+    if(erroInsert){
+      document.getElementById('cklib-content').innerHTML=`<div style="text-align:center;padding:20px;color:var(--red)">❌ Erro ao criar checklist. Tente fechar e abrir novamente.</div>`;
+      return;
+    }
+    const{data:novo,error:errNovo}=await sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem');
+    log('pos-insert select: '+(novo?.length??'null')+' erro='+(errNovo?.message||'none'));
     items=novo||[];
   }
 
@@ -2790,6 +2815,7 @@ async function carregarChecklistLib(ocId){
     </div>`;
   };
 
+  log('items final='+items.length+' | grupos='+Object.keys(grupos).join(','));
   const gruposUsados=new Set(Object.keys(grupos));
   let gruposHTML='';
 
