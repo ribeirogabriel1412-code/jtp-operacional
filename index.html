@@ -1896,36 +1896,156 @@ const CHECKLIST_ITEMS={
   ],
 };
 
-// Checklist de LIBERAÇÃO — preenchido pelo Líder de Oficina
+// Checklist de LIBERAÇÃO baseado nas OS reais do Praxio
+// Cada item tem: V = Verificado (diagnóstico) | T = Trocado/Executado (qualificação)
 const CHECKLIST_LIB_ITEMS={
   corretiva:[
-    {item:'Serviço executado conforme OS do Praxio',ordem:1},
-    {item:'Causa raiz identificada e documentada',ordem:2},
-    {item:'Peças substituídas registradas no sistema',ordem:3},
+    {item:'Problema identificado e causa raiz definida',ordem:1},
+    {item:'Peças necessárias solicitadas e disponíveis',ordem:2},
+    {item:'Serviço executado conforme OS Praxio',ordem:3},
     {item:'Teste funcional realizado com sucesso',ordem:4},
     {item:'Sem vazamentos de óleo, água ou ar',ordem:5},
     {item:'Sem ruídos ou vibrações anormais',ordem:6},
     {item:'Veículo limpo e em condições de operação',ordem:7},
   ],
   preventiva_leve:[
-    {item:'Todos os itens do plano preventivo executados',ordem:1},
-    {item:'Óleo e filtros trocados conforme especificação',ordem:2},
-    {item:'Freios verificados e dentro do padrão',ordem:3},
-    {item:'Nível de todos os fluidos correto',ordem:4},
-    {item:'Sistema elétrico e iluminação OK',ordem:5},
-    {item:'Teste de rodagem realizado sem ocorrências',ordem:6},
-    {item:'Documentação atualizada no Praxio',ordem:7},
+    // GRUPO 01 - MOTOR
+    {item:'[MOTOR] Correia do motor — Verificação',ordem:1},
+    {item:'[MOTOR] Fixação coxim — Verificação',ordem:2},
+    {item:'[MOTOR] Esticador da correia (pêndulo) — Verificação',ordem:3},
+    {item:'[MOTOR] Freio motor — Verificação',ordem:4},
+    {item:'[MOTOR] Vazamentos no motor — Verificação',ordem:5},
+    {item:'[MOTOR] Tubo do escapamento — Verificação',ordem:6},
+    {item:'[MOTOR] Compressor de ar — Verificação',ordem:7},
+    {item:'[MOTOR] Nível de óleo — Verificação',ordem:8},
+    // GRUPO 02 - ELÉTRICA
+    {item:'[ELÉTRICA] Lâmpada farol — Verificação',ordem:9},
+    // GRUPO 03 - DIREÇÃO
+    {item:'[DIREÇÃO] Barra de direção — Verificação',ordem:10},
+    // GRUPO 04 - SUSPENSÃO
+    {item:'[SUSPENSÃO] Molas dianteira — Verificação',ordem:11},
+    {item:'[SUSPENSÃO] Molas traseira — Verificação',ordem:12},
+    {item:'[SUSPENSÃO] Bolsa ar dianteira — Verificação',ordem:13},
+    {item:'[SUSPENSÃO] Bolsa ar traseira — Verificação',ordem:14},
+    {item:'[SUSPENSÃO] Válvula niveladora dianteira — Verificação',ordem:15},
+    {item:'[SUSPENSÃO] Válvula niveladora traseira — Verificação',ordem:16},
+    {item:'[SUSPENSÃO] Válvula retenção niveladora — Verificação',ordem:17},
+    {item:'[SUSPENSÃO] Amortecedores dianteiro — Verificação',ordem:18},
+    // GRUPO 06 - FREIO
+    {item:'[FREIO] Tambor freio dianteira LE — Verificação',ordem:19},
+    {item:'[FREIO] Tambor freio dianteira LD — Verificação',ordem:20},
+    {item:'[FREIO] Tambor freio traseira LE — Verificação',ordem:21},
+    {item:'[FREIO] Tambor freio traseira LD — Verificação',ordem:22},
+    // GRUPO 07 - DIFERENCIAL
+    {item:'[DIFERENCIAL] Conjunto diferencial — Verificação',ordem:23},
+    {item:'[DIFERENCIAL] Óleo diferencial — Verificação',ordem:24},
+    // GRUPO 11 - EMBREAGEM
+    {item:'[EMBREAGEM] Mola pedal embreagem — Verificação',ordem:25},
+    {item:'[EMBREAGEM] Pedal embreagem — Verificação',ordem:26},
+    {item:'[EMBREAGEM] Carcaça da embreagem — Verificação',ordem:27},
+    {item:'[EMBREAGEM] Reservatório — Completar',ordem:28},
+    // GRUPO 12 - PINTURA
+    {item:'[PINTURA] Carroceria total — Verificação',ordem:29},
+    {item:'[PINTURA] Carroceria interna — Verificação',ordem:30},
+    {item:'[PINTURA] Adesivos interno/externo — Verificação',ordem:31},
+    // GRUPO 17 - CARROCERIA
+    {item:'[CARROCERIA] Espelho retrovisor — Verificação',ordem:32},
+    {item:'[CARROCERIA] Vidro janela — Verificação',ordem:33},
+    {item:'[CARROCERIA] Parabrisa L/D — Verificação',ordem:34},
+    {item:'[CARROCERIA] Parabrisa L/E — Verificação',ordem:35},
+    {item:'[CARROCERIA] Vidro itinerário — Verificação',ordem:36},
+    {item:'[CARROCERIA] Vidro vigia — Verificação',ordem:37},
+    {item:'[CARROCERIA] Extintor — Verificação',ordem:38},
+    {item:'[CARROCERIA] Triângulo — Verificação',ordem:39},
+    {item:'[CARROCERIA] Portas — Verificação',ordem:40},
+    // GRUPO 21 - BORRACHARIA
+    {item:'[BORRACHARIA] Roda — Aperto',ordem:41},
+    {item:'[BORRACHARIA] Pneus — Verificação / Calibragem / Medição',ordem:42},
+    // GRUPO 23 - AR CONDICIONADO
+    {item:'[AR CONDICIONADO] Correia — Verificação',ordem:43},
+    // GRUPO 24 - ELEVADOR
+    {item:'[ELEVADOR] Elevador — Verificação',ordem:44},
+    // GRUPO 26 - PÓS TRATAMENTO
+    {item:'[PÓS TRATAMENTO] Tanque de ARLA — Verificação',ordem:45},
+    {item:'[PÓS TRATAMENTO] Pistão EGR — Verificação',ordem:46},
+    // QUALIFICAÇÃO FINAL
+    {item:'✅ Todos os itens verificados e aprovados pelo Líder de Oficina',ordem:47},
   ],
   preventiva_pesada:[
-    {item:'Todos os itens do plano preventivo pesado executados',ordem:1},
-    {item:'Motor revisado conforme especificação',ordem:2},
-    {item:'Sistema de freios revisado e aprovado',ordem:3},
-    {item:'Transmissão revisada e funcionando',ordem:4},
-    {item:'Sistema elétrico completo verificado',ordem:5},
-    {item:'Funilaria e carroceria aprovadas',ordem:6},
-    {item:'Teste de rodagem completo sem ocorrências',ordem:7},
-    {item:'Documentação e OS atualizada no Praxio',ordem:8},
-    {item:'Aprovação final do Líder de Oficina',ordem:9},
+    // GRUPO 01 - MOTOR
+    {item:'[MOTOR] Correia do motor — Verificação',ordem:1},
+    {item:'[MOTOR] Fixação coxim — Verificação',ordem:2},
+    {item:'[MOTOR] Esticador da correia (pêndulo) — Verificação',ordem:3},
+    {item:'[MOTOR] Freio motor — Verificação',ordem:4},
+    {item:'[MOTOR] Vazamentos no motor — Verificação',ordem:5},
+    {item:'[MOTOR] Tubo do escapamento — Verificação',ordem:6},
+    {item:'[MOTOR] Compressor de ar — Verificação',ordem:7},
+    {item:'[MOTOR] Nível de óleo — Verificação',ordem:8},
+    // GRUPO 02 - ELÉTRICA
+    {item:'[ELÉTRICA] Lâmpada farol — Verificação',ordem:9},
+    // GRUPO 03 - DIREÇÃO
+    {item:'[DIREÇÃO] Caixa de direção — Verificação',ordem:10},
+    {item:'[DIREÇÃO] Bomba de direção — Verificação',ordem:11},
+    {item:'[DIREÇÃO] Óleo hidráulico — Verificação',ordem:12},
+    {item:'[DIREÇÃO] Barra de direção — Verificação',ordem:13},
+    // GRUPO 04 - SUSPENSÃO
+    {item:'[SUSPENSÃO] Molas dianteira — Verificação',ordem:14},
+    {item:'[SUSPENSÃO] Molas traseira — Verificação',ordem:15},
+    {item:'[SUSPENSÃO] Bolsa ar dianteira — Verificação',ordem:16},
+    {item:'[SUSPENSÃO] Bolsa ar traseira — Verificação',ordem:17},
+    {item:'[SUSPENSÃO] Válvula niveladora dianteira — Verificação',ordem:18},
+    {item:'[SUSPENSÃO] Válvula niveladora traseira — Verificação',ordem:19},
+    // GRUPO 06 - FREIO
+    {item:'[FREIO] Catraca de freio dianteira LE — Verificação',ordem:20},
+    {item:'[FREIO] Catraca de freio traseira LD — Verificação',ordem:21},
+    {item:'[FREIO] Catraca de freio traseira LE — Verificação',ordem:22},
+    {item:'[FREIO] Lona de freio dianteira LE — Verificação',ordem:23},
+    {item:'[FREIO] Lona de freio dianteira LD — Verificação',ordem:24},
+    {item:'[FREIO] Lona de freio traseira LE — Verificação',ordem:25},
+    {item:'[FREIO] Lona de freio traseira LD — Verificação',ordem:26},
+    {item:'[FREIO] Tambor freio dianteira LE — Verificação',ordem:27},
+    {item:'[FREIO] Tambor freio dianteira LD — Verificação',ordem:28},
+    {item:'[FREIO] Tambor freio traseira LE — Verificação',ordem:29},
+    {item:'[FREIO] Tambor freio traseira LD — Verificação',ordem:30},
+    // GRUPO 10 - TRANSMISSÃO
+    {item:'[TRANSMISSÃO] Cardan — Verificação',ordem:31},
+    {item:'[TRANSMISSÃO] Cruzeta — Verificação',ordem:32},
+    {item:'[TRANSMISSÃO] Rolamento centro — Verificação',ordem:33},
+    {item:'[TRANSMISSÃO] Flange — Verificação',ordem:34},
+    {item:'[TRANSMISSÃO] Cinta do cardan — Verificação',ordem:35},
+    // GRUPO 11 - EMBREAGEM
+    {item:'[EMBREAGEM] Cilindro embreagem — Verificação',ordem:36},
+    {item:'[EMBREAGEM] Servo embreagem — Verificação',ordem:37},
+    {item:'[EMBREAGEM] Mola pedal embreagem — Verificação',ordem:38},
+    {item:'[EMBREAGEM] Pedal embreagem — Verificação',ordem:39},
+    // GRUPO 13 - SISTEMA PNEUMÁTICO
+    {item:'[PNEUMÁTICO] Filtro secador — Verificação',ordem:40},
+    // GRUPO 14 - TAPEÇARIA
+    {item:'[TAPEÇARIA] Poltrona motorista — Verificação',ordem:41},
+    {item:'[TAPEÇARIA] Poltrona passageiro — Verificação',ordem:42},
+    // GRUPO 18 - ARREFECIMENTO
+    {item:'[ARREFECIMENTO] Radiador — Verificação e Lavagem',ordem:43},
+    {item:'[ARREFECIMENTO] Válvula termostática — Verificação',ordem:44},
+    {item:'[ARREFECIMENTO] Aditivo radiador — Verificação',ordem:45},
+    {item:'[ARREFECIMENTO] Embreagem viscosa — Verificação',ordem:46},
+    {item:'[ARREFECIMENTO] Bomba d\'água — Verificação',ordem:47},
+    {item:'[ARREFECIMENTO] Mangueiras — Verificação',ordem:48},
+    {item:'[ARREFECIMENTO] Hélice — Verificação e Limpeza',ordem:49},
+    {item:'[ARREFECIMENTO] Nível de água — Verificação',ordem:50},
+    // GRUPO 23 - AR CONDICIONADO
+    {item:'[AR COND.] Correia — Verificação',ordem:51},
+    {item:'[AR COND.] Alternador A/C — Verificação',ordem:52},
+    {item:'[AR COND.] Pressostato alta — Verificação',ordem:53},
+    {item:'[AR COND.] Pressostato baixa — Verificação',ordem:54},
+    {item:'[AR COND.] Tubulação — Verificação',ordem:55},
+    {item:'[AR COND.] Compressor — Verificação e Aperto',ordem:56},
+    {item:'[AR COND.] Ventilador evaporador — Verificação',ordem:57},
+    {item:'[AR COND.] Condensador — Limpeza',ordem:58},
+    {item:'[AR COND.] Tela filtrante interna — Limpeza',ordem:59},
+    // GRUPO 30 - INSPEÇÃO PREDITIVA
+    {item:'[PREDITIVA] Inspeção preditiva — Verificação',ordem:60},
+    // QUALIFICAÇÃO FINAL
+    {item:'✅ Todos os itens verificados e aprovados pelo Líder de Oficina',ordem:61},
   ],
 };
 
@@ -2257,55 +2377,131 @@ async function carregarChecklistLib(ocId){
   if(!items||!items.length){
     const defaultItems=CHECKLIST_LIB_ITEMS[oc.tipo]||CHECKLIST_LIB_ITEMS.corretiva;
     await sb.from('checklist_liberacao').insert(defaultItems.map(it=>({
-      ocorrencia_id:ocId,garagem_id:gid,tipo:oc.tipo,item:it.item,ordem:it.ordem,concluido:false,
+      ocorrencia_id:ocId,garagem_id:gid,tipo:oc.tipo,item:it.item,ordem:it.ordem,
+      concluido:false,verificado:false,trocado:false,nao_se_aplica:false,
     })));
     const{data:novo}=await sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem');
     items=novo||[];
   }
 
-  const total=items.length;
-  const feitos=items.filter(i=>i.concluido).length;
-  const pct=Math.round((feitos/total)*100);
-  const pColor=pct===100?'var(--green)':pct>=50?'var(--amber)':'var(--red)';
+  const total=items.filter(i=>!i.nao_se_aplica).length;
+  const verificados=items.filter(i=>i.verificado||i.nao_se_aplica).length;
+  const trocados=items.filter(i=>i.trocado||i.nao_se_aplica).length;
+  const pctV=total>0?Math.round((verificados/items.length)*100):0;
+  const pctT=total>0?Math.round((trocados/items.length)*100):0;
   const submetido=items[0]?.submetido;
   const aprovado=items[0]?.aprovado;
+
+  // Fase atual
+  const faseV=pctV<100; // ainda no diagnóstico
+  const faseT=pctV===100&&pctT<100; // executando
+  const faseFim=pctV===100&&pctT===100; // pronto para submeter
 
   let statusBanner='';
   if(aprovado===true){
     statusBanner=`<div style="background:#00C48C15;border:1px solid #00C48C40;border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
       <span style="font-size:20px">✅</span>
-      <div><div style="color:var(--green);font-weight:700;font-size:13px">Liberação Aprovada pelo PCM</div>
-      <div style="color:var(--text3);font-size:11px;margin-top:2px">Aprovado por ${items[0]?.aprovado_por||'—'} · ${formatDT(items[0]?.aprovado_em)}</div></div>
+      <div><div style="color:var(--green);font-weight:700">Liberação Aprovada pelo PCM</div>
+      <div style="color:var(--text3);font-size:11px">Aprovado por ${items[0]?.aprovado_por||'—'} · ${formatDT(items[0]?.aprovado_em)}</div></div>
     </div>`;
   } else if(submetido){
     statusBanner=`<div style="background:#F59E0B15;border:1px solid #F59E0B40;border-radius:10px;padding:12px 14px;margin-bottom:14px">
       <div style="display:flex;align-items:center;gap:10px">
         <span style="font-size:20px">⏳</span>
-        <div style="flex:1"><div style="color:var(--amber);font-weight:700;font-size:13px">Aguardando Aprovação do PCM</div>
-        <div style="color:var(--text3);font-size:11px;margin-top:2px">Submetido por ${items[0]?.submetido_por||'—'} · ${formatDT(items[0]?.submetido_em)}</div></div>
+        <div style="flex:1"><div style="color:var(--amber);font-weight:700">Aguardando Aprovação do PCM</div>
+        <div style="color:var(--text3);font-size:11px">Submetido por ${items[0]?.submetido_por||'—'} · ${formatDT(items[0]?.submetido_em)}</div></div>
       </div>
       ${isPCMLib()?`<div style="display:flex;gap:8px;margin-top:10px">
         <button onclick="aprovarChecklistLib('${ocId}',true)" class="btn-success" style="flex:1">✅ Aprovar Liberação</button>
         <button onclick="aprovarChecklistLib('${ocId}',false)" class="btn-sec" style="flex:1">↩ Devolver para Oficina</button>
       </div>`:''}
     </div>`;
+  } else if(faseFim&&!submetido){
+    statusBanner=`<div style="background:#00C48C15;border:1px solid #00C48C40;border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:20px">🎉</span>
+      <div><div style="color:var(--green);font-weight:700">Todos os itens verificados e executados!</div>
+      <div style="color:var(--text3);font-size:11px">Pronto para submeter ao PCM</div></div>
+    </div>`;
   }
 
-  const ckRows=items.map(it=>`
-    <div style="display:flex;align-items:flex-start;gap:10px;padding:9px 10px;border-radius:8px;margin-bottom:4px;background:${it.concluido?'#00C48C08':'var(--surface2)'}">
-      <input type="checkbox" id="ckl-${it.id}" ${it.concluido?'checked':''}
-        ${!isLiderOficina()||submetido?'disabled':''}
-        onchange="toggleCheckLib('${it.id}','${ocId}')"
-        style="width:16px;height:16px;flex-shrink:0;margin-top:2px;accent-color:var(--green)">
-      <div style="flex:1">
-        <label for="ckl-${it.id}" style="font-size:13px;color:${it.concluido?'var(--text3)':'var(--text)'};text-decoration:${it.concluido?'line-through':''}">
-          ${it.ordem}. ${it.item}
-        </label>
-        ${it.concluido&&it.concluido_por?`<div style="color:var(--text4);font-size:10px;margin-top:2px">✓ ${it.concluido_por} · ${formatDT(it.concluido_em)}</div>`:''}
-      </div>
-    </div>`).join('');
+  // Grupos por seção (prefixo entre colchetes)
+  const grupos={};
+  items.forEach(it=>{
+    const match=it.item.match(/^\[([^\]]+)\]/);
+    const grupo=match?match[1]:'GERAL';
+    if(!grupos[grupo]) grupos[grupo]=[];
+    grupos[grupo].push(it);
+  });
 
-  const btnSubmeter=isLiderOficina()&&pct===100&&!submetido
+  const podePreencher=isLiderOficina()&&!submetido&&!aprovado;
+
+  const gruposHTML=Object.entries(grupos).map(([grupo,gitens])=>{
+    const vG=gitens.filter(i=>i.verificado||i.nao_se_aplica).length;
+    const tG=gitens.filter(i=>i.trocado||i.nao_se_aplica).length;
+    const totalG=gitens.length;
+    const grupoOk=vG===totalG&&tG===totalG;
+
+    const itensHTML=gitens.map(it=>{
+      const nsa=it.nao_se_aplica;
+      const rowBg=nsa?'#47556908':it.trocado?'#00C48C08':it.verificado?'#2563EB08':'var(--surface2)';
+      return`<tr style="background:${rowBg};opacity:${nsa?'.5':'1'}">
+        <td style="font-size:11px;color:var(--text);padding:6px 8px">${it.item.replace(/^\[[^\]]+\]\s*/,'')}</td>
+        <td style="text-align:center;padding:4px">
+          <button onclick="toggleVT('${it.id}','v','${ocId}')" 
+            ${!podePreencher?'disabled':''} title="Verificado (V)"
+            style="width:32px;height:28px;border-radius:6px;border:1px solid ${it.verificado?'#2563EB':'var(--border)'};background:${it.verificado?'#2563EB18':'transparent'};cursor:${podePreencher?'pointer':'default'};font-size:13px;transition:all .15s">
+            ${it.verificado?'✓':'V'}
+          </button>
+        </td>
+        <td style="text-align:center;padding:4px">
+          <button onclick="toggleVT('${it.id}','t','${ocId}')" 
+            ${!podePreencher||!it.verificado?'disabled':''} title="Trocado/Executado (T)"
+            style="width:32px;height:28px;border-radius:6px;border:1px solid ${it.trocado?'#00C48C':'var(--border)'};background:${it.trocado?'#00C48C18':'transparent'};cursor:${podePreencher&&it.verificado?'pointer':'default'};font-size:13px;transition:all .15s;opacity:${!it.verificado&&!it.trocado?'.4':'1'}">
+            ${it.trocado?'✓':'T'}
+          </button>
+        </td>
+        <td style="text-align:center;padding:4px">
+          <button onclick="toggleVT('${it.id}','nsa','${ocId}')" 
+            ${!podePreencher?'disabled':''} title="Não se aplica"
+            style="width:32px;height:28px;border-radius:6px;border:1px solid ${nsa?'#47556940':'var(--border)'};background:${nsa?'#47556918':'transparent'};cursor:${podePreencher?'pointer':'default'};font-size:11px">
+            N/A
+          </button>
+        </td>
+        <td style="padding:4px">
+          <input type="text" placeholder="Obs..." value="${it.observacao_item||''}"
+            ${!podePreencher?'disabled':''}
+            onblur="salvarObsItem('${it.id}',this.value,'${ocId}')"
+            style="width:100%;min-width:80px;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:10px;padding:2px 4px;outline:none">
+        </td>
+        <td style="text-align:center;padding:4px;font-size:10px;color:var(--text4)">
+          ${it.verificado?`<div style="color:var(--blue)">${it.verificado_por?.split(' ')[0]||''}${it.verificado_em?' '+new Date(it.verificado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):''}${it.trocado?`<div style="color:var(--green)">${it.trocado_por?.split(' ')[0]||''}${it.trocado_em?' '+new Date(it.trocado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):''}`:''}</div>`:it.nao_se_aplica?'<span style="color:var(--text4)">N/A</span>':''}
+        </td>
+      </tr>`;
+    }).join('');
+
+    return`<div style="margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:${grupoOk?'#00C48C12':'var(--border)'};border-radius:8px 8px 0 0;cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+        <span style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px">${grupo}</span>
+        <span style="font-size:10px;color:var(--text4);margin-left:auto">V: ${vG}/${totalG} · T: ${tG}/${totalG}</span>
+        ${grupoOk?'<span style="color:var(--green);font-size:14px">✅</span>':''}
+      </div>
+      <div style="border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:var(--surface2)">
+            <th style="padding:4px 8px;text-align:left;font-size:10px;color:var(--text4)">Item</th>
+            <th style="padding:4px;text-align:center;font-size:10px;color:var(--blue);width:36px">V</th>
+            <th style="padding:4px;text-align:center;font-size:10px;color:var(--green);width:36px">T</th>
+            <th style="padding:4px;text-align:center;font-size:10px;color:var(--text4);width:36px">N/A</th>
+            <th style="padding:4px;text-align:left;font-size:10px;color:var(--text4)">Obs.</th>
+            <th style="padding:4px;text-align:center;font-size:10px;color:var(--text4);width:80px">Registro</th>
+          </tr></thead>
+          <tbody>${itensHTML}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('');
+
+  const btnSubmeter=podePreencher&&faseFim
     ?`<button onclick="submeterChecklistLib('${ocId}')" class="btn-success" style="width:100%;margin-top:12px">📤 Submeter para Aprovação do PCM</button>`
     :!isLiderOficina()&&!submetido
     ?`<div style="color:var(--text3);font-size:12px;text-align:center;margin-top:12px;padding:10px;background:var(--surface2);border-radius:8px">🔒 Preenchimento exclusivo do Líder de Oficina</div>`
@@ -2313,22 +2509,74 @@ async function carregarChecklistLib(ocId){
 
   document.getElementById('cklib-content').innerHTML=`
     ${statusBanner}
+
+    <!-- Info cabeçalho -->
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:12px">
       <div style="display:flex;gap:16px;flex-wrap:wrap">
         <div><span style="color:var(--text3)">Veículo:</span> <span style="font-family:'DM Mono',monospace;font-weight:700">${oc.prefixo}</span></div>
         <div><span style="color:var(--text3)">Tipo:</span> <span style="color:${TIPO22[oc.tipo]?.c||'var(--text)'}">${TIPO22[oc.tipo]?.ic} ${TIPO22[oc.tipo]?.l}</span></div>
-        <div><span style="color:var(--text3)">OS Praxio:</span> <span style="font-family:'DM Mono',monospace;color:var(--blue)">${oc.praxio_os_id||'—'}</span></div>
+        <div><span style="color:var(--text3)">OS:</span> <span style="font-family:'DM Mono',monospace;color:var(--blue)">${oc.praxio_os_id||'—'}</span></div>
         <div><span style="color:var(--text3)">Mecânico:</span> ${oc.mecanico||'—'}</div>
       </div>
     </div>
-    <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-      <span style="color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase">CHECKLIST DE LIBERAÇÃO</span>
-      <span style="color:${pColor};font-family:'DM Mono',monospace;font-size:13px;font-weight:700">${feitos}/${total} · ${pct}%</span>
+
+    <!-- Legenda e progresso -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div style="background:var(--surface2);border:1px solid #2563EB30;border-radius:10px;padding:10px 12px">
+        <div style="color:var(--blue);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px">V — Verificado (Diagnóstico)</div>
+        <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:700;color:var(--blue);margin-top:3px">${verificados}/${items.length}</div>
+        <div style="background:var(--border);border-radius:99px;height:4px;overflow:hidden;margin-top:6px"><div style="height:100%;width:${pctV}%;background:var(--blue)"></div></div>
+        <div style="color:var(--text3);font-size:10px;margin-top:4px">Líder + Mecânico identificam o que precisa de troca</div>
+      </div>
+      <div style="background:var(--surface2);border:1px solid #00C48C30;border-radius:10px;padding:10px 12px">
+        <div style="color:var(--green);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px">T — Trocado/Executado (Qualificação)</div>
+        <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:700;color:var(--green);margin-top:3px">${trocados}/${items.length}</div>
+        <div style="background:var(--border);border-radius:99px;height:4px;overflow:hidden;margin-top:6px"><div style="height:100%;width:${pctT}%;background:var(--green)"></div></div>
+        <div style="color:var(--text3);font-size:10px;margin-top:4px">Líder confirma o que foi realmente feito</div>
+      </div>
     </div>
-    <div class="prog-wrap" style="margin-bottom:12px"><div class="prog-bar" style="width:${pct}%;background:${pColor}"></div></div>
-    ${ckRows}
+
+    <!-- Aviso de fase -->
+    ${faseV?`<div style="background:#2563EB12;border:1px solid #2563EB30;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--blue)">
+      📋 <strong>Fase 1 — Diagnóstico:</strong> Marque V em cada item verificado. Após verificar todos, a fase T será liberada.
+    </div>`:faseT?`<div style="background:#F59E0B12;border:1px solid #F59E0B30;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--amber)">
+      🔧 <strong>Fase 2 — Qualificação:</strong> Marque T nos itens que foram efetivamente trocados/executados. N/A para itens que não se aplicam.
+    </div>`:''}
+
+    <!-- Grupos de itens -->
+    ${gruposHTML}
+
     ${btnSubmeter}
     <button onclick="closeM('modal-22-cklib');document.getElementById('modal-22-status').style.display='flex'" class="btn-sec" style="width:100%;margin-top:8px">← Voltar</button>`;
+}
+
+
+async function toggleVT(itemId, tipo, ocId){
+  const{data:it}=await sb.from('checklist_liberacao').select('*').eq('id',itemId).single();
+  if(!it) return;
+  let payload={};
+  if(tipo==='v'){
+    const novoV=!it.verificado;
+    payload={verificado:novoV,verificado_por:novoV?S.perfil?.nome:null,verificado_em:novoV?new Date().toISOString():null};
+    // Se desmarcou V, desmarca T também
+    if(!novoV) payload={...payload,trocado:false,trocado_por:null,trocado_em:null};
+  } else if(tipo==='t'){
+    if(!it.verificado) return; // só marca T se V estiver marcado
+    const novoT=!it.trocado;
+    payload={trocado:novoT,trocado_por:novoT?S.perfil?.nome:null,trocado_em:novoT?new Date().toISOString():null,concluido:novoT};
+  } else if(tipo==='nsa'){
+    const novoNsa=!it.nao_se_aplica;
+    payload={nao_se_aplica:novoNsa,verificado:novoNsa,trocado:novoNsa,concluido:novoNsa,
+      verificado_por:novoNsa?S.perfil?.nome:null,verificado_em:novoNsa?new Date().toISOString():null,
+      trocado_por:novoNsa?S.perfil?.nome:null,trocado_em:novoNsa?new Date().toISOString():null};
+  }
+  await sb.from('checklist_liberacao').update(payload).eq('id',itemId);
+  await carregarChecklistLib(ocId);
+}
+
+async function salvarObsItem(itemId, obs, ocId){
+  if(obs===undefined) return;
+  await sb.from('checklist_liberacao').update({observacao_item:obs||null}).eq('id',itemId);
 }
 
 async function toggleCheckLib(itemId,ocId){
@@ -2342,6 +2590,12 @@ async function toggleCheckLib(itemId,ocId){
 }
 
 async function submeterChecklistLib(ocId){
+  // Valida se todos os itens têm V e T marcados (ou N/A)
+  const{data:items}=await sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId);
+  const pendentes=(items||[]).filter(i=>!i.verificado&&!i.nao_se_aplica);
+  const naoTrocados=(items||[]).filter(i=>i.verificado&&!i.trocado&&!i.nao_se_aplica);
+  if(pendentes.length>0){toast(`⚠️ ${pendentes.length} item(s) ainda sem verificação (V)!`,'err');return;}
+  if(naoTrocados.length>0){toast(`⚠️ ${naoTrocados.length} item(s) verificados mas não qualificados (T)!`,'err');return;}
   if(!confirm('Submeter o checklist de liberação para aprovação do PCM?')) return;
   const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
 
