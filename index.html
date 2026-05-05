@@ -241,6 +241,8 @@ tr:hover td{background:#0F172A80}
       <div class="submenu" id="sub-ferr">
         <button class="sub-btn" onclick="navToSub('ferr-210')">📋 2.10 Soltura de Frota</button>
         <button class="sub-btn" onclick="navToSub('ferr-22')">🔧 2.2 Priorização Oficina</button>
+        <button class="sub-btn" onclick="navToSub('ferr-211')">🔴 2.11 Carros Indisponíveis</button>
+        <button class="sub-btn" onclick="navToSub('ferr-212')">📊 2.12 Indicadores Técnicos</button>
         <button class="sub-btn" onclick="navToSub('ferr-lav')">🧼 3.2 Checklist Lavagem</button>
         <button class="sub-btn" onclick="navToSub('ferr-ctrl')">✅ Controle Soltura</button>
       </div>
@@ -714,7 +716,7 @@ function navToSub(sub){
   S.subtela=sub;
   document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes(sub))b.classList.add('active')});
-  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-lav':renderFerrLav,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'rel-todos':renderRelatorios};
+  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-lav':renderFerrLav,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'rel-todos':renderRelatorios};
   if(map[sub]) map[sub]();
 }
 
@@ -2422,7 +2424,10 @@ async function carregarChecklistLib(ocId){
   let{data:items}=await sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem');
 
   // Detecta itens antigos (sem campo verificado = null) ou lista vazia → regenera
-  const precisaRecriar=!items||!items.length||(items[0]?.verificado===null&&items[0]?.verificado===undefined)||(!items[0]?.hasOwnProperty('verificado')||items.every(i=>i.verificado===null&&i.trocado===null));
+  // Detecta itens no formato antigo (verificado=null significa campo não existia ou nunca foi setado)
+  const precisaRecriar=!items||!items.length||
+    !items[0]?.hasOwnProperty('verificado')||
+    items.every(i=>i.verificado===null&&i.trocado===null);
 
   if(precisaRecriar&&items?.length){
     // Deleta itens antigos e recria com formato V/T
@@ -2441,12 +2446,17 @@ async function carregarChecklistLib(ocId){
   }
 
   const total=items.filter(i=>!i.nao_se_aplica).length;
+  const totalItens=items.length;
   const verificados=items.filter(i=>i.verificado||i.nao_se_aplica).length;
   const trocados=items.filter(i=>i.trocado||i.nao_se_aplica).length;
-  const pctV=total>0?Math.round((verificados/items.length)*100):0;
-  const pctT=total>0?Math.round((trocados/items.length)*100):0;
-  const submetido=items[0]?.submetido;
-  const aprovado=items[0]?.aprovado;
+  const pctV=totalItens>0?Math.round((verificados/totalItens)*100):0;
+  const pctT=totalItens>0?Math.round((trocados/totalItens)*100):0;
+  const submetido=items.some(i=>i.submetido===true);
+  const aprovado=items.some(i=>i.aprovado===true);
+  const submetidoPor=items.find(i=>i.submetido_por)?.submetido_por||'—';
+  const submetidoEm=items.find(i=>i.submetido_em)?.submetido_em||null;
+  const aprovadoPor=items.find(i=>i.aprovado_por)?.aprovado_por||'—';
+  const aprovadoEm=items.find(i=>i.aprovado_em)?.aprovado_em||null;
 
   // Fase atual
   const faseV=pctV<100; // ainda no diagnóstico
@@ -2458,14 +2468,14 @@ async function carregarChecklistLib(ocId){
     statusBanner=`<div style="background:#00C48C15;border:1px solid #00C48C40;border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
       <span style="font-size:20px">✅</span>
       <div><div style="color:var(--green);font-weight:700">Liberação Aprovada pelo PCM</div>
-      <div style="color:var(--text3);font-size:11px">Aprovado por ${items[0]?.aprovado_por||'—'} · ${formatDT(items[0]?.aprovado_em)}</div></div>
+      <div style="color:var(--text3);font-size:11px">Aprovado por ${aprovadoPor} · ${formatDT(aprovadoEm)}</div></div>
     </div>`;
   } else if(submetido){
     statusBanner=`<div style="background:#F59E0B15;border:1px solid #F59E0B40;border-radius:10px;padding:12px 14px;margin-bottom:14px">
       <div style="display:flex;align-items:center;gap:10px">
         <span style="font-size:20px">⏳</span>
         <div style="flex:1"><div style="color:var(--amber);font-weight:700">Aguardando Aprovação do PCM</div>
-        <div style="color:var(--text3);font-size:11px">Submetido por ${items[0]?.submetido_por||'—'} · ${formatDT(items[0]?.submetido_em)}</div></div>
+        <div style="color:var(--text3);font-size:11px">Submetido por ${submetidoPor} · ${formatDT(submetidoEm)}</div></div>
       </div>
       ${isPCMLib()?`<div style="display:flex;gap:8px;margin-top:10px">
         <button onclick="aprovarChecklistLib('${ocId}',true)" class="btn-success" style="flex:1">✅ Aprovar Liberação</button>
@@ -2686,8 +2696,13 @@ async function notificarWhatsAppLiberacao(ocId, liderNome, gid){
     const tempoParado=oc?.hora_entrada?Math.round((Date.now()-new Date(oc.hora_entrada).getTime())/60000):0;
     const tempoStr=tempoParado>=60?`${Math.floor(tempoParado/60)}h ${tempoParado%60}min`:`${tempoParado}min`;
 
-    // Lista dos itens concluídos
-    const itensLista=(ckItems||[]).map(it=>`✅ ${it.item}`).join('\n');
+    // Lista dos itens com status V/T
+    const itensLista=(ckItems||[]).map(it=>{
+      if(it.nao_se_aplica) return `➖ ${it.item} _(N/A)_`;
+      if(it.trocado) return `✅ ${it.item}`;
+      if(it.verificado) return `🔍 ${it.item} _(verificado, não trocado)_`;
+      return `⬜ ${it.item}`;
+    }).join('\n');
 
     const mensagem=[
       `🔧 *SERVIÇO CONCLUÍDO — ${oc?.prefixo}*`,
@@ -3368,6 +3383,370 @@ async function enviarResumoWpp(){
     toast('📱 Resumo enviado para o grupo!');
     document.getElementById('modal-resumo-turno').style.display='none';
   }catch(err){toast('Erro: '+err.message,'err');}
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// 2.11 — CARROS INDISPONÍVEIS
+// ══════════════════════════════════════════════════════════════
+async function renderFerr211(){
+  const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  setMain(`<div class="loading"><div class="spinner"></div> Carregando...</div>`);
+
+  // Busca ocorrências em aberto (não liberadas)
+  const{data:ocs}=await sb.from('ocorrencias_22').select('*')
+    .eq('garagem_id',gid).neq('status','liberado').order('hora_entrada',{ascending:true});
+  // Busca frota com status manutencao/aguardando_peca/sinistro
+  const{data:frota}=await sb.from('frota').select('*')
+    .eq('garagem_id',gid).in('status',['manutencao','aguardando_peca','sinistro']).order('prefixo');
+
+  const agora=new Date();
+
+  // Monta mapa de ocorrências por veiculo_id
+  const ocMap={};
+  (ocs||[]).forEach(o=>{if(o.veiculo_id) ocMap[o.veiculo_id]=o;});
+
+  // Veículos indisponíveis = frota parada OU com OS aberta
+  const veicMap={};
+  (frota||[]).forEach(v=>{veicMap[v.id]={...v,oc:ocMap[v.id]||null};});
+  (ocs||[]).forEach(o=>{
+    if(o.veiculo_id&&!veicMap[o.veiculo_id]){
+      veicMap[o.veiculo_id]={id:o.veiculo_id,prefixo:o.prefixo,status:o.status,oc:o};
+    }
+  });
+  const lista=Object.values(veicMap).sort((a,b)=>a.prefixo?.localeCompare(b.prefixo));
+
+  // KPIs
+  const totalFrota=(await sb.from('frota').select('id',{count:'exact'}).eq('garagem_id',gid)).count||0;
+  const indisponiveis=lista.length;
+  const agPeca=lista.filter(v=>v.status==='aguardando_peca'||v.oc?.status==='aguardando_peca').length;
+  const vencidas=lista.filter(v=>v.oc?.hora_previsao&&new Date(v.oc.hora_previsao)<agora).length;
+  const pctDisp=totalFrota>0?(((totalFrota-indisponiveis)/totalFrota)*100).toFixed(1):0;
+  const dispColor=parseFloat(pctDisp)>=85?'var(--green)':parseFloat(pctDisp)>=75?'var(--amber)':'var(--red)';
+
+  const kpis=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
+    <div class="kpi ${parseFloat(pctDisp)>=85?'ok':parseFloat(pctDisp)>=75?'neu':'nok'}">
+      <div class="kpi-label">Disponibilidade</div>
+      <div class="kpi-val" style="color:${dispColor}">${pctDisp}%</div>
+      <div class="kpi-meta">${totalFrota-indisponiveis}/${totalFrota} disponíveis</div>
+    </div>
+    <div class="kpi nok">
+      <div class="kpi-label">Indisponíveis</div>
+      <div class="kpi-val" style="color:var(--red)">${indisponiveis}</div>
+      <div class="kpi-meta">veículos parados</div>
+    </div>
+    <div class="kpi ${agPeca>0?'nok':'ok'}">
+      <div class="kpi-label">Ag. Peça</div>
+      <div class="kpi-val" style="color:${agPeca>0?'var(--red)':'var(--green)'}">${agPeca}</div>
+      <div class="kpi-meta">aguardando peças</div>
+    </div>
+    <div class="kpi ${vencidas>0?'nok':'ok'}">
+      <div class="kpi-label">Previsão Vencida</div>
+      <div class="kpi-val" style="color:${vencidas>0?'var(--red)':'var(--green)'}">${vencidas}</div>
+      <div class="kpi-meta">OS fora do prazo</div>
+    </div>
+  </div>`;
+
+  // Tabela detalhada
+  const STATUS_211={
+    manutencao:{ic:'🔧',l:'Em Manutenção',c:'var(--amber)'},
+    aguardando_peca:{ic:'📦',l:'Ag. Peça',c:'var(--red)'},
+    aguardando_aprovacao:{ic:'⏳',l:'Ag. Aprovação',c:'#8B5CF6'},
+    sinistro:{ic:'⚠️',l:'Sinistro',c:'#EF4444'},
+    em_manutencao:{ic:'🔧',l:'Em Manutenção',c:'var(--amber)'},
+  };
+  const TIPO211={preventiva_leve:{ic:'🔵',l:'Prev. Leve'},preventiva_pesada:{ic:'🟣',l:'Prev. Pesada'},corretiva:{ic:'🔴',l:'Corretiva'},sinistro:{ic:'⚠️',l:'Sinistro'},eletrica:{ic:'⚡',l:'Elétrica'},funilaria:{ic:'🔨',l:'Funilaria'},pneu:{ic:'⭕',l:'Pneu'}};
+
+  const rows=lista.map(v=>{
+    const o=v.oc;
+    const stKey=o?.status||v.status;
+    const st=STATUS_211[stKey]||{ic:'❓',l:stKey,c:'var(--text3)'};
+    const tp=o?.tipo?TIPO211[o.tipo]||{ic:'🔧',l:o.tipo}:null;
+    let tempoStr='—',alarmIcon='',previsaoStr='—';
+    if(o?.hora_entrada){
+      const min=Math.round((agora-new Date(o.hora_entrada))/60000);
+      const h=Math.floor(min/60),m=min%60;
+      tempoStr=h>0?`${h}h ${m}min`:`${m}min`;
+    }
+    if(o?.hora_previsao){
+      const prev=new Date(o.hora_previsao);
+      previsaoStr=prev.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'})+' '+prev.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',timeZone:'America/Manaus'});
+      if(prev<agora) alarmIcon='🔴';
+      else if((prev-agora)/3600000<=8) alarmIcon='🟡';
+      else alarmIcon='🟢';
+    }
+    return `<tr style="border-bottom:1px solid var(--border2);cursor:pointer" ${o?`onclick="openModal22('${o.id}')"`:''}>
+      <td style="padding:10px 12px;font-family:'DM Mono',monospace;font-weight:700">${v.prefixo||'—'}</td>
+      <td style="padding:10px 12px"><span style="color:${st.c};font-weight:700;font-size:12px">${st.ic} ${st.l}</span></td>
+      <td style="padding:10px 12px;color:var(--text3);font-size:12px">${tp?`${tp.ic} ${tp.l}`:'—'}</td>
+      <td style="padding:10px 12px;font-family:'DM Mono',monospace;font-size:12px;color:var(--text2)">${tempoStr}</td>
+      <td style="padding:10px 12px;font-size:12px">${alarmIcon} ${previsaoStr}</td>
+      <td style="padding:10px 12px;font-size:12px;color:var(--text3)">${o?.mecanico||'—'}</td>
+      <td style="padding:10px 12px;font-size:12px;color:var(--text3)">${o?.numero||'—'}</td>
+    </tr>`;
+  }).join('');
+
+  const tabela=lista.length===0
+    ?`<div class="empty"><div style="font-size:40px">✅</div><div style="color:var(--green);font-weight:700;margin:12px 0">Todos os veículos disponíveis!</div><div style="color:var(--text3)">Nenhum veículo indisponível no momento.</div></div>`
+    :`<div class="tbl-wrap">
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="border-bottom:1px solid var(--border)">
+          <th style="padding:10px 12px;text-align:left;color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase">Prefixo</th>
+          <th style="padding:10px 12px;text-align:left;color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase">Status</th>
+          <th style="padding:10px 12px;text-align:left;color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase">Tipo OS</th>
+          <th style="padding:10px 12px;text-align:left;color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase">Tempo Parado</th>
+          <th style="padding:10px 12px;text-align:left;color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase">Previsão</th>
+          <th style="padding:10px 12px;text-align:left;color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase">Mecânico</th>
+          <th style="padding:10px 12px;text-align:left;color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase">Nº OS</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+
+  // Botão WhatsApp
+  const btnWpp=`<button class="btn-add" onclick="enviar211WhatsApp()" style="font-size:12px;padding:7px 14px">📱 Enviar para WhatsApp</button>`;
+
+  setMain(`
+    ${back}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <div style="font-size:18px;font-weight:800">🔴 2.11 — Carros Indisponíveis</div>
+        <div style="color:var(--text3);font-size:12px;margin-top:2px">Atualizado em tempo real · ${new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
+      </div>
+      ${btnWpp}
+    </div>
+    ${kpis}
+    ${secTitle('🚌','Veículos Parados',`<span style="color:var(--text3);font-size:12px">${indisponiveis} veículo(s)</span>`)}
+    ${tabela}
+  `);
+}
+
+async function enviar211WhatsApp(){
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const{data:ocs}=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado').order('hora_entrada');
+  const{data:frota}=await sb.from('frota').select('*').eq('garagem_id',gid).in('status',['manutencao','aguardando_peca','sinistro']);
+  const{data:garagem}=await sb.from('garagens').select('nome').eq('id',gid).single();
+  const{data:frotaTot}=await sb.from('frota').select('id',{count:'exact'}).eq('garagem_id',gid);
+  const total=frotaTot?.length||0;
+  const agora=new Date();
+  const indisponiveis=(ocs||[]).length;
+  const pctDisp=total>0?(((total-indisponiveis)/total)*100).toFixed(1):0;
+  const agPeca=(ocs||[]).filter(o=>o.status==='aguardando_peca').length;
+  const vencidas=(ocs||[]).filter(o=>o.hora_previsao&&new Date(o.hora_previsao)<agora).length;
+
+  const TIPO211={preventiva_leve:'Prev.Leve',preventiva_pesada:'Prev.Pesada',corretiva:'Corretiva',sinistro:'Sinistro',eletrica:'Elétrica',funilaria:'Funilaria',pneu:'Pneu'};
+  const STATUS211={manutencao:'🔧 Manutenção',aguardando_peca:'📦 Ag.Peça',aguardando_aprovacao:'⏳ Ag.Aprovação',em_manutencao:'🔧 Manutenção',sinistro:'⚠️ Sinistro'};
+
+  const listaStr=(ocs||[]).map(o=>{
+    const min=o.hora_entrada?Math.round((agora-new Date(o.hora_entrada))/60000):0;
+    const h=Math.floor(min/60),m=min%60;
+    const tempo=h>0?`${h}h${m}min`:`${m}min`;
+    const prev=o.hora_previsao?new Date(o.hora_previsao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
+    const alarm=o.hora_previsao&&new Date(o.hora_previsao)<agora?'🔴':o.hora_previsao?'🟡':'⚪';
+    return `${alarm} *${o.prefixo}* — ${STATUS211[o.status]||o.status} | ${TIPO211[o.tipo]||o.tipo||'—'} | ⏱ ${tempo} | prev. ${prev}`;
+  }).join('\n');
+
+  const agora2=new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const msg=[
+    `🔴 *2.11 — CARROS INDISPONÍVEIS*`,
+    `📍 ${garagem?.nome||'JTP'} | ${agora2}`,``,
+    `📊 *Disponibilidade: ${pctDisp}%* (${total-indisponiveis}/${total})`,
+    `🔧 Parados: ${indisponiveis} | 📦 Ag.Peça: ${agPeca} | 🔴 Vencidos: ${vencidas}`,``,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    listaStr||'✅ Nenhum veículo indisponível',``,
+    `_JTP Operacional · Sistema Automático_`,
+  ].join('\n');
+
+  try{
+    await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${SUPABASE_ANON_KEY}`,'apikey':SUPABASE_ANON_KEY},
+      body:JSON.stringify({ocorrencia_id:'00000000-0000-0000-0000-000000000000',garagem_id:gid,usuario_nome:S.perfil?.nome,status_novo:'211',mensagem_custom:msg}),
+    });
+    toast('📱 Relatório 2.11 enviado para o grupo!');
+  }catch(e){toast('Erro WhatsApp: '+e.message,'err');}
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// 2.12 — INDICADORES TÉCNICOS
+// ══════════════════════════════════════════════════════════════
+async function renderFerr212(){
+  const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  setMain(`<div class="loading"><div class="spinner"></div> Carregando...</div>`);
+
+  const agora=new Date();
+  const inicioMes=new Date(agora.getFullYear(),agora.getMonth(),1).toISOString();
+  const inicioSemana=new Date(agora-6*86400000).toISOString();
+
+  // Busca dados
+  const [{data:frotaToda},{data:ocs},{data:ocsLib},{data:soltura}]=await Promise.all([
+    sb.from('frota').select('*').eq('garagem_id',gid),
+    sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado'),
+    sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).eq('status','liberado').gte('hora_liberacao',inicioMes),
+    sb.from('soltura_2_10').select('*').eq('garagem_id',gid).gte('data',agora.toISOString().slice(0,10)),
+  ]);
+
+  const frota=frotaToda||[];
+  const emAberto=ocs||[];
+  const liberadasMes=ocsLib||[];
+
+  // KPI — Disponibilidade
+  const totalFrota=frota.length;
+  const parados=emAberto.length;
+  const disponiveis=frota.filter(v=>v.status==='disponivel').length;
+  const emLinha=frota.filter(v=>v.status==='em_linha').length;
+  const pctDisp=totalFrota>0?(((disponiveis+emLinha)/totalFrota)*100).toFixed(1):0;
+  const dispColor=parseFloat(pctDisp)>=85?'var(--green)':parseFloat(pctDisp)>=75?'var(--amber)':'var(--red)';
+
+  // KPI — MTTR (Tempo Médio de Reparo) em horas
+  const temposTotais=liberadasMes.filter(o=>o.hora_entrada&&o.hora_liberacao).map(o=>
+    (new Date(o.hora_liberacao)-new Date(o.hora_entrada))/3600000
+  );
+  const mttr=temposTotais.length>0?(temposTotais.reduce((a,b)=>a+b,0)/temposTotais.length).toFixed(1):null;
+  const mttrColor=!mttr?'var(--text3)':parseFloat(mttr)<=8?'var(--green)':parseFloat(mttr)<=24?'var(--amber)':'var(--red)';
+
+  // KPI — OS no mês por tipo
+  const tiposCount={};
+  [...emAberto,...liberadasMes].forEach(o=>{tiposCount[o.tipo]=(tiposCount[o.tipo]||0)+1;});
+
+  // KPI — Previsões vencidas
+  const vencidas=emAberto.filter(o=>o.hora_previsao&&new Date(o.hora_previsao)<agora).length;
+  const agPeca=emAberto.filter(o=>o.status==='aguardando_peca').length;
+
+  // Soltura hoje
+  const s=soltura||[];
+  const sSaiu=s.filter(r=>r.saiu===true).length;
+  const sTot=s.length;
+  const pctS=sTot>0?((sSaiu/sTot)*100).toFixed(1):null;
+  const sColor=pctS===null?'var(--text3)':parseFloat(pctS)>=99?'var(--green)':parseFloat(pctS)>=95?'var(--amber)':'var(--red)';
+
+  // OS por tipo — gráfico de barras simples
+  const TIPO212={preventiva_leve:{ic:'🔵',l:'Prev. Leve',c:'#3B82F6'},preventiva_pesada:{ic:'🟣',l:'Prev. Pesada',c:'#8B5CF6'},corretiva:{ic:'🔴',l:'Corretiva',c:'#EF4444'},sinistro:{ic:'⚠️',l:'Sinistro',c:'#F97316'},eletrica:{ic:'⚡',l:'Elétrica',c:'#F59E0B'},funilaria:{ic:'🔨',l:'Funilaria',c:'#10B981'},pneu:{ic:'⭕',l:'Pneu',c:'#00C48C'}};
+  const maxTipo=Math.max(...Object.values(tiposCount),1);
+  const barrasHTML=Object.entries(tiposCount).sort((a,b)=>b[1]-a[1]).map(([tipo,cnt])=>{
+    const t=TIPO212[tipo]||{ic:'🔧',l:tipo,c:'var(--text3)'};
+    const pct=Math.round((cnt/maxTipo)*100);
+    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <div style="width:100px;font-size:11px;color:var(--text3);text-align:right;flex-shrink:0">${t.ic} ${t.l}</div>
+      <div style="flex:1;height:22px;background:var(--surface2);border-radius:4px;overflow:hidden;position:relative">
+        <div style="width:${pct}%;height:100%;background:${t.c}22;border-right:2px solid ${t.c};transition:width .5s;display:flex;align-items:center;padding-left:8px">
+          <span style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:${t.c}">${cnt}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Ranking mecânicos (OS liberadas no mês)
+  const mecMap={};
+  liberadasMes.forEach(o=>{if(o.mecanico){mecMap[o.mecanico]=(mecMap[o.mecanico]||0)+1;}});
+  const rankMec=Object.entries(mecMap).sort((a,b)=>b[1]-a[1]).slice(0,5)
+    .map(([nome,cnt],i)=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border2)">
+      <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:${i===0?'var(--amber)':'var(--text3)'};">${i+1}°</div>
+      <div style="flex:1;font-size:13px">${nome}</div>
+      <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--green)">${cnt} OS</div>
+    </div>`).join('');
+
+  setMain(`
+    ${back}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <div style="font-size:18px;font-weight:800">📊 2.12 — Indicadores Técnicos</div>
+        <div style="color:var(--text3);font-size:12px;margin-top:2px">${new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+      </div>
+      <button class="btn-add" onclick="enviar212WhatsApp()" style="font-size:12px;padding:7px 14px">📱 Enviar para WhatsApp</button>
+    </div>
+
+    ${secTitle('⚡','KPIs em Tempo Real')}
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px">
+      <div class="kpi ${parseFloat(pctDisp)>=85?'ok':parseFloat(pctDisp)>=75?'neu':'nok'}">
+        <div class="kpi-label">Disponibilidade Frota</div>
+        <div class="kpi-val" style="color:${dispColor}">${pctDisp}%</div>
+        <div class="kpi-meta" style="color:var(--text3)">${disponiveis+emLinha} de ${totalFrota} veículos operacionais</div>
+      </div>
+      <div class="kpi ${!mttr?'neu':parseFloat(mttr)<=8?'ok':parseFloat(mttr)<=24?'neu':'nok'}">
+        <div class="kpi-label">MTTR — Tempo Médio Reparo</div>
+        <div class="kpi-val" style="color:${mttrColor}">${mttr?mttr+'h':'—'}</div>
+        <div class="kpi-meta" style="color:var(--text3)">${liberadasMes.length} OS liberadas no mês</div>
+      </div>
+      <div class="kpi ${pctS===null?'neu':parseFloat(pctS)>=99?'ok':parseFloat(pctS)>=95?'neu':'nok'}">
+        <div class="kpi-label">Eficiência Soltura (hoje)</div>
+        <div class="kpi-val" style="color:${sColor}">${pctS?pctS+'%':'—'}</div>
+        <div class="kpi-meta" style="color:var(--text3)">${sSaiu}/${sTot} viagens realizadas</div>
+      </div>
+      <div class="kpi ${vencidas>0?'nok':'ok'}">
+        <div class="kpi-label">OS Vencidas</div>
+        <div class="kpi-val" style="color:${vencidas>0?'var(--red)':'var(--green)'}">${vencidas}</div>
+        <div class="kpi-meta" style="color:var(--text3)">previsões ultrapassadas</div>
+      </div>
+      <div class="kpi ${agPeca>0?'nok':'ok'}">
+        <div class="kpi-label">Ag. Peça</div>
+        <div class="kpi-val" style="color:${agPeca>0?'var(--red)':'var(--green)'}">${agPeca}</div>
+        <div class="kpi-meta" style="color:var(--text3)">veículos bloqueados por peças</div>
+      </div>
+      <div class="kpi neu">
+        <div class="kpi-label">OS Abertas Total</div>
+        <div class="kpi-val">${parados}</div>
+        <div class="kpi-meta" style="color:var(--text3)">${liberadasMes.length} fechadas este mês</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div>
+        ${secTitle('📊','OS por Tipo — Mês Atual')}
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+          ${barrasHTML||`<div style="color:var(--text3);text-align:center;padding:20px">Nenhuma OS registrada este mês</div>`}
+        </div>
+      </div>
+      <div>
+        ${secTitle('🏆','Ranking de Mecânicos — Mês')}
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+          ${rankMec||`<div style="color:var(--text3);text-align:center;padding:20px">Sem dados de mecânicos este mês</div>`}
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+async function enviar212WhatsApp(){
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const agora=new Date();
+  const inicioMes=new Date(agora.getFullYear(),agora.getMonth(),1).toISOString();
+  const [{data:frota},{data:ocs},{data:ocsLib},{data:garagem}]=await Promise.all([
+    sb.from('frota').select('*').eq('garagem_id',gid),
+    sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado'),
+    sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).eq('status','liberado').gte('hora_liberacao',inicioMes),
+    sb.from('garagens').select('nome').eq('id',gid).single(),
+  ]);
+  const total=(frota||[]).length;
+  const parados=(ocs||[]).length;
+  const disponiveis=(frota||[]).filter(v=>v.status==='disponivel'||v.status==='em_linha').length;
+  const pctDisp=total>0?(((disponiveis)/total)*100).toFixed(1):0;
+  const tempos=(ocsLib||[]).filter(o=>o.hora_entrada&&o.hora_liberacao).map(o=>(new Date(o.hora_liberacao)-new Date(o.hora_entrada))/3600000);
+  const mttr=tempos.length>0?(tempos.reduce((a,b)=>a+b,0)/tempos.length).toFixed(1):null;
+  const vencidas=(ocs||[]).filter(o=>o.hora_previsao&&new Date(o.hora_previsao)<agora).length;
+  const agPeca=(ocs||[]).filter(o=>o.status==='aguardando_peca').length;
+  const agora2=agora.toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+
+  const msg=[
+    `📊 *2.12 — INDICADORES TÉCNICOS*`,
+    `📍 ${garagem?.data?.nome||'JTP'} | ${agora2}`,``,
+    `*Disponibilidade:* ${pctDisp}% (${disponiveis}/${total})`,
+    `*OS Abertas:* ${parados} | *Liberadas/Mês:* ${(ocsLib||[]).length}`,
+    `*MTTR:* ${mttr?mttr+'h':'—'} | *Vencidas:* ${vencidas} | *Ag.Peça:* ${agPeca}`,``,
+    `_JTP Operacional · Sistema Automático_`,
+  ].join('\n');
+
+  try{
+    await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${SUPABASE_ANON_KEY}`,'apikey':SUPABASE_ANON_KEY},
+      body:JSON.stringify({ocorrencia_id:'00000000-0000-0000-0000-000000000000',garagem_id:gid,usuario_nome:S.perfil?.nome,status_novo:'212',mensagem_custom:msg}),
+    });
+    toast('📱 Indicadores enviados para o grupo!');
+  }catch(e){toast('Erro WhatsApp: '+e.message,'err');}
 }
 
 async function renderFerrLav(aba='painel'){
