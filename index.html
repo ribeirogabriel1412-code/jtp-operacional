@@ -2677,57 +2677,117 @@ async function abrirFechamentoPCM(){
   const agora=new Date();
   const garagem=S.garagens.find(g=>g.id===gid);
 
-  // Horários por turno PCM
+  // Horários padrão por turno (editável pelo PCM)
   const TURNOS_PCM={
-    dia:  {ini:'07:00',fim:'17:00',label:'☀️ Dia (07:00 ~ 17:00)'},
-    noite:{ini:'21:00',fim:'05:20',label:'🌙 Noite (21:00 ~ 05:20)'},
+    dia:  {ini:'07:00',fim:'17:00',label:'☀️ Dia'},
+    noite:{ini:'21:00',fim:'05:20',label:'🌙 Noite'},
   };
-  const turnoAtual=S.turno;
-  const tDef=TURNOS_PCM[turnoAtual];
-
-  // Calcula janela de tempo do turno
+  const tDef=TURNOS_PCM[S.turno];
   const hoje2=agora.toISOString().split('T')[0];
-  let iniTurno,fimTurno;
-  if(turnoAtual==='dia'){
-    iniTurno=new Date(`${hoje2}T07:00:00-04:00`);
-    fimTurno=new Date(`${hoje2}T17:00:00-04:00`);
-  } else {
-    // Noite: começa às 21h de ontem ou hoje, termina às 05:20 de hoje
-    const ontem=new Date(agora);ontem.setDate(ontem.getDate()-1);
-    const ontemStr=ontem.toISOString().split('T')[0];
-    iniTurno=new Date(`${ontemStr}T21:00:00-04:00`);
-    fimTurno=new Date(`${hoje2}T05:20:00-04:00`);
-    // Se agora é depois das 21h, o turno é o de hoje à noite
-    if(agora.getHours()>=21){
-      iniTurno=new Date(`${hoje2}T21:00:00-04:00`);
-      fimTurno=new Date(`${new Date(agora.getTime()+86400000).toISOString().split('T')[0]}T05:20:00-04:00`);
-    }
-  }
+  const ontem=new Date(agora);ontem.setDate(ontem.getDate()-1);
+  const ontemStr=ontem.toISOString().split('T')[0];
 
-  // Busca ocorrências do turno
-  const{data:todasTurno}=await sb.from('ocorrencias_22').select('*')
+  // Mostra seletor de horário antes de carregar
+  let m=document.getElementById('modal-fech-pcm');
+  if(!m){m=document.createElement('div');m.id='modal-fech-pcm';m.className='modal-ov';m.style.display='none';m.onclick=function(e){if(e.target===this)this.style.display='none'};m.innerHTML=`<div class="modal" style="max-width:900px;max-height:90vh;overflow-y:auto"><div id="fech-pcm-content"></div></div>`;document.body.appendChild(m);}
+
+  // Sugere data/hora de início e fim baseado no turno
+  const iniSug=S.turno==='dia'?`${hoje2}T07:00`:`${ontemStr}T21:00`;
+  const fimSug=S.turno==='dia'?`${hoje2}T17:00`:`${hoje2}T05:20`;
+
+  document.getElementById('fech-pcm-content').innerHTML=`
+    <div class="modal-title">
+      <div>
+        <div style="font-size:16px;font-weight:800">📋 Fechamento de Turno PCM</div>
+        <div style="color:var(--text3);font-size:12px;margin-top:3px">Defina o período do turno para gerar o relatório</div>
+      </div>
+      <button class="btn-x" onclick="document.getElementById('modal-fech-pcm').style.display='none'">✕</button>
+    </div>
+
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:16px">
+      <div style="color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">⏰ PERÍODO DO TURNO</div>
+      <div class="mgrid">
+        <div>
+          <label class="fl">Início do Turno</label>
+          <input class="fi" id="fech-ini" type="datetime-local" value="${iniSug}" style="margin-bottom:0">
+        </div>
+        <div>
+          <label class="fl">Fim do Turno</label>
+          <input class="fi" id="fech-fim" type="datetime-local" value="${fimSug}" style="margin-bottom:0">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+        <button onclick="setTurnoRapido('dia')" class="filtro-btn" style="font-size:12px">☀️ Dia (07:00~17:00)</button>
+        <button onclick="setTurnoRapido('noite')" class="filtro-btn" style="font-size:12px">🌙 Noite (21:00~05:20)</button>
+        <button onclick="setTurnoRapido('noite_alt')" class="filtro-btn" style="font-size:12px">🌙 Noite Alt (20:00~04:20)</button>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn-sec" onclick="document.getElementById('modal-fech-pcm').style.display='none'">Cancelar</button>
+      <button class="btn-success" onclick="carregarFechamentoPCM()">▶ Gerar Relatório</button>
+    </div>`;
+
+  m.style.display='flex';
+}
+
+function setTurnoRapido(tipo){
+  const agora=new Date();
+  const hoje2=agora.toISOString().split('T')[0];
+  const ontem=new Date(agora);ontem.setDate(ontem.getDate()-1);
+  const ontemStr=ontem.toISOString().split('T')[0];
+  const mapas={
+    dia:{ini:`${hoje2}T07:00`,fim:`${hoje2}T17:00`},
+    noite:{ini:`${ontemStr}T21:00`,fim:`${hoje2}T05:20`},
+    noite_alt:{ini:`${ontemStr}T20:00`,fim:`${hoje2}T04:20`},
+  };
+  const v=mapas[tipo];
+  if(v){document.getElementById('fech-ini').value=v.ini;document.getElementById('fech-fim').value=v.fim;}
+}
+
+async function carregarFechamentoPCM(){
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const agora=new Date();
+  const garagem=S.garagens.find(g=>g.id===gid);
+  const iniVal=document.getElementById('fech-ini').value;
+  const fimVal=document.getElementById('fech-fim').value;
+  if(!iniVal||!fimVal){toast('Defina o período do turno!','err');return}
+
+  const iniTurno=new Date(iniVal);
+  const fimTurno=new Date(fimVal);
+  const label=`${iniTurno.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'})} ~ ${fimTurno.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'})}`;
+
+  document.getElementById('fech-pcm-content').innerHTML=`<div class="loading"><div class="spinner"></div> Gerando relatório...</div>`;
+
+  // OS abertas NO turno (hora_entrada dentro do período)
+  const{data:abertasNaTurno}=await sb.from('ocorrencias_22').select('*')
     .eq('garagem_id',gid)
     .gte('hora_entrada',iniTurno.toISOString())
     .lte('hora_entrada',fimTurno.toISOString())
     .order('hora_entrada',{ascending:true});
 
-  // Busca abertas agora (independente do horário de entrada)
-  const{data:abertasAgora}=await sb.from('ocorrencias_22').select('*')
+  // OS fechadas NO turno (hora_liberacao dentro do período)
+  const{data:fechadasNaTurno}=await sb.from('ocorrencias_22').select('*')
+    .eq('garagem_id',gid)
+    .gte('hora_liberacao',iniTurno.toISOString())
+    .lte('hora_liberacao',fimTurno.toISOString())
+    .order('hora_liberacao',{ascending:true});
+
+  // Carros atualmente parados (independente do turno)
+  const{data:paradosAgora}=await sb.from('ocorrencias_22').select('*')
     .eq('garagem_id',gid).neq('status','liberado').order('hora_entrada',{ascending:true});
 
-  const t=todasTurno||[];
-  const parados=abertasAgora||[];
-  const liberadasTurno=t.filter(o=>o.status==='liberado');
-  const agAprov=parados.filter(o=>o.status==='aguardando_aprovacao');
-  const agPeca=parados.filter(o=>o.status==='aguardando_peca');
-  const vencidas=parados.filter(o=>o.hora_previsao&&new Date(o.hora_previsao)<agora);
+  // Frota total e indisponíveis
+  const{data:frota}=await sb.from('frota').select('prefixo,status').eq('garagem_id',gid);
+  const totalFrota=(frota||[]).length;
+  const indisponiveis=(frota||[]).filter(v=>v.status!=='disponivel'&&v.status!=='em_linha').length;
 
-  // Busca checklists de liberação
-  const todosIds=[...t,...parados].map(o=>o.id);
-  const{data:cklibAll}=todosIds.length>0?await sb.from('checklist_liberacao').select('*').in('ocorrencia_id',todosIds):{data:[]};
+  // Checklists de liberação
+  const todosIds=[...(abertasNaTurno||[]),...(fechadasNaTurno||[]),...(paradosAgora||[])].map(o=>o.id);
+  const{data:cklibAll}=todosIds.length>0?await sb.from('checklist_liberacao').select('*').in('ocorrencia_id',[...new Set(todosIds)]):{data:[]};
   const ckMap={};
   (cklibAll||[]).forEach(ck=>{
-    if(!ckMap[ck.ocorrencia_id]) ckMap[ck.ocorrencia_id]={total:0,feitos:0,submetido:ck.submetido,aprovado:ck.aprovado,obs:[]};
+    if(!ckMap[ck.ocorrencia_id]) ckMap[ck.ocorrencia_id]={total:0,feitos:0,submetido:ck.submetido,aprovado:ck.aprovado};
     ckMap[ck.ocorrencia_id].total++;
     if(ck.concluido) ckMap[ck.ocorrencia_id].feitos++;
   });
@@ -2735,16 +2795,35 @@ async function abrirFechamentoPCM(){
   const horaAtual=agora.toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
   const numFech=`PCM/${String(agora.getDate()).padStart(2,'0')}${String(agora.getMonth()+1).padStart(2,'0')}${String(agora.getFullYear()).slice(2)}-${String(agora.getHours()).padStart(2,'0')}${String(agora.getMinutes()).padStart(2,'0')}/${(garagem?.cidade||'PVH').toUpperCase().slice(0,3)}`;
 
-  const tempos=liberadasTurno.filter(o=>o.hora_entrada&&o.hora_liberacao).map(o=>Math.round((new Date(o.hora_liberacao)-new Date(o.hora_entrada))/60000));
+  const tempos=(fechadasNaTurno||[]).filter(o=>o.hora_entrada&&o.hora_liberacao).map(o=>Math.round((new Date(o.hora_liberacao)-new Date(o.hora_entrada))/60000));
   const tempoMedio=tempos.length>0?Math.round(tempos.reduce((a,b)=>a+b,0)/tempos.length):0;
   const tMedStr=tempoMedio>=60?`${Math.floor(tempoMedio/60)}h ${tempoMedio%60}min`:`${tempoMedio}min`;
 
-  // Linhas liberadas
-  const libRows=liberadasTurno.map(o=>{
+  const vencidas=(paradosAgora||[]).filter(o=>o.hora_previsao&&new Date(o.hora_previsao)<agora);
+  const agAprov=(paradosAgora||[]).filter(o=>o.status==='aguardando_aprovacao');
+  const agPeca=(paradosAgora||[]).filter(o=>o.status==='aguardando_peca');
+
+  // Monta linhas OS abertas no turno
+  const abertasRows=(abertasNaTurno||[]).map(o=>{
+    const ck=ckMap[o.id];
+    const ckStatus=ck?.aprovado?'✅':ck?.submetido?'⏳':ck?.feitos>0?`${ck.feitos}/${ck.total}`:'—';
+    const st=STATUS22[o.status]||{l:o.status,ic:'?',cls:''};
+    return`<tr>
+      <td><span style="font-family:'DM Mono',monospace;font-weight:700">${o.prefixo}</span></td>
+      <td style="font-size:11px">${TIPO22[o.tipo]?.ic} ${TIPO22[o.tipo]?.l||o.tipo}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px">${new Date(o.hora_entrada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'})}</td>
+      <td><span class="badge ${st.cls}">${st.ic} ${st.l}</span></td>
+      <td style="font-size:11px">${o.mecanico||'—'}</td>
+      <td style="font-size:11px">${o.praxio_os_id||'—'}</td>
+      <td style="font-size:11px">${ckStatus}</td>
+    </tr>`;
+  }).join('');
+
+  // Monta linhas OS fechadas no turno
+  const fechadasRows=(fechadasNaTurno||[]).map(o=>{
     const tempo=o.hora_entrada&&o.hora_liberacao?Math.round((new Date(o.hora_liberacao)-new Date(o.hora_entrada))/60000):0;
     const tStr=tempo>=60?`${Math.floor(tempo/60)}h${tempo%60>0?tempo%60+'m':''}`:tempo>0?`${tempo}min`:'—';
     const ck=ckMap[o.id];
-    const ckStatus=ck?.aprovado?'✅':ck?.submetido?'⏳':ck?.feitos>0?`${ck.feitos}/${ck.total}`:'—';
     return`<tr>
       <td><span style="font-family:'DM Mono',monospace;font-weight:700">${o.prefixo}</span></td>
       <td style="font-size:11px">${TIPO22[o.tipo]?.ic} ${TIPO22[o.tipo]?.l||o.tipo}</td>
@@ -2753,24 +2832,23 @@ async function abrirFechamentoPCM(){
       <td style="font-family:'DM Mono',monospace;font-size:11px">${tStr}</td>
       <td style="font-size:11px">${o.mecanico||'—'}</td>
       <td style="font-size:11px">${o.praxio_os_id||'—'}</td>
-      <td style="font-size:11px">${ckStatus}</td>
+      <td style="font-size:11px">${ck?.aprovado?'✅':ck?.submetido?'⏳':'—'}</td>
     </tr>`;
   }).join('');
 
-  // Linhas paradas — com status e observação editáveis
-  const paradoRows=parados.map(o=>{
+  // Monta linhas carros parados agora com status + obs editáveis
+  const paradosRows=(paradosAgora||[]).map(o=>{
     const ck=ckMap[o.id];
     const ckPct=ck?Math.round((ck.feitos/ck.total)*100):0;
     const prev=o.hora_previsao?new Date(o.hora_previsao):null;
     const vencida=prev&&prev<agora;
     const prevStr=prev?prev.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
-    const st=STATUS22[o.status]||{l:o.status,ic:'?',cls:''};
     const tempoParado=o.hora_entrada?Math.round((agora-new Date(o.hora_entrada))/60000):0;
-    const tParStr=tempoParado>=60?`${Math.floor(tempoParado/60)}h${tempoParado%60>0?tempoParado%60+'m':''}`:tempoParado>0?`${tempoParado}min`:'—';
-    return`<tr style="background:${vencida?'#EF444408':''}">
+    const tPar=tempoParado>=60?`${Math.floor(tempoParado/60)}h${tempoParado%60>0?tempoParado%60+'m':''}`:tempoParado>0?`${tempoParado}min`:'—';
+    return`<tr style="background:${vencida?'#EF444406':''}">
       <td>
         <span style="font-family:'DM Mono',monospace;font-weight:700">${o.prefixo}</span>
-        <div style="color:var(--text4);font-size:10px;font-family:'DM Mono',monospace">${tParStr} parado</div>
+        <div style="color:var(--text4);font-size:10px">${tPar} parado</div>
       </td>
       <td style="font-size:11px">${TIPO22[o.tipo]?.ic} ${TIPO22[o.tipo]?.l||o.tipo}</td>
       <td>
@@ -2784,82 +2862,86 @@ async function abrirFechamentoPCM(){
       <td style="font-size:11px;color:${vencida?'var(--red)':'var(--text3)'}">${prevStr}${vencida?' ⚠️':''}</td>
       <td style="font-size:11px">${o.praxio_os_id||'—'}</td>
       <td style="font-size:11px">${ck?`${ck.feitos}/${ck.total} (${ckPct}%)${ck.submetido?' ⏳':ck.aprovado?' ✅':''}`:o.descricao||'—'}</td>
-      <td>
-        <textarea id="obs-${o.id}" style="width:100%;min-width:150px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 7px;color:var(--text);font-size:11px;resize:vertical;min-height:40px;font-family:'DM Sans',sans-serif" placeholder="Tratativa do turno, próximas ações...">${o.descricao||''}</textarea>
-      </td>
+      <td><textarea id="obs-${o.id}" style="width:100%;min-width:150px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 7px;color:var(--text);font-size:11px;resize:vertical;min-height:40px;font-family:'DM Sans',sans-serif" placeholder="Tratativa...">${o.descricao||''}</textarea></td>
     </tr>`;
   }).join('');
 
-  let m=document.getElementById('modal-fech-pcm');
-  if(!m){m=document.createElement('div');m.id='modal-fech-pcm';m.className='modal-ov';m.style.display='none';m.onclick=function(e){if(e.target===this)this.style.display='none'};m.innerHTML=`<div class="modal" style="max-width:900px;max-height:90vh;overflow-y:auto"><div id="fech-pcm-content"></div></div>`;document.body.appendChild(m);}
-
-  S._fechPCM={gid,numFech,parados,liberadas:liberadasTurno,garagem,horaAtual,turno:turnoAtual,iniTurno,fimTurno,tDef,tempoMedio,tMedStr};
+  S._fechPCM={gid,numFech,paradosAgora,fechadasNaTurno,abertasNaTurno,garagem,horaAtual,turno:S.turno,label,iniTurno,fimTurno,tMedStr,tempoMedio,totalFrota,indisponiveis};
 
   document.getElementById('fech-pcm-content').innerHTML=`
     <div class="modal-title">
       <div>
         <div style="font-size:16px;font-weight:800">📋 Fechamento de Turno PCM</div>
-        <div style="display:flex;gap:12px;align-items:center;margin-top:4px;flex-wrap:wrap">
+        <div style="display:flex;gap:10px;align-items:center;margin-top:4px;flex-wrap:wrap">
           <span style="font-family:'DM Mono',monospace;color:var(--blue);font-size:11px">${numFech}</span>
-          <span style="color:var(--amber);font-size:11px">⏰ ${tDef.label}</span>
-          <span style="color:var(--text3);font-size:11px">📅 ${horaAtual}</span>
+          <span style="color:var(--amber);font-size:11px">⏰ ${label}</span>
+          <button onclick="abrirFechamentoPCM()" style="background:none;border:1px solid var(--border);color:var(--text3);border-radius:6px;padding:2px 8px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif">✏️ Editar período</button>
         </div>
       </div>
       <button class="btn-x" onclick="document.getElementById('modal-fech-pcm').style.display='none'">✕</button>
     </div>
 
     <!-- KPIs -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-bottom:18px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(115px,1fr));gap:10px;margin-bottom:18px">
       ${[
-        {l:'OS no Turno',v:t.length,c:'var(--blue)'},
-        {l:'Liberados',v:liberadasTurno.length,c:'var(--green)'},
-        {l:'Em Aberto',v:parados.length,c:parados.length>0?'var(--amber)':'var(--green)'},
+        {l:'Abertas no Turno',v:(abertasNaTurno||[]).length,c:'var(--blue)'},
+        {l:'Fechadas no Turno',v:(fechadasNaTurno||[]).length,c:'var(--green)'},
+        {l:'Ainda Parados',v:(paradosAgora||[]).length,c:(paradosAgora||[]).length>0?'var(--amber)':'var(--green)'},
+        {l:'Indisponíveis',v:indisponiveis,c:indisponiveis>0?'var(--red)':'var(--green)'},
+        {l:'Prev. Vencida',v:vencidas.length,c:vencidas.length>0?'var(--red)':'var(--text3)'},
         {l:'Ag. Aprovação',v:agAprov.length,c:agAprov.length>0?'var(--purple)':'var(--text3)'},
         {l:'Ag. Peça',v:agPeca.length,c:agPeca.length>0?'var(--red)':'var(--text3)'},
-        {l:'Prev. Vencida',v:vencidas.length,c:vencidas.length>0?'var(--red)':'var(--text3)'},
         {l:'Tempo Médio',v:tMedStr,c:'var(--text)'},
       ].map(k=>`<div style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid ${k.c};border-radius:10px;padding:10px 12px">
         <div style="color:var(--text3);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px">${k.l}</div>
-        <div style="font-family:'DM Mono',monospace;font-size:${typeof k.v==='string'?'14':'22'}px;font-weight:700;color:${k.c};margin-top:3px">${k.v}</div>
+        <div style="font-family:'DM Mono',monospace;font-size:${typeof k.v==='string'?'13':'20'}px;font-weight:700;color:${k.c};margin-top:3px">${k.v}</div>
       </div>`).join('')}
     </div>
 
-    <!-- OS liberadas no turno -->
-    ${liberadasTurno.length>0?`
-    <div style="font-weight:700;font-size:11px;color:var(--green);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">✅ OS Concluídas no Turno — ${liberadasTurno.length} veículos</div>
+    <!-- OS Abertas no turno -->
+    ${(abertasNaTurno||[]).length>0?`
+    <div style="font-weight:700;font-size:11px;color:var(--blue);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">🔵 OS Abertas no Turno — ${(abertasNaTurno||[]).length}</div>
+    <div style="overflow-x:auto;margin-bottom:18px"><table>
+      <thead><tr><th>Prefixo</th><th>Tipo</th><th>Entrada</th><th>Status</th><th>Mecânico</th><th>OS Praxio</th><th>Ck.Lib</th></tr></thead>
+      <tbody>${abertasRows}</tbody>
+    </table></div>`:''}
+
+    <!-- OS Fechadas no turno -->
+    ${(fechadasNaTurno||[]).length>0?`
+    <div style="font-weight:700;font-size:11px;color:var(--green);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">✅ OS Fechadas no Turno — ${(fechadasNaTurno||[]).length}</div>
     <div style="overflow-x:auto;margin-bottom:18px"><table>
       <thead><tr><th>Prefixo</th><th>Tipo</th><th>Entrada</th><th>Liberação</th><th>Tempo</th><th>Mecânico</th><th>OS Praxio</th><th>Ck.Lib</th></tr></thead>
-      <tbody>${libRows}</tbody>
+      <tbody>${fechadasRows}</tbody>
     </table></div>`
-    :`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;color:var(--text3);font-size:13px;margin-bottom:18px">Nenhuma OS concluída no período ${tDef.label}</div>`}
+    :`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;color:var(--text3);font-size:13px;margin-bottom:18px">Nenhuma OS fechada no período</div>`}
 
-    <!-- Carros parados com status + observação -->
-    ${parados.length>0?`
-    <div style="font-weight:700;font-size:11px;color:var(--amber);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">⏳ Carros Parados — ${parados.length} veículos · Atualize status e tratativas</div>
+    <!-- Carros parados com status + obs editáveis -->
+    ${(paradosAgora||[]).length>0?`
+    <div style="font-weight:700;font-size:11px;color:var(--amber);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">⏳ Parados Agora — ${(paradosAgora||[]).length} · Atualize status e tratativas</div>
     <div style="overflow-x:auto;margin-bottom:18px"><table>
-      <thead><tr><th>Prefixo</th><th>Tipo</th><th>Status Atual</th><th>Mecânico</th><th>Previsão</th><th>OS Praxio</th><th>Ck.Lib</th><th style="min-width:200px">Observação / Tratativa</th></tr></thead>
-      <tbody>${paradoRows}</tbody>
+      <thead><tr><th>Prefixo</th><th>Tipo</th><th>Status</th><th>Mecânico</th><th>Previsão</th><th>OS Praxio</th><th>Ck.Lib</th><th style="min-width:180px">Observação / Tratativa</th></tr></thead>
+      <tbody>${paradosRows}</tbody>
     </table></div>`
-    :`<div style="background:#00C48C08;border:1px solid #00C48C30;border-radius:10px;padding:14px;text-align:center;color:var(--green);font-size:13px;margin-bottom:18px">✅ Nenhum carro parado no momento!</div>`}
+    :`<div style="background:#00C48C08;border:1px solid #00C48C30;border-radius:10px;padding:12px;text-align:center;color:var(--green);font-size:13px;margin-bottom:18px">✅ Nenhum carro parado no momento!</div>`}
 
-    <!-- Observação geral -->
+    <!-- Obs geral -->
     <label class="fl">Observação Geral do Turno</label>
-    <textarea id="obs-fech-pcm" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px 14px;color:var(--text);font-size:14px;font-family:'DM Sans',sans-serif;resize:vertical;min-height:80px;outline:none;margin-bottom:16px" placeholder="Ocorrências relevantes, pendências para o próximo turno, necessidades de peças críticas..."></textarea>
+    <textarea id="obs-fech-pcm" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px 14px;color:var(--text);font-size:14px;font-family:'DM Sans',sans-serif;resize:vertical;min-height:80px;outline:none;margin-bottom:16px" placeholder="Ocorrências, pendências para o próximo turno, peças críticas..."></textarea>
 
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button class="btn-sec" onclick="document.getElementById('modal-fech-pcm').style.display='none'">Cancelar</button>
       <button class="btn-success" onclick="salvarFechamentoPCM()">💾 Salvar e Enviar WhatsApp</button>
     </div>`;
-
-  m.style.display='flex';
 }
 
 async function salvarFechamentoPCM(){
-  const{gid,numFech,parados,liberadas,garagem,horaAtual,turno,tDef,tMedStr}=S._fechPCM;
+  const{gid,numFech,paradosAgora,fechadasNaTurno,abertasNaTurno,garagem,horaAtual,turno,label,tMedStr,totalFrota,indisponiveis}=S._fechPCM;
   const obsGeral=document.getElementById('obs-fech-pcm').value.trim();
   const agora=new Date();
+  const parados=paradosAgora||[];
+  const liberadas=fechadasNaTurno||[];
 
-  // Coleta status e tratativas por carro parado
+  // Coleta status e tratativas
   const tratativas={};const statusUpdates=[];
   for(const o of parados){
     const stEl=document.getElementById(`st-${o.id}`);
@@ -2867,24 +2949,19 @@ async function salvarFechamentoPCM(){
     const novoStatus=stEl?.value||o.status;
     const obs=obsEl?.value?.trim()||'';
     tratativas[o.id]={status:novoStatus,obs};
-    // Atualiza no banco se mudou
     if(novoStatus!==o.status||obs){
-      statusUpdates.push(sb.from('ocorrencias_22').update({
-        status:novoStatus,
-        ...(obs&&{descricao:obs}),
-        updated_at:new Date().toISOString(),
-      }).eq('id',o.id));
+      statusUpdates.push(sb.from('ocorrencias_22').update({status:novoStatus,...(obs&&{descricao:obs}),updated_at:new Date().toISOString()}).eq('id',o.id));
     }
   }
   await Promise.all(statusUpdates);
 
-  // Salva fechamento no banco
+  // Salva no banco
   const{error}=await sb.from('fechamento_turno_pcm').insert({
     garagem_id:gid,data:hoje(),turno,numero:numFech,
-    os_trabalhadas:(liberadas.length+parados.length),
+    os_trabalhadas:(liberadas.length+(abertasNaTurno||[]).length),
     carros_liberados:liberadas.length,carros_parados:parados.length,
     observacao_geral:obsGeral||null,
-    dados_json:{liberadas,parados,tratativas},
+    dados_json:{liberadas,parados,tratativas,abertasNaTurno,totalFrota,indisponiveis},
     criado_por:S.perfil?.id,criado_por_nome:S.perfil?.nome,
     enviado_wpp:true,enviado_em:new Date().toISOString(),
   });
@@ -2893,52 +2970,51 @@ async function salvarFechamentoPCM(){
   // Monta mensagem WhatsApp
   const msg=[
     `📋 *FECHAMENTO DE TURNO PCM*`,
-    `📍 ${garagem?.nome||'JTP'} · ${tDef?.label||turno} · ${horaAtual}`,
+    `📍 ${garagem?.nome||'JTP'} · ⏰ ${label} · ${horaAtual}`,
     `🔖 ${numFech}`,``,
-    `📊 *Resumo:*`,
-    `• OS no turno: ${liberadas.length+parados.length} · Liberados: ${liberadas.length} · Parados: ${parados.length}`,
+    `📊 *Resumo do Turno:*`,
+    `• OS abertas no turno: ${(abertasNaTurno||[]).length}`,
+    `• OS fechadas no turno: ${liberadas.length}`,
+    `• Ainda parados: ${parados.length}`,
+    `• Frota indisponível: ${indisponiveis}/${totalFrota}`,
     `• Tempo médio de reparo: ${tMedStr}`,``,
   ];
 
   if(liberadas.length>0){
-    msg.push(`✅ *Liberados no turno (${liberadas.length}):*`);
+    msg.push(`✅ *Fechadas no turno (${liberadas.length}):*`);
     liberadas.forEach(o=>{
       const lib=o.hora_liberacao?new Date(o.hora_liberacao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
       const tempo=o.hora_entrada&&o.hora_liberacao?Math.round((new Date(o.hora_liberacao)-new Date(o.hora_entrada))/60000):0;
       const tStr=tempo>=60?`${Math.floor(tempo/60)}h${tempo%60>0?tempo%60+'m':''}`:tempo>0?`${tempo}min`:'—';
       msg.push(`• *${o.prefixo}* | ${TIPO22[o.tipo]?.l||o.tipo} | Saiu: ${lib} | ${tStr} | ${o.mecanico||'—'}`);
-    });
-    msg.push('');
+    });msg.push('');
   }
 
   if(parados.length>0){
-    msg.push(`⏳ *Parados — Status e Tratativas (${parados.length}):*`);
+    msg.push(`⏳ *Parados — Tratativas (${parados.length}):*`);
     parados.forEach(o=>{
       const{status:novoSt,obs}=tratativas[o.id]||{};
       const st=STATUS22[novoSt||o.status]||{l:o.status,ic:'?'};
       const prev=o.hora_previsao?new Date(o.hora_previsao).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
-      const venc=o.hora_previsao&&new Date(o.hora_previsao)<agora?'⚠️':'';
-      msg.push(`${venc||'•'} *${o.prefixo}* | ${TIPO22[o.tipo]?.l||o.tipo} | ${st.ic} ${st.l} | Prev: ${prev}`);
+      const venc=o.hora_previsao&&new Date(o.hora_previsao)<agora?'⚠️':'•';
+      msg.push(`${venc} *${o.prefixo}* | ${TIPO22[o.tipo]?.l||o.tipo} | ${st.ic} ${st.l} | Prev: ${prev}`);
       if(obs) msg.push(`  📝 ${obs}`);
-    });
-    msg.push('');
+    });msg.push('');
   }
 
   if(obsGeral){msg.push(`📌 *Obs. Gerais:*`);msg.push(obsGeral);msg.push('');}
-
   msg.push('━━━━━━━━━━━━━━━━━━━━');
   msg.push(`_Fechado por: ${S.perfil?.nome} · ${horaAtual}_`);
   msg.push(`_JTP Operacional · Sistema Automático_`);
 
   try{
     await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':`Bearer ${SUPABASE_ANON_KEY}`,'apikey':SUPABASE_ANON_KEY},
+      method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${SUPABASE_ANON_KEY}`,'apikey':SUPABASE_ANON_KEY},
       body:JSON.stringify({ocorrencia_id:'00000000-0000-0000-0000-000000000000',garagem_id:gid,usuario_nome:S.perfil?.nome,status_novo:'fechamento_pcm',mensagem_custom:msg.join('\n')}),
     });
   }catch(err){console.warn('Erro WPP:',err.message);}
 
-  toast('✅ Fechamento salvo e enviado para o grupo!');
+  toast('✅ Fechamento salvo e enviado!');
   document.getElementById('modal-fech-pcm').style.display='none';
   renderFerr22('ativas');
 }
