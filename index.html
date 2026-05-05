@@ -504,6 +504,9 @@ tr:hover td{background:#0F172A80}
       <button class="btn-sec" onclick="closeM('modal-22-status')">Cancelar</button>
       <button class="btn-success" onclick="atualizarStatus22()">✓ Confirmar</button>
     </div>
+
+    <!-- Botões checklist liberação -->
+    <div id="cklib-btns-wrap"></div>
   </div>
 </div>
 
@@ -2350,8 +2353,51 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
     if(oc.mecanico) document.getElementById('m22s-mecanico').value=oc.mecanico;
   });
 
-  // Carrega checklist no modal
-  carregarChecklistModal(id);
+  // Carrega checklist de liberação para mostrar progresso e botões
+  sb.from('checklist_liberacao').select('verificado,trocado,nao_se_aplica,submetido,aprovado')
+    .eq('ocorrencia_id',id).then(({data:ckl})=>{
+      const wrap=document.getElementById('cklib-btns-wrap');
+      if(!wrap) return;
+      if(!ckl||!ckl.length){
+        wrap.innerHTML=`
+          <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px">
+            <div style="color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">📋 CHECKLIST DE LIBERAÇÃO</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <button onclick="verChecklistLib()" style="background:#2563EB18;border:1px solid #2563EB40;color:var(--blue);border-radius:10px;padding:12px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer">
+                🔍 Diagnóstico<br><span style="font-size:10px;font-weight:400;color:var(--text3)">Verificar itens</span>
+              </button>
+              <button onclick="verChecklistLib()" style="background:#47556918;border:1px solid #47556940;color:var(--text3);border-radius:10px;padding:12px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:not-allowed;opacity:.5">
+                ✅ Qualificação<br><span style="font-size:10px;font-weight:400">Liberado após V</span>
+              </button>
+            </div>
+          </div>`;
+        return;
+      }
+      const total=ckl.length;
+      const vFeitos=ckl.filter(i=>i.verificado||i.nao_se_aplica).length;
+      const tFeitos=ckl.filter(i=>i.trocado||i.nao_se_aplica).length;
+      const pctV=Math.round((vFeitos/total)*100);
+      const pctT=Math.round((tFeitos/total)*100);
+      const submetido=ckl[0]?.submetido;
+      const aprovado=ckl[0]?.aprovado;
+      const vOk=pctV===100;const tOk=pctT===100;
+      wrap.innerHTML=`
+        <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px">
+          <div style="color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">📋 CHECKLIST DE LIBERAÇÃO ${aprovado?'<span style="color:var(--green)">✅ APROVADO</span>':submetido?'<span style="color:var(--amber)">⏳ AGUARD. PCM</span>':''}</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <button onclick="verChecklistLib()" style="background:${vOk?'#00C48C18':'#2563EB18'};border:1px solid ${vOk?'#00C48C40':'#2563EB40'};color:${vOk?'var(--green)':'var(--blue)'};border-radius:10px;padding:12px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer">
+              🔍 Diagnóstico ${vOk?'✅':''}<br>
+              <span style="font-size:10px;font-weight:400">${vFeitos}/${total} itens · ${pctV}%</span>
+              <div style="background:${vOk?'#00C48C30':'#2563EB30'};border-radius:99px;height:3px;overflow:hidden;margin-top:6px"><div style="height:100%;width:${pctV}%;background:${vOk?'var(--green)':'var(--blue)'}"></div></div>
+            </button>
+            <button onclick="verChecklistLib()" ${!vOk?'disabled':''} style="background:${tOk?'#00C48C18':'#F59E0B18'};border:1px solid ${tOk?'#00C48C40':'#F59E0B40'};color:${tOk?'var(--green)':'var(--amber)'};border-radius:10px;padding:12px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:${vOk?'pointer':'not-allowed'};opacity:${vOk?'1':'.5'}">
+              ✅ Qualificação ${tOk?'✅':''}<br>
+              <span style="font-size:10px;font-weight:400">${tFeitos}/${total} itens · ${pctT}%</span>
+              <div style="background:${tOk?'#00C48C30':'#F59E0B30'};border-radius:99px;height:3px;overflow:hidden;margin-top:6px"><div style="height:100%;width:${pctT}%;background:${tOk?'var(--green)':'var(--amber)'}"></div></div>
+            </button>
+          </div>
+        </div>`;
+    });
   document.getElementById('modal-22-status').style.display='flex';
 }
 
@@ -2689,59 +2735,6 @@ async function aprovarChecklistLib(ocId,aprovado){
   renderFerr22('ativas');
 }
 
-async function carregarChecklistModal(ocId){
-  const{data:oc}=await sb.from('ocorrencias_22').select('tipo').eq('id',ocId).single();
-  const{data:items}=await sb.from('checklist_22').select('*')
-    .eq('ocorrencia_id',ocId).order('ordem');
-
-  // Se não tem checklist ainda, gera automaticamente
-  if(!items||!items.length){
-    const tipo=oc?.tipo||'corretiva';
-    const defaultItems=CHECKLIST_ITEMS[tipo]||[];
-    if(defaultItems.length>0){
-      const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
-      await sb.from('checklist_22').insert(defaultItems.map(it=>({
-        ocorrencia_id:ocId, garagem_id:gid,
-        tipo, item:it.item, ordem:it.ordem, concluido:false,
-      })));
-      // Recarrega
-      return carregarChecklistModal(ocId);
-    }
-    return;
-  }
-
-  const total=items.length;
-  const feitos=items.filter(i=>i.concluido).length;
-  const pct=Math.round((feitos/total)*100);
-  const pColor=pct===100?'var(--green)':pct>=50?'var(--amber)':'var(--red)';
-
-  const ckHTML=`
-    <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <span style="color:var(--text3);font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase">📋 CHECKLIST DE ACOMPANHAMENTO</span>
-        <span style="color:${pColor};font-family:'DM Mono',monospace;font-size:13px;font-weight:700">${feitos}/${total} · ${pct}%</span>
-      </div>
-      <div style="background:var(--border);border-radius:99px;height:5px;overflow:hidden;margin-bottom:12px">
-        <div style="height:100%;width:${pct}%;background:${pColor};border-radius:99px;transition:width .5s"></div>
-      </div>
-      ${items.map(it=>`
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;margin-bottom:4px;background:${it.concluido?'#00C48C08':'var(--surface2)'}">
-          <input type="checkbox" id="ck-${it.id}" ${it.concluido?'checked':''} 
-            onchange="toggleCheckItem('${it.id}','${ocId}')"
-            style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">
-          <label for="ck-${it.id}" style="flex:1;cursor:pointer;font-size:13px;color:${it.concluido?'var(--text3)':'var(--text)'};text-decoration:${it.concluido?'line-through':''}">${it.ordem}. ${it.item}</label>
-          ${it.concluido?`<span style="color:var(--text4);font-size:10px">${it.concluido_por||''} ${it.concluido_em?'·'+formatDT(it.concluido_em):''}</span>`:''}
-        </div>`).join('')}
-    </div>`;
-
-  // Injeta no modal
-  const existing=document.getElementById('checklist-modal-area');
-  if(existing) existing.remove();
-  const wrap=document.createElement('div');
-  wrap.id='checklist-modal-area';
-  wrap.innerHTML=ckHTML;
-  document.querySelector('#modal-22-status .modal').appendChild(wrap);
-}
 
 async function toggleCheckItem(itemId, ocId){
   const cb=document.getElementById(`ck-${itemId}`);
@@ -2751,8 +2744,6 @@ async function toggleCheckItem(itemId, ocId){
     concluido_em:concluido?new Date().toISOString():null,
   }).eq('id',itemId);
   if(error){toast('Erro: '+error.message,'err');cb.checked=!concluido;return}
-
-  carregarChecklistModal(ocId);
 
   const{data:items}=await sb.from('checklist_22').select('*').eq('ocorrencia_id',ocId).order('ordem');
   const total=items?.length||0;
