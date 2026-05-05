@@ -1998,8 +1998,9 @@ async function renderFerr22(aba='ativas'){
   const prevL=t.filter(o=>o.tipo==='preventiva_leve').length;
   const prevP=t.filter(o=>o.tipo==='preventiva_pesada').length;
 
-  const addBtn=isPCM?`<div style="display:flex;gap:8px">
+  const addBtn=isPCM?`<div style="display:flex;gap:8px;flex-wrap:wrap">
     <button class="btn-sm" onclick="gerarResumoTurno()" style="background:#8B5CF618;border-color:#8B5CF640;color:#8B5CF6">📊 Resumo de Turno</button>
+    <button class="btn-sm" onclick="abrirFechamentoPCM()" style="background:#F59E0B18;border-color:#F59E0B40;color:var(--amber)">📋 Fechamento PCM</button>
     <button class="btn-add" onclick="abrirModal22()">+ Nova Ocorrência</button>
   </div>`:'<button class="btn-add" onclick="abrirModal22()">+ Nova Ocorrência</button>';
 
@@ -2669,6 +2670,233 @@ async function verHistorico22(){
     <div style="display:flex;justify-content:flex-end;margin-top:16px">
       <button class="btn-sec" onclick="closeM('modal-22-hist');document.getElementById('modal-22-status').style.display='flex'">← Voltar</button>
     </div>`;
+}
+
+async function abrirFechamentoPCM(){
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const agora=new Date();
+  const garagem=S.garagens.find(g=>g.id===gid);
+  const ini=new Date();ini.setHours(0,0,0,0);
+
+  // Busca dados do turno
+  const{data:todas}=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).gte('hora_entrada',ini.toISOString()).order('hora_entrada',{ascending:true});
+  const{data:abertas}=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado').order('hora_entrada',{ascending:true});
+  const{data:cklibAll}=await sb.from('checklist_liberacao').select('*').in('ocorrencia_id',(todas||[]).map(o=>o.id));
+
+  const t=todas||[];const a=abertas||[];
+  const liberadas=t.filter(o=>o.status==='liberado');
+  const parados=a;
+  const agAprov=a.filter(o=>o.status==='aguardando_aprovacao');
+  const agPeca=a.filter(o=>o.status==='aguardando_peca');
+  const emMan=a.filter(o=>o.status==='em_manutencao');
+
+  // Mapa de checklist de liberação por ocorrência
+  const ckMap={};
+  (cklibAll||[]).forEach(ck=>{
+    if(!ckMap[ck.ocorrencia_id]) ckMap[ck.ocorrencia_id]={total:0,feitos:0,submetido:ck.submetido,aprovado:ck.aprovado};
+    ckMap[ck.ocorrencia_id].total++;
+    if(ck.concluido) ckMap[ck.ocorrencia_id].feitos++;
+  });
+
+  const horaAtual=agora.toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const numFech=`PCM/${String(agora.getDate()).padStart(2,'0')}${String(agora.getMonth()+1).padStart(2,'0')}${String(agora.getFullYear()).slice(2)}-${String(agora.getHours()).padStart(2,'0')}${String(agora.getMinutes()).padStart(2,'0')}/${(garagem?.cidade||'PVH').toUpperCase().slice(0,3)}`;
+
+  // Monta HTML dos carros liberados
+  const libRows=liberadas.map(o=>{
+    const tempo=o.hora_entrada&&o.hora_liberacao?Math.round((new Date(o.hora_liberacao)-new Date(o.hora_entrada))/60000):0;
+    const tStr=tempo>=60?`${Math.floor(tempo/60)}h${tempo%60>0?tempo%60+'m':''}`:tempo>0?`${tempo}min`:'—';
+    const ck=ckMap[o.id];
+    const ckStatus=ck?.aprovado?'✅ Aprovado':ck?.submetido?'⏳ Submetido':ck?.feitos>0?`📋 ${ck.feitos}/${ck.total}`:'—';
+    return`<tr>
+      <td><span style="font-family:'DM Mono',monospace;font-weight:700">${o.prefixo}</span></td>
+      <td style="font-size:11px">${TIPO22[o.tipo]?.ic||''} ${TIPO22[o.tipo]?.l||o.tipo}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px">${o.hora_entrada?new Date(o.hora_entrada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—'}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--green)">${o.hora_liberacao?new Date(o.hora_liberacao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—'}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px">${tStr}</td>
+      <td style="font-size:11px">${o.mecanico||'—'}</td>
+      <td style="font-size:11px">${o.praxio_os_id||'—'}</td>
+      <td style="font-size:11px">${ckStatus}</td>
+    </tr>`;
+  }).join('');
+
+  // Monta HTML dos carros parados
+  const paradoRows=parados.map(o=>{
+    const ck=ckMap[o.id];
+    const ckPct=ck?Math.round((ck.feitos/ck.total)*100):0;
+    const prev=o.hora_previsao?new Date(o.hora_previsao):null;
+    const vencida=prev&&prev<agora;
+    const prevStr=prev?prev.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
+    const st=STATUS22[o.status]||{l:o.status,ic:'?',c:'#475569'};
+    return`<tr style="background:${vencida?'#EF444408':''}">
+      <td><span style="font-family:'DM Mono',monospace;font-weight:700">${o.prefixo}</span></td>
+      <td style="font-size:11px">${TIPO22[o.tipo]?.ic||''} ${TIPO22[o.tipo]?.l||o.tipo}</td>
+      <td><span class="badge ${st.cls||''}">${st.ic} ${st.l}</span></td>
+      <td style="font-size:11px">${o.mecanico||'—'}</td>
+      <td style="font-size:11px;color:${vencida?'var(--red)':'var(--text3)'}">${prevStr}${vencida?' ⚠️':''}</td>
+      <td style="font-size:11px">${o.praxio_os_id||'—'}</td>
+      <td style="font-size:11px">${ck?`${ck.feitos}/${ck.total} (${ckPct}%)${ck.submetido?' ⏳':ck.aprovado?' ✅':''}`:o.descricao||'—'}</td>
+      <td><textarea id="trat-${o.id}" style="width:100%;min-width:120px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:4px 6px;color:var(--text);font-size:11px;resize:vertical;min-height:32px;font-family:'DM Sans',sans-serif" placeholder="Tratativa do turno...">${o.descricao||''}</textarea></td>
+    </tr>`;
+  }).join('');
+
+  let m=document.getElementById('modal-fech-pcm');
+  if(!m){
+    m=document.createElement('div');m.id='modal-fech-pcm';m.className='modal-ov';m.style.display='none';
+    m.onclick=function(e){if(e.target===this)this.style.display='none'};
+    m.innerHTML=`<div class="modal" style="max-width:860px;max-height:90vh;overflow-y:auto"><div id="fech-pcm-content"></div></div>`;
+    document.body.appendChild(m);
+  }
+
+  // Guarda dados para usar no envio
+  S._fechPCM={gid,numFech,parados,liberadas,garagem,horaAtual,turno:S.turno};
+
+  document.getElementById('fech-pcm-content').innerHTML=`
+    <div class="modal-title">
+      <div>
+        <div style="font-size:16px;font-weight:800">📋 Fechamento de Turno PCM</div>
+        <div style="font-family:'DM Mono',monospace;color:var(--blue);font-size:11px;margin-top:2px">${numFech}</div>
+      </div>
+      <button class="btn-x" onclick="document.getElementById('modal-fech-pcm').style.display='none'">✕</button>
+    </div>
+
+    <!-- KPIs do turno -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:18px">
+      ${[
+        {l:'OS Trabalhadas',v:t.length,c:'var(--blue)'},
+        {l:'Liberados',v:liberadas.length,c:'var(--green)'},
+        {l:'Em Aberto',v:parados.length,c:parados.length>0?'var(--amber)':'var(--green)'},
+        {l:'Ag. Aprovação PCM',v:agAprov.length,c:agAprov.length>0?'var(--purple)':'var(--text)'},
+        {l:'Ag. Peça',v:agPeca.length,c:agPeca.length>0?'var(--red)':'var(--text)'},
+        {l:'Previsão Vencida',v:parados.filter(o=>o.hora_previsao&&new Date(o.hora_previsao)<agora).length,c:'var(--red)'},
+      ].map(k=>`<div style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid ${k.c};border-radius:10px;padding:10px 12px">
+        <div style="color:var(--text3);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px">${k.l}</div>
+        <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:${k.c};margin-top:3px">${k.v}</div>
+      </div>`).join('')}
+    </div>
+
+    <!-- Carros liberados -->
+    ${liberadas.length>0?`
+    <div style="font-weight:700;font-size:12px;color:var(--green);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">✅ OS Concluídas — ${liberadas.length} veículos liberados</div>
+    <div style="overflow-x:auto;margin-bottom:18px"><table>
+      <thead><tr><th>Prefixo</th><th>Tipo</th><th>Entrada</th><th>Liberação</th><th>Tempo</th><th>Mecânico</th><th>OS Praxio</th><th>Checklist</th></tr></thead>
+      <tbody>${libRows}</tbody>
+    </table></div>`:''}
+
+    <!-- Carros parados com tratativas -->
+    ${parados.length>0?`
+    <div style="font-weight:700;font-size:12px;color:var(--amber);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">⏳ Carros Parados — ${parados.length} veículos (preencha as tratativas)</div>
+    <div style="overflow-x:auto;margin-bottom:18px"><table>
+      <thead><tr><th>Prefixo</th><th>Tipo</th><th>Status</th><th>Mecânico</th><th>Previsão</th><th>OS Praxio</th><th>Checklist Lib.</th><th style="min-width:180px">Tratativa do Turno</th></tr></thead>
+      <tbody>${paradoRows}</tbody>
+    </table></div>`:''}
+
+    <!-- Observação geral -->
+    <div style="margin-bottom:14px">
+      <label class="fl">Observação Geral do Turno</label>
+      <textarea id="obs-fech-pcm" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px 14px;color:var(--text);font-size:14px;font-family:'DM Sans',sans-serif;resize:vertical;min-height:80px;outline:none" placeholder="Ocorrências relevantes, pendências para o próximo turno, necessidades de peças..."></textarea>
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn-sec" onclick="document.getElementById('modal-fech-pcm').style.display='none'">Cancelar</button>
+      <button class="btn-success" onclick="salvarFechamentoPCM()">💾 Salvar e Enviar WhatsApp</button>
+    </div>`;
+
+  m.style.display='flex';
+}
+
+async function salvarFechamentoPCM(){
+  const{gid,numFech,parados,liberadas,garagem,horaAtual,turno}=S._fechPCM;
+  const obsGeral=document.getElementById('obs-fech-pcm').value.trim();
+  const agora=new Date();
+
+  // Coleta tratativas por carro parado
+  const tratativas={};
+  parados.forEach(o=>{
+    const el=document.getElementById(`trat-${o.id}`);
+    if(el&&el.value.trim()) tratativas[o.id]=el.value.trim();
+  });
+
+  // Calcula tempo médio
+  const tempos=liberadas.filter(o=>o.hora_entrada&&o.hora_liberacao)
+    .map(o=>Math.round((new Date(o.hora_liberacao)-new Date(o.hora_entrada))/60000));
+  const tempoMedio=tempos.length>0?Math.round(tempos.reduce((a,b)=>a+b,0)/tempos.length):0;
+  const tMedStr=tempoMedio>=60?`${Math.floor(tempoMedio/60)}h ${tempoMedio%60}min`:`${tempoMedio}min`;
+
+  // Salva no banco
+  const{error}=await sb.from('fechamento_turno_pcm').insert({
+    garagem_id:gid, data:hoje(), turno, numero:numFech,
+    os_trabalhadas:(liberadas.length+parados.length),
+    carros_liberados:liberadas.length, carros_parados:parados.length,
+    observacao_geral:obsGeral||null,
+    dados_json:{liberadas,parados,tratativas,tempoMedio},
+    criado_por:S.perfil?.id, criado_por_nome:S.perfil?.nome,
+    enviado_wpp:true, enviado_em:new Date().toISOString(),
+  });
+  if(error){toast('Erro ao salvar: '+error.message,'err');return}
+
+  // Monta mensagem WhatsApp
+  const msg=[
+    `📋 *FECHAMENTO DE TURNO PCM*`,
+    `📍 ${garagem?.nome||'JTP'} · ${turno==='dia'?'☀️ Dia':'🌙 Noite'} · ${horaAtual}`,
+    `🔖 ${numFech}`,
+    ``,
+    `📊 *Resumo do Turno:*`,
+    `• OS trabalhadas: ${liberadas.length+parados.length}`,
+    `• Veículos liberados: ${liberadas.length}`,
+    `• Ainda parados: ${parados.length}`,
+    `• Tempo médio de reparo: ${tMedStr}`,
+    ``,
+  ];
+
+  if(liberadas.length>0){
+    msg.push(`✅ *Liberados (${liberadas.length}):*`);
+    liberadas.forEach(o=>{
+      const lib=o.hora_liberacao?new Date(o.hora_liberacao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
+      const tempo=o.hora_entrada&&o.hora_liberacao?Math.round((new Date(o.hora_liberacao)-new Date(o.hora_entrada))/60000):0;
+      const tStr=tempo>=60?`${Math.floor(tempo/60)}h${tempo%60>0?tempo%60+'m':''}`:tempo>0?`${tempo}min`:'—';
+      msg.push(`• *${o.prefixo}* | ${TIPO22[o.tipo]?.l||o.tipo} | Saiu: ${lib} | Tempo: ${tStr} | ${o.mecanico||'—'}`);
+    });
+    msg.push('');
+  }
+
+  if(parados.length>0){
+    msg.push(`⏳ *Em Aberto (${parados.length}) — Tratativas:*`);
+    parados.forEach(o=>{
+      const prev=o.hora_previsao?new Date(o.hora_previsao).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
+      const venc=o.hora_previsao&&new Date(o.hora_previsao)<agora?'⚠️':'';
+      const trat=tratativas[o.id]||o.descricao||'Sem tratativa registrada';
+      msg.push(`${venc||'•'} *${o.prefixo}* | ${TIPO22[o.tipo]?.l||o.tipo} | ${STATUS22[o.status]?.l||o.status} | Prev: ${prev}`);
+      msg.push(`  📝 ${trat}`);
+    });
+    msg.push('');
+  }
+
+  if(obsGeral){
+    msg.push(`📌 *Observações Gerais:*`);
+    msg.push(obsGeral);
+    msg.push('');
+  }
+
+  msg.push('━━━━━━━━━━━━━━━━━━━━');
+  msg.push(`_Fechado por: ${S.perfil?.nome} · ${horaAtual}_`);
+  msg.push(`_JTP Operacional · Sistema Automático_`);
+
+  // Envia WhatsApp
+  try{
+    await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${SUPABASE_ANON_KEY}`,'apikey':SUPABASE_ANON_KEY},
+      body:JSON.stringify({
+        ocorrencia_id:'00000000-0000-0000-0000-000000000000',
+        garagem_id:gid, usuario_nome:S.perfil?.nome,
+        status_novo:'fechamento_pcm', mensagem_custom:msg.join('\n'),
+      }),
+    });
+  }catch(err){console.warn('Erro WhatsApp fechamento:',err.message);}
+
+  toast('✅ Fechamento salvo e enviado para o grupo!');
+  document.getElementById('modal-fech-pcm').style.display='none';
+  renderFerr22('ativas');
 }
 
 async function gerarResumoTurno(){
