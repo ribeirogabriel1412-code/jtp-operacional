@@ -2782,13 +2782,15 @@ async function carregarChecklistLib(ocId){
   const renderItem=(it)=>{
     const nsa=it.nao_se_aplica;
     const rowBg=nsa?'#47556908':it.trocado?'#00C48C08':it.verificado?'#2563EB08':'var(--surface2)';
+    const itemTxt=(it.item||'').replace(/^\[[^\]]+\]\s*/,'').replace(/'/g,'&#39;').replace(/`/g,'&#96;');
+    const obsTxt=(it.observacao_item||'').replace(/'/g,'&#39;').replace(/`/g,'&#96;').replace(/"/g,'&quot;');
     return`<tr style="background:${rowBg};opacity:${nsa?'.5':'1'}">
-      <td style="font-size:11px;color:var(--text);padding:6px 8px">${it.item.replace(/^\[[^\]]+\]\s*/,'')}</td>
+      <td style="font-size:11px;color:var(--text);padding:6px 8px">${itemTxt}</td>
       <td style="text-align:center;padding:4px"><button onclick="toggleVT('${it.id}','v','${ocId}')" ${!podePreencher?'disabled':''} title="Verificado (V)" style="width:32px;height:28px;border-radius:6px;border:1px solid ${it.verificado?'#2563EB':'var(--border)'};background:${it.verificado?'#2563EB18':'transparent'};cursor:${podePreencher?'pointer':'default'};font-size:13px;transition:all .15s">${it.verificado?'✓':'V'}</button></td>
       <td style="text-align:center;padding:4px"><button onclick="toggleVT('${it.id}','t','${ocId}')" ${!podePreencher||!it.verificado?'disabled':''} title="Trocado/Executado (T)" style="width:32px;height:28px;border-radius:6px;border:1px solid ${it.trocado?'#00C48C':'var(--border)'};background:${it.trocado?'#00C48C18':'transparent'};cursor:${podePreencher&&it.verificado?'pointer':'default'};font-size:13px;transition:all .15s;opacity:${!it.verificado&&!it.trocado?'.4':'1'}">${it.trocado?'✓':'T'}</button></td>
       <td style="text-align:center;padding:4px"><button onclick="toggleVT('${it.id}','nsa','${ocId}')" ${!podePreencher?'disabled':''} title="Não se aplica" style="width:32px;height:28px;border-radius:6px;border:1px solid ${nsa?'#47556940':'var(--border)'};background:${nsa?'#47556918':'transparent'};cursor:${podePreencher?'pointer':'default'};font-size:11px">N/A</button></td>
-      <td style="padding:4px"><input type="text" placeholder="Obs..." value="${it.observacao_item||''}" ${!podePreencher?'disabled':''} onblur="salvarObsItem('${it.id}',this.value,'${ocId}')" style="width:100%;min-width:80px;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:10px;padding:2px 4px;outline:none"></td>
-      <td style="text-align:center;padding:4px;font-size:10px;color:var(--text4)">${it.verificado?`<div style="color:var(--blue)">${it.verificado_por?.split(' ')[0]||''}${it.verificado_em?' '+new Date(it.verificado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):''}${it.trocado?`<div style="color:var(--green)">${it.trocado_por?.split(' ')[0]||''}${it.trocado_em?' '+new Date(it.trocado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):''}`:''}</div>`:it.nao_se_aplica?'<span style="color:var(--text4)">N/A</span>':''}</td>
+      <td style="padding:4px"><input type="text" placeholder="Obs..." value="${obsTxt}" ${!podePreencher?'disabled':''} onblur="salvarObsItem('${it.id}',this.value,'${ocId}')" style="width:100%;min-width:80px;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:10px;padding:2px 4px;outline:none"></td>
+      <td style="text-align:center;padding:4px;font-size:10px;color:var(--text4)">${it.verificado?`<span style="color:var(--blue)">${(it.verificado_por||'').split(' ')[0]}${it.trocado?` / <span style="color:var(--green)">${(it.trocado_por||'').split(' ')[0]}</span>`:''}</span>`:nsa?'<span style="color:var(--text4)">N/A</span>':''}</td>
     </tr>`;
   };
 
@@ -2857,7 +2859,9 @@ async function carregarChecklistLib(ocId){
     ?`<div style="color:var(--text3);font-size:12px;text-align:center;margin-top:12px;padding:10px;background:var(--surface2);border-radius:8px">🔒 Preenchimento exclusivo do Líder de Oficina</div>`
     :'';
 
-  document.getElementById('cklib-content').innerHTML=`
+  const ckEl=document.getElementById('cklib-content');
+  if(!ckEl){console.warn('cklib-content não encontrado ao renderizar');return;}
+  ckEl.innerHTML=`
     ${statusBanner}
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:12px">
       <div style="display:flex;gap:16px;flex-wrap:wrap">
