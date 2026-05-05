@@ -2420,6 +2420,16 @@ async function carregarChecklistLib(ocId){
   const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
 
   let{data:items}=await sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem');
+
+  // Detecta itens antigos (sem campo verificado = null) ou lista vazia → regenera
+  const precisaRecriar=!items||!items.length||(items[0]?.verificado===null&&items[0]?.verificado===undefined)||(!items[0]?.hasOwnProperty('verificado')||items.every(i=>i.verificado===null&&i.trocado===null));
+
+  if(precisaRecriar&&items?.length){
+    // Deleta itens antigos e recria com formato V/T
+    await sb.from('checklist_liberacao').delete().eq('ocorrencia_id',ocId);
+    items=[];
+  }
+
   if(!items||!items.length){
     const defaultItems=CHECKLIST_LIB_ITEMS[oc.tipo]||CHECKLIST_LIB_ITEMS.corretiva;
     await sb.from('checklist_liberacao').insert(defaultItems.map(it=>({
@@ -2470,7 +2480,7 @@ async function carregarChecklistLib(ocId){
     </div>`;
   }
 
-  // Grupos por seção (prefixo entre colchetes)
+  // Agrupa por seção (prefixo entre colchetes)
   const grupos={};
   items.forEach(it=>{
     const match=it.item.match(/^\[([^\]]+)\]/);
@@ -2481,7 +2491,9 @@ async function carregarChecklistLib(ocId){
 
   const podePreencher=isLiderOficina()&&!submetido&&!aprovado;
 
-  const gruposHTML=Object.entries(grupos).map(([grupo,gitens])=>{
+  const gruposHTML=Object.keys(grupos).length===0
+    ?`<div style="text-align:center;padding:30px;color:var(--text3)"><div style="font-size:32px;margin-bottom:8px">📋</div>Carregando itens...</div>`
+    :Object.entries(grupos).map(([grupo,gitens])=>{
     const vG=gitens.filter(i=>i.verificado||i.nao_se_aplica).length;
     const tG=gitens.filter(i=>i.trocado||i.nao_se_aplica).length;
     const totalG=gitens.length;
