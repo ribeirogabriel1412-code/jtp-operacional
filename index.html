@@ -2946,15 +2946,18 @@ async function carregarChecklistLib(ocId){
   }
 
   // SUPERGRUPOS
+  // Setores de manutenção — cada um trabalha em paralelo no diagnóstico
   const SUPERGRUPOS=[
-    {key:'MECÂNICA',ic:'🔧',c:'#F59E0B',grupos:['MOTOR','CÂMBIO','TRANSMISSÃO','EMBREAGEM','DIFERENCIAL','EIXO TRASEIRO','EIXO DIANTEIRO','CHASSIS']},
-    {key:'FREIO & SUSPENSÃO',ic:'🛑',c:'#EF4444',grupos:['FREIO','SUSPENSÃO','PNEUMÁTICO']},
-    {key:'ELÉTRICA & ELETRÔNICA',ic:'⚡',c:'#3B82F6',grupos:['ELÉTRICA','PREDITIVA']},
-    {key:'DIREÇÃO',ic:'🎯',c:'#8B5CF6',grupos:['DIREÇÃO']},
-    {key:'CLIMATIZAÇÃO',ic:'❄️',c:'#06B6D4',grupos:['AR COND.']},
-    {key:'ARREFECIMENTO & ALIMENTAÇÃO',ic:'🌡️',c:'#10B981',grupos:['ARREFECIMENTO','ALIMENTAÇÃO','PÓS TRATAMENTO']},
-    {key:'CARROCERIA & ACABAMENTO',ic:'🚌',c:'#6366F1',grupos:['CARROCERIA','PINTURA','TAPEÇARIA','BORRACHARIA','ELEVADOR']},
-    {key:'DIAGNÓSTICO',ic:'🔍',c:'#F97316',grupos:['DIAGNÓSTICO','EXECUÇÃO','QUALIDADE','ENTREGA','GERAL']},
+    {key:'MECÂNICA',       ic:'🔧',c:'#F59E0B',
+     grupos:['MOTOR','CÂMBIO','TRANSMISSÃO','EMBREAGEM','DIFERENCIAL',
+             'EIXO TRASEIRO','EIXO DIANTEIRO','CHASSIS',
+             'ARREFECIMENTO','ALIMENTAÇÃO','PÓS TRATAMENTO',
+             'SUSPENSÃO','FREIO','DIREÇÃO','TAPEÇARIA','ELEVADOR','GERAL']},
+    {key:'ELÉTRICA',       ic:'⚡',c:'#3B82F6', grupos:['ELÉTRICA','PREDITIVA']},
+    {key:'BORRACHARIA',    ic:'⭕',c:'#10B981', grupos:['BORRACHARIA','PNEUMÁTICO']},
+    {key:'AR CONDICIONADO',ic:'❄️',c:'#06B6D4', grupos:['AR COND.']},
+    {key:'FUNILARIA',      ic:'🔨',c:'#6366F1', grupos:['CARROCERIA','PINTURA']},
+    {key:'DIAGNÓSTICO',    ic:'🔍',c:'#F97316', grupos:['DIAGNÓSTICO','EXECUÇÃO','QUALIDADE','ENTREGA']},
   ];
 
   const grupos={};
@@ -3013,6 +3016,35 @@ async function carregarChecklistLib(ocId){
   log('items final='+items.length+' | grupos='+Object.keys(grupos).join(','));
   const gruposUsados=new Set(Object.keys(grupos));
   let gruposHTML='';
+
+  // ── Painel de progresso por setor ─────────────────────────
+  const setoresDefinidos=SUPERGRUPOS.filter(sg=>sg.grupos.some(g=>gruposUsados.has(g)));
+  const painelSetores=setoresDefinidos.length>1?`
+    <div style="margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📊 Progresso por Setor</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px">
+        ${setoresDefinidos.map(sg=>{
+          const itSG=sg.grupos.filter(g=>gruposUsados.has(g)).flatMap(g=>grupos[g]);
+          const vSG=itSG.filter(i=>i.verificado||i.nao_se_aplica).length;
+          const tSG=itSG.filter(i=>i.trocado||i.nao_se_aplica).length;
+          const totSG=itSG.length;
+          const pctV=totSG>0?Math.round(vSG/totSG*100):0;
+          const ok=vSG===totSG&&tSG===totSG;
+          const vOk=vSG===totSG;
+          return`<div style="background:${ok?'#00C48C10':vOk?'#3B82F610':'var(--surface2)'};border:1px solid ${ok?'#00C48C30':vOk?'#3B82F630':'var(--border)'};border-radius:8px;padding:8px 10px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+              <span style="font-size:13px">${sg.ic}</span>
+              <span style="font-size:10px;font-weight:700;color:${ok?'var(--green)':sg.c}">${sg.key}</span>
+              ${ok?'<span style="margin-left:auto;font-size:11px">✅</span>':vOk?'<span style="margin-left:auto;font-size:10px;color:var(--amber)">V✓</span>':''}
+            </div>
+            <div style="background:var(--border);border-radius:99px;height:3px;overflow:hidden">
+              <div style="width:${pctV}%;height:100%;background:${ok?'var(--green)':sg.c};transition:width .3s"></div>
+            </div>
+            <div style="font-size:9px;color:var(--text4);margin-top:3px">V:${vSG}/${totSG} · T:${tSG}/${totSG}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`:'';
 
   SUPERGRUPOS.forEach(sg=>{
     const subgruposPresentes=sg.grupos.filter(g=>gruposUsados.has(g));
@@ -3074,6 +3106,7 @@ async function carregarChecklistLib(ocId){
       </div>
     </div>
     ${faseV?`<div style="background:#2563EB12;border:1px solid #2563EB30;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--blue)">📋 <strong>Fase 1 — Diagnóstico:</strong> Marque V em cada item verificado. Após verificar todos, a fase T será liberada.</div>`:faseT?`<div style="background:#F59E0B12;border:1px solid #F59E0B30;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--amber)">🔧 <strong>Fase 2 — Qualificação:</strong> Marque T nos itens que foram efetivamente trocados/executados. N/A para itens que não se aplicam.</div>`:''}
+    ${painelSetores}
     ${gruposHTML}
     ${btnSubmeter}
     <button onclick="closeM('modal-22-cklib');document.getElementById('modal-22-status').style.display='flex'" class="btn-sec" style="width:100%;margin-top:8px">← Voltar</button>`;
