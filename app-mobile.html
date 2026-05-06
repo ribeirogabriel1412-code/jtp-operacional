@@ -828,20 +828,34 @@ const ZONAS=[
   {z:5,ic:'⑤',nome:'Zona 5',cor:'#EF4444'},
 ];
 
-async function telaPatioMan(){
+let _patioData=hoje(),_patioEscalas=[];
+
+async function telaPatioMan(dataFiltro=null){
   const gid=getGid();
-  const data=hoje();
+  if(dataFiltro) _patioData=dataFiltro;
   setMain('<div class="loading"><div class="sp"></div></div>');
 
-  const{data:pos}=await sb.from('posicionamento_patio').select('*')
-    .eq('garagem_id',gid).eq('data',data).order('zona').order('registrado_em',{ascending:false});
+  // Busca escalas disponíveis (últimos 3 dias + hoje + amanhã)
+  const base=new Date();
+  const datas=[];
+  for(let i=-2;i<=2;i++){const d=new Date(base);d.setDate(d.getDate()+i);datas.push(d.toISOString().split('T')[0]);}
+  const{data:escalasDisp}=await sb.from('soltura_2_10').select('data,numero_relatorio')
+    .eq('garagem_id',gid).in('data',datas);
+  _patioEscalas=[...new Set((escalasDisp||[]).map(r=>r.data))].sort().reverse();
 
-  // Mapa prefixo → posição (última)
+  // Se a data selecionada não tem escala, usa a mais recente
+  if(_patioEscalas.length&&!_patioEscalas.includes(_patioData)){
+    _patioData=_patioEscalas[0];
+  }
+
+  // Busca posicionamentos do dia selecionado
+  const{data:pos}=await sb.from('posicionamento_patio').select('*')
+    .eq('garagem_id',gid).eq('data',_patioData).order('zona').order('registrado_em',{ascending:false});
+
   const posMap={};
   (pos||[]).forEach(p=>{if(!posMap[p.prefixo]) posMap[p.prefixo]=p;});
   const total=Object.keys(posMap).length;
 
-  // Conta por zona
   const porZona={};
   Object.values(posMap).forEach(p=>{
     if(!porZona[p.zona]) porZona[p.zona]=[];
@@ -871,18 +885,29 @@ async function telaPatioMan(){
     </div>`;
   }).join('');
 
+  // Chips de seleção de escala
+  const escalasHtml=_patioEscalas.length
+    ?`<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none">
+        ${_patioEscalas.map(d=>{
+          const ativo=d===_patioData;
+          const dFmt=new Date(d+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+          return`<button onclick="telaPatioMan('${d}')" style="flex-shrink:0;padding:7px 14px;border-radius:20px;border:1px solid ${ativo?'var(--blue)':'var(--border)'};background:${ativo?'#2563EB18':'transparent'};color:${ativo?'var(--blue)':'var(--text3)'};font-size:12px;font-weight:${ativo?'700':'500'};font-family:inherit;cursor:pointer;white-space:nowrap">${d===hoje()?'Hoje · ':''}${dFmt}</button>`;
+        }).join('')}
+      </div>`
+    :`<div style="font-size:12px;color:var(--text3)">Nenhuma escala encontrada</div>`;
+
   render(`
-    <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-      <div>
+    <div style="padding:14px 14px 0">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div style="font-weight:800;font-size:17px">🚗 Pátio</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">${total} veículo(s) posicionados hoje</div>
+        <button onclick="telaPatioMan('${_patioData}')" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>
       </div>
-      <button onclick="telaPatioMan()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>
+      ${escalasHtml}
+      <div style="font-size:11px;color:var(--text3);margin-top:8px">${total} veículo(s) posicionados · ${new Date(_patioData+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'})}</div>
     </div>
-    ${zonaCards}
+    ${zonaCards||`<div class="empty" style="padding-top:24px"><div class="empty-ic">🚗</div><div style="font-weight:700;font-size:15px;margin-bottom:8px">Nenhum posicionamento hoje</div><div style="font-size:13px">Use o + para registrar.</div></div>`}
   `);
 
-  // FAB para registrar posição
   document.getElementById('content').insertAdjacentHTML('beforeend',
     `<button class="fab" onclick="abrirRegistroPatio()">＋</button>`);
 }
@@ -942,6 +967,7 @@ async function salvarPosicaoPatio(){
   const vaga=document.getElementById('mp-vaga')?.value?.trim().toUpperCase()||null;
   const obs=document.getElementById('mp-obs')?.value?.trim()||null;
   const gid=getGid();
+  const data=_patioData||hoje();
 
   if(!prefixo){toast('Informe o prefixo','err');return;}
   if(!zona){toast('Selecione a zona','err');return;}
@@ -949,23 +975,23 @@ async function salvarPosicaoPatio(){
   const{data:vei}=await sb.from('frota').select('id').eq('garagem_id',gid).eq('prefixo',prefixo).single();
   const agora=new Date().toISOString();
 
-  // 1. Grava no posicionamento_patio (log histórico)
+  // 1. Grava log histórico
   const{error}=await sb.from('posicionamento_patio').insert({
-    garagem_id:gid, prefixo, veiculo_id:vei?.id||null,
-    zona, vaga, status:'estacionado', data:hoje(),
-    registrado_por:S.perfil?.nome, observacao:obs,
+    garagem_id:gid,prefixo,veiculo_id:vei?.id||null,
+    zona,vaga,status:'estacionado',data,
+    registrado_por:S.perfil?.nome,observacao:obs,
   });
   if(error){toast('Erro: '+error.message,'err');return;}
 
-  // 2. Atualiza soltura_2_10 — zona e nome do manobrista (dinâmico)
+  // 2. Atualiza soltura_2_10 com zona e manobrista
   await sb.from('soltura_2_10')
-    .update({zona_patio:zona, manobrista:S.perfil?.nome, posicionado_em:agora})
-    .eq('garagem_id',gid).eq('prefixo',prefixo).eq('data',hoje());
+    .update({zona_patio:zona,manobrista:S.perfil?.nome,posicionado_em:agora})
+    .eq('garagem_id',gid).eq('prefixo',prefixo).eq('data',data);
 
   closeSheet(true);
   const zonaObj=ZONAS.find(z=>z.z===zona);
   toast(`✅ ${prefixo} → ${zonaObj?.nome||'Zona '+zona}${vaga?' · '+vaga:''}`);
-  telaPatioMan();
+  telaPatioMan(data);
 }
 
 // ── MAPA DE TELAS ──────────────────────────────────────────
