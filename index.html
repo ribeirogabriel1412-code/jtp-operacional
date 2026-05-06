@@ -4370,10 +4370,125 @@ async function confirmarValidacaoPatio(id, aprovado){
 }
 
 async function renderFerrLav(aba='painel'){
+  const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const data=hoje();
+
+  const tabs=`<div class="filtros">
+    <button class="filtro-btn${aba==='painel'?' active':''}" onclick="renderFerrLav('painel')">📋 Painel</button>
+    ${isEscalante()?`<button class="filtro-btn${aba==='importar'?' active':''}" onclick="renderFerrLav('importar')">📤 Importar Programação</button>`:''}
+    <button class="filtro-btn${aba==='cronograma'?' active':''}" onclick="renderFerrLav('cronograma')">🕐 Cronograma</button>
+  </div>`;
+
+  setMain(`<div class="loading"><div class="spinner"></div></div>`);
+
+  if(aba==='importar'){
+    setMain(`${back}${tabs}
+      <div style="max-width:540px">
+        ${secTitle('📤','Importar Programação de Lavagem')}
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+          <div style="font-size:13px;color:var(--text2);margin-bottom:14px">Importe um arquivo Excel com as colunas: <strong>PREFIXO</strong> e <strong>TIPO LAVAGEM</strong></div>
+          <input type="file" id="lav-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="previewLavagem(this)">
+          <button onclick="document.getElementById('lav-file').click()" class="btn-add">📎 Selecionar Arquivo</button>
+        </div>
+        <div id="preview-lav"></div>
+      </div>`);
+    return;
+  }
+
+  if(aba==='cronograma'){
+    const{data:crono}=await sb.from('cronograma_lavagem').select('*').eq('garagem_id',gid).order('hora_inicio');
+    const cronoRows=(crono||[]).map(c=>`<tr>
+      <td>${c.hora_inicio}–${c.hora_fim}</td><td>${CARGOS[c.cargo]||c.cargo}</td>
+      <td>${c.turno}</td>
+      <td>S:${c.meta_simples} P:${c.meta_pesada} E:${c.meta_escovao}</td>
+      <td><button onclick="excluirCrono('${c.id}')" class="btn-sm" style="color:var(--red)">✕</button></td>
+    </tr>`).join('');
+    setMain(`${back}${tabs}
+      ${secTitle('🕐','Cronograma de Lavagem',`<button onclick="abrirModalCronograma()" class="btn-add">+ Faixa</button>`)}
+      <div class="tbl-wrap"><table><thead><tr><th>Faixa</th><th>Cargo</th><th>Turno</th><th>Metas</th><th></th></tr></thead>
+      <tbody>${cronoRows||`<tr><td colspan="5" style="text-align:center;color:var(--text3)">Nenhuma faixa configurada</td></tr>`}</tbody>
+      </table></div>`);
+    return;
+  }
+
+  // PAINEL
+  const{data:lista}=await sb.from('checklist_lavagem').select('*').eq('garagem_id',gid).eq('data',data).order('prefixo');
+  const total=(lista||[]).length;
+  const exec=(lista||[]).filter(r=>r.status==='executado').length;
+  const nReal=(lista||[]).filter(r=>r.status==='nao_realizado').length;
+  const valid=(lista||[]).filter(r=>r.validado_patio).length;
+  const pend=total-exec-nReal;
+
+  // Agrupa por tipo de lavagem para o cronograma
+  const{data:crono}=await sb.from('cronograma_lavagem').select('*').eq('garagem_id',gid).order('hora_inicio');
+  const agora=new Date();
+  const cronoRows=(crono||[]).map(c=>{
+    const veics=(lista||[]).filter(l=>l.tipo_lavagem===c.cargo||true);
+    const execT=veics.filter(v=>v.status==='executado').length;
+    const hi=c.hora_inicio.split(':');
+    const hf=c.hora_fim.split(':');
+    const inicio=new Date();inicio.setHours(+hi[0],+hi[1],0);
+    const fim=new Date();fim.setHours(+hf[0],+hf[1],0);
+    const ativo=agora>=inicio&&agora<=fim;
+    return`<tr style="background:${ativo?'#2563EB08':''}">
+      <td style="font-family:'DM Mono',monospace;font-size:11px;color:${ativo?'var(--blue)':'var(--text3)'}">${c.hora_inicio}–${c.hora_fim}</td>
+      <td style="font-size:12px">${CARGOS[c.cargo]||c.cargo}</td>
+      <td style="font-size:11px;text-align:center">${execT}</td>
+      <td style="font-size:11px;text-align:center">${c.meta_simples+c.meta_pesada+c.meta_escovao}</td>
+      <td>${ativo?'<span class="badge b-linha" style="font-size:9px">ATIVO</span>':''}</td>
+    </tr>`;
+  }).join('');
+
+  const veicRows=(lista||[]).map(r=>{
+    const cor=r.status==='executado'?'var(--green)':r.status==='nao_realizado'?'var(--red)':'var(--text3)';
+    const btnCls=r.status==='executado'?'sb-sim':r.status==='nao_realizado'?'sb-nao':'sb-pend';
+    const btnTxt=r.status==='executado'?`✅ ${r.hora_executado?new Date(r.hora_executado).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'OK'}`:r.status==='nao_realizado'?'❌ N/R':'○ Marcar';
+    const validBadge=r.validado_patio?`<span style="color:var(--green);font-size:11px;font-weight:700">✅ Validado</span>`
+      :r.status==='executado'&&isLiderPatio()?`<button onclick="validarLavagemPatio('${r.id}','${r.prefixo}')" style="background:#2563EB18;border:1px solid #2563EB40;color:var(--blue);border-radius:6px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Validar ✓</button>`
+      :r.status==='executado'?`<span style="color:var(--amber);font-size:11px">⏳ Ag. validação</span>`:'';
+    return`<tr style="background:${r.validado_patio?'#00C48C05':r.status==='executado'?'#00C48C03':r.status==='nao_realizado'?'#EF444405':''}">
+      <td><span style="font-family:'DM Mono',monospace;font-weight:700">${r.prefixo}</span></td>
+      <td style="font-size:12px;color:var(--text3)">${r.tipo_lavagem||'Simples'}</td>
+      <td><button class="status-btn ${btnCls}" onclick="marcarLavagem('${r.id}','${r.prefixo}')">${btnTxt}</button></td>
+      <td>${validBadge}</td>
+      <td style="color:var(--text4);font-size:11px">${r.executado_por||''}</td>
+    </tr>`;
+  }).join('');
+
+  setMain(`
+    ${back}${tabs}
+    ${secTitle('🧼','3.2 — Checklist de Lavagem')}
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
+      <div class="kpi neu"><div class="kpi-label">Total</div><div class="kpi-val">${total}</div><div class="kpi-meta">programados</div></div>
+      <div class="kpi ${exec===total&&total>0?'ok':'neu'}"><div class="kpi-label">Lavados</div><div class="kpi-val" style="color:var(--green)">${exec}</div><div class="kpi-meta">${total>0?Math.round(exec/total*100):0}%</div></div>
+      <div class="kpi ${valid===exec&&exec>0?'ok':'neu'}"><div class="kpi-label">Validados</div><div class="kpi-val" style="color:var(--blue)">${valid}</div><div class="kpi-meta">pelo Líder de Pátio</div></div>
+      <div class="kpi ${nReal>0?'nok':'neu'}"><div class="kpi-label">Não Realiz.</div><div class="kpi-val" style="color:${nReal>0?'var(--red)':'var(--text3)'}">${nReal}</div><div class="kpi-meta">veículos</div></div>
+    </div>
+    ${crono?.length?`<div class="tbl-wrap" style="margin-bottom:16px">
+      <div class="tbl-head"><div style="font-size:13px;font-weight:700">🕐 Cronograma Hora a Hora</div></div>
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Faixa</th><th>Cargo</th><th>Realizado</th><th>Meta</th><th></th></tr></thead>
+        <tbody>${cronoRows}</tbody>
+      </table></div>
+    </div>`:''}
+    ${total===0
+      ?`<div class="empty"><div style="font-size:40px">🧼</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Nenhuma programação importada</div>${isEscalante()?`<button class="btn-add" onclick="renderFerrLav('importar')">📤 Importar Programação</button>`:''}</div>`
+      :`<div class="tbl-wrap">
+        <div class="tbl-head">
+          <div style="font-size:13px;font-weight:700">${total} veículos programados</div>
+          ${isEscalante()?`<button onclick="renderFerrLav('importar')" class="btn-sm">📤 Nova programação</button>`:''}
+        </div>
+        <div style="overflow-x:auto"><table>
+          <thead><tr><th>Prefixo</th><th>Tipo</th><th>Status</th><th>Validação</th><th>Executado por</th></tr></thead>
+          <tbody>${veicRows}</tbody>
+        </table></div>
+      </div>`}
+  `);
+}
 
 function marcarLavagem(id, prefixo){
-  const sheet=`
-    <div style="font-size:17px;font-weight:700;margin-bottom:16px">🧼 Marcar Lavagem — <span style="font-family:'DM Mono',monospace;color:var(--blue)">${prefixo}</span></div>
+  const sheet=` <span style="font-family:'DM Mono',monospace;color:var(--blue)">${prefixo}</span></div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
       <button onclick="confirmarLavagemItem('${id}','executado')" style="background:#00C48C18;border:1px solid #00C48C40;color:var(--green);border-radius:10px;padding:14px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer">✅ Lavagem Concluída</button>
       <button onclick="confirmarLavagemItem('${id}','nao_realizado')" style="background:#EF444418;border:1px solid #EF444440;color:var(--red);border-radius:10px;padding:14px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer">❌ Não Realizado</button>
