@@ -256,6 +256,7 @@ tr:hover td{background:#0F172A80}
       <button class="nav-btn admin-only" onclick="navTo('admin',this)" style="display:none"><span>⚙️</span> Gestão de Usuários</button>
       <div class="nav-section dir-only" style="display:none">Gestão</div>
       <button class="nav-btn dir-only" onclick="navTo('diretoria',this)" style="display:none"><span>🏢</span> Diretoria</button>
+      <button class="nav-btn" id="btn-supervisao" onclick="navTo('supervisao',this)" style="display:none"><span>📊</span> Supervisão</button>
 
       <div class="sidebar-bottom">
         <div style="color:var(--text4);font-size:9px;letter-spacing:2px;text-transform:uppercase">Turno Ativo</div>
@@ -755,6 +756,13 @@ async function doLogin(){
   const btnLavLavador=document.getElementById('btn-lav-lavador');
   if(btnLavLavador) btnLavLavador.style.display=isLavador()?'block':'none';
 
+  // Botão Supervisão — diretoria, gerente, operações seguras
+  const btnSup=document.getElementById('btn-supervisao');
+  if(btnSup){
+    const temSup=['diretoria','gerente_garagem','operacoes_seguras'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
+    btnSup.style.display=temSup?'flex':'none';
+  }
+
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').classList.add('on');
 
@@ -779,7 +787,7 @@ function navTo(tela,el){
   S.tela=tela;S.subtela=null;
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   if(el) el.classList.add('active');
-  const map={painel:renderPainel,frota:renderFrota,indicadores:renderIndicadores,manutencao:renderManutencao,almoxarifado:renderAlmoxarifado,diretoria:renderDiretoria,admin:renderAdmin,rotina:()=>renderFerrRotina(S.perfil?.cargo)};
+  const map={painel:renderPainel,frota:renderFrota,indicadores:renderIndicadores,manutencao:renderManutencao,almoxarifado:renderAlmoxarifado,diretoria:renderDiretoria,admin:renderAdmin,rotina:()=>renderFerrRotina(S.perfil?.cargo),supervisao:renderSupervisao};
   if(map[tela]) map[tela]();
 }
 
@@ -1159,6 +1167,253 @@ function renderManutencao(){setMain(`${secTitle('🔧','Ordens de Serviço')}<di
 function renderAlmoxarifado(){setMain(`${secTitle('📦','Almoxarifado')}<div class="empty"><div style="font-size:40px">📦</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Em desenvolvimento</div></div><div class="info-blue info-banner">🔗 Fase 2: estoque, movimentações, inventário, Praxio/SAP</div>`)}
 
 // ADMIN — GESTÃO DE USUÁRIOS
+// ══════════════════════════════════════════════════════════════
+// SUPERVISÃO — painel consolidado por garagem
+// ══════════════════════════════════════════════════════════════
+async function renderSupervisao(gidFiltro=null){
+  const isDiret=['diretoria','operacoes_seguras'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
+  const gid=gidFiltro||(isDiret?(S.garagens[0]?.id):S.perfil?.garagem_id)||(S.garagens[0]?.id);
+  const garagem=S.garagens.find(g=>g.id===gid);
+  const data=hoje();
+  const turno=S.turno||'dia';
+  const agora=new Date();
+
+  setMain(`<div class="loading"><div class="spinner"></div></div>`);
+
+  // Seletor de garagem (diretoria/op.seguras veem todas)
+  const seletorGaragem=isDiret&&S.garagens.length>1
+    ?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+        ${S.garagens.map(g=>`<button onclick="renderSupervisao('${g.id}')"
+          style="padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1px solid ${g.id===gid?'var(--blue)':'var(--border)'};background:${g.id===gid?'var(--blue-d)':'transparent'};color:${g.id===gid?'#fff':'var(--text3)'}">
+          📍 ${g.nome}
+        </button>`).join('')}
+      </div>`:'';
+
+  // Busca todos os dados em paralelo
+  const[
+    {data:frota},
+    {data:ocsAbertas},
+    {data:ocsLib},
+    {data:soltura},
+    {data:lavagem},
+    {data:fechPCM},
+  ]=await Promise.all([
+    sb.from('frota').select('*').eq('garagem_id',gid),
+    sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado'),
+    sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).eq('status','liberado')
+      .gte('hora_liberacao',new Date(agora.getFullYear(),agora.getMonth(),agora.getDate()).toISOString()),
+    sb.from('soltura_2_10').select('*').eq('garagem_id',gid).eq('data',data),
+    sb.from('checklist_lavagem').select('*').eq('garagem_id',gid).eq('data',data),
+    sb.from('fechamento_turno_pcm').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno).order('created_at',{ascending:false}).limit(1),
+  ]);
+
+  // ── KPIs FROTA ────────────────────────────────────────────
+  const totalFrota=(frota||[]).length;
+  const disponiveis=(frota||[]).filter(v=>v.status==='disponivel').length;
+  const emLinha=(frota||[]).filter(v=>v.status==='em_linha').length;
+  const emManut=(frota||[]).filter(v=>v.status==='manutencao'||v.status==='aguardando_peca').length;
+  const sinistros=(frota||[]).filter(v=>v.status==='sinistro').length;
+  const pctDisp=totalFrota>0?(((disponiveis+emLinha)/totalFrota)*100).toFixed(1):0;
+  const dispOk=parseFloat(pctDisp)>=95;
+
+  // ── KPIs PCM ─────────────────────────────────────────────
+  const ocsA=(ocsAbertas||[]).length;
+  const ocsF=(ocsLib||[]).length;
+  const agPeca=(ocsAbertas||[]).filter(o=>o.status==='aguardando_peca').length;
+  const prevVencida=(ocsAbertas||[]).filter(o=>o.hora_previsao&&new Date(o.hora_previsao)<agora).length;
+  const tempos=(ocsLib||[]).filter(o=>o.hora_entrada&&o.hora_liberacao)
+    .map(o=>(new Date(o.hora_liberacao)-new Date(o.hora_entrada))/3600000);
+  const mttr=tempos.length>0?(tempos.reduce((a,b)=>a+b,0)/tempos.length).toFixed(1):null;
+
+  // ── KPIs LAVAGEM ─────────────────────────────────────────
+  const lavTot=(lavagem||[]).length;
+  const lavExec=(lavagem||[]).filter(l=>l.status==='executado').length;
+  const lavValid=(lavagem||[]).filter(l=>l.validado_patio).length;
+  const lavSimp=(lavagem||[]).filter(l=>l.tipo_lavagem==='simples');
+  const lavPes=(lavagem||[]).filter(l=>l.tipo_lavagem==='pesada');
+  const pctLav=lavTot>0?Math.round(lavExec/lavTot*100):0;
+
+  // ── KPIs SOLTURA ─────────────────────────────────────────
+  const sTot=(soltura||[]).length;
+  const sSaiu=(soltura||[]).filter(r=>r.saiu===true).length;
+  const sNao=(soltura||[]).filter(r=>r.saiu===false).length;
+  const sPend=(soltura||[]).filter(r=>r.saiu===null||r.saiu===undefined).length;
+  const pctSoltura=sTot>0?((sSaiu/sTot)*100).toFixed(1):null;
+  const soltOk=pctSoltura!==null&&parseFloat(pctSoltura)>=99.5;
+
+  // ── LISTA INDISPONÍVEIS ───────────────────────────────────
+  const indispon=(ocsAbertas||[]).sort((a,b)=>new Date(a.hora_entrada)-new Date(b.hora_entrada));
+  const TIPO_IC={preventiva_leve:'🟡',preventiva_pesada:'🟣',corretiva:'🔴',sinistro:'⚠️',eletrica:'⚡',funilaria:'🔨',pneu:'⭕'};
+  const STATUS_C={em_manutencao:'var(--amber)',aguardando_peca:'var(--red)',aguardando_aprovacao:'#8B5CF6'};
+  const indispRows=indispon.map(o=>{
+    const min=Math.round((agora-new Date(o.hora_entrada))/60000);
+    const h=Math.floor(min/60),m=min%60;
+    const tempo=h>0?`${h}h${m}min`:`${m}min`;
+    const venc=o.hora_previsao&&new Date(o.hora_previsao)<agora;
+    return`<tr style="border-bottom:1px solid var(--border2)">
+      <td style="padding:8px 12px;font-family:'DM Mono',monospace;font-weight:700">${o.prefixo}</td>
+      <td style="padding:8px 12px;font-size:11px">${TIPO_IC[o.tipo]||'🔧'} ${o.tipo?.replace('_',' ')||'—'}</td>
+      <td style="padding:8px 12px"><span style="color:${STATUS_C[o.status]||'var(--amber)'};font-size:11px;font-weight:700">${o.status?.replace('_',' ')||'—'}</span></td>
+      <td style="padding:8px 12px;font-family:'DM Mono',monospace;font-size:11px">${tempo}</td>
+      <td style="padding:8px 12px;font-size:11px">${venc?`<span style="color:var(--red)">🔴 VENCIDA</span>`:o.hora_previsao?new Date(o.hora_previsao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—'}</td>
+      <td style="padding:8px 12px;font-size:11px;color:var(--text3)">${o.mecanico||'—'}</td>
+    </tr>`;
+  }).join('');
+
+  setMain(`
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+      <div>
+        <div style="font-size:20px;font-weight:800">📊 Supervisão</div>
+        <div style="color:var(--text3);font-size:12px;margin-top:4px">${garagem?.nome||'—'} · ${new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',timeZone:'America/Manaus'})} · Turno ${turno==='dia'?'☀️ Dia':'🌙 Noite'}</div>
+        ${seletorGaragem}
+      </div>
+      <button onclick="renderSupervisao('${gid}')" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:8px 14px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">🔄 Atualizar</button>
+    </div>
+
+    <!-- 4 BLOCOS PRINCIPAIS -->
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:20px">
+
+      <!-- FROTA -->
+      <div style="background:var(--surface);border:1px solid ${dispOk?'#00C48C40':'#EF444440'};border-left:3px solid ${dispOk?'var(--green)':'var(--red)'};border-radius:12px;padding:16px 18px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <span style="font-size:16px">🚌</span>
+          <div style="font-weight:700;font-size:13px">Disponibilidade da Frota</div>
+          <div style="margin-left:auto;font-family:'DM Mono',monospace;font-size:20px;font-weight:700;color:${dispOk?'var(--green)':'var(--red)'}">${pctDisp}%</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center">
+          <div style="background:#00C48C12;border:1px solid #00C48C30;border-radius:8px;padding:8px 4px">
+            <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--green)">${disponiveis+emLinha}</div>
+            <div style="font-size:9px;color:var(--text3);font-weight:700">OPER.</div>
+          </div>
+          <div style="background:#F59E0B12;border:1px solid #F59E0B30;border-radius:8px;padding:8px 4px">
+            <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--amber)">${emManut}</div>
+            <div style="font-size:9px;color:var(--text3);font-weight:700">MANUT.</div>
+          </div>
+          <div style="background:#EF444412;border:1px solid #EF444430;border-radius:8px;padding:8px 4px">
+            <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--red)">${agPeca}</div>
+            <div style="font-size:9px;color:var(--text3);font-weight:700">AG.PEÇA</div>
+          </div>
+          <div style="background:#47556912;border:1px solid #47556930;border-radius:8px;padding:8px 4px">
+            <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--text3)">${sinistros}</div>
+            <div style="font-size:9px;color:var(--text3);font-weight:700">SINISTRO</div>
+          </div>
+        </div>
+        <div style="background:var(--border);border-radius:99px;height:4px;overflow:hidden;margin-top:10px">
+          <div style="width:${pctDisp}%;height:100%;background:${dispOk?'var(--green)':'var(--red)'}"></div>
+        </div>
+        <div style="font-size:10px;color:var(--text4);margin-top:4px">Meta: 95% · Total: ${totalFrota} veículos</div>
+      </div>
+
+      <!-- PCM -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--blue);border-radius:12px;padding:16px 18px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <span style="font-size:16px">🔧</span>
+          <div style="font-weight:700;font-size:13px">Manutenção — Turno</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center;margin-bottom:10px">
+          <div style="background:#2563EB12;border:1px solid #2563EB30;border-radius:8px;padding:8px 4px">
+            <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--blue)">${ocsA}</div>
+            <div style="font-size:9px;color:var(--text3);font-weight:700">ABERTAS</div>
+          </div>
+          <div style="background:#00C48C12;border:1px solid #00C48C30;border-radius:8px;padding:8px 4px">
+            <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--green)">${ocsF}</div>
+            <div style="font-size:9px;color:var(--text3);font-weight:700">LIBERADAS</div>
+          </div>
+          <div style="background:${prevVencida>0?'#EF444412':'#00C48C12'};border:1px solid ${prevVencida>0?'#EF444430':'#00C48C30'};border-radius:8px;padding:8px 4px">
+            <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:${prevVencida>0?'var(--red)':'var(--green)'}">${prevVencida}</div>
+            <div style="font-size:9px;color:var(--text3);font-weight:700">VENCIDAS</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;font-size:11px;color:var(--text3)">
+          <span>MTTR: <strong style="color:var(--text);font-family:'DM Mono',monospace">${mttr?mttr+'h':'—'}</strong></span>
+          <span>Ag.Peça: <strong style="color:${agPeca>0?'var(--red)':'var(--text)'}">  ${agPeca}</strong></span>
+        </div>
+      </div>
+
+      <!-- LAVAGEM -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid #3B82F6;border-radius:12px;padding:16px 18px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <span style="font-size:16px">🚿</span>
+          <div style="font-weight:700;font-size:13px">Lavagem do Dia</div>
+          <div style="margin-left:auto;font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:${pctLav>=90?'var(--green)':'#3B82F6'}">${pctLav}%</div>
+        </div>
+        ${lavTot===0
+          ?`<div style="color:var(--text4);font-size:12px;text-align:center;padding:12px">Sem programação importada para hoje</div>`
+          :`<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+            <div style="background:#3B82F612;border:1px solid #3B82F630;border-radius:8px;padding:8px 10px">
+              <div style="font-size:9px;color:#3B82F6;font-weight:700;margin-bottom:2px">💧 SIMPLES</div>
+              <div style="font-family:'DM Mono',monospace;font-weight:700">${lavSimp.filter(l=>l.status==='executado').length}/${lavSimp.length}</div>
+              <div style="font-size:9px;color:var(--text4)">${lavSimp.filter(l=>l.validado_patio).length} validados</div>
+            </div>
+            <div style="background:#10B98112;border:1px solid #10B98130;border-radius:8px;padding:8px 10px">
+              <div style="font-size:9px;color:#10B981;font-weight:700;margin-bottom:2px">🔵 PESADA</div>
+              <div style="font-family:'DM Mono',monospace;font-weight:700">${lavPes.filter(l=>l.status==='executado').length}/${lavPes.length}</div>
+              <div style="font-size:9px;color:var(--text4)">${lavPes.filter(l=>l.validado_patio).length} validados</div>
+            </div>
+          </div>
+          <div style="background:var(--border);border-radius:99px;height:4px;overflow:hidden">
+            <div style="width:${pctLav}%;height:100%;background:#3B82F6"></div>
+          </div>
+          <div style="font-size:10px;color:var(--text4);margin-top:4px">${lavValid} de ${lavExec} executados validados pelo Líder de Pátio</div>`}
+      </div>
+
+      <!-- SOLTURA -->
+      <div style="background:var(--surface);border:1px solid ${soltOk?'#00C48C40':'var(--border)'};border-left:3px solid ${soltOk?'var(--green)':'var(--amber)'};border-radius:12px;padding:16px 18px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <span style="font-size:16px">📋</span>
+          <div style="font-weight:700;font-size:13px">Soltura de Frota — 2.10</div>
+          <div style="margin-left:auto;font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:${soltOk?'var(--green)':'var(--amber)'}">${pctSoltura!==null?pctSoltura+'%':'—'}</div>
+        </div>
+        ${sTot===0
+          ?`<div style="color:var(--text4);font-size:12px;text-align:center;padding:12px">Escala não importada para hoje</div>`
+          :`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center">
+            <div style="background:#00C48C12;border:1px solid #00C48C30;border-radius:8px;padding:8px 4px">
+              <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--green)">${sSaiu}</div>
+              <div style="font-size:9px;color:var(--text3);font-weight:700">SAÍRAM</div>
+            </div>
+            <div style="background:#EF444412;border:1px solid #EF444430;border-radius:8px;padding:8px 4px">
+              <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--red)">${sNao}</div>
+              <div style="font-size:9px;color:var(--text3);font-weight:700">NÃO SAÍRAM</div>
+            </div>
+            <div style="background:#F59E0B12;border:1px solid #F59E0B30;border-radius:8px;padding:8px 4px">
+              <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--amber)">${sPend}</div>
+              <div style="font-size:9px;color:var(--text3);font-weight:700">PENDENTES</div>
+            </div>
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 4px">
+              <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700">${sTot}</div>
+              <div style="font-size:9px;color:var(--text3);font-weight:700">TOTAL</div>
+            </div>
+          </div>
+          <div style="background:var(--border);border-radius:99px;height:4px;overflow:hidden;margin-top:8px">
+            <div style="width:${pctSoltura||0}%;height:100%;background:${soltOk?'var(--green)':'var(--amber)'}"></div>
+          </div>
+          <div style="font-size:10px;color:var(--text4);margin-top:4px">Meta: 99,5%</div>`}
+      </div>
+    </div>
+
+    <!-- INDISPONÍVEIS DETALHADO -->
+    ${ocsA>0?`
+    <div style="font-size:14px;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px">
+      🚌 Veículos Indisponíveis
+      <span style="font-size:11px;color:var(--text3);font-weight:400">${ocsA} veículo(s)</span>
+      ${prevVencida>0?`<span style="background:#EF444418;border:1px solid #EF444430;color:var(--red);border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700">🔴 ${prevVencida} VENCIDA(S)</span>`:''}
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:20px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--surface2)">
+          <th style="padding:8px 12px;text-align:left;color:var(--text3);font-size:10px;font-weight:700;text-transform:uppercase">Prefixo</th>
+          <th style="padding:8px 12px;text-align:left;color:var(--text3);font-size:10px;font-weight:700;text-transform:uppercase">Tipo</th>
+          <th style="padding:8px 12px;text-align:left;color:var(--text3);font-size:10px;font-weight:700;text-transform:uppercase">Status</th>
+          <th style="padding:8px 12px;text-align:left;color:var(--text3);font-size:10px;font-weight:700;text-transform:uppercase">Tempo</th>
+          <th style="padding:8px 12px;text-align:left;color:var(--text3);font-size:10px;font-weight:700;text-transform:uppercase">Previsão</th>
+          <th style="padding:8px 12px;text-align:left;color:var(--text3);font-size:10px;font-weight:700;text-transform:uppercase">Mecânico</th>
+        </tr></thead>
+        <tbody>${indispRows}</tbody>
+      </table>
+    </div>`:'<div style="background:#00C48C12;border:1px solid #00C48C30;border-radius:10px;padding:14px;text-align:center;color:var(--green);font-weight:700;margin-bottom:20px">✅ Nenhum veículo indisponível!</div>'}
+  `);
+}
+
 async function renderAdmin(){
   setMain(`<div class="loading"><div class="spinner"></div> Carregando usuários...</div>`);
   const{data:users}=await sb.from('perfis').select('*,garagens(nome,uf)').order('nome');
