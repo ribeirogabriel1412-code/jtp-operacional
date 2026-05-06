@@ -317,6 +317,7 @@ tr:hover td{background:#0F172A80}
           <option value="lider_suprimentos">Líder de Suprimentos</option>
           <option value="operacoes_seguras">Operações Seguras</option>
           <option value="lider_oficina">Líder de Oficina</option>
+          <option value="lavador">Lavador</option>
           <option value="diretoria">Diretoria</option>
         </select>
       </div>
@@ -572,8 +573,8 @@ const isAdmin=()=>S.perfil?.is_admin;
 const isLavador=()=>cargo()==='lavador';
 // Sobe escala 2.10 e programação de lavagem
 function isEscalante(){return ['lider_operacional','gerente_garagem','diretoria'].includes(cargo())||isAdmin()}
-// Valida saída 2.10 e lavagem
-function isLiderPatio(){return ['lider_patio','gerente_garagem','diretoria'].includes(cargo())||isAdmin()}
+// Valida saída 2.10 e lavagem — usa permissão da ferramenta
+function isLiderPatio(){return podeValidar('ferr-210')||podeExecutar('ferr-210');}
 // Supervisão geral
 function isSupervisao(){return ['diretoria','gerente_garagem','lider_operacional','lider_pcm','assistente_pcm'].includes(cargo())||isAdmin()}
 // Lavador vê programação e faz checklist
@@ -602,28 +603,81 @@ async function carregarReservasDisponiveis(){
 const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',lider_pcm:'Líder PCM',assistente_pcm:'Assistente PCM',almoxarifado:'Almoxarifado',lider_operacional:'Líder Operacional',lider_suprimentos:'Líder de Suprimentos',operacoes_seguras:'Operações Seguras',lider_oficina:'Líder de Oficina',lider_patio:'Líder de Pátio',lavador:'Lavador'};
 
 // ── FERRAMENTAS E PERMISSÕES ──────────────────────────────
+// ── SISTEMA DE PERMISSÕES 3 NÍVEIS: executa / valida / visualiza ──────────
+// Cada ferramenta define papéis padrão por cargo
+// Admin pode customizar no painel de Gestão de Usuários
 const FERRAMENTAS_DEF=[
-  {id:'ferr-210', icon:'📋',nome:'2.10 Soltura de Frota',   padrão:['lider_patio','lider_operacional','gerente_garagem','diretoria','lider_pcm']},
-  {id:'ferr-22',  icon:'🔧',nome:'2.2 Priorização Oficina', padrão:['lider_pcm','assistente_pcm','lider_oficina','gerente_garagem','diretoria']},
-  {id:'ferr-lav', icon:'🧼',nome:'3.2 Checklist Lavagem',   padrão:['lider_patio','lider_operacional','gerente_garagem','diretoria']},
-  {id:'ferr-lav-lavador',icon:'🚿',nome:'Minha Lista de Lavagem',padrão:['lavador']},
-  {id:'ferr-ctrl',icon:'✅',nome:'Controle Soltura',         padrão:['lider_patio','lider_operacional','gerente_garagem','diretoria']},
+  {id:'ferr-210', icon:'📋', nome:'2.10 Soltura de Frota',
+    executa:  ['lider_patio'],
+    valida:   ['lider_patio'],
+    visualiza:['lider_operacional','gerente_garagem','diretoria','lider_pcm','assistente_pcm'],
+  },
+  {id:'ferr-22',  icon:'🔧', nome:'2.2 Priorização Oficina',
+    executa:  ['lider_oficina','lider_pcm','assistente_pcm'],
+    valida:   ['lider_pcm'],
+    visualiza:['gerente_garagem','diretoria','assistente_pcm'],
+  },
+  {id:'ferr-lav', icon:'🧼', nome:'3.2 Checklist Lavagem',
+    executa:  ['lavador'],
+    valida:   ['lider_patio'],
+    visualiza:['lider_operacional','gerente_garagem','diretoria'],
+  },
+  {id:'ferr-lav-lavador', icon:'🚿', nome:'Minha Lista de Lavagem',
+    executa:  ['lavador'],
+    valida:   [],
+    visualiza:[],
+  },
+  {id:'ferr-ctrl', icon:'✅', nome:'Controle Soltura',
+    executa:  ['lider_patio'],
+    valida:   [],
+    visualiza:['lider_operacional','gerente_garagem','diretoria'],
+  },
+  {id:'ferr-211', icon:'🔴', nome:'2.11 Carros Indisponíveis',
+    executa:  [],
+    valida:   [],
+    visualiza:['lider_patio','lider_pcm','assistente_pcm','lider_oficina','lider_operacional','gerente_garagem','diretoria'],
+  },
+  {id:'ferr-212', icon:'📊', nome:'2.12 Indicadores Técnicos',
+    executa:  [],
+    valida:   [],
+    visualiza:['lider_pcm','assistente_pcm','lider_operacional','gerente_garagem','diretoria'],
+  },
 ];
 
-// Carrega permissões do localStorage (admin pode customizar)
-function getPermsFerr(){
-  try{ return JSON.parse(localStorage.getItem('jtp_perms_ferr')||'null')||null; }catch{return null;}
-}
-function setPermsFerr(perms){ localStorage.setItem('jtp_perms_ferr',JSON.stringify(perms)); }
+const PAPEIS=['executa','valida','visualiza'];
+const PAPEL_CFG={
+  executa:  {ic:'▶',l:'Executa', c:'#3B82F6', bg:'#3B82F618', border:'#3B82F640'},
+  valida:   {ic:'✓',l:'Valida',  c:'#F59E0B', bg:'#F59E0B18', border:'#F59E0B40'},
+  visualiza:{ic:'👁',l:'Visualiza',c:'#00C48C',bg:'#00C48C18',border:'#00C48C40'},
+};
 
-function temAcessoFerr(ferrId){
-  if(S.perfil?.is_admin) return true;
-  const cargo=S.perfil?.cargo;
-  const perms=getPermsFerr();
-  if(perms&&perms[ferrId]) return perms[ferrId].includes(cargo);
-  const ferr=FERRAMENTAS_DEF.find(f=>f.id===ferrId);
-  return ferr?.padrão.includes(cargo)||false;
+// Persiste no localStorage — admin pode sobrescrever
+function getPermsFerr(){
+  try{return JSON.parse(localStorage.getItem('jtp_perms_ferr3')||'null')||null;}catch{return null;}
 }
+function setPermsFerr(perms){localStorage.setItem('jtp_perms_ferr3',JSON.stringify(perms));}
+
+// Retorna o papel do cargo na ferramenta: 'executa' | 'valida' | 'visualiza' | null
+function papelFerr(ferrId, cargoOverride){
+  const c=cargoOverride||S.perfil?.cargo;
+  if(S.perfil?.is_admin&&!cargoOverride) return 'executa'; // admin tem tudo
+  const perms=getPermsFerr();
+  const ferr=FERRAMENTAS_DEF.find(f=>f.id===ferrId);
+  if(!ferr) return null;
+  for(const papel of PAPEIS){
+    const lista=perms?.[ferrId]?.[papel]??ferr[papel];
+    if(lista.includes(c)) return papel;
+  }
+  return null;
+}
+
+// Helpers de papel específico
+function podeExecutar(ferrId){const p=papelFerr(ferrId);return p==='executa';}
+function podeValidar(ferrId){const p=papelFerr(ferrId);return p==='executa'||p==='valida';}
+function podeVisualizar(ferrId){return papelFerr(ferrId)!==null;}
+
+// Retrocompatibilidade — temAcessoFerr ainda usado em vários lugares
+function temAcessoFerr(ferrId){return podeVisualizar(ferrId);}
 const ST_CFG={disponivel:{l:'Disponível',cls:'b-disp'},em_linha:{l:'Em Linha',cls:'b-linha'},manutencao:{l:'Manutenção',cls:'b-manut'},aguardando_peca:{l:'Ag. Peça',cls:'b-agpeca'},sinistro:{l:'Sinistro',cls:'b-sinistro'}};
 
 // HELPERS
@@ -1079,30 +1133,41 @@ async function renderAdmin(){
       }).join('')}
     </div>
 
-    <!-- Permissões por ferramenta -->
+    <!-- Permissões 3 níveis por ferramenta -->
     ${secTitle('🔒','Permissões de Ferramentas por Cargo')}
+    <div style="margin-bottom:8px;display:flex;gap:16px;flex-wrap:wrap">
+      ${Object.entries(PAPEL_CFG).map(([,p])=>`
+        <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3)">
+          <div style="width:22px;height:22px;border-radius:5px;border:1px solid ${p.border};background:${p.bg};display:flex;align-items:center;justify-content:center;font-size:11px;color:${p.c};font-weight:700">${p.ic}</div>
+          <span>${p.l}</span>
+        </div>`).join('')}
+      <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3)">
+        <div style="width:22px;height:22px;border-radius:5px;border:1px solid var(--border);background:transparent;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text4)">○</div>
+        <span>Sem acesso</span>
+      </div>
+    </div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:20px">
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:12px">
           <thead>
             <tr style="background:var(--surface2)">
-              <th style="padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-size:11px;white-space:nowrap">Ferramenta</th>
-              ${Object.entries(CARGOS).map(([,l])=>`<th style="padding:8px 6px;text-align:center;border-bottom:1px solid var(--border);color:var(--text3);font-size:10px;white-space:nowrap;min-width:60px">${l.replace('Líder ','L. ').replace('Assistente ','Ass. ').replace('Gerente de ','Ger. ').replace('Operações Seguras','Op. Seg.')}</th>`).join('')}
+              <th style="padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-size:11px;white-space:nowrap;min-width:180px">Ferramenta</th>
+              ${Object.entries(CARGOS).map(([,l])=>`<th style="padding:8px 4px;text-align:center;border-bottom:1px solid var(--border);color:var(--text3);font-size:9px;white-space:nowrap;min-width:54px">${l.replace('Líder de ','L. ').replace('Líder ','L. ').replace('Assistente ','Ass. ').replace('Gerente de Garagem','Ger. Gar.').replace('Operações Seguras','Op. Seg.')}</th>`).join('')}
             </tr>
           </thead>
           <tbody>
             ${FERRAMENTAS_DEF.map(f=>{
               const perms=getPermsFerr();
-              const ativos=perms&&perms[f.id]?perms[f.id]:f.padrão;
               return`<tr style="border-bottom:1px solid var(--border)">
-                <td style="padding:10px 14px;font-weight:600">${f.icon} ${f.nome}</td>
-                ${Object.keys(CARGOS).map(cargo=>{
-                  const tem=ativos.includes(cargo);
-                  return`<td style="text-align:center;padding:6px">
-                    <button onclick="togglePermFerr('${f.id}','${cargo}')"
-                      style="width:28px;height:28px;border-radius:6px;border:1px solid ${tem?'#00C48C40':'var(--border)'};background:${tem?'#00C48C18':'transparent'};cursor:pointer;font-size:14px;transition:all .2s"
-                      title="${CARGOS[cargo]}">
-                      ${tem?'✅':'○'}
+                <td style="padding:10px 14px;font-weight:600;font-size:12px">${f.icon} ${f.nome}</td>
+                ${Object.keys(CARGOS).map(c=>{
+                  const papel=papelFerr(f.id,c);
+                  const pc=papel?PAPEL_CFG[papel]:{ic:'○',l:'Sem acesso',c:'var(--text4)',bg:'transparent',border:'var(--border)'};
+                  // Próximo papel no ciclo: null→visualiza→valida→executa→null
+                  return`<td style="text-align:center;padding:4px">
+                    <button onclick="ciclarPermFerr('${f.id}','${c}')" title="${CARGOS[c]}: ${pc.l}"
+                      style="width:30px;height:28px;border-radius:6px;border:1px solid ${pc.border};background:${pc.bg};cursor:pointer;font-size:12px;color:${pc.c};font-weight:700;transition:all .2s">
+                      ${pc.ic}
                     </button>
                   </td>`;
                 }).join('')}
@@ -1112,7 +1177,7 @@ async function renderAdmin(){
         </table>
       </div>
       <div style="padding:10px 14px;background:var(--surface2);border-top:1px solid var(--border);font-size:11px;color:var(--text3);display:flex;justify-content:space-between;align-items:center">
-        <span>✅ = acesso permitido · ○ = sem acesso · Admin sempre tem acesso total</span>
+        <span>Clique para ciclar: ○ → 👁 Visualiza → ✓ Valida → ▶ Executa → ○ · Admin sempre tem acesso total</span>
         <button onclick="resetPermsFerr()" class="btn-sm danger">↺ Restaurar Padrão</button>
       </div>
     </div>
@@ -1122,19 +1187,37 @@ async function renderAdmin(){
   `);
 }
 
-function togglePermFerr(ferrId, cargo){
-  const perms=getPermsFerr()||Object.fromEntries(FERRAMENTAS_DEF.map(f=>[f.id,[...f.padrão]]));
-  if(!perms[ferrId]) perms[ferrId]=[...FERRAMENTAS_DEF.find(f=>f.id===ferrId)?.padrão||[]];
-  const idx=perms[ferrId].indexOf(cargo);
-  if(idx>=0) perms[ferrId].splice(idx,1);
-  else perms[ferrId].push(cargo);
+// Cicla o papel de um cargo em uma ferramenta: sem acesso → visualiza → valida → executa → sem acesso
+function ciclarPermFerr(ferrId, cargo){
+  const ferr=FERRAMENTAS_DEF.find(f=>f.id===ferrId);
+  if(!ferr) return;
+  // Carrega permissões customizadas ou usa padrão
+  const perms=getPermsFerr()||{};
+  if(!perms[ferrId]){
+    // Inicializa com padrão
+    perms[ferrId]={executa:[...ferr.executa],valida:[...ferr.valida],visualiza:[...ferr.visualiza]};
+  }
+  // Descobre papel atual
+  let papelAtual=null;
+  for(const p of PAPEIS){
+    if((perms[ferrId][p]||[]).includes(cargo)){papelAtual=p;break;}
+  }
+  // Remove de todos os papéis
+  PAPEIS.forEach(p=>{
+    if(perms[ferrId][p]) perms[ferrId][p]=perms[ferrId][p].filter(c=>c!==cargo);
+  });
+  // Cicla para próximo papel
+  const ciclo=[null,'visualiza','valida','executa'];
+  const idx=ciclo.indexOf(papelAtual);
+  const proximo=ciclo[(idx+1)%ciclo.length];
+  if(proximo) perms[ferrId][proximo].push(cargo);
   setPermsFerr(perms);
   renderAdmin();
 }
 
 function resetPermsFerr(){
   if(!confirm('Restaurar todas as permissões para o padrão?')) return;
-  localStorage.removeItem('jtp_perms_ferr');
+  localStorage.removeItem('jtp_perms_ferr3');
   toast('✅ Permissões restauradas para o padrão!');
   renderAdmin();
 }
@@ -2698,8 +2781,8 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
 }
 
 // ── CHECKLIST DE LIBERAÇÃO ────────────────────────────────
-const isLiderOficina=()=>['lider_oficina','gerente_garagem','diretoria'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
-const isPCMLib=()=>['lider_pcm','assistente_pcm','gerente_garagem','diretoria'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
+const isLiderOficina=()=>podeExecutar('ferr-22')||S.perfil?.is_admin;
+const isPCMLib=()=>podeValidar('ferr-22')||S.perfil?.is_admin;
 
 async function verChecklistLib(){
   document.getElementById('modal-22-status').style.display='none';
