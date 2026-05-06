@@ -855,7 +855,33 @@ async function renderPainel(){
 
   const counters=[{l:'Disponíveis',v:disp,c:'#00C48C'},{l:'Em Linha',v:linha,c:'#3B82F6'},{l:'Manutenção',v:manut,c:'#EF4444'}]
     .map(b=>`<div class="fc" style="color:${b.c};background:${b.c}15;border-color:${b.c}30"><span class="fc-val" style="color:${b.c}">${b.v}</span><span class="fc-label">${b.l}</span></div>`).join('');
-  const top=S.frota.slice(0,10).map(v=>`<div class="frota-card" onclick="openModalV('${v.id}','${v.prefixo}','${v.status}')"><div><div class="fp">${v.prefixo}</div><div class="fm">${v.modelo||'—'}</div></div>${badge(v.status)}</div>`).join('');
+  // Busca última lavagem de cada carro para visão rápida
+  const prefixosTop=S.frota.slice(0,10).map(v=>v.prefixo);
+  const{data:ultLavagens}=await sb.from('checklist_lavagem').select('prefixo,tipo_lavagem,data')
+    .eq('garagem_id',gid).in('prefixo',prefixosTop).eq('status','executado')
+    .order('data',{ascending:false});
+  const ultLavMap={};
+  (ultLavagens||[]).forEach(l=>{
+    if(!ultLavMap[l.prefixo]) ultLavMap[l.prefixo]=l;
+  });
+
+  const top=S.frota.slice(0,10).map(v=>{
+    const ult=ultLavMap[v.prefixo];
+    const lavHTML=ult
+      ?`<div style="margin-top:4px;display:flex;align-items:center;gap:4px">
+          <span style="font-size:9px;color:${ult.tipo_lavagem==='pesada'?'#10B981':'#3B82F6'};font-weight:700">${ult.tipo_lavagem==='pesada'?'🔵':'💧'}${ult.tipo_lavagem==='pesada'?'Pesada':'Simples'}</span>
+          <span style="font-size:9px;color:var(--text4)">${new Date(ult.data+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</span>
+        </div>`
+      :`<div style="margin-top:4px;font-size:9px;color:var(--text4)">🚿 Sem registro</div>`;
+    return`<div class="frota-card" onclick="openModalV('${v.id}','${v.prefixo}','${v.status}')">
+      <div>
+        <div class="fp">${v.prefixo}</div>
+        <div class="fm">${v.modelo||'—'}</div>
+        ${lavHTML}
+      </div>
+      ${badge(v.status)}
+    </div>`;
+  }).join('');
 
   // Ranking de carros parados
   const rankingHTML=ocs.length===0?'':`
@@ -971,7 +997,33 @@ async function renderFrota(){
   const labels={todos:'Todos',disponivel:'Disponíveis',em_linha:'Em Linha',manutencao:'Manutenção',aguardando_peca:'Ag. Peça',sinistro:'Sinistro'};
   const lista=S.filtroFrota==='todos'?S.frota:S.frota.filter(v=>v.status===S.filtroFrota);
   const filtrosH=filtros.map(f=>{const cnt=f==='todos'?S.frota.length:S.frota.filter(v=>v.status===f).length;return`<button class="filtro-btn${S.filtroFrota===f?' active':''}" onclick="S.filtroFrota='${f}';renderFrota()">${labels[f]} <span style="opacity:.5;font-size:10px">(${cnt})</span></button>`}).join('');
-  const cards=lista.length===0?`<div class="empty" style="grid-column:1/-1"><div style="font-size:40px">🚌</div><div style="color:var(--text2);font-weight:600">Nenhum veículo</div></div>`:lista.map(v=>`<div class="frota-card" onclick="openModalV('${v.id}','${v.prefixo}','${v.status}')"><div><div class="fp">${v.prefixo}</div><div class="fm">${v.modelo||'—'}</div><div style="color:var(--text4);font-size:10px;margin-top:2px;font-family:'DM Mono',monospace">${v.placa||''}</div></div>${badge(v.status)}</div>`).join('');
+  // Busca última lavagem de todos os carros
+  const{data:todasLav}=await sb.from('checklist_lavagem').select('prefixo,tipo_lavagem,data')
+    .eq('garagem_id',S.perfil?.garagem_id||(S.garagens[0]?.id)).eq('status','executado')
+    .order('data',{ascending:false});
+  const lavMapFrota={};
+  (todasLav||[]).forEach(l=>{if(!lavMapFrota[l.prefixo]) lavMapFrota[l.prefixo]=l;});
+
+  const cards=lista.length===0
+    ?`<div class="empty" style="grid-column:1/-1"><div style="font-size:40px">🚌</div><div style="color:var(--text2);font-weight:600">Nenhum veículo</div></div>`
+    :lista.map(v=>{
+      const ult=lavMapFrota[v.prefixo];
+      const lavHTML=ult
+        ?`<div style="margin-top:4px;display:flex;align-items:center;gap:4px">
+            <span style="font-size:9px;color:${ult.tipo_lavagem==='pesada'?'#10B981':'#3B82F6'};font-weight:700">${ult.tipo_lavagem==='pesada'?'🔵 Pesada':'💧 Simples'}</span>
+            <span style="font-size:9px;color:var(--text4)">${new Date(ult.data+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</span>
+          </div>`
+        :`<div style="margin-top:4px;font-size:9px;color:var(--text4)">🚿 Sem registro</div>`;
+      return`<div class="frota-card" onclick="openModalV('${v.id}','${v.prefixo}','${v.status}')">
+        <div>
+          <div class="fp">${v.prefixo}</div>
+          <div class="fm">${v.modelo||'—'}</div>
+          <div style="color:var(--text4);font-size:10px;margin-top:2px;font-family:'DM Mono',monospace">${v.placa||''}</div>
+          ${lavHTML}
+        </div>
+        ${badge(v.status)}
+      </div>`;
+    }).join('');
   setMain(`${secTitle('🚌',`Gestão de Frota — ${S.frota.length} veículo(s)`,`<button class="btn-add" onclick="openModalCad()">+ Novo</button>`)}<div class="filtros">${filtrosH}</div><div class="frota-grid">${cards}</div>`);
 }
 
