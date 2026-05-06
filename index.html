@@ -4216,11 +4216,10 @@ async function renderFerrLav(aba='painel'){
     });
 
     // Metas do dia
-    const META={simples:84,pesada:8,escovao:128};
+    const META={simples:84,pesada:8};
     const TIPOS_LAV=[
-      {k:'simples', ic:'💧', l:'Simples',    c:'#3B82F6', desc:'Exterior rápido'},
-      {k:'escovao', ic:'🌀', l:'Escovão',    c:'#8B5CF6', desc:'Passada pelo escovão externo'},
-      {k:'pesada',  ic:'🔵', l:'Pesada',     c:'#10B981', desc:'Chassis + cockpit + vidros internos'},
+      {k:'simples',ic:'💧',l:'Simples',c:'#3B82F6',desc:'Exterior rápido'},
+      {k:'pesada', ic:'🔵',l:'Pesada', c:'#10B981',desc:'Chassis + cockpit + vidros internos'},
     ];
 
     // Calcula dias sem cada tipo de lavagem para ordenar sugestão
@@ -4248,7 +4247,7 @@ async function renderFerrLav(aba='painel'){
     }
 
     // Conta por tipo
-    const contagem={simples:0,pesada:0,escovao:0};
+    const contagem={simples:0,pesada:0};
     Object.values(progAtual).forEach(t=>{if(contagem[t]!==undefined)contagem[t]++;});
 
     const cardsFreota=S.frota.map(v=>{
@@ -4256,7 +4255,6 @@ async function renderFerrLav(aba='painel'){
       const tc=tipo?TIPOS_LAV.find(t=>t.k===tipo):null;
       const dS=diasSem(v.prefixo,'simples');
       const dP=diasSem(v.prefixo,'pesada');
-      const dE=diasSem(v.prefixo,'escovao');
       const alerta=dS>3||dP>15?'🔴':dS>2?'🟡':'';
       return`<div style="background:var(--surface);border:1px solid ${tipo?tc.c+'40':'var(--border)'};border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:8px" id="card-lav-${v.prefixo}">
         <div style="flex:1">
@@ -4264,7 +4262,7 @@ async function renderFerrLav(aba='painel'){
             <span style="font-family:'DM Mono',monospace;font-weight:700;font-size:14px">${v.prefixo}</span>
             ${alerta?`<span style="font-size:11px">${alerta}</span>`:''}
           </div>
-          <div style="font-size:10px;color:var(--text4);margin-top:2px">S:${dS===999?'—':dS+'d'} P:${dP===999?'—':dP+'d'} E:${dE===999?'—':dE+'d'}</div>
+          <div style="font-size:10px;color:var(--text4);margin-top:2px">S:${dS===999?'—':dS+'d'} P:${dP===999?'—':dP+'d'}</div>
         </div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
           ${TIPOS_LAV.map(t=>`<button onclick="toggleLavTipo('${v.prefixo}','${t.k}')"
@@ -4321,10 +4319,9 @@ async function renderFerrLav(aba='painel'){
 
     const TIPOS_LAV=[
       {k:'simples',ic:'💧',l:'Simples',c:'#3B82F6'},
-      {k:'escovao',ic:'🌀',l:'Escovão',c:'#8B5CF6'},
       {k:'pesada', ic:'🔵',l:'Pesada', c:'#10B981'},
     ];
-    const totSemana={simples:0,pesada:0,escovao:0};
+    const totSemana={simples:0,pesada:0};
     (semLav||[]).forEach(r=>{if(totSemana[r.tipo_lavagem]!==undefined)totSemana[r.tipo_lavagem]++;});
 
     // % frota lavada na semana por tipo
@@ -4364,7 +4361,6 @@ async function renderFerrLav(aba='painel'){
 
   const TIPOS_LAV=[
     {k:'simples',ic:'💧',l:'Simples',c:'#3B82F6',meta:84},
-    {k:'escovao',ic:'🌀',l:'Escovão',c:'#8B5CF6',meta:128},
     {k:'pesada', ic:'🔵',l:'Pesada', c:'#10B981',meta:8},
   ];
 
@@ -4436,10 +4432,9 @@ async function renderFerrLav(aba='painel'){
 // Toggle tipo de lavagem na programação (escalante)
 function toggleLavTipo(prefixo, tipo){
   if(!window._lavProg) return;
-  const META={simples:84,pesada:8,escovao:128};
+  const META={simples:84,pesada:8};
   const TIPOS_LAV=[
     {k:'simples',ic:'💧',l:'Simples',c:'#3B82F6'},
-    {k:'escovao',ic:'🌀',l:'Escovão',c:'#8B5CF6'},
     {k:'pesada', ic:'🔵',l:'Pesada', c:'#10B981'},
   ];
 
@@ -4457,7 +4452,7 @@ function toggleLavTipo(prefixo, tipo){
   }
 
   // Atualiza contadores
-  const contagem={simples:0,pesada:0,escovao:0};
+  const contagem={simples:0,pesada:0};
   Object.values(window._lavProg).forEach(t=>{if(contagem[t]!==undefined)contagem[t]++;});
 
   TIPOS_LAV.forEach(t=>{
@@ -5318,9 +5313,9 @@ function handleFileLav(file){
       const hdrs=rows[hi].map(c=>String(c).toUpperCase().trim());
       const ip=hdrs.indexOf('PREFIXO'),it=hdrs.findIndex(h=>h.includes('TIPO')||h.includes('LAVAGEM'));
       const dados=[];
-      for(let i=hi+1;i<rows.length;i++){const p=String(rows[i][ip]||'').trim(),t=String(rows[i][it]||'').trim().toLowerCase();if(!p||!['simples','escovao','pesada'].includes(t))continue;dados.push({prefixo:p,tipo_lavagem:t,observacao:String(rows[i][2]||'').trim()})}
+      for(let i=hi+1;i<rows.length;i++){const p=String(rows[i][ip]||'').trim(),t=String(rows[i][it]||'').trim().toLowerCase();if(!p||!['simples','pesada'].includes(t))continue;dados.push({prefixo:p,tipo_lavagem:t,observacao:String(rows[i][2]||'').trim()})}
       if(!dados.length){document.getElementById('err-lav').style.display='block';document.getElementById('err-lav').textContent='Nenhuma linha válida';return}
-      const lavB=t=>({simples:'💧 Simples',escovao:'🪣 Escovão',pesada:'🔴 Pesada'}[t]||t);
+      const lavB=t=>({simples:'💧 Simples',pesada:'🔵 Pesada'}[t]||t);
       const prvw=dados.slice(0,6).map(d=>`<tr><td style="font-family:'DM Mono',monospace;font-weight:600">${d.prefixo}</td><td>${lavB(d.tipo_lavagem)}</td><td style="color:var(--text3);font-size:12px">${d.observacao||'—'}</td></tr>`).join('');
       document.getElementById('preview-lav').innerHTML=`<div class="tbl-wrap" style="margin-top:16px"><div class="tbl-head"><div style="font-size:13px;font-weight:700">Preview — ${dados.length} veículos</div><button class="btn-success" onclick='confirmarLavagem(${JSON.stringify(dados).replace(/'/g,"&#39;")})'>✅ Importar</button></div><table><thead><tr><th>Prefixo</th><th>Tipo</th><th>Obs.</th></tr></thead><tbody>${prvw}${dados.length>6?`<tr><td colspan="3" style="color:var(--text4);font-size:11px;text-align:center">... e mais ${dados.length-6}</td></tr>`:''}</tbody></table></div>`;
     }catch(err){document.getElementById('err-lav').style.display='block';document.getElementById('err-lav').textContent='Erro: '+err.message}
