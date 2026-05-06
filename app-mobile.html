@@ -171,14 +171,14 @@ async function init(){
 async function doLogout(){await sb.auth.signOut();location.reload()}
 
 // NAVBAR
-const TELA_INICIO={lavador:'lavagem',lider_patio:'patio',lider_oficina:'oficina',lider_pcm:'oficina',assistente_pcm:'oficina',manobrista:'patio',frentista:'home'};
+const TELA_INICIO={lavador:'lavagem',lider_patio:'patio',lider_oficina:'oficina',lider_pcm:'oficina',assistente_pcm:'oficina',manobrista:'patio_man',frentista:'home'};
 const NAV={
   lavador:[{id:'lavagem',ic:'🚿',lb:'Lavagem'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_patio:[{id:'patio',ic:'✅',lb:'Validar'},{id:'soltura',ic:'📋',lb:'Soltura'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_oficina:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_pcm:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'prev26',ic:'💰',lb:'2.6'},{id:'home',ic:'🏠',lb:'Início'}],
   assistente_pcm:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'prev26',ic:'💰',lb:'2.6'},{id:'home',ic:'🏠',lb:'Início'}],
-  manobrista:[{id:'patio',ic:'🚗',lb:'Pátio'},{id:'home',ic:'🏠',lb:'Início'}],
+  manobrista:[{id:'patio_man',ic:'🚗',lb:'Pátio'},{id:'home',ic:'🏠',lb:'Início'}],
   frentista:[{id:'home',ic:'🏠',lb:'Início'}],
 };
 const NAV_DEF=[{id:'home',ic:'🏠',lb:'Início'}];
@@ -569,16 +569,24 @@ async function confirmarFechamento(){
   const pct=_sLista.length?Math.round(saiu/_sLista.length*100):0;
   const gid=getGid();
 
-  const{error}=await sb.from('fechamento_turno_garagem').insert({
+  // Tenta gravar — responsavel_id opcional para evitar FK error
+  const payload={
     garagem_id:gid,
     turno:S.turno||'dia',
     data:_sdata,
-    responsavel_id:S.perfil?.id,
-    responsavel_nome:S.perfil?.nome,
+    responsavel_nome:S.perfil?.nome||'—',
     status_geral:pct>=99?'ok':pct>=90?'parcial':'nok',
     op_soltura:saiu,
     op_obs:obs||null,
-  });
+  };
+
+  // Tenta com responsavel_id primeiro
+  let{error}=await sb.from('fechamento_turno_garagem').insert({...payload,responsavel_id:S.perfil?.id});
+  // Se falhar por FK, tenta sem
+  if(error?.message?.includes('responsavel_id')||error?.message?.includes('foreign key')){
+    const r2=await sb.from('fechamento_turno_garagem').insert(payload);
+    error=r2.error;
+  }
 
   if(error){
     toast('Erro: '+error.message,'err');
@@ -587,7 +595,7 @@ async function confirmarFechamento(){
   }
 
   closeSheet(true);
-  toast('✅ Turno fechado com sucesso!');
+  toast('✅ Turno fechado!');
   telaSoltura(_sdata);
 }
 
@@ -806,8 +814,157 @@ async function salv26(){
   toast('✅ Salvo!');
 }
 
+// ── PÁTIO — MANOBRISTA ────────────────────────────────────
+const ZONAS=[
+  {z:1,ic:'①',nome:'Zona 1',cor:'#3B82F6'},
+  {z:2,ic:'②',nome:'Zona 2',cor:'#10B981'},
+  {z:3,ic:'③',nome:'Zona 3',cor:'#F59E0B'},
+  {z:4,ic:'④',nome:'Zona 4',cor:'#8B5CF6'},
+  {z:5,ic:'⑤',nome:'Zona 5',cor:'#EF4444'},
+];
+
+async function telaPatioMan(){
+  const gid=getGid();
+  const data=hoje();
+  setMain('<div class="loading"><div class="sp"></div></div>');
+
+  const{data:pos}=await sb.from('posicionamento_patio').select('*')
+    .eq('garagem_id',gid).eq('data',data).order('zona').order('registrado_em',{ascending:false});
+
+  // Mapa prefixo → posição (última)
+  const posMap={};
+  (pos||[]).forEach(p=>{if(!posMap[p.prefixo]) posMap[p.prefixo]=p;});
+  const total=Object.keys(posMap).length;
+
+  // Conta por zona
+  const porZona={};
+  Object.values(posMap).forEach(p=>{
+    if(!porZona[p.zona]) porZona[p.zona]=[];
+    porZona[p.zona].push(p);
+  });
+
+  const zonaCards=ZONAS.map(z=>{
+    const carros=porZona[z.z]||[];
+    return`<div style="background:var(--surface);border:1px solid ${z.cor}30;border-left:3px solid ${z.cor};border-radius:14px;margin:0 14px 10px;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer" onclick="var el=this.nextElementSibling;el.style.display=el.style.display==='none'?'block':'none'">
+        <span style="font-size:22px">${z.ic}</span>
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:15px;color:${z.cor}">${z.nome}</div>
+          <div style="font-size:11px;color:var(--text3)">${carros.length} veículo(s)</div>
+        </div>
+        <span style="color:var(--text4);font-size:16px">▾</span>
+      </div>
+      <div style="padding:0 14px 12px;display:${carros.length?'block':'none'}">
+        ${carros.map(c=>`
+          <div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid var(--border2)">
+            <div style="font-family:'DM Mono',monospace;font-weight:700;font-size:15px;color:var(--blue)">${c.prefixo}</div>
+            ${c.vaga?`<span style="font-size:11px;color:var(--text3);background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:2px 8px;font-weight:700">${c.vaga}</span>`:''}
+            <div style="flex:1;font-size:11px;color:var(--text3)">${c.registrado_por?.split(' ')[0]||'—'}</div>
+            <div style="font-size:10px;color:var(--text4)">${new Date(c.registrado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+
+  render(`
+    <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div>
+        <div style="font-weight:800;font-size:17px">🚗 Pátio</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">${total} veículo(s) posicionados hoje</div>
+      </div>
+      <button onclick="telaPatioMan()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>
+    </div>
+    ${zonaCards}
+  `);
+
+  // FAB para registrar posição
+  document.getElementById('content').insertAdjacentHTML('beforeend',
+    `<button class="fab" onclick="abrirRegistroPatio()">＋</button>`);
+}
+
+function setMain(html){render(html)}
+
+function abrirRegistroPatio(){
+  openSheet('🚗 Registrar Posição',`
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label class="fl">Prefixo do Veículo</label>
+        <input class="fi2" id="mp-prefixo" type="text" placeholder="Ex: 02.015"
+          style="font-family:'DM Mono',monospace;font-size:20px;text-transform:uppercase"
+          oninput="this.value=this.value.toUpperCase()">
+      </div>
+      <div>
+        <label class="fl">Zona</label>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:4px">
+          ${ZONAS.map(z=>`
+            <button onclick="selecionarZona(${z.z},this)" data-zona="${z.z}"
+              style="padding:12px 4px;border-radius:10px;border:1px solid ${z.cor}40;background:transparent;color:${z.cor};font-size:16px;font-weight:700;font-family:inherit;cursor:pointer;transition:all .15s;text-align:center">
+              ${z.ic}<br><span style="font-size:10px">${z.nome}</span>
+            </button>`).join('')}
+        </div>
+        <input type="hidden" id="mp-zona" value="">
+      </div>
+      <div>
+        <label class="fl">Vaga (opcional)</label>
+        <input class="fi2" id="mp-vaga" type="text" placeholder="Ex: A3, B7..."
+          style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()">
+      </div>
+      <div>
+        <label class="fl">Observação (opcional)</label>
+        <input class="fi2" id="mp-obs" type="text" placeholder="Ex: próximo à saída...">
+      </div>
+      <button onclick="salvarPosicaoPatio()" style="padding:15px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;margin-top:4px">✅ Confirmar Posição</button>
+    </div>
+  `);
+}
+
+let _zonaSelect=null;
+function selecionarZona(z,btn){
+  _zonaSelect=z;
+  document.getElementById('mp-zona').value=z;
+  // Visual feedback
+  document.querySelectorAll('[data-zona]').forEach(b=>{
+    const bz=parseInt(b.dataset.zona);
+    const zona=ZONAS.find(x=>x.z===bz);
+    b.style.background=bz===z?zona.cor+'30':'transparent';
+    b.style.borderColor=bz===z?zona.cor:''+zona.cor+'40';
+  });
+}
+
+async function salvarPosicaoPatio(){
+  const prefixo=document.getElementById('mp-prefixo')?.value?.trim().toUpperCase();
+  const zona=parseInt(document.getElementById('mp-zona')?.value||'0');
+  const vaga=document.getElementById('mp-vaga')?.value?.trim().toUpperCase()||null;
+  const obs=document.getElementById('mp-obs')?.value?.trim()||null;
+  const gid=getGid();
+
+  if(!prefixo){toast('Informe o prefixo','err');return;}
+  if(!zona){toast('Selecione a zona','err');return;}
+
+  // Busca veiculo_id
+  const{data:vei}=await sb.from('frota').select('id').eq('garagem_id',gid).eq('prefixo',prefixo).single();
+
+  const{error}=await sb.from('posicionamento_patio').insert({
+    garagem_id:gid,
+    prefixo,
+    veiculo_id:vei?.id||null,
+    zona,
+    vaga,
+    status:'estacionado',
+    data:hoje(),
+    registrado_por:S.perfil?.nome,
+    observacao:obs,
+  });
+
+  if(error){toast('Erro: '+error.message,'err');return;}
+
+  closeSheet(true);
+  toast(`✅ ${prefixo} → Zona ${zona}${vaga?' · '+vaga:''}`);
+  telaPatioMan();
+}
+
 // ── MAPA DE TELAS ──────────────────────────────────────────
-const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,prev26:telaPrev26};
+const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,prev26:telaPrev26,patio_man:telaPatioMan};
 
 // ── INIT ───────────────────────────────────────────────────
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login').style.display!=='none')doLogin()});
