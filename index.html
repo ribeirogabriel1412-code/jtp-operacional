@@ -246,6 +246,7 @@ tr:hover td{background:#0F172A80}
         <button class="sub-btn" onclick="navToSub('ferr-lav')">🧼 3.2 Checklist Lavagem</button>
         <button class="sub-btn" id="btn-lav-lavador" onclick="navToSub('ferr-lav-lavador')" style="display:none">🚿 Minha Lista de Lavagem</button>
         <button class="sub-btn" onclick="navToSub('ferr-21')">📋 2.1 Fechamento Garagem</button>
+        <button class="sub-btn" onclick="navToSub('ferr-26')">💰 2.6 Previsibilidade</button>
         <button class="sub-btn" onclick="navToSub('ferr-ctrl')">✅ Controle Soltura</button>
       </div>
       <button class="nav-btn" onclick="toggleSub('sub-rel','arr-rel',this)"><span>📋</span> Relatórios <span id="arr-rel" style="margin-left:auto;font-size:10px;color:var(--text4)">▶</span></button>
@@ -796,7 +797,7 @@ function navToSub(sub){
   S.subtela=sub;
   document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes(sub))b.classList.add('active')});
-  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-21':renderFerr21,'rel-todos':renderRelatorios};
+  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios};
   if(map[sub]) map[sub]();
 }
 
@@ -5768,14 +5769,11 @@ async function renderFerr21(aba='fechar'){
       <div style="font-size:10px;color:var(--text4)">Status calculado automaticamente: <strong>${STATUS[autoStatus]?.ic} ${STATUS[autoStatus]?.l}</strong> — você pode ajustar acima.</div>
     </div>
 
-    <div style="display:flex;gap:10px">
-      <button onclick="salvarFechamento21('${gid}','${numero}','${turno}','${data}',false)" class="btn-sec" style="flex:1">💾 Salvar</button>
-      <button onclick="salvarFechamento21('${gid}','${numero}','${turno}','${data}',true)" class="btn-success" style="flex:1.5">💾 Salvar e Enviar para o Grupo 📱</button>
-    </div>
+    <button onclick="salvarFechamento21('${gid}','${numero}','${turno}','${data}')" class="btn-success" style="width:100%">💾 Salvar Fechamento de Turno</button>
   `);
 }
 
-async function salvarFechamento21(gid, numero, turno, data, enviarWpp=false){
+async function salvarFechamento21(gid, numero, turno, data){
   const get=(id)=>document.getElementById(id)?.value?.trim()||'';
   const garagem=S.garagens.find(g=>g.id===gid);
 
@@ -5840,6 +5838,181 @@ async function salvarFechamento21(gid, numero, turno, data, enviarWpp=false){
 
   toast(enviarWpp?'✅ Fechamento salvo e enviado para o grupo!':'✅ Fechamento salvo!');
   renderFerr21('historico');
+}
+
+// ══════════════════════════════════════════════════════════════
+// 2.6 — PREVISIBILIDADE DE INVESTIMENTO
+// Lista OS abertas com custo previsto e custo real por veículo.
+// O Líder PCM adiciona o valor estimado. O sistema calcula o total.
+// ══════════════════════════════════════════════════════════════
+async function renderFerr26(){
+  const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  setMain(`<div class="loading"><div class="spinner"></div></div>`);
+
+  // Busca OS abertas + custo previsto salvo
+  const{data:ocs}=await sb.from('ocorrencias_22').select('*')
+    .eq('garagem_id',gid).neq('status','liberado').order('hora_entrada',{ascending:true});
+
+  // Busca custos salvos do dia (tabela previsibilidade_26)
+  const data=hoje();
+  const{data:custosSalvos}=await sb.from('previsibilidade_26').select('*')
+    .eq('garagem_id',gid).eq('data',data);
+  const custoMap={};
+  (custosSalvos||[]).forEach(c=>{ custoMap[c.ocorrencia_id]={prev:c.custo_prev,real:c.custo_real,obs:c.obs}; });
+
+  const agora=new Date();
+  const TIPO_IC={preventiva_leve:'🟡',preventiva_pesada:'🟣',corretiva:'🔴',sinistro:'⚠️',eletrica:'⚡',funilaria:'🔨',pneu:'⭕'};
+  const STATUS_C={em_manutencao:'var(--amber)',aguardando_peca:'var(--red)',aguardando_aprovacao:'#8B5CF6'};
+
+  // Total dos custos
+  let totalPrev=0, totalReal=0;
+  (ocs||[]).forEach(o=>{
+    const c=custoMap[o.id];
+    if(c?.prev) totalPrev+=parseFloat(c.prev)||0;
+    if(c?.real) totalReal+=parseFloat(c.real)||0;
+  });
+
+  const rows=(ocs||[]).map(o=>{
+    const min=Math.round((agora-new Date(o.hora_entrada))/60000);
+    const h=Math.floor(min/60),m=min%60;
+    const tempo=h>0?`${h}h${m}min`:`${m}min`;
+    const venc=o.hora_previsao&&new Date(o.hora_previsao)<agora;
+    const c=custoMap[o.id]||{};
+    return`<tr style="background:${c.real?'#00C48C05':c.prev?'#2563EB05':''};border-bottom:1px solid var(--border2)" id="row-26-${o.id}">
+      <td style="padding:8px 10px">
+        <div style="font-family:'DM Mono',monospace;font-weight:700;font-size:13px;color:var(--blue)">${o.prefixo}</div>
+        <div style="font-size:10px;color:var(--text3)">${TIPO_IC[o.tipo]||'🔧'} ${o.tipo?.replace('_',' ')||'—'}</div>
+      </td>
+      <td style="padding:8px 10px">
+        <span style="color:${STATUS_C[o.status]||'var(--amber)'};font-size:11px;font-weight:700">${o.status?.replace(/_/g,' ')||'—'}</span>
+        <div style="font-size:10px;color:var(--text4);margin-top:2px">${venc?'<span style="color:var(--red)">🔴 vencida</span>':o.hora_previsao?new Date(o.hora_previsao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'sem previsão'}</div>
+      </td>
+      <td style="padding:8px 10px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text3)">${tempo}</td>
+      <td style="padding:8px 10px;font-size:11px;color:var(--text3)">${o.mecanico||'—'}</td>
+      <td style="padding:8px 6px">
+        <div style="position:relative">
+          <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:11px">R$</span>
+          <input type="number" id="prev-${o.id}" placeholder="0,00" min="0" step="0.01"
+            value="${c.prev||''}"
+            onchange="atualizarTotal26()"
+            style="width:90px;padding:5px 6px 5px 24px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:'DM Mono',monospace;outline:none">
+        </div>
+      </td>
+      <td style="padding:8px 6px">
+        <div style="position:relative">
+          <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:11px">R$</span>
+          <input type="number" id="real-${o.id}" placeholder="0,00" min="0" step="0.01"
+            value="${c.real||''}"
+            onchange="atualizarTotal26()"
+            style="width:90px;padding:5px 6px 5px 24px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:'DM Mono',monospace;outline:none">
+        </div>
+      </td>
+      <td style="padding:8px 6px">
+        <input type="text" id="obs-26-${o.id}" placeholder="Peças, serviços..." value="${c.obs||''}"
+          style="width:100%;min-width:100px;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:11px;padding:3px 4px;outline:none;font-family:'DM Sans',sans-serif">
+      </td>
+    </tr>`;
+  }).join('');
+
+  // IDs das OS para o save
+  window._ids26=(ocs||[]).map(o=>o.id);
+  window._gid26=gid;
+  window._data26=data;
+
+  setMain(`
+    ${back}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-size:18px;font-weight:800">💰 2.6 — Previsibilidade de Investimento</div>
+        <div style="color:var(--text3);font-size:12px;margin-top:2px">${new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'})} · ${(ocs||[]).length} veículo(s) em aberto</div>
+      </div>
+      <button onclick="salvar26()" class="btn-success">💾 Salvar</button>
+    </div>
+
+    <!-- TOTAIS -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
+      <div class="kpi neu">
+        <div class="kpi-label">Veículos Parados</div>
+        <div class="kpi-val" style="color:${(ocs||[]).length>0?'var(--red)':'var(--green)'}">${(ocs||[]).length}</div>
+        <div class="kpi-meta">OS em aberto</div>
+      </div>
+      <div class="kpi neu">
+        <div class="kpi-label">Custo Previsto Total</div>
+        <div class="kpi-val" style="color:var(--amber)" id="total-prev-26">R$ ${totalPrev.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+        <div class="kpi-meta">estimativa do turno</div>
+      </div>
+      <div class="kpi neu">
+        <div class="kpi-label">Custo Real Total</div>
+        <div class="kpi-val" style="color:var(--blue)" id="total-real-26">R$ ${totalReal.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+        <div class="kpi-meta">realizado até agora</div>
+      </div>
+    </div>
+
+    ${!(ocs||[]).length
+      ?`<div class="empty"><div style="font-size:40px">✅</div><div style="color:var(--green);font-weight:700;margin:12px 0">Nenhum veículo indisponível!</div></div>`
+      :`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="background:var(--surface2)">
+              <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--text3);text-transform:uppercase">Veículo</th>
+              <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--text3);text-transform:uppercase">Status</th>
+              <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--text3);text-transform:uppercase">Tempo</th>
+              <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--text3);text-transform:uppercase">Mecânico</th>
+              <th style="padding:8px 10px;text-align:center;font-size:10px;color:var(--amber);text-transform:uppercase">Custo Prev.</th>
+              <th style="padding:8px 10px;text-align:center;font-size:10px;color:var(--blue);text-transform:uppercase">Custo Real</th>
+              <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--text3);text-transform:uppercase">Obs. / Peças</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <div style="padding:10px 14px;background:var(--surface2);border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:20px">
+          <div style="font-size:12px;color:var(--text3)">Previsto: <strong style="font-family:'DM Mono',monospace;color:var(--amber)" id="total-prev-26b">R$ ${totalPrev.toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong></div>
+          <div style="font-size:12px;color:var(--text3)">Real: <strong style="font-family:'DM Mono',monospace;color:var(--blue)" id="total-real-26b">R$ ${totalReal.toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong></div>
+          <div style="font-size:12px;color:var(--text3)">Δ: <strong style="font-family:'DM Mono',monospace;color:${totalReal>totalPrev?'var(--red)':'var(--green)'}" id="total-delta-26">R$ ${(totalReal-totalPrev).toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong></div>
+        </div>
+      </div>`}
+  `);
+}
+
+function atualizarTotal26(){
+  const ids=window._ids26||[];
+  let prev=0,real=0;
+  ids.forEach(id=>{
+    prev+=parseFloat(document.getElementById('prev-'+id)?.value||0)||0;
+    real+=parseFloat(document.getElementById('real-'+id)?.value||0)||0;
+  });
+  const fmt=(v)=>`R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2})}`;
+  ['total-prev-26','total-prev-26b'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=fmt(prev);});
+  ['total-real-26','total-real-26b'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=fmt(real);});
+  const deltaEl=document.getElementById('total-delta-26');
+  if(deltaEl){deltaEl.textContent=fmt(real-prev);deltaEl.style.color=real>prev?'var(--red)':'var(--green)';}
+}
+
+async function salvar26(){
+  const ids=window._ids26||[];
+  const gid=window._gid26;
+  const data=window._data26;
+  if(!ids.length){toast('Nenhum veículo para salvar.','err');return;}
+
+  // Delete existing e reinsere
+  await sb.from('previsibilidade_26').delete().eq('garagem_id',gid).eq('data',data);
+
+  const registros=ids.map(id=>({
+    garagem_id:gid,
+    ocorrencia_id:id,
+    data,
+    custo_prev:parseFloat(document.getElementById('prev-'+id)?.value||0)||null,
+    custo_real:parseFloat(document.getElementById('real-'+id)?.value||0)||null,
+    obs:document.getElementById('obs-26-'+id)?.value?.trim()||null,
+    registrado_por:S.perfil?.nome,
+  })).filter(r=>r.custo_prev||r.custo_real||r.obs);
+
+  if(!registros.length){toast('Nenhum valor preenchido para salvar.','err');return;}
+
+  const{error}=await sb.from('previsibilidade_26').insert(registros);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast(`✅ ${registros.length} registro(s) salvos!`);
 }
 
 function renderFerrCtrl(){
