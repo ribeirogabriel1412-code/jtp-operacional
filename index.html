@@ -244,7 +244,7 @@ tr:hover td{background:#0F172A80}
         <button class="sub-btn" onclick="navToSub('ferr-211')">🔴 2.11 Carros Indisponíveis</button>
         <button class="sub-btn" onclick="navToSub('ferr-212')">📊 2.12 Indicadores Técnicos</button>
         <button class="sub-btn" onclick="navToSub('ferr-lav')">🧼 3.2 Checklist Lavagem</button>
-        ${isLavador()?`<button class="sub-btn" onclick="navToSub('ferr-lav-lavador')">🚿 Minha Lista de Lavagem</button>`:''}
+        <button class="sub-btn" id="btn-lav-lavador" onclick="navToSub('ferr-lav-lavador')" style="display:none">🚿 Minha Lista de Lavagem</button>
         <button class="sub-btn" onclick="navToSub('ferr-ctrl')">✅ Controle Soltura</button>
       </div>
       <button class="nav-btn" onclick="toggleSub('sub-rel','arr-rel',this)"><span>📋</span> Relatórios <span id="arr-rel" style="margin-left:auto;font-size:10px;color:var(--text4)">▶</span></button>
@@ -750,6 +750,10 @@ async function doLogin(){
     document.getElementById('sec-admin').style.display='block';
     document.querySelectorAll('.admin-only').forEach(el=>el.style.display='flex');
   }
+
+  // Botão exclusivo do Lavador
+  const btnLavLavador=document.getElementById('btn-lav-lavador');
+  if(btnLavLavador) btnLavLavador.style.display=isLavador()?'block':'none';
 
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').classList.add('on');
