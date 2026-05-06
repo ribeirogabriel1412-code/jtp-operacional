@@ -3130,8 +3130,20 @@ async function atualizarStatus22(){
     }),
   };
 
+  const btnConfirmar=document.querySelector('#modal-22-status .btn-success');
+  if(btnConfirmar){btnConfirmar.textContent='Salvando...';btnConfirmar.disabled=true;}
+
   const{error}=await sb.from('ocorrencias_22').update(payload).eq('id',S.editId22);
+  if(btnConfirmar){btnConfirmar.textContent='✓ Confirmar';btnConfirmar.disabled=false;}
   if(error){toast('Erro ao salvar: '+error.message,'err');console.error('atualizarStatus22 error:',error);return;}
+
+  // Confirma que o banco realmente atualizou
+  const{data:verificacao}=await sb.from('ocorrencias_22').select('status').eq('id',S.editId22).single();
+  if(verificacao?.status!==novoStatus){
+    toast(`⚠️ Status não foi salvo! Banco retornou: ${verificacao?.status}. Verifique permissões no Supabase.`,'err');
+    console.error('UPDATE não persistiu! esperado:',novoStatus,'recebido:',verificacao?.status);
+    return;
+  }
 
   // Histórico
   await sb.from('historico_22').insert({
@@ -3152,7 +3164,8 @@ async function atualizarStatus22(){
   toast(isLib?'✅ Veículo liberado e frota atualizada!':'✅ Status atualizado!');
   closeM('modal-22-status');
   notificarWhatsApp(S.editId22, novoStatus);
-  renderFerr22('ativas');
+  // Aguarda 800ms para o Supabase propagar antes de recarregar
+  setTimeout(()=>renderFerr22('ativas'), 800);
 }
 
 async function verHistorico22(){
