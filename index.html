@@ -4595,30 +4595,231 @@ async function renderFerrLavLavador(){
 }
 
 // ══════════════════════════════════════════════════════════════
-// VALIDAÇÃO DA LAVAGEM PELO LÍDER DE PÁTIO
+// CHECKLISTS DE LAVAGEM
 // ══════════════════════════════════════════════════════════════
+
+// Itens por tipo para o LAVADOR
+const CK_LAV={
+  simples:[
+    {id:'s1',item:'Varrer interior (piso e bancos)'},
+    {id:'s2',item:'Secar carroceria externa'},
+    {id:'s3',item:'Limpeza dos vidros externos'},
+    {id:'s4',item:'Pano no cockpit do motorista'},
+    {id:'s5',item:'Limpeza do balaustre'},
+  ],
+  pesada:[
+    {id:'p1',item:'Varrer interior (piso e bancos)'},
+    {id:'p2',item:'Secar carroceria externa'},
+    {id:'p3',item:'Limpeza dos vidros externos'},
+    {id:'p4',item:'Pano no cockpit do motorista'},
+    {id:'p5',item:'Limpeza do balaustre'},
+    {id:'p6',item:'Lavagem do chassis'},
+    {id:'p7',item:'Limpeza dos vidros internos'},
+    {id:'p8',item:'Limpeza do teto interno'},
+  ],
+};
+
+// Itens do LÍDER DE PÁTIO (qualificação) — iguais para simples e pesada
+const CK_PATIO_BASE=[
+  {id:'q1',item:'Carro realmente lavado — visual geral OK'},
+  {id:'q2',item:'Sem resíduos de sabão ou água'},
+  {id:'q3',item:'Pneus e rodas limpos'},
+  {id:'q4',item:'Aprovado para operação'},
+];
+const CK_PATIO_PESADA=[
+  {id:'q5',item:'Chassis limpo'},
+  {id:'q6',item:'Cockpit do motorista limpo'},
+];
+
+function abrirModalLav(id, prefixo){
+  // Busca o registro para saber o tipo
+  sb.from('checklist_lavagem').select('*').eq('id',id).single().then(({data:reg})=>{
+    if(!reg) return;
+    window._lavModalReg=reg;
+    const tipo=reg.tipo_lavagem||'simples';
+    const itens=CK_LAV[tipo]||CK_LAV.simples;
+
+    // Estado dos checks (começa tudo false)
+    window._lavCks={};
+    itens.forEach(it=>window._lavCks[it.id]=false);
+
+    const renderCks=()=>{
+      const todos=itens.every(it=>window._lavCks[it.id]);
+      return`
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
+          ${itens.map(it=>{
+            const ok=window._lavCks[it.id];
+            return`<div onclick="toggleLavCk('${it.id}')" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:${ok?'#00C48C12':'var(--surface2)'};border:1px solid ${ok?'#00C48C40':'var(--border)'};border-radius:8px;cursor:pointer;transition:all .15s">
+              <div style="width:22px;height:22px;border-radius:6px;border:2px solid ${ok?'var(--green)':'var(--border)'};background:${ok?'var(--green)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;color:white;font-weight:700;transition:all .15s">${ok?'✓':''}</div>
+              <span style="font-size:13px;color:${ok?'var(--text)':'var(--text2)'};font-weight:${ok?'600':'400'}">${it.item}</span>
+            </div>`;
+          }).join('')}
+        </div>
+        <button onclick="finalizarLavagem()" ${!todos?'disabled':''} 
+          style="width:100%;background:${todos?'#00C48C':'var(--surface2)'};border:1px solid ${todos?'#00C48C':'var(--border)'};color:${todos?'white':'var(--text4)'};border-radius:10px;padding:14px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:${todos?'pointer':'not-allowed'};transition:all .2s">
+          ${todos?'✅ Confirmar Lavagem Concluída':'⬜ Marque todos os itens para concluir'}
+        </button>
+        <button onclick="marcarNaoRealizado('${id}')" style="width:100%;background:transparent;border:1px solid #EF444440;color:var(--red);border-radius:10px;padding:10px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;margin-top:6px">❌ Não Realizado</button>`;
+    };
+
+    window.toggleLavCk=(ckId)=>{
+      window._lavCks[ckId]=!window._lavCks[ckId];
+      document.getElementById('lav-ck-body').innerHTML=renderCks();
+    };
+
+    window.finalizarLavagem=async()=>{
+      const todos=itens.every(it=>window._lavCks[it.id]);
+      if(!todos){toast('Marque todos os itens antes de concluir','err');return;}
+      const ckLog=JSON.stringify(window._lavCks);
+      await sb.from('checklist_lavagem').update({
+        status:'executado',
+        hora_executado:new Date().toISOString(),
+        executado_por:S.perfil?.nome,
+        checklist_exec:ckLog,
+      }).eq('id',id);
+      closeM('modal-lav-confirm');
+      toast('✅ Lavagem concluída!');
+      if(isLavador()) renderFerrLavLavador();
+      else renderFerrLav('painel');
+    };
+
+    window.marcarNaoRealizado=async(rid)=>{
+      await sb.from('checklist_lavagem').update({status:'nao_realizado',hora_executado:null,executado_por:null}).eq('id',rid);
+      closeM('modal-lav-confirm');
+      toast('❌ Marcado como não realizado');
+      if(isLavador()) renderFerrLavLavador();
+      else renderFerrLav('painel');
+    };
+
+    const tipoLabel=tipo==='pesada'?'🔵 Pesada':'💧 Simples';
+    const sheet=`
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div style="font-size:17px;font-weight:700">🧼 Checklist Lavagem</div>
+        <button onclick="closeM('modal-lav-confirm')" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">✕</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <span style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;color:var(--blue)">${prefixo}</span>
+        <span style="font-size:12px;color:var(--text3)">${tipoLabel}</span>
+      </div>
+      <div id="lav-ck-body">${renderCks()}</div>`;
+
+    // Garante modal existe
+    let m=document.getElementById('modal-lav-confirm');
+    if(!m){
+      m=document.createElement('div');m.id='modal-lav-confirm';m.className='modal-ov';m.style.display='none';
+      m.onclick=function(e){if(e.target===this)this.style.display='none'};
+      m.innerHTML=`<div class="modal" style="max-width:420px"><div id="modal-lav-confirm-body"></div></div>`;
+      document.body.appendChild(m);
+    }
+    document.getElementById('modal-lav-confirm-body').innerHTML=sheet;
+    m.style.display='flex';
+  });
+}
+
+// Alias para compatibilidade com chamadas existentes
+function marcarLavagem(id, prefixo){ abrirModalLav(id, prefixo); }
+
+async function confirmarLavagemItem(id, status){
+  await sb.from('checklist_lavagem').update({
+    status,
+    hora_executado:status==='executado'?new Date().toISOString():null,
+    executado_por:status==='executado'?S.perfil?.nome:null,
+  }).eq('id',id);
+  document.getElementById('modal-lav-confirm').style.display='none';
+  toast(status==='executado'?'✅ Lavagem confirmada!':status==='nao_realizado'?'❌ Não realizado':'↩ Pendente');
+  if(isLavador()) renderFerrLavLavador();
+  else renderFerrLav('painel');
+}
+
+// ── VALIDAÇÃO DO LÍDER DE PÁTIO (com checklist de qualificação) ──
 async function validarLavagemPatio(id, prefixo){
   if(!isLiderPatio()){toast('Apenas o Líder de Pátio pode validar.','err');return;}
+  const{data:reg}=await sb.from('checklist_lavagem').select('*').eq('id',id).single();
+  if(!reg) return;
+  const tipo=reg.tipo_lavagem||'simples';
+
+  const itensQ=[
+    ...CK_PATIO_BASE,
+    ...(tipo==='pesada'?CK_PATIO_PESADA:[]),
+  ];
+  window._patioQcks={};
+  itensQ.forEach(it=>window._patioQcks[it.id]=false);
+
+  const renderQ=()=>{
+    const todos=itensQ.every(it=>window._patioQcks[it.id]);
+    return`
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
+        ${itensQ.map(it=>{
+          const ok=window._patioQcks[it.id];
+          return`<div onclick="togglePatioQck('${it.id}')" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:${ok?'#00C48C12':'var(--surface2)'};border:1px solid ${ok?'#00C48C40':'var(--border)'};border-radius:8px;cursor:pointer;transition:all .15s">
+            <div style="width:22px;height:22px;border-radius:6px;border:2px solid ${ok?'var(--green)':'var(--border)'};background:${ok?'var(--green)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;color:white;font-weight:700">${ok?'✓':''}</div>
+            <span style="font-size:13px;color:${ok?'var(--text)':'var(--text2)'};font-weight:${ok?'600':'400'}">${it.item}</span>
+          </div>`;
+        }).join('')}
+      </div>
+      <button onclick="aprovarQualificacao()" ${!todos?'disabled':''}
+        style="width:100%;background:${todos?'#00C48C':'var(--surface2)'};border:1px solid ${todos?'#00C48C':'var(--border)'};color:${todos?'white':'var(--text4)'};border-radius:10px;padding:14px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:${todos?'pointer':'not-allowed'};transition:all .2s">
+        ${todos?'✅ Aprovar Qualificação':'⬜ Marque todos os itens para aprovar'}
+      </button>
+      <button onclick="reprovarQualificacao()" style="width:100%;background:transparent;border:1px solid #EF444440;color:var(--red);border-radius:10px;padding:10px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;margin-top:6px">❌ Reprovar — Refazer Lavagem</button>`;
+  };
+
+  window.togglePatioQck=(ckId)=>{
+    window._patioQcks[ckId]=!window._patioQcks[ckId];
+    document.getElementById('patio-q-body').innerHTML=renderQ();
+  };
+  window.aprovarQualificacao=async()=>{
+    const todos=itensQ.every(it=>window._patioQcks[it.id]);
+    if(!todos){toast('Marque todos os itens','err');return;}
+    await sb.from('checklist_lavagem').update({
+      validado_patio:true,validado_por:S.perfil?.nome,validado_em:new Date().toISOString(),
+      checklist_qual:JSON.stringify(window._patioQcks),
+    }).eq('id',id);
+    closeM('modal-lav-confirm');
+    toast('✅ Qualificação aprovada!');
+    renderFerrLav('painel');
+  };
+  window.reprovarQualificacao=async()=>{
+    await sb.from('checklist_lavagem').update({
+      validado_patio:false,status:'pendente',
+      validado_por:S.perfil?.nome,validado_em:new Date().toISOString(),
+    }).eq('id',id);
+    closeM('modal-lav-confirm');
+    toast('↩ Devolvido para o lavador refazer');
+    renderFerrLav('painel');
+  };
+
+  const tipoLabel=tipo==='pesada'?'🔵 Pesada':'💧 Simples';
   const sheet=`
-    <div style="font-size:17px;font-weight:700;margin-bottom:8px">🚿 Validar Lavagem — <span style="font-family:'DM Mono',monospace;color:var(--blue)">${prefixo}</span></div>
-    <div style="color:var(--text3);font-size:13px;margin-bottom:16px">Confirme que a lavagem foi executada corretamente.</div>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
-      <button onclick="confirmarValidacaoPatio('${id}',true)" style="background:#00C48C18;border:1px solid #00C48C40;color:var(--green);border-radius:10px;padding:14px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer">✅ Aprovar — Lavagem OK</button>
-      <button onclick="confirmarValidacaoPatio('${id}',false)" style="background:#EF444418;border:1px solid #EF444440;color:var(--red);border-radius:10px;padding:14px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer">❌ Reprovar — Refazer Lavagem</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div style="font-size:17px;font-weight:700">✅ Qualificação — Líder de Pátio</div>
+      <button onclick="closeM('modal-lav-confirm')" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">✕</button>
     </div>
-    <button onclick="closeM('modal-lav-confirm')" style="width:100%;background:var(--border);border:none;color:var(--text3);border-radius:10px;padding:12px;font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer">Cancelar</button>`;
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;color:var(--blue)">${prefixo}</span>
+      <span style="font-size:12px;color:var(--text3)">${tipoLabel}</span>
+    </div>
+    <div style="background:#F59E0B12;border:1px solid #F59E0B30;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--amber)">
+      🔍 Confira cada item antes de aprovar a qualificação
+    </div>
+    <div id="patio-q-body">${renderQ()}</div>`;
+
+  let m=document.getElementById('modal-lav-confirm');
+  if(!m){
+    m=document.createElement('div');m.id='modal-lav-confirm';m.className='modal-ov';m.style.display='none';
+    m.onclick=function(e){if(e.target===this)this.style.display='none'};
+    m.innerHTML=`<div class="modal" style="max-width:420px"><div id="modal-lav-confirm-body"></div></div>`;
+    document.body.appendChild(m);
+  }
   document.getElementById('modal-lav-confirm-body').innerHTML=sheet;
-  document.getElementById('modal-lav-confirm').style.display='flex';
+  m.style.display='flex';
 }
 
 async function confirmarValidacaoPatio(id, aprovado){
-  const payload={
-    validado_patio:aprovado,
-    validado_por:S.perfil?.nome,
-    validado_em:new Date().toISOString(),
+  await sb.from('checklist_lavagem').update({
+    validado_patio:aprovado,validado_por:S.perfil?.nome,validado_em:new Date().toISOString(),
     status:aprovado?'executado':'pendente',
-  };
-  await sb.from('checklist_lavagem').update(payload).eq('id',id);
+  }).eq('id',id);
   closeM('modal-lav-confirm');
   toast(aprovado?'✅ Lavagem validada!':'↩ Devolvido para o lavador');
   if(isLavador()) renderFerrLavLavador();
@@ -4626,36 +4827,6 @@ async function confirmarValidacaoPatio(id, aprovado){
 }
 
 
-function marcarLavagem(id, prefixo){
-  const sheet=` <span style="font-family:'DM Mono',monospace;color:var(--blue)">${prefixo}</span></div>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
-      <button onclick="confirmarLavagemItem('${id}','executado')" style="background:#00C48C18;border:1px solid #00C48C40;color:var(--green);border-radius:10px;padding:14px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer">✅ Lavagem Concluída</button>
-      <button onclick="confirmarLavagemItem('${id}','nao_realizado')" style="background:#EF444418;border:1px solid #EF444440;color:var(--red);border-radius:10px;padding:14px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer">❌ Não Realizado</button>
-      <button onclick="confirmarLavagemItem('${id}','pendente')" style="background:var(--border);border:none;color:var(--text2);border-radius:10px;padding:12px;font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer">↩ Voltar para Pendente</button>
-    </div>
-    <button onclick="closeM('modal-lav-confirm')" style="width:100%;background:var(--border);border:none;color:var(--text3);border-radius:10px;padding:12px;font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer">Cancelar</button>`;
-  let m=document.getElementById('modal-lav-confirm');
-  if(!m){
-    m=document.createElement('div');m.id='modal-lav-confirm';m.className='modal-ov';m.style.display='none';
-    m.onclick=function(e){if(e.target===this)this.style.display='none'};
-    m.innerHTML=`<div class="modal" style="max-width:380px"><div id="modal-lav-confirm-body"></div></div>`;
-    document.body.appendChild(m);
-  }
-  document.getElementById('modal-lav-confirm-body').innerHTML=sheet;
-  m.style.display='flex';
-}
-
-async function confirmarLavagemItem(id, status){
-  const{error}=await sb.from('checklist_lavagem').update({
-    status,
-    hora_executado:status==='executado'?new Date().toISOString():null,
-    executado_por:status==='executado'?S.perfil?.nome:null,
-  }).eq('id',id);
-  if(error){toast('Erro: '+error.message,'err');return}
-  document.getElementById('modal-lav-confirm').style.display='none';
-  toast(status==='executado'?'✅ Lavagem confirmada!':status==='nao_realizado'?'❌ Marcado como não realizado':'↩ Voltou para pendente');
-  renderFerrLav('painel');
-}
 
 // Modal cronograma
 function abrirModalCronograma(){
