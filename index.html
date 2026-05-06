@@ -2862,14 +2862,14 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
 const isLiderOficina=()=>podeExecutar('ferr-22')||S.perfil?.is_admin;
 const isPCMLib=()=>podeValidar('ferr-22')||S.perfil?.is_admin;
 
-async function verChecklistLib(){
+async function verChecklistLib(setorFiltro=null){
   document.getElementById('modal-22-status').style.display='none';
   document.getElementById('modal-22-cklib').style.display='flex';
   document.getElementById('mckl-info').textContent='';
-  await carregarChecklistLib(S.editId22);
+  await carregarChecklistLib(S.editId22, setorFiltro);
 }
 
-async function carregarChecklistLib(ocId){
+async function carregarChecklistLib(ocId, setorFiltro=null){
   document.getElementById('cklib-content').innerHTML=`<div class="loading"><div class="spinner"></div></div>`;
   const{data:oc}=await sb.from('ocorrencias_22').select('*').eq('id',ocId).single();
   if(!oc) return;
@@ -2936,17 +2936,7 @@ async function carregarChecklistLib(ocId){
   const faseT=pctV===100&&pctT<100;
   const faseFim=pctV===100&&pctT===100;
 
-  let statusBanner='';
-  if(aprovado===true){
-    statusBanner=`<div style="background:#00C48C15;border:1px solid #00C48C40;border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">✅</span><div><div style="color:var(--green);font-weight:700">Liberação Aprovada pelo PCM</div><div style="color:var(--text3);font-size:11px">Aprovado por ${aprovadoPor} · ${formatDT(aprovadoEm)}</div></div></div>`;
-  } else if(submetido){
-    statusBanner=`<div style="background:#F59E0B15;border:1px solid #F59E0B40;border-radius:10px;padding:12px 14px;margin-bottom:14px"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">⏳</span><div style="flex:1"><div style="color:var(--amber);font-weight:700">Aguardando Aprovação do PCM</div><div style="color:var(--text3);font-size:11px">Submetido por ${submetidoPor} · ${formatDT(submetidoEm)}</div></div></div>${isPCMLib()?`<div style="display:flex;gap:8px;margin-top:10px"><button onclick="aprovarChecklistLib('${ocId}',true)" class="btn-success" style="flex:1">✅ Aprovar Liberação</button><button onclick="aprovarChecklistLib('${ocId}',false)" class="btn-sec" style="flex:1">↩ Devolver para Oficina</button></div>`:''}</div>`;
-  } else if(faseFim&&!submetido){
-    statusBanner=`<div style="background:#00C48C15;border:1px solid #00C48C40;border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">🎉</span><div><div style="color:var(--green);font-weight:700">Todos os itens verificados e executados!</div><div style="color:var(--text3);font-size:11px">Pronto para submeter ao PCM</div></div></div>`;
-  }
-
-  // SUPERGRUPOS
-  // Setores de manutenção — cada um trabalha em paralelo no diagnóstico
+  // SUPERGRUPOS — setores de manutenção
   const SUPERGRUPOS=[
     {key:'MECÂNICA',       ic:'🔧',c:'#F59E0B',
      grupos:['MOTOR','CÂMBIO','TRANSMISSÃO','EMBREAGEM','DIFERENCIAL',
@@ -2960,12 +2950,152 @@ async function carregarChecklistLib(ocId){
     {key:'DIAGNÓSTICO',    ic:'🔍',c:'#F97316', grupos:['DIAGNÓSTICO','EXECUÇÃO','QUALIDADE','ENTREGA']},
   ];
 
-  const grupos={};
+  // Agrupa todos os itens por subgrupo
+  const todosGrupos={};
   items.forEach(it=>{
+    const match=it.item.match(/^\[([^\]]+)\]/);
+    const grupo=match?match[1]:'GERAL';
+    if(!todosGrupos[grupo]) todosGrupos[grupo]=[];
+    todosGrupos[grupo].push(it);
+  });
+
+  // ── TELA DE SELEÇÃO DE SETOR (sem filtro ativo) ───────────
+  if(!setorFiltro){
+    const btnVoltar=`<button onclick="closeM('modal-22-cklib');document.getElementById('modal-22-status').style.display='flex'" class="btn-sec" style="width:100%;margin-top:12px">← Voltar para OS</button>`;
+    const bannerSubm=aprovado
+      ?`<div style="background:#00C48C15;border:1px solid #00C48C40;border-radius:10px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px"><span>✅</span><div style="color:var(--green);font-weight:700;font-size:13px">Liberação Aprovada pelo PCM</div></div>`
+      :submetido
+      ?`<div style="background:#F59E0B15;border:1px solid #F59E0B40;border-radius:10px;padding:10px 12px;margin-bottom:12px">
+          <div style="color:var(--amber);font-weight:700;font-size:13px">⏳ Aguardando Aprovação do PCM</div>
+          ${isPCMLib()?`<div style="display:flex;gap:8px;margin-top:8px">
+            <button onclick="aprovarChecklistLib('${ocId}',true)" class="btn-success" style="flex:1;font-size:12px">✅ Aprovar</button>
+            <button onclick="aprovarChecklistLib('${ocId}',false)" class="btn-sec" style="flex:1;font-size:12px">↩ Devolver</button>
+          </div>`:''}
+        </div>`
+      :faseFim
+      ?`<div style="background:#00C48C15;border:1px solid #00C48C40;border-radius:10px;padding:10px 12px;margin-bottom:12px">
+          <div style="color:var(--green);font-weight:700;font-size:13px">🎉 Todos os setores concluídos!</div>
+          <button onclick="submeterChecklistLib('${ocId}')" class="btn-success" style="width:100%;margin-top:8px">📤 Submeter para Aprovação do PCM</button>
+        </div>`:'';
+
+    // Cards de setor com progresso
+    const cardsSetor=SUPERGRUPOS.map(sg=>{
+      const itsSG=sg.grupos.filter(g=>todosGrupos[g]).flatMap(g=>todosGrupos[g]);
+      if(!itsSG.length) return '';
+      const vSG=itsSG.filter(i=>i.verificado||i.nao_se_aplica).length;
+      const tSG=itsSG.filter(i=>i.trocado||i.nao_se_aplica).length;
+      const totSG=itsSG.length;
+      const pctVsg=totSG>0?Math.round(vSG/totSG*100):0;
+      const pctTsg=totSG>0?Math.round(tSG/totSG*100):0;
+      const sgOk=vSG===totSG&&tSG===totSG;
+      const vOk=vSG===totSG;
+      const borderC=sgOk?'#00C48C40':vOk?'#F59E0B30':'var(--border)';
+      const bgC=sgOk?'#00C48C08':vOk?'#F59E0B08':'var(--surface2)';
+      return`<div onclick="verChecklistLib('${sg.key}')"
+        style="background:${bgC};border:1px solid ${borderC};border-radius:12px;padding:14px 16px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:12px"
+        onmouseover="this.style.borderColor='${sg.c}'" onmouseout="this.style.borderColor='${borderC}'">
+        <span style="font-size:24px">${sg.ic}</span>
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:13px;color:${sgOk?'var(--green)':sg.c};margin-bottom:4px">${sg.key}</div>
+          <div style="background:var(--border);border-radius:99px;height:5px;overflow:hidden;margin-bottom:4px">
+            <div style="width:${pctVsg}%;height:100%;background:${sgOk?'var(--green)':sg.c};border-radius:99px"></div>
+          </div>
+          <div style="font-size:10px;color:var(--text4)">
+            <span style="color:var(--blue)">V: ${vSG}/${totSG}</span>
+            <span style="margin:0 6px">·</span>
+            <span style="color:var(--green)">T: ${tSG}/${totSG}</span>
+            <span style="margin:0 6px">·</span>
+            ${totSG} itens
+          </div>
+        </div>
+        <div style="text-align:right">
+          ${sgOk?'<div style="color:var(--green);font-size:20px">✅</div>'
+            :vOk?'<div style="color:var(--amber);font-size:11px;font-weight:700">V ✓<br><span style="color:var(--text4)">T pend.</span></div>'
+            :`<div style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:700;color:${sg.c}">${pctVsg}%</div>`}
+        </div>
+      </div>`;
+    }).filter(Boolean).join('');
+
+    // Barra de progresso geral
+    const barraGeral=`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:11px;font-weight:700;color:var(--text3)">PROGRESSO GERAL</span>
+        <span style="font-size:11px;color:var(--text3)">${verificados}/${totalItens} verificados · ${trocados}/${totalItens} qualificados</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <div>
+          <div style="font-size:9px;color:var(--blue);font-weight:700;margin-bottom:2px">V — DIAGNÓSTICO ${pctV}%</div>
+          <div style="background:var(--border);border-radius:99px;height:6px;overflow:hidden">
+            <div style="width:${pctV}%;height:100%;background:var(--blue)"></div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:9px;color:var(--green);font-weight:700;margin-bottom:2px">T — QUALIFICAÇÃO ${pctT}%</div>
+          <div style="background:var(--border);border-radius:99px;height:6px;overflow:hidden">
+            <div style="width:${pctT}%;height:100%;background:var(--green)"></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+    const ckEl=document.getElementById('cklib-content');
+    if(ckEl) ckEl.innerHTML=`
+      ${bannerSubm}
+      ${barraGeral}
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Selecione o setor para preencher:</div>
+      <div style="display:flex;flex-direction:column;gap:8px">${cardsSetor}</div>
+      ${btnVoltar}`;
+    return;
+  }
+
+  // ── CHECKLIST DE UM SETOR ESPECÍFICO ─────────────────────
+  // Filtra itens do setor selecionado
+  const sgAtual=SUPERGRUPOS.find(sg=>sg.key===setorFiltro);
+  const gruposFiltrados=sgAtual?sgAtual.grupos:[];
+  const itensFiltrados=items.filter(it=>{
+    const match=it.item.match(/^\[([^\]]+)\]/);
+    const grupo=match?match[1]:'GERAL';
+    return gruposFiltrados.includes(grupo);
+  });
+
+  if(!itensFiltrados.length){
+    document.getElementById('cklib-content').innerHTML=`
+      <div style="text-align:center;padding:20px;color:var(--text3)">Nenhum item neste setor para este tipo de OS.</div>
+      <button onclick="verChecklistLib()" class="btn-sec" style="width:100%;margin-top:8px">← Voltar para Setores</button>`;
+    return;
+  }
+
+  const totSetor=itensFiltrados.length;
+  const vSetor=itensFiltrados.filter(i=>i.verificado||i.nao_se_aplica).length;
+  const tSetor=itensFiltrados.filter(i=>i.trocado||i.nao_se_aplica).length;
+  const pctVS=totSetor>0?Math.round(vSetor/totSetor*100):0;
+  const pctTS=totSetor>0?Math.round(tSetor/totSetor*100):0;
+  const setorOk=vSetor===totSetor&&tSetor===totSetor;
+  const podePreencher=isLiderOficina()&&!submetido&&!aprovado;
+  const faseVS=vSetor<totSetor;
+
+  // Grupos dentro do setor
+  const grupos={};
+  itensFiltrados.forEach(it=>{
     const match=it.item.match(/^\[([^\]]+)\]/);
     const grupo=match?match[1]:'GERAL';
     if(!grupos[grupo]) grupos[grupo]=[];
     grupos[grupo].push(it);
+  });
+
+  let statusBanner='';
+  if(aprovado===true){
+    statusBanner=`<div style="background:#00C48C15;border:1px solid #00C48C40;border-radius:10px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:8px"><span>✅</span><div style="color:var(--green);font-weight:700">Liberação Aprovada pelo PCM</div></div>`;
+  } else if(submetido){
+    statusBanner=`<div style="background:#F59E0B15;border:1px solid #F59E0B40;border-radius:10px;padding:10px 12px;margin-bottom:12px;color:var(--amber);font-weight:700;font-size:13px">⏳ Aguardando Aprovação do PCM</div>`;
+  }
+
+  const grupos2={};
+  items.forEach(it=>{
+    const match=it.item.match(/^\[([^\]]+)\]/);
+    const grupo=match?match[1]:'GERAL';
+    if(!grupos2[grupo]) grupos2[grupo]=[];
+    grupos2[grupo].push(it);
   });
 
   const podePreencher=isLiderOficina()&&!submetido&&!aprovado;
@@ -2975,11 +3105,12 @@ async function carregarChecklistLib(ocId){
     const rowBg=nsa?'#47556908':it.trocado?'#00C48C08':it.verificado?'#2563EB08':'var(--surface2)';
     const itemTxt=(it.item||'').replace(/^\[[^\]]+\]\s*/,'').replace(/'/g,'&#39;').replace(/`/g,'&#96;');
     const obsTxt=(it.observacao_item||'').replace(/'/g,'&#39;').replace(/`/g,'&#96;').replace(/"/g,'&quot;');
+    const sf=setorFiltro?`'${setorFiltro}'`:'null';
     return`<tr style="background:${rowBg};opacity:${nsa?'.5':'1'}">
       <td style="font-size:11px;color:var(--text);padding:6px 8px">${itemTxt}</td>
-      <td style="text-align:center;padding:4px"><button onclick="toggleVT('${it.id}','v','${ocId}')" ${!podePreencher?'disabled':''} title="Verificado (V)" style="width:32px;height:28px;border-radius:6px;border:1px solid ${it.verificado?'#2563EB':'var(--border)'};background:${it.verificado?'#2563EB18':'transparent'};cursor:${podePreencher?'pointer':'default'};font-size:13px;transition:all .15s">${it.verificado?'✓':'V'}</button></td>
-      <td style="text-align:center;padding:4px"><button onclick="toggleVT('${it.id}','t','${ocId}')" ${!podePreencher||!it.verificado?'disabled':''} title="Trocado/Executado (T)" style="width:32px;height:28px;border-radius:6px;border:1px solid ${it.trocado?'#00C48C':'var(--border)'};background:${it.trocado?'#00C48C18':'transparent'};cursor:${podePreencher&&it.verificado?'pointer':'default'};font-size:13px;transition:all .15s;opacity:${!it.verificado&&!it.trocado?'.4':'1'}">${it.trocado?'✓':'T'}</button></td>
-      <td style="text-align:center;padding:4px"><button onclick="toggleVT('${it.id}','nsa','${ocId}')" ${!podePreencher?'disabled':''} title="Não se aplica" style="width:32px;height:28px;border-radius:6px;border:1px solid ${nsa?'#47556940':'var(--border)'};background:${nsa?'#47556918':'transparent'};cursor:${podePreencher?'pointer':'default'};font-size:11px">N/A</button></td>
+      <td style="text-align:center;padding:4px"><button onclick="toggleVT('${it.id}','v','${ocId}',${sf})" ${!podePreencher?'disabled':''} title="Verificado (V)" style="width:32px;height:28px;border-radius:6px;border:1px solid ${it.verificado?'#2563EB':'var(--border)'};background:${it.verificado?'#2563EB18':'transparent'};cursor:${podePreencher?'pointer':'default'};font-size:13px;transition:all .15s">${it.verificado?'✓':'V'}</button></td>
+      <td style="text-align:center;padding:4px"><button onclick="toggleVT('${it.id}','t','${ocId}',${sf})" ${!podePreencher||!it.verificado?'disabled':''} title="Trocado/Executado (T)" style="width:32px;height:28px;border-radius:6px;border:1px solid ${it.trocado?'#00C48C':'var(--border)'};background:${it.trocado?'#00C48C18':'transparent'};cursor:${podePreencher&&it.verificado?'pointer':'default'};font-size:13px;transition:all .15s;opacity:${!it.verificado&&!it.trocado?'.4':'1'}">${it.trocado?'✓':'T'}</button></td>
+      <td style="text-align:center;padding:4px"><button onclick="toggleVT('${it.id}','nsa','${ocId}',${sf})" ${!podePreencher?'disabled':''} title="Não se aplica" style="width:32px;height:28px;border-radius:6px;border:1px solid ${nsa?'#47556940':'var(--border)'};background:${nsa?'#47556918':'transparent'};cursor:${podePreencher?'pointer':'default'};font-size:11px">N/A</button></td>
       <td style="padding:4px"><input type="text" placeholder="Obs..." value="${obsTxt}" ${!podePreencher?'disabled':''} onblur="salvarObsItem('${it.id}',this.value,'${ocId}')" style="width:100%;min-width:80px;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:10px;padding:2px 4px;outline:none"></td>
       <td style="text-align:center;padding:4px;font-size:10px;color:var(--text4)">${it.verificado?`<span style="color:var(--blue)">${(it.verificado_por||'').split(' ')[0]}${it.trocado?` / <span style="color:var(--green)">${(it.trocado_por||'').split(' ')[0]}</span>`:''}</span>`:nsa?'<span style="color:var(--text4)">N/A</span>':''}</td>
     </tr>`;
@@ -3013,117 +3144,53 @@ async function carregarChecklistLib(ocId){
     </div>`;
   };
 
-  log('items final='+items.length+' | grupos='+Object.keys(grupos).join(','));
-  const gruposUsados=new Set(Object.keys(grupos));
+
+  log('items final='+itensFiltrados.length+' setor='+setorFiltro);
+  // Renderiza grupos do setor filtrado
   let gruposHTML='';
-
-  // ── Painel de progresso por setor ─────────────────────────
-  const setoresDefinidos=SUPERGRUPOS.filter(sg=>sg.grupos.some(g=>gruposUsados.has(g)));
-  const painelSetores=setoresDefinidos.length>1?`
-    <div style="margin-bottom:14px">
-      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📊 Progresso por Setor</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px">
-        ${setoresDefinidos.map(sg=>{
-          const itSG=sg.grupos.filter(g=>gruposUsados.has(g)).flatMap(g=>grupos[g]);
-          const vSG=itSG.filter(i=>i.verificado||i.nao_se_aplica).length;
-          const tSG=itSG.filter(i=>i.trocado||i.nao_se_aplica).length;
-          const totSG=itSG.length;
-          const pctV=totSG>0?Math.round(vSG/totSG*100):0;
-          const ok=vSG===totSG&&tSG===totSG;
-          const vOk=vSG===totSG;
-          return`<div style="background:${ok?'#00C48C10':vOk?'#3B82F610':'var(--surface2)'};border:1px solid ${ok?'#00C48C30':vOk?'#3B82F630':'var(--border)'};border-radius:8px;padding:8px 10px">
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-              <span style="font-size:13px">${sg.ic}</span>
-              <span style="font-size:10px;font-weight:700;color:${ok?'var(--green)':sg.c}">${sg.key}</span>
-              ${ok?'<span style="margin-left:auto;font-size:11px">✅</span>':vOk?'<span style="margin-left:auto;font-size:10px;color:var(--amber)">V✓</span>':''}
-            </div>
-            <div style="background:var(--border);border-radius:99px;height:3px;overflow:hidden">
-              <div style="width:${pctV}%;height:100%;background:${ok?'var(--green)':sg.c};transition:width .3s"></div>
-            </div>
-            <div style="font-size:9px;color:var(--text4);margin-top:3px">V:${vSG}/${totSG} · T:${tSG}/${totSG}</div>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>`:'';
-
-  SUPERGRUPOS.forEach(sg=>{
-    const subgruposPresentes=sg.grupos.filter(g=>gruposUsados.has(g));
-    if(!subgruposPresentes.length) return;
-    const todosItens=subgruposPresentes.flatMap(g=>grupos[g]);
-    const vSG=todosItens.filter(i=>i.verificado||i.nao_se_aplica).length;
-    const tSG=todosItens.filter(i=>i.trocado||i.nao_se_aplica).length;
-    const totSG=todosItens.length;
-    const sgOk=vSG===totSG&&tSG===totSG;
-    const pctVsg=totSG>0?Math.round((vSG/totSG)*100):0;
-    const sgId='super_'+sg.key.replace(/[^a-zA-Z0-9]/g,'_');
-    gruposHTML+=`<div style="margin-bottom:8px;border:1px solid ${sgOk?'#00C48C30':'var(--border)'};border-radius:10px;overflow:hidden">
-      <div onclick="var el=document.getElementById('${sgId}');el.style.display=el.style.display==='none'?'block':'none'" style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:${sgOk?'#00C48C12':sg.c+'12'};cursor:pointer">
-        <span style="font-size:16px">${sg.ic}</span>
-        <div style="flex:1"><div style="font-weight:700;font-size:12px;color:${sgOk?'var(--green)':sg.c}">${sg.key}</div><div style="font-size:10px;color:var(--text4);margin-top:1px">${totSG} itens · V:${vSG}/${totSG} · T:${tSG}/${totSG}</div></div>
-        <div style="width:50px;height:4px;background:var(--border);border-radius:99px;overflow:hidden"><div style="width:${pctVsg}%;height:100%;background:${sgOk?'var(--green)':sg.c}"></div></div>
-        ${sgOk?'<span style="color:var(--green);font-size:14px">✅</span>':''}
-      </div>
-      <div id="${sgId}">${subgruposPresentes.map(g=>renderSubgrupo(g,grupos[g])).join('')}</div>
-    </div>`;
+  Object.entries(grupos).forEach(([g,gitens])=>{
+    gruposHTML+=renderSubgrupo(g,gitens);
   });
 
-  Object.keys(grupos).forEach(g=>{
-    if(!SUPERGRUPOS.some(sg=>sg.grupos.includes(g))){
-      gruposHTML+=`<div style="margin-bottom:8px;border:1px solid var(--border);border-radius:10px;overflow:hidden"><div style="padding:9px 12px;background:var(--surface2);font-weight:700;font-size:12px">🔧 ${g}</div><div>${renderSubgrupo(g,grupos[g])}</div></div>`;
-    }
-  });
-
-  const btnSubmeter=podePreencher&&faseFim
-    ?`<button onclick="submeterChecklistLib('${ocId}')" class="btn-success" style="width:100%;margin-top:12px">📤 Submeter para Aprovação do PCM</button>`
-    :!isLiderOficina()&&!submetido
-    ?`<div style="color:var(--text3);font-size:12px;text-align:center;margin-top:12px;padding:10px;background:var(--surface2);border-radius:8px">🔒 Preenchimento exclusivo do Líder de Oficina</div>`
+  const sg=sgAtual||{ic:'🔧',key:setorFiltro||'',c:'#F59E0B'};
+  const btnSubmeter=podePreencher&&faseFim&&setorOk
+    ?`<div style="background:#00C48C15;border:1px solid #00C48C40;border-radius:10px;padding:10px 12px;margin-top:12px;text-align:center;color:var(--green);font-weight:700;font-size:13px">✅ Setor concluído!</div>`
     :'';
 
   const ckEl=document.getElementById('cklib-content');
-  if(!ckEl){console.warn('cklib-content não encontrado ao renderizar');return;}
+  if(!ckEl) return;
   ckEl.innerHTML=`
     ${statusBanner}
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:12px">
-      <div style="display:flex;gap:16px;flex-wrap:wrap">
-        <div><span style="color:var(--text3)">Veículo:</span> <span style="font-family:'DM Mono',monospace;font-weight:700">${oc.prefixo}</span></div>
-        <div><span style="color:var(--text3)">Tipo:</span> <span style="color:${TIPO22[oc.tipo]?.c||'var(--text)'}">${TIPO22[oc.tipo]?.ic} ${TIPO22[oc.tipo]?.l}</span></div>
-        <div><span style="color:var(--text3)">OS:</span> <span style="font-family:'DM Mono',monospace;color:var(--blue)">${oc.praxio_os_id||'—'}</span></div>
-        <div><span style="color:var(--text3)">Mecânico:</span> ${oc.mecanico||'—'}</div>
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:${sg.c}12;border:1px solid ${sg.c}30;border-radius:10px;margin-bottom:12px">
+      <span style="font-size:20px">${sg.ic}</span>
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:14px;color:${sg.c}">${sg.key}</div>
+        <div style="font-size:10px;color:var(--text4)">${totSetor} itens · V:${vSetor}/${totSetor} · T:${tSetor}/${totSetor}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="background:var(--border);border-radius:99px;height:5px;width:60px;overflow:hidden;margin-bottom:3px">
+          <div style="width:${pctVS}%;height:100%;background:${sg.c}"></div>
+        </div>
+        <div style="font-size:10px;color:var(--text4)">${pctVS}%</div>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-      <div style="background:var(--surface2);border:1px solid #2563EB30;border-radius:10px;padding:10px 12px">
-        <div style="color:var(--blue);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px">V — Verificado (Diagnóstico)</div>
-        <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:700;color:var(--blue);margin-top:3px">${verificados}/${totalItens}</div>
-        <div style="background:var(--border);border-radius:99px;height:4px;overflow:hidden;margin-top:6px"><div style="height:100%;width:${pctV}%;background:var(--blue)"></div></div>
-        <div style="color:var(--text3);font-size:10px;margin-top:4px">Líder + Mecânico identificam o que precisa de troca</div>
-      </div>
-      <div style="background:var(--surface2);border:1px solid #00C48C30;border-radius:10px;padding:10px 12px">
-        <div style="color:var(--green);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px">T — Trocado/Executado (Qualificação)</div>
-        <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:700;color:var(--green);margin-top:3px">${trocados}/${totalItens}</div>
-        <div style="background:var(--border);border-radius:99px;height:4px;overflow:hidden;margin-top:6px"><div style="height:100%;width:${pctT}%;background:var(--green)"></div></div>
-        <div style="color:var(--text3);font-size:10px;margin-top:4px">Líder confirma o que foi realmente feito</div>
-      </div>
-    </div>
-    ${faseV?`<div style="background:#2563EB12;border:1px solid #2563EB30;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--blue)">📋 <strong>Fase 1 — Diagnóstico:</strong> Marque V em cada item verificado. Após verificar todos, a fase T será liberada.</div>`:faseT?`<div style="background:#F59E0B12;border:1px solid #F59E0B30;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--amber)">🔧 <strong>Fase 2 — Qualificação:</strong> Marque T nos itens que foram efetivamente trocados/executados. N/A para itens que não se aplicam.</div>`:''}
-    ${painelSetores}
+    ${faseVS?`<div style="background:#2563EB12;border:1px solid #2563EB30;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:var(--blue)">📋 <strong>Diagnóstico:</strong> Marque V em cada item verificado.</div>`
+    :`<div style="background:#F59E0B12;border:1px solid #F59E0B30;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:var(--amber)">🔧 <strong>Qualificação:</strong> Marque T nos itens executados. N/A para não aplicáveis.</div>`}
     ${gruposHTML}
     ${btnSubmeter}
-    <button onclick="closeM('modal-22-cklib');document.getElementById('modal-22-status').style.display='flex'" class="btn-sec" style="width:100%;margin-top:8px">← Voltar</button>`;
+    <button onclick="verChecklistLib()" class="btn-sec" style="width:100%;margin-top:10px">← Voltar para Setores</button>`;
 }
 
-
-async function toggleVT(itemId, tipo, ocId){
+async function toggleVT(itemId, tipo, ocId, setorFiltro=null){
   const{data:it}=await sb.from('checklist_liberacao').select('*').eq('id',itemId).single();
   if(!it) return;
   let payload={};
   if(tipo==='v'){
     const novoV=!it.verificado;
     payload={verificado:novoV,verificado_por:novoV?S.perfil?.nome:null,verificado_em:novoV?new Date().toISOString():null};
-    // Se desmarcou V, desmarca T também
     if(!novoV) payload={...payload,trocado:false,trocado_por:null,trocado_em:null};
   } else if(tipo==='t'){
-    if(!it.verificado) return; // só marca T se V estiver marcado
+    if(!it.verificado) return;
     const novoT=!it.trocado;
     payload={trocado:novoT,trocado_por:novoT?S.perfil?.nome:null,trocado_em:novoT?new Date().toISOString():null,concluido:novoT};
   } else if(tipo==='nsa'){
@@ -3133,7 +3200,7 @@ async function toggleVT(itemId, tipo, ocId){
       trocado_por:novoNsa?S.perfil?.nome:null,trocado_em:novoNsa?new Date().toISOString():null};
   }
   await sb.from('checklist_liberacao').update(payload).eq('id',itemId);
-  await carregarChecklistLib(ocId);
+  await carregarChecklistLib(ocId, setorFiltro);
 }
 
 async function salvarObsItem(itemId, obs, ocId){
