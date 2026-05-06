@@ -244,6 +244,7 @@ tr:hover td{background:#0F172A80}
         <button class="sub-btn" onclick="navToSub('ferr-211')">🔴 2.11 Carros Indisponíveis</button>
         <button class="sub-btn" onclick="navToSub('ferr-212')">📊 2.12 Indicadores Técnicos</button>
         <button class="sub-btn" onclick="navToSub('ferr-lav')">🧼 3.2 Checklist Lavagem</button>
+        ${isLavador()?`<button class="sub-btn" onclick="navToSub('ferr-lav-lavador')">🚿 Minha Lista de Lavagem</button>`:''}
         <button class="sub-btn" onclick="navToSub('ferr-ctrl')">✅ Controle Soltura</button>
       </div>
       <button class="nav-btn" onclick="toggleSub('sub-rel','arr-rel',this)"><span>📋</span> Relatórios <span id="arr-rel" style="margin-left:auto;font-size:10px;color:var(--text4)">▶</span></button>
@@ -565,12 +566,18 @@ const sb=createClient(SUPABASE_URL,SUPABASE_PK);
 
 const S={user:null,perfil:null,tela:'painel',subtela:null,turno:'dia',garagens:[],frota:[],soltura210:[],filtroFrota:'todos',editVId:null,editSaidaId:null,editUserId:null,data210:null};
 
-// Perfis que podem importar escala
-function isEscalante(){return ['lider_operacional','gerente_garagem','diretoria','lider_pcm'].includes(S.perfil?.cargo)||S.perfil?.is_admin}
-// Perfis que preenchem soltura
-function isLiderPatio(){return ['lider_patio','lider_operacional','operacoes_seguras','gerente_garagem','diretoria'].includes(S.perfil?.cargo)||S.perfil?.is_admin}
-// Perfis de supervisão que veem arquivo
-function isSupervisao(){return ['diretoria','gerente_garagem','lider_operacional','lider_pcm','assistente_pcm'].includes(S.perfil?.cargo)||S.perfil?.is_admin}
+// Helpers de cargo
+const cargo=()=>S.perfil?.cargo;
+const isAdmin=()=>S.perfil?.is_admin;
+const isLavador=()=>cargo()==='lavador';
+// Sobe escala 2.10 e programação de lavagem
+function isEscalante(){return ['lider_operacional','gerente_garagem','diretoria'].includes(cargo())||isAdmin()}
+// Valida saída 2.10 e lavagem
+function isLiderPatio(){return ['lider_patio','gerente_garagem','diretoria'].includes(cargo())||isAdmin()}
+// Supervisão geral
+function isSupervisao(){return ['diretoria','gerente_garagem','lider_operacional','lider_pcm','assistente_pcm'].includes(cargo())||isAdmin()}
+// Lavador vê programação e faz checklist
+function isLavadorOuPatio(){return ['lavador','lider_patio','gerente_garagem','diretoria'].includes(cargo())||isAdmin()}
 
 // Toggle campos do modal saída
 function toggleReserva(){
@@ -592,14 +599,15 @@ async function carregarReservasDisponiveis(){
   sel.innerHTML=`<option value="">Selecione o reserva...</option>`+
     disponiveis.map(v=>`<option value="${v.prefixo}">${v.prefixo} — ${v.modelo||'—'} (${v.status==='disponivel'?'✅ Disponível':'🔧 '+v.status})</option>`).join('');
 }
-const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',lider_pcm:'Líder PCM',assistente_pcm:'Assistente PCM',almoxarifado:'Almoxarifado',lider_operacional:'Líder Operacional',lider_suprimentos:'Líder de Suprimentos',operacoes_seguras:'Operações Seguras',lider_oficina:'Líder de Oficina',lider_patio:'Líder de Pátio'};
+const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',lider_pcm:'Líder PCM',assistente_pcm:'Assistente PCM',almoxarifado:'Almoxarifado',lider_operacional:'Líder Operacional',lider_suprimentos:'Líder de Suprimentos',operacoes_seguras:'Operações Seguras',lider_oficina:'Líder de Oficina',lider_patio:'Líder de Pátio',lavador:'Lavador'};
 
 // ── FERRAMENTAS E PERMISSÕES ──────────────────────────────
 const FERRAMENTAS_DEF=[
-  {id:'ferr-210',icon:'📋',nome:'2.10 Soltura de Frota',padrão:['lider_patio','lider_operacional','gerente_garagem','diretoria','lider_pcm']},
-  {id:'ferr-22', icon:'🔧',nome:'2.2 Priorização Oficina',padrão:['lider_pcm','assistente_pcm','lider_oficina','gerente_garagem','diretoria']},
-  {id:'ferr-lav',icon:'🧼',nome:'3.2 Checklist Lavagem',padrão:['lider_patio','lider_operacional','gerente_garagem','diretoria']},
-  {id:'ferr-ctrl',icon:'✅',nome:'Controle Soltura',padrão:['lider_patio','lider_operacional','gerente_garagem','diretoria']},
+  {id:'ferr-210', icon:'📋',nome:'2.10 Soltura de Frota',   padrão:['lider_patio','lider_operacional','gerente_garagem','diretoria','lider_pcm']},
+  {id:'ferr-22',  icon:'🔧',nome:'2.2 Priorização Oficina', padrão:['lider_pcm','assistente_pcm','lider_oficina','gerente_garagem','diretoria']},
+  {id:'ferr-lav', icon:'🧼',nome:'3.2 Checklist Lavagem',   padrão:['lider_patio','lider_operacional','gerente_garagem','diretoria']},
+  {id:'ferr-lav-lavador',icon:'🚿',nome:'Minha Lista de Lavagem',padrão:['lavador']},
+  {id:'ferr-ctrl',icon:'✅',nome:'Controle Soltura',         padrão:['lider_patio','lider_operacional','gerente_garagem','diretoria']},
 ];
 
 // Carrega permissões do localStorage (admin pode customizar)
@@ -721,7 +729,7 @@ function navToSub(sub){
   S.subtela=sub;
   document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes(sub))b.classList.add('active')});
-  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-lav':renderFerrLav,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'rel-todos':renderRelatorios};
+  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'rel-todos':renderRelatorios};
   if(map[sub]) map[sub]();
 }
 
@@ -1708,6 +1716,13 @@ async function renderFerr210(tab='painel', dataFiltro=null){
   // Pré-computa bloco de reservas (async)
   const blocoReservas=await gerarBlocoReservas(gid, dataConsulta);
 
+  // Busca status de lavagem dos carros para o badge no 2.10
+  const prefixos=S.soltura210.map(r=>r.prefixo);
+  const{data:lavagens}=await sb.from('checklist_lavagem').select('prefixo,status,validado_patio')
+    .eq('garagem_id',gid).eq('data',dataConsulta).in('prefixo',prefixos);
+  const lavMap={};
+  (lavagens||[]).forEach(l=>{ lavMap[l.prefixo]=l; });
+
   const rows=S.soltura210.map(r=>{
     const usouReserva=r.observacao&&r.observacao.startsWith('Reserva:');
     const sH=r.saiu===true
@@ -1718,12 +1733,24 @@ async function renderFerr210(tab='painel', dataFiltro=null){
     const pontH=r.pontual===true?`<span style="color:var(--green);font-size:11px;font-weight:600">✓</span>`:r.pontual===false?`<span style="color:var(--red);font-size:11px;font-weight:600">⏰</span>`:`<span style="color:var(--text4)">—</span>`;
     const reservaH=usouReserva?`<span style="color:var(--purple);font-family:'DM Mono',monospace;font-size:11px">🔄 ${r.observacao.split('Reserva:')[1].split('|')[0].trim()}</span>`:`<span style="color:var(--text4)">—</span>`;
     const obsH=r.observacao&&!usouReserva?`<span style="color:var(--text3);font-size:11px">${r.observacao.substring(0,30)}</span>`:'';
+    // Badge de lavagem
+    const lav=lavMap[r.prefixo];
+    const lavH=lav?.validado_patio
+      ?`<span title="Lavagem validada pelo Líder de Pátio" style="color:var(--green);font-size:13px">🚿✅</span>`
+      :lav?.status==='executado'
+        ?`<span title="Lavagem concluída - aguardando validação" style="color:var(--amber);font-size:13px">🚿⏳</span>`
+        :lav?.status==='nao_realizado'
+          ?`<span title="Lavagem não realizada" style="color:var(--red);font-size:13px">🚿❌</span>`
+          :lav?.status==='pendente'
+            ?`<span title="Lavagem pendente" style="color:var(--text4);font-size:13px">🚿</span>`
+            :`<span style="color:var(--text4);font-size:11px">—</span>`;
     return`<tr style="background:${r.saiu===true?(usouReserva?'#8B5CF608':'#00C48C05'):r.saiu===false?'#EF444405':''}">
       <td><span style="font-family:'DM Mono',monospace;font-weight:700">${r.prefixo}</span></td>
       <td><span style="color:var(--amber);font-family:'DM Mono',monospace">${r.horario_programado||'—'}</span></td>
       <td style="color:var(--text2);font-size:12px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.linha||'—'}</td>
       <td style="color:var(--text3);font-size:12px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.motorista||'—'}</td>
       <td>${sH}</td>
+      <td style="text-align:center">${lavH}</td>
       <td>${pontH}</td>
       <td>${reservaH}</td>
       <td>${obsH}</td>
@@ -1779,7 +1806,7 @@ async function renderFerr210(tab='painel', dataFiltro=null){
       </div>
       <div style="overflow-x:auto">
         <table>
-            <thead><tr><th>Prefixo</th><th>Hor. Prog.</th><th>Linha</th><th>Motorista</th><th>Saída</th><th>Pont.</th><th>Reserva</th><th>Obs.</th></tr></thead>
+            <thead><tr><th>Prefixo</th><th>Hor. Prog.</th><th>Linha</th><th>Motorista</th><th>Saída</th><th style="text-align:center">🚿</th><th>Pont.</th><th>Reserva</th><th>Obs.</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -4173,7 +4200,10 @@ async function renderFerrLav(aba='painel'){
     const cor=r.status==='executado'?'var(--green)':r.status==='nao_realizado'?'var(--red)':'var(--text3)';
     const btnCls=r.status==='executado'?'sb-sim':r.status==='nao_realizado'?'sb-nao':'sb-pend';
     const btnTxt=r.status==='executado'?`✅ ${r.hora_executado?new Date(r.hora_executado).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'OK'}`:r.status==='nao_realizado'?'❌ N/R':'○ Marcar';
-    return`<tr style="background:${r.status==='executado'?'#00C48C05':r.status==='nao_realizado'?'#EF444405':''}">
+    const validBadge=r.validado_patio?`<span style="color:var(--green);font-size:11px;font-weight:700">✅ Validado</span>`
+      :r.status==='executado'&&isLiderPatio()?`<button onclick="validarLavagemPatio('${r.id}','${r.prefixo}')" style="background:#2563EB18;border:1px solid #2563EB40;color:var(--blue);border-radius:6px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Validar ✓</button>`
+      :r.status==='executado'?`<span style="color:var(--amber);font-size:11px">⏳ Ag. validação</span>`:'';
+    return`<tr style="background:${r.validado_patio?'#00C48C05':r.status==='executado'?'#00C48C03':r.status==='nao_realizado'?'#EF444405':''}">
       <td><span style="font-family:'DM Mono',monospace;font-weight:700">${r.prefixo}</span></td>
       <td><span style="color:${tipoColor[r.tipo_lavagem]};font-weight:600;font-size:12px">${tipoLabel[r.tipo_lavagem]||r.tipo_lavagem}</span></td>
       <td><button class="status-btn ${btnCls}" onclick="marcarLavagem('${r.id}','${r.prefixo}')">${btnTxt}</button></td>
@@ -4239,9 +4269,109 @@ async function renderFerrLav(aba='painel'){
   `);
 }
 
-// Marca lavagem como executada
+// ══════════════════════════════════════════════════════════════
+// TELA DO LAVADOR — lista simplificada dos carros para lavar
+// ══════════════════════════════════════════════════════════════
+async function renderFerrLavLavador(){
+  const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  setMain(`<div class="loading"><div class="spinner"></div></div>`);
+
+  const data=hoje();
+  const{data:lista}=await sb.from('checklist_lavagem').select('*')
+    .eq('garagem_id',gid).eq('data',data).order('prefixo');
+
+  if(!lista||!lista.length){
+    setMain(`${back}
+      <div style="font-size:18px;font-weight:800;margin-bottom:20px">🚿 Minha Lista de Lavagem</div>
+      <div class="empty"><div style="font-size:40px">🚿</div>
+        <div style="color:var(--text2);font-weight:600;margin:12px 0">Nenhuma programação para hoje</div>
+        <div style="color:var(--text3);font-size:13px">O Líder Operacional ainda não importou a programação do dia.</div>
+      </div>`);
+    return;
+  }
+
+  const pend=lista.filter(r=>r.status==='pendente').length;
+  const exec=lista.filter(r=>r.status==='executado').length;
+  const valid=lista.filter(r=>r.validado_patio).length;
+  const pct=lista.length>0?Math.round((exec/lista.length)*100):0;
+
+  const cards=lista.map(r=>{
+    const st=r.status==='executado'?{c:'var(--green)',ic:'✅',l:'Concluído'}
+      :r.status==='nao_realizado'?{c:'var(--red)',ic:'❌',l:'Não Realizado'}
+      :{c:'var(--text4)',ic:'○',l:'Pendente'};
+    const validBadge=r.validado_patio
+      ?`<span style="background:#00C48C15;border:1px solid #00C48C40;color:var(--green);border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700">✅ Validado</span>`
+      :r.status==='executado'?`<span style="background:#F59E0B15;border:1px solid #F59E0B40;color:var(--amber);border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700">⏳ Ag. Validação</span>`:'';
+    return`<div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${st.c};border-radius:12px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px">
+      <div style="flex:1">
+        <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700">${r.prefixo}</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px">${r.tipo_lavagem||'Simples'} ${r.hora_executado?'· '+new Date(r.hora_executado).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):''}
+        ${r.executado_por?`· <span style="color:var(--text2)">${r.executado_por}</span>`:''}</div>
+        <div style="margin-top:4px">${validBadge}</div>
+      </div>
+      ${!r.validado_patio?`<button onclick="marcarLavagem('${r.id}','${r.prefixo}')"
+        style="background:${r.status==='executado'?'#00C48C18':'var(--surface2)'};border:1px solid ${r.status==='executado'?'#00C48C40':'var(--border)'};color:${st.c};border-radius:10px;padding:10px 14px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;min-width:90px">
+        ${st.ic} ${st.l}
+      </button>`:`<div style="color:var(--green);font-size:20px">✅</div>`}
+    </div>`;
+  }).join('');
+
+  setMain(`${back}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <div style="font-size:18px;font-weight:800">🚿 Minha Lista de Lavagem</div>
+        <div style="color:var(--text3);font-size:12px;margin-top:2px">${new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'})}</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
+      <div class="kpi neu"><div class="kpi-label">Total</div><div class="kpi-val">${lista.length}</div><div class="kpi-meta">programados</div></div>
+      <div class="kpi ${exec===lista.length?'ok':'neu'}"><div class="kpi-label">Lavados</div><div class="kpi-val" style="color:var(--green)">${exec}</div>
+        <div style="background:var(--border);border-radius:99px;height:4px;overflow:hidden;margin-top:6px"><div style="width:${pct}%;height:100%;background:var(--green)"></div></div>
+      </div>
+      <div class="kpi ${valid===exec&&exec>0?'ok':'neu'}"><div class="kpi-label">Validados</div><div class="kpi-val" style="color:var(--blue)">${valid}</div><div class="kpi-meta">pelo Líder de Pátio</div></div>
+    </div>
+    ${pend>0?`<div style="background:#2563EB12;border:1px solid #2563EB30;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--blue)">
+      📋 Você tem <strong>${pend} carro(s) pendente(s)</strong> para lavar hoje.
+    </div>`:''}
+    ${cards}
+  `);
+}
+
+// ══════════════════════════════════════════════════════════════
+// VALIDAÇÃO DA LAVAGEM PELO LÍDER DE PÁTIO
+// ══════════════════════════════════════════════════════════════
+async function validarLavagemPatio(id, prefixo){
+  if(!isLiderPatio()){toast('Apenas o Líder de Pátio pode validar.','err');return;}
+  const sheet=`
+    <div style="font-size:17px;font-weight:700;margin-bottom:8px">🚿 Validar Lavagem — <span style="font-family:'DM Mono',monospace;color:var(--blue)">${prefixo}</span></div>
+    <div style="color:var(--text3);font-size:13px;margin-bottom:16px">Confirme que a lavagem foi executada corretamente.</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+      <button onclick="confirmarValidacaoPatio('${id}',true)" style="background:#00C48C18;border:1px solid #00C48C40;color:var(--green);border-radius:10px;padding:14px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer">✅ Aprovar — Lavagem OK</button>
+      <button onclick="confirmarValidacaoPatio('${id}',false)" style="background:#EF444418;border:1px solid #EF444440;color:var(--red);border-radius:10px;padding:14px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer">❌ Reprovar — Refazer Lavagem</button>
+    </div>
+    <button onclick="closeM('modal-lav-confirm')" style="width:100%;background:var(--border);border:none;color:var(--text3);border-radius:10px;padding:12px;font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer">Cancelar</button>`;
+  document.getElementById('modal-lav-confirm-body').innerHTML=sheet;
+  document.getElementById('modal-lav-confirm').style.display='flex';
+}
+
+async function confirmarValidacaoPatio(id, aprovado){
+  const payload={
+    validado_patio:aprovado,
+    validado_por:S.perfil?.nome,
+    validado_em:new Date().toISOString(),
+    status:aprovado?'executado':'pendente',
+  };
+  await sb.from('checklist_lavagem').update(payload).eq('id',id);
+  closeM('modal-lav-confirm');
+  toast(aprovado?'✅ Lavagem validada!':'↩ Devolvido para o lavador');
+  if(isLavador()) renderFerrLavLavador();
+  else renderFerrLav('painel');
+}
+
+async function renderFerrLav(aba='painel'){
+
 function marcarLavagem(id, prefixo){
-  // Abre sheet de confirmação
   const sheet=`
     <div style="font-size:17px;font-weight:700;margin-bottom:16px">🧼 Marcar Lavagem — <span style="font-family:'DM Mono',monospace;color:var(--blue)">${prefixo}</span></div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
@@ -4250,19 +4380,14 @@ function marcarLavagem(id, prefixo){
       <button onclick="confirmarLavagemItem('${id}','pendente')" style="background:var(--border);border:none;color:var(--text2);border-radius:10px;padding:12px;font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer">↩ Voltar para Pendente</button>
     </div>
     <button onclick="closeM('modal-lav-confirm')" style="width:100%;background:var(--border);border:none;color:var(--text3);border-radius:10px;padding:12px;font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer">Cancelar</button>`;
-
-  // Usa modal genérico
   let m=document.getElementById('modal-lav-confirm');
   if(!m){
-    m=document.createElement('div');
-    m.id='modal-lav-confirm';
-    m.className='modal-ov';
-    m.style.display='none';
+    m=document.createElement('div');m.id='modal-lav-confirm';m.className='modal-ov';m.style.display='none';
     m.onclick=function(e){if(e.target===this)this.style.display='none'};
-    m.innerHTML=`<div class="modal" style="max-width:380px"><div id="modal-lav-body"></div></div>`;
+    m.innerHTML=`<div class="modal" style="max-width:380px"><div id="modal-lav-confirm-body"></div></div>`;
     document.body.appendChild(m);
   }
-  document.getElementById('modal-lav-body').innerHTML=sheet;
+  document.getElementById('modal-lav-confirm-body').innerHTML=sheet;
   m.style.display='flex';
 }
 
