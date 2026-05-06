@@ -3100,45 +3100,57 @@ async function atualizarStatus22(){
   const isLib=novoStatus==='liberado';
   const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
 
-  // Busca status anterior
-  const{data:oc}=await sb.from('ocorrencias_22').select('*').eq('id',S.editId22).single();
-  const statusAnterior=oc?.status;
+  if(!S.editId22){toast('Erro: ID da ocorrência não encontrado','err');return;}
+
+  // Busca OS completa
+  const{data:oc,error:errOc}=await sb.from('ocorrencias_22').select('*').eq('id',S.editId22).single();
+  if(errOc||!oc){toast('Erro ao buscar OS: '+(errOc?.message||'não encontrada'),'err');return;}
+  const statusAnterior=oc.status;
+
+  // Se veiculo_id está nulo, tenta encontrar pelo prefixo
+  let veiculoId=oc.veiculo_id;
+  if(!veiculoId&&oc.prefixo){
+    const{data:vei}=await sb.from('frota').select('id').eq('garagem_id',gid).eq('prefixo',oc.prefixo).single();
+    if(vei){
+      veiculoId=vei.id;
+      // Corrige o veiculo_id na OS
+      await sb.from('ocorrencias_22').update({veiculo_id:veiculoId}).eq('id',S.editId22);
+    }
+  }
 
   const payload={
     status:novoStatus,
-    mecanico:mecanico||null,
+    mecanico:mecanico||oc.mecanico||null,
     updated_at:new Date().toISOString(),
     ...(os&&{praxio_os_id:os}),
     ...(previsao&&{hora_previsao:new Date(previsao).toISOString()}),
-    ...(isLib&&{hora_liberacao:horaLib?new Date(horaLib).toISOString():new Date().toISOString(),fechado_por_nome:S.perfil.nome}),
+    ...(isLib&&{
+      hora_liberacao:horaLib?new Date(horaLib).toISOString():new Date().toISOString(),
+      fechado_por_nome:S.perfil.nome,
+    }),
   };
 
   const{error}=await sb.from('ocorrencias_22').update(payload).eq('id',S.editId22);
-  if(error){toast('Erro: '+error.message,'err');return}
+  if(error){toast('Erro ao salvar: '+error.message,'err');console.error('atualizarStatus22 error:',error);return;}
 
-  // Grava histórico
-  const eventoLabel={
-    em_manutencao:'Em Manutenção',aguardando_peca:'Aguardando Peça',
-    aguardando_aprovacao:'Aguardando Aprovação',liberado:'Veículo Liberado'
-  };
+  // Histórico
   await sb.from('historico_22').insert({
     ocorrencia_id:S.editId22, garagem_id:gid,
     evento:isLib?'Veículo liberado':'Status atualizado',
     status_anterior:statusAnterior, status_novo:novoStatus,
-    mecanico:mecanico||null,
-    observacao:obs||`Status: ${eventoLabel[novoStatus]||novoStatus}${os?' · OS: '+os:''}`,
+    mecanico:mecanico||oc.mecanico||null,
+    observacao:obs||null,
     usuario_nome:S.perfil.nome,
   });
 
   // Atualiza frota
-  if(oc?.veiculo_id){
+  if(veiculoId){
     const statusFrota=isLib?'disponivel':novoStatus==='aguardando_peca'?'aguardando_peca':'manutencao';
-    await sb.from('frota').update({status:statusFrota,updated_at:new Date().toISOString()}).eq('id',oc.veiculo_id);
+    await sb.from('frota').update({status:statusFrota,updated_at:new Date().toISOString()}).eq('id',veiculoId);
   }
 
   toast(isLib?'✅ Veículo liberado e frota atualizada!':'✅ Status atualizado!');
   closeM('modal-22-status');
-  // Notifica WhatsApp
   notificarWhatsApp(S.editId22, novoStatus);
   renderFerr22('ativas');
 }
