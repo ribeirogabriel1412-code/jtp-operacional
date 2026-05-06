@@ -7,6 +7,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0A0F1E">
 <title>JTP Operacional</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-title" content="JTP">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -108,6 +111,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
     </div>
     <div style="display:flex;align-items:center;gap:8px">
       <div style="font-size:11px;color:var(--text3)" id="tbg">—</div>
+      <button id="btn-instalar" onclick="instalarApp()" style="display:none;background:var(--blue);border:none;border-radius:8px;padding:5px 10px;color:#fff;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;align-items:center;gap:4px">📲 Instalar</button>
       <button onclick="doLogout()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 10px;color:var(--text3);font-size:11px;font-family:inherit;cursor:pointer">Sair</button>
     </div>
   </div>
@@ -295,35 +299,230 @@ async function aprPat(){await sb.from('checklist_lavagem').update({validado_pati
 async function reprPat(){await sb.from('checklist_lavagem').update({validado_patio:false,status:'pendente'}).eq('id',_pid);toast('↩ Devolvido');telaPatio()}
 
 // ── SOLTURA (Líder Pátio) ─────────────────────────────────
-let _sid='';
-async function telaSoltura(){
+let _sid='',_sdata=hoje(),_sLista=[];
+
+async function telaSoltura(dataFiltro=null){
   const gid=getGid();
-  const{data:lista}=await sb.from('soltura_2_10').select('*').eq('garagem_id',gid).eq('data',hoje()).order('horario_programado');
-  if(!lista?.length){render(`<div class="empty"><div class="empty-ic">📋</div><div style="font-weight:700;font-size:16px;margin-bottom:8px">Sem escala hoje</div></div>`);return}
-  const saiu=lista.filter(r=>r.saiu===true).length,nao=lista.filter(r=>r.saiu===false).length,pend=lista.filter(r=>r.saiu==null).length;
+  if(dataFiltro) _sdata=dataFiltro;
+  else if(!_sdata) _sdata=hoje();
+
+  const{data:lista}=await sb.from('soltura_2_10').select('*')
+    .eq('garagem_id',gid).eq('data',_sdata).order('horario_programado');
+
+  _sLista=lista||[];
+  renderSoltura(_sLista,'');
+}
+
+function renderSoltura(lista, busca){
+  const filtrada=busca
+    ?lista.filter(r=>r.prefixo?.includes(busca.toUpperCase())||r.horario_programado?.includes(busca)||r.motorista?.toLowerCase().includes(busca.toLowerCase()))
+    :lista;
+
+  if(!lista.length){
+    render(`<div class="empty"><div class="empty-ic">📋</div><div style="font-weight:700;font-size:16px;margin-bottom:8px">Sem escala</div><div style="font-size:13px">Nenhuma escala para ${_sdata}</div></div>`);
+    return;
+  }
+
+  const saiu=lista.filter(r=>r.saiu===true).length;
+  const nao=lista.filter(r=>r.saiu===false).length;
+  const pend=lista.filter(r=>r.saiu==null).length;
   const pct=lista.length?Math.round(saiu/lista.length*100):0;
-  const cards=lista.map(r=>{
+  const dataFmt=new Date(_sdata+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+
+  const cards=filtrada.map(r=>{
     const d=r.saiu===true,n=r.saiu===false;
-    return`<div class="vcard ${d?'done':n?'nok':''}" onclick="abrirSol('${r.id}','${r.prefixo}','${r.horario_programado||''}')">
-      <div style="flex:1"><div class="prefixo">${r.prefixo}</div><div class="vcard-sub">${r.horario_programado||'—'} · ${r.linha||'—'} · ${r.motorista?.split(' ')[0]||'—'}</div></div>
+    const reserva=r.observacao?.startsWith('Reserva:');
+    return`<div class="vcard ${d?'done':n?'nok':''}" onclick="abrirSol('${r.id}','${r.prefixo}','${r.horario_programado||''}','${r.linha||''}','${r.motorista||''}')">
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:6px">
+          <div class="prefixo">${r.prefixo}</div>
+          ${reserva?`<span style="font-size:9px;color:var(--purple);font-weight:700;border:1px solid #8B5CF640;background:#8B5CF618;border-radius:4px;padding:1px 5px">RESERVA</span>`:''}
+        </div>
+        <div class="vcard-sub">${r.horario_programado||'—'} · ${r.linha||'—'}</div>
+        <div class="vcard-sub">${r.motorista?.split(' ').slice(0,2).join(' ')||'—'}${d&&r.horario_real?' · ✅'+r.horario_real:''}</div>
+      </div>
       <div class="btn-ck ${d?'ok':n?'nok':''}">${d?'✅':n?'❌':'○'}</div>
     </div>`;
   }).join('');
-  render(`<div style="padding:14px 14px 0"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="font-weight:800;font-size:17px">📋 Soltura</div><div style="font-family:'DM Mono',monospace;font-weight:700">${pct}%</div></div><div class="prog"><div class="prog-f" style="width:${pct}%;background:${pct>=99?'var(--green)':'var(--amber)'}"></div></div><div style="display:flex;gap:12px;margin-top:8px;font-size:11px;color:var(--text3)"><span>✅ ${saiu}</span><span>❌ ${nao}</span><span>○ ${pend}</span></div></div><div class="sl">${lista.length} veículo(s)</div>${cards}`);
+
+  render(`
+    <div style="padding:14px 14px 0">
+      <!-- Header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div style="font-weight:800;font-size:17px">📋 Soltura</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="font-size:11px;color:var(--text3)">${dataFmt}</div>
+          <div style="font-family:'DM Mono',monospace;font-weight:700;font-size:14px;color:${pct>=99?'var(--green)':'var(--amber)'}">${pct}%</div>
+        </div>
+      </div>
+      <!-- Seletor de data -->
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <button onclick="telaSoltura('${new Date(new Date(_sdata).getTime()-86400000).toISOString().split('T')[0]}')" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">◀ Ontem</button>
+        <button onclick="telaSoltura('${hoje()}')" style="flex:1;padding:6px;border-radius:8px;border:1px solid ${_sdata===hoje()?'var(--blue)':'var(--border)'};background:${_sdata===hoje()?'#2563EB18':'transparent'};color:${_sdata===hoje()?'var(--blue)':'var(--text3)'};font-size:12px;font-family:inherit;cursor:pointer">Hoje</button>
+        <button onclick="telaSoltura('${new Date(new Date(_sdata).getTime()+86400000).toISOString().split('T')[0]}')" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">Amanhã ▶</button>
+      </div>
+      <!-- Barra de progresso -->
+      <div class="prog"><div class="prog-f" style="width:${pct}%;background:${pct>=99?'var(--green)':'var(--amber)'}"></div></div>
+      <div style="display:flex;gap:12px;margin-top:6px;font-size:11px;color:var(--text3)">
+        <span>✅ ${saiu}</span><span>❌ ${nao}</span><span>○ ${pend}</span><span style="margin-left:auto">${lista.length} veíc.</span>
+      </div>
+      <!-- Busca -->
+      <div style="position:relative;margin-top:10px">
+        <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:14px">🔍</span>
+        <input type="text" id="busca-sol" placeholder="Prefixo, horário ou motorista..." oninput="renderSoltura(_sLista,this.value)"
+          style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 10px 10px 32px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+      </div>
+    </div>
+    <div class="sl">${filtrada.length}${busca?' resultado(s)':' veículo(s)'}</div>
+    ${cards}
+    <!-- Botão fechar turno -->
+    ${pct>0?`<div style="padding:14px">
+      <button onclick="fecharTurnoSoltura()" style="width:100%;padding:14px;border-radius:12px;border:1px solid ${pct>=99?'#00C48C40':'#F59E0B40'};background:${pct>=99?'#00C48C18':'#F59E0B18'};color:${pct>=99?'var(--green)':'var(--amber)'};font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">
+        ${pct>=99?'✅ Fechar Turno':'⚠️ Fechar Turno ('+pend+' pendentes)'}
+      </button>
+    </div>`:''}
+  `);
 }
-function abrirSol(id,prefixo,horario){
+
+function abrirSol(id,prefixo,horario,linha,motorista){
   _sid=id;
   openSheet('📋 '+prefixo+' — '+horario,`
-    <div style="display:flex;flex-direction:column;gap:8px">
-      <button onclick="cfmSol(true)" style="padding:16px;border-radius:12px;border:1px solid #00C48C40;background:#00C48C18;color:var(--green);font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">✅ Saiu</button>
-      <button onclick="cfmSol(false)" style="padding:16px;border-radius:12px;border:1px solid #EF444440;background:#EF444418;color:var(--red);font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">❌ Não saiu</button>
-      <button onclick="cfmSol(null)" style="padding:12px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-family:inherit;cursor:pointer">↩ Pendente</button>
-    </div>`);
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px">${linha||'—'} · ${motorista?.split(' ').slice(0,2).join(' ')||'—'}</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
+      <button onclick="cfmSol(true)" style="padding:15px;border-radius:12px;border:1px solid #00C48C40;background:#00C48C18;color:var(--green);font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">✅ Saiu</button>
+      <button onclick="mostrarNaoSaiu()" style="padding:15px;border-radius:12px;border:1px solid #EF444440;background:#EF444418;color:var(--red);font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">❌ Não saiu</button>
+      <button onclick="mostrarTrocaCarro('${prefixo}')" style="padding:13px;border-radius:12px;border:1px solid #8B5CF640;background:#8B5CF618;color:var(--purple);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">🔄 Trocar Carro</button>
+      <button onclick="cfmSol(null)" style="padding:11px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-family:inherit;cursor:pointer">↩ Pendente</button>
+    </div>
+  `);
 }
+
+function mostrarNaoSaiu(){
+  document.getElementById('shbody').innerHTML=`
+    <div style="font-size:13px;color:var(--text3);margin-bottom:10px">Informe o motivo:</div>
+    <textarea id="mot-nao" placeholder="Ex: Veículo em manutenção, motorista faltou..." rows="3"
+      style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-size:14px;font-family:inherit;outline:none;resize:none;margin-bottom:12px"></textarea>
+    <button onclick="cfmSolMotivo(false,document.getElementById('mot-nao').value)" style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--red);color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">❌ Confirmar Não Saiu</button>
+    <button onclick="abrirSol('${_sid}','','','')" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-family:inherit;cursor:pointer;margin-top:8px">← Voltar</button>
+  `;
+}
+
+async function mostrarTrocaCarro(prefixoOriginal){
+  const gid=getGid();
+  // Busca carros disponíveis não escalados
+  const{data:escalados}=await sb.from('soltura_2_10').select('prefixo').eq('garagem_id',gid).eq('data',_sdata);
+  const prefixosEsc=(escalados||[]).map(e=>e.prefixo);
+  const{data:frota}=await sb.from('frota').select('prefixo,modelo').eq('garagem_id',gid).eq('status','disponivel');
+  const disponiveis=(frota||[]).filter(v=>!prefixosEsc.includes(v.prefixo));
+
+  document.getElementById('shbody').innerHTML=`
+    <div style="font-size:13px;color:var(--text3);margin-bottom:10px">Substituindo: <strong style="color:var(--text)">${prefixoOriginal}</strong></div>
+    <input type="text" id="busca-reserva" placeholder="Buscar prefixo..." oninput="filtrarReservas(this.value)"
+      style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px;color:var(--text);font-size:14px;font-family:'DM Mono',monospace;outline:none;margin-bottom:10px">
+    <div id="lista-reservas" style="max-height:40vh;overflow-y:auto">
+      ${disponiveis.map(v=>`
+        <div onclick="confirmarTroca('${v.prefixo}','${prefixoOriginal}')" style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;margin-bottom:6px;cursor:pointer">
+          <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--blue)">${v.prefixo}</div>
+          <div style="font-size:12px;color:var(--text3)">${v.modelo||'—'}</div>
+          <div style="margin-left:auto;font-size:11px;color:var(--green);font-weight:700">DISPONÍVEL</div>
+        </div>`).join('')||'<div style="text-align:center;color:var(--text3);padding:20px">Nenhum carro disponível</div>'}
+    </div>
+    <button onclick="abrirSol('${_sid}','${prefixoOriginal}','','')" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-family:inherit;cursor:pointer;margin-top:8px">← Voltar</button>
+  `;
+  window._reservasLista=disponiveis;
+}
+
+function filtrarReservas(busca){
+  const lista=window._reservasLista||[];
+  const filtrada=busca?lista.filter(v=>v.prefixo.includes(busca.toUpperCase())):lista;
+  document.getElementById('lista-reservas').innerHTML=filtrada.map(v=>`
+    <div onclick="confirmarTroca('${v.prefixo}','')" style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;margin-bottom:6px;cursor:pointer">
+      <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--blue)">${v.prefixo}</div>
+      <div style="font-size:12px;color:var(--text3)">${v.modelo||'—'}</div>
+      <div style="margin-left:auto;font-size:11px;color:var(--green);font-weight:700">DISPONÍVEL</div>
+    </div>`).join('')||'<div style="text-align:center;color:var(--text3);padding:20px">Nenhum resultado</div>';
+}
+
+async function confirmarTroca(novoPrefixo, prefixoOriginal){
+  await sb.from('soltura_2_10').update({
+    saiu:true,
+    horario_real:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),
+    observacao:`Reserva: ${novoPrefixo} | Original: ${prefixoOriginal}`,
+  }).eq('id',_sid);
+  closeSheet(true);toast(`🔄 Saiu com reserva ${novoPrefixo}!`);telaSoltura();
+}
+
 async function cfmSol(saiu){
-  await sb.from('soltura_2_10').update({saiu,horario_real:saiu===true?new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):null}).eq('id',_sid);
-  closeSheet(true);toast(saiu===true?'✅ Saída!':saiu===false?'❌ Registrado':'↩ Pendente');telaSoltura();
+  await sb.from('soltura_2_10').update({
+    saiu,
+    horario_real:saiu===true?new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):null
+  }).eq('id',_sid);
+  closeSheet(true);
+  toast(saiu===true?'✅ Saída confirmada!':saiu===false?'❌ Não saiu':' ↩ Pendente');
+  telaSoltura();
 }
+
+async function cfmSolMotivo(saiu, motivo){
+  await sb.from('soltura_2_10').update({
+    saiu,
+    observacao:motivo||null,
+    horario_real:null,
+  }).eq('id',_sid);
+  closeSheet(true);toast('❌ Registrado');telaSoltura();
+}
+
+async function fecharTurnoSoltura(){
+  const saiu=_sLista.filter(r=>r.saiu===true).length;
+  const nao=_sLista.filter(r=>r.saiu===false).length;
+  const pend=_sLista.filter(r=>r.saiu==null).length;
+  const pct=_sLista.length?Math.round(saiu/_sLista.length*100):0;
+  const dataFmt=new Date(_sdata+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'});
+
+  openSheet('📋 Fechar Turno',`
+    <div style="background:var(--surface2);border-radius:12px;padding:14px;margin-bottom:14px">
+      <div style="font-size:12px;color:var(--text3);margin-bottom:10px">${dataFmt}</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center">
+        <div><div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:var(--green)">${saiu}</div><div style="font-size:10px;color:var(--text3)">SAÍRAM</div></div>
+        <div><div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:var(--red)">${nao}</div><div style="font-size:10px;color:var(--text3)">NÃO SAÍRAM</div></div>
+        <div><div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:var(--amber)">${pend}</div><div style="font-size:10px;color:var(--text3)">PENDENTES</div></div>
+      </div>
+      <div style="margin-top:10px;text-align:center;font-family:'DM Mono',monospace;font-size:24px;font-weight:800;color:${pct>=99?'var(--green)':'var(--amber)'}">${pct}%</div>
+      <div style="font-size:10px;color:var(--text3);text-align:center;margin-top:2px">Meta: 99,5%</div>
+    </div>
+    <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px">Observações do Turno</label>
+    <textarea id="obs-turno" placeholder="RA, SOS, ocorrências, partidas perdidas..." rows="3"
+      style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-size:13px;font-family:inherit;outline:none;resize:none;margin-bottom:14px"></textarea>
+    <button onclick="confirmarFechamento()" style="width:100%;padding:15px;border-radius:12px;border:none;background:${pct>=99?'var(--green)':'var(--amber)'};color:${pct>=99?'white':'#000'};font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">
+      ${pct>=99?'✅ Confirmar Fechamento':'⚠️ Fechar com Pendências'}
+    </button>
+  `);
+}
+
+async function confirmarFechamento(){
+  const obs=document.getElementById('obs-turno')?.value?.trim();
+  const saiu=_sLista.filter(r=>r.saiu===true).length;
+  const nao=_sLista.filter(r=>r.saiu===false).length;
+  const pct=_sLista.length?Math.round(saiu/_sLista.length*100):0;
+  const gid=getGid();
+
+  // Salva fechamento na tabela 2.1
+  await sb.from('fechamento_turno_garagem').insert({
+    garagem_id:gid,
+    numero:`MOB/${_sdata}/${String(new Date().getHours()).padStart(2,'0')}${String(new Date().getMinutes()).padStart(2,'0')}`,
+    turno:S.turno||'dia',
+    data:_sdata,
+    responsavel_id:S.perfil?.id,
+    responsavel_nome:S.perfil?.nome,
+    status_geral:pct>=99?'ok':pct>=90?'parcial':'nok',
+    op_soltura:saiu,
+    op_obs:obs||null,
+  }).catch(()=>{});
+
+  closeSheet(true);
+  toast('✅ Turno fechado!');
+  telaSoltura();
+}
+
 
 // ── OFICINA (Líder Oficina / PCM) ─────────────────────────
 async function telaOficina(){
@@ -548,6 +747,37 @@ document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementB
   const{data:{session}}=await sb.auth.getSession();
   if(session){S.user=session.user;await init();}
 })();
+// Registra Service Worker para PWA instalável
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(r => console.log('SW registrado:', r.scope))
+      .catch(e => console.log('SW erro:', e));
+  });
+}
+
+// Prompt de instalação
+let _deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  _deferredPrompt = e;
+  // Mostra botão de instalar se disponível
+  const btn = document.getElementById('btn-instalar');
+  if(btn) btn.style.display = 'flex';
+});
+window.addEventListener('appinstalled', () => {
+  _deferredPrompt = null;
+  toast('✅ App instalado com sucesso!');
+});
+function instalarApp(){
+  if(_deferredPrompt){
+    _deferredPrompt.prompt();
+    _deferredPrompt.userChoice.then(r => {
+      if(r.outcome === 'accepted') toast('✅ Instalando...');
+      _deferredPrompt = null;
+    });
+  }
+}
 </script>
 </body>
 </html>
