@@ -2773,7 +2773,8 @@ async function salvarOcorrencia22(){
   if(error){toast('Erro: '+error.message,'err');return}
   toast(`✅ Ocorrência ${numero} aberta!`);
   closeM('modal-22');
-  if(novaOc) notificarWhatsApp(novaOc.id, status);
+  // WhatsApp apenas em mudanças relevantes — não na abertura
+  // if(novaOc) notificarWhatsApp(novaOc.id, status);
   renderFerr22('ativas');
 }
 
@@ -3350,8 +3351,10 @@ async function atualizarStatus22(){
 
   toast(isLib?'✅ Veículo liberado e frota atualizada!':'✅ Status atualizado!');
   closeM('modal-22-status');
-  notificarWhatsApp(S.editId22, novoStatus);
-  // Aguarda 800ms para o Supabase propagar antes de recarregar
+  // Notifica WhatsApp apenas em eventos relevantes (não em movimentações internas)
+  if(['aguardando_peca','aguardando_aprovacao','liberado'].includes(novoStatus)){
+    notificarWhatsApp(S.editId22, novoStatus);
+  }
   setTimeout(()=>renderFerr22('ativas'), 800);
 }
 
