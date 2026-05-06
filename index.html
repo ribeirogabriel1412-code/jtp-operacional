@@ -245,6 +245,7 @@ tr:hover td{background:#0F172A80}
         <button class="sub-btn" onclick="navToSub('ferr-212')">📊 2.12 Indicadores Técnicos</button>
         <button class="sub-btn" onclick="navToSub('ferr-lav')">🧼 3.2 Checklist Lavagem</button>
         <button class="sub-btn" id="btn-lav-lavador" onclick="navToSub('ferr-lav-lavador')" style="display:none">🚿 Minha Lista de Lavagem</button>
+        <button class="sub-btn" onclick="navToSub('ferr-21')">📋 2.1 Fechamento Garagem</button>
         <button class="sub-btn" onclick="navToSub('ferr-ctrl')">✅ Controle Soltura</button>
       </div>
       <button class="nav-btn" onclick="toggleSub('sub-rel','arr-rel',this)"><span>📋</span> Relatórios <span id="arr-rel" style="margin-left:auto;font-size:10px;color:var(--text4)">▶</span></button>
@@ -795,7 +796,7 @@ function navToSub(sub){
   S.subtela=sub;
   document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes(sub))b.classList.add('active')});
-  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'rel-todos':renderRelatorios};
+  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-21':renderFerr21,'rel-todos':renderRelatorios};
   if(map[sub]) map[sub]();
 }
 
@@ -5534,6 +5535,311 @@ function renderFerrRotina(cargoSel=null){
     </div>
     <div class="info-blue info-banner">📖 Fonte: BOK.GAR.001 v4 — Emissão 07/04/2026 · A atividade atual é destacada em azul 🔵</div>
   `);
+}
+
+// ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// 2.1 — FECHAMENTO DE TURNO GARAGEM (AUTO-ALIMENTADO)
+// O sistema puxa os dados de todos os relatórios já existentes.
+// Coordenador/Supervisor valida, complementa e assina.
+// ══════════════════════════════════════════════════════════════
+async function renderFerr21(aba='fechar'){
+  const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const turno=S.turno||'dia';
+  const data=hoje();
+  const agora=new Date();
+  const garagem=S.garagens.find(g=>g.id===gid);
+
+  const tabs=`<div class="filtros">
+    <button class="filtro-btn${aba==='fechar'?' active':''}" onclick="renderFerr21('fechar')">📋 Fechar Turno</button>
+    <button class="filtro-btn${aba==='historico'?' active':''}" onclick="renderFerr21('historico')">🗂️ Histórico</button>
+  </div>`;
+
+  // ── HISTÓRICO ──────────────────────────────────────────────
+  if(aba==='historico'){
+    setMain(`<div class="loading"><div class="spinner"></div></div>`);
+    const{data:hist}=await sb.from('fechamento_turno_garagem').select('*')
+      .eq('garagem_id',gid).order('created_at',{ascending:false}).limit(30);
+    const rows=(hist||[]).map(f=>`<tr style="border-bottom:1px solid var(--border2)">
+      <td style="padding:10px 12px;font-family:'DM Mono',monospace;font-weight:700;color:var(--blue);font-size:11px">${f.numero}</td>
+      <td style="padding:10px 12px;font-size:12px">${new Date(f.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'})}</td>
+      <td style="padding:10px 12px"><span style="background:${f.turno==='dia'?'#F59E0B18':'#3B82F618'};border:1px solid ${f.turno==='dia'?'#F59E0B40':'#3B82F640'};color:${f.turno==='dia'?'var(--amber)':'var(--blue)'};border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">${f.turno==='dia'?'☀️ Dia':'🌙 Noite'}</span></td>
+      <td style="padding:10px 12px;font-size:12px;color:var(--text3)">${f.responsavel_nome||'—'}</td>
+      <td style="padding:10px 12px">${f.status_geral==='ok'?'<span style="color:var(--green)">✅ OK</span>':f.status_geral==='nok'?'<span style="color:var(--red)">❌ NOK</span>':'<span style="color:var(--amber)">⚠️ Parcial</span>'}</td>
+      <td style="padding:10px 12px;font-size:11px;color:var(--text3)">${f.enviado_wpp?'📱 Enviado':'—'}</td>
+    </tr>`).join('');
+    setMain(`${back}${tabs}
+      <div style="font-size:18px;font-weight:800;margin-bottom:20px">📋 Histórico de Fechamentos 2.1</div>
+      ${!hist?.length
+        ?`<div class="empty"><div style="font-size:40px">📋</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Nenhum fechamento registrado</div></div>`
+        :`<div class="tbl-wrap"><table style="width:100%;border-collapse:collapse">
+            <thead><tr style="background:var(--surface2)">
+              <th style="padding:8px 12px;text-align:left;font-size:10px;color:var(--text3);text-transform:uppercase">Nº</th>
+              <th style="padding:8px 12px;text-align:left;font-size:10px;color:var(--text3);text-transform:uppercase">Data</th>
+              <th style="padding:8px 12px;text-align:left;font-size:10px;color:var(--text3);text-transform:uppercase">Turno</th>
+              <th style="padding:8px 12px;text-align:left;font-size:10px;color:var(--text3);text-transform:uppercase">Responsável</th>
+              <th style="padding:8px 12px;text-align:left;font-size:10px;color:var(--text3);text-transform:uppercase">Status</th>
+              <th style="padding:8px 12px;text-align:left;font-size:10px;color:var(--text3);text-transform:uppercase">WhatsApp</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table></div>`}
+    `);
+    return;
+  }
+
+  // ── FECHAR TURNO — busca tudo automaticamente ────────────
+  setMain(`<div class="loading"><div class="spinner"></div> Carregando dados do turno...</div>`);
+
+  const[
+    {data:frota},
+    {data:ocsAbertas},
+    {data:ocsLibHoje},
+    {data:soltura},
+    {data:lavagem},
+    {data:fechPCM},
+  ]=await Promise.all([
+    sb.from('frota').select('*').eq('garagem_id',gid),
+    sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado'),
+    sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).eq('status','liberado')
+      .gte('hora_liberacao',new Date(agora.getFullYear(),agora.getMonth(),agora.getDate()).toISOString()),
+    sb.from('soltura_2_10').select('*').eq('garagem_id',gid).eq('data',data),
+    sb.from('checklist_lavagem').select('*').eq('garagem_id',gid).eq('data',data),
+    sb.from('fechamento_turno_pcm').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno).order('created_at',{ascending:false}).limit(1),
+  ]);
+
+  // KPIs calculados automaticamente
+  const totalFrota=(frota||[]).length;
+  const indisponiveis=(ocsAbertas||[]).length;
+  const liberadasHoje=(ocsLibHoje||[]).length;
+  const agPeca=(ocsAbertas||[]).filter(o=>o.status==='aguardando_peca').length;
+  const prevVencida=(ocsAbertas||[]).filter(o=>o.hora_previsao&&new Date(o.hora_previsao)<agora).length;
+  const pctDisp=totalFrota>0?(((totalFrota-indisponiveis)/totalFrota)*100).toFixed(1):0;
+  const sSaiu=(soltura||[]).filter(r=>r.saiu===true).length;
+  const sNao=(soltura||[]).filter(r=>r.saiu===false).length;
+  const sTot=(soltura||[]).length;
+  const pctSoltura=sTot>0?((sSaiu/sTot)*100).toFixed(1):null;
+  const lavSimp=(lavagem||[]).filter(l=>l.tipo_lavagem==='simples');
+  const lavPes=(lavagem||[]).filter(l=>l.tipo_lavagem==='pesada');
+  const lavSimpExec=lavSimp.filter(l=>l.status==='executado').length;
+  const lavPesExec=lavPes.filter(l=>l.status==='executado').length;
+  const lavSimpValid=lavSimp.filter(l=>l.validado_patio).length;
+  const lavPesValid=lavPes.filter(l=>l.validado_patio).length;
+  const tempos=(ocsLibHoje||[]).filter(o=>o.hora_entrada&&o.hora_liberacao)
+    .map(o=>(new Date(o.hora_liberacao)-new Date(o.hora_entrada))/3600000);
+  const mttr=tempos.length>0?(tempos.reduce((a,b)=>a+b,0)/tempos.length).toFixed(1):null;
+
+  // Status automático por seção
+  const stOp=pctSoltura===null?'neu':parseFloat(pctSoltura)>=99.5?'ok':'nok';
+  const stMan=prevVencida>0?'nok':indisponiveis===0?'ok':'parcial';
+  const stLav=lavSimp.length===0?'neu':lavSimpExec===lavSimp.length&&lavPesExec===lavPes.length?'ok':lavSimpExec>0?'parcial':'nok';
+
+  const STATUS={ok:{ic:'✅',l:'OK',c:'var(--green)',bg:'#00C48C12',border:'#00C48C40'},
+    nok:{ic:'❌',l:'NOK',c:'var(--red)',bg:'#EF444412',border:'#EF444440'},
+    parcial:{ic:'⚠️',l:'Parcial',c:'var(--amber)',bg:'#F59E0B12',border:'#F59E0B40'},
+    neu:{ic:'—',l:'Sem dados',c:'var(--text4)',bg:'var(--surface2)',border:'var(--border)'}};
+
+  // Número do fechamento
+  const dd=String(agora.getDate()).padStart(2,'0');
+  const mm2=String(agora.getMonth()+1).padStart(2,'0');
+  const yy=String(agora.getFullYear()).slice(2);
+  const hhmm=String(agora.getHours()).padStart(2,'0')+String(agora.getMinutes()).padStart(2,'0');
+  const sigla=(garagem?.sigla||'JTP').slice(0,3).toUpperCase();
+  const numero=`2.1/${dd}${mm2}${yy}-${hhmm}/${sigla}`;
+
+  // Seção helper
+  const secCard=(ic,titulo,st,conteudo)=>{
+    const s=STATUS[st]||STATUS.neu;
+    return`<div style="background:var(--surface);border:1px solid ${s.border};border-left:3px solid ${s.c};border-radius:12px;padding:14px 16px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span style="font-size:15px">${ic}</span>
+        <span style="font-weight:700;font-size:13px">${titulo}</span>
+        <span style="margin-left:auto;background:${s.bg};border:1px solid ${s.border};color:${s.c};border-radius:6px;padding:2px 10px;font-size:11px;font-weight:700">${s.ic} ${s.l}</span>
+      </div>
+      ${conteudo}
+    </div>`;
+  };
+
+  // Linha de KPI inline
+  const kpiLine=(items)=>`<div style="display:grid;grid-template-columns:repeat(${items.length},1fr);gap:8px;margin-bottom:10px">
+    ${items.map(k=>`<div style="text-align:center;padding:8px;background:var(--surface2);border-radius:8px">
+      <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:${k.c||'var(--text)'}">${k.v}</div>
+      <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase;margin-top:2px">${k.l}</div>
+      ${k.meta?`<div style="font-size:9px;color:var(--text4)">meta ${k.meta}</div>`:''}
+    </div>`).join('')}
+  </div>`;
+
+  // Lista de indisponíveis
+  const TIPO_IC={preventiva_leve:'🟡',preventiva_pesada:'🟣',corretiva:'🔴',sinistro:'⚠️',eletrica:'⚡',funilaria:'🔨',pneu:'⭕'};
+  const STATUS_L={em_manutencao:'🔧 Manutenção',aguardando_peca:'📦 Ag. Peça',aguardando_aprovacao:'⏳ Ag. Aprovação'};
+  const listIndisp=(ocsAbertas||[]).map(o=>{
+    const min=Math.round((agora-new Date(o.hora_entrada))/60000);
+    const h=Math.floor(min/60),m2=min%60;
+    const tempo=h>0?`${h}h${m2}min`:`${m2}min`;
+    const venc=o.hora_previsao&&new Date(o.hora_previsao)<agora;
+    return`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border2);font-size:12px">
+      <span style="font-family:'DM Mono',monospace;font-weight:700;color:var(--blue);min-width:50px">${o.prefixo}</span>
+      <span style="color:var(--text3)">${TIPO_IC[o.tipo]||'🔧'} ${o.tipo?.replace('_',' ')||'—'}</span>
+      <span style="color:var(--text3)">${STATUS_L[o.status]||o.status}</span>
+      <span style="margin-left:auto;font-family:'DM Mono',monospace;font-size:11px;color:${venc?'var(--red)':'var(--text4)'}">${venc?'🔴 ':''} ${tempo}</span>
+    </div>`;
+  }).join('');
+
+  const conteudoOp=`
+    ${kpiLine([
+      {l:'Soltura',v:pctSoltura?pctSoltura+'%':'—',c:stOp==='ok'?'var(--green)':'var(--red)',meta:'99,5%'},
+      {l:'Saíram',v:sSaiu,c:'var(--green)'},
+      {l:'Não saíram',v:sNao,c:sNao>0?'var(--red)':'var(--text)'},
+      {l:'Pendentes',v:sTot-sSaiu-sNao,c:'var(--amber)'},
+    ])}
+    ${kpiLine([
+      {l:'Lav. Simples',v:lavSimpExec+'/'+lavSimp.length,c:'#3B82F6',meta:'84'},
+      {l:'Validadas',v:lavSimpValid+'/'+lavSimpExec,c:lavSimpValid===lavSimpExec&&lavSimpExec>0?'var(--green)':'var(--amber)'},
+      {l:'Lav. Pesada',v:lavPesExec+'/'+lavPes.length,c:'#10B981',meta:'8'},
+      {l:'Validadas',v:lavPesValid+'/'+lavPesExec,c:lavPesValid===lavPesExec&&lavPesExec>0?'var(--green)':'var(--amber)'},
+    ])}
+    <label style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase">Observações / Ocorrências Operacionais</label>
+    <textarea id="obs-op" rows="2" placeholder="RA, RO, SOS, partidas perdidas — desvios e tratativas..." style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:12px;font-family:'DM Sans',sans-serif;outline:none;resize:vertical"></textarea>`;
+
+  const conteudoMan=`
+    ${kpiLine([
+      {l:'Indisponíveis',v:indisponiveis,c:indisponiveis>0?'var(--red)':'var(--green)'},
+      {l:'Liberados Hoje',v:liberadasHoje,c:'var(--green)'},
+      {l:'Ag. Peça',v:agPeca,c:agPeca>0?'var(--red)':'var(--text)'},
+      {l:'Prev. Vencida',v:prevVencida,c:prevVencida>0?'var(--red)':'var(--text)'},
+      {l:'MTTR',v:mttr?mttr+'h':'—',c:'var(--blue)'},
+      {l:'Disponib.',v:pctDisp+'%',c:parseFloat(pctDisp)>=95?'var(--green)':'var(--red)',meta:'95%'},
+    ])}
+    ${indisponiveis>0?`<div style="margin-bottom:10px">${listIndisp}</div>`:'<div style="color:var(--green);font-weight:700;padding:4px 0;font-size:13px">✅ Nenhum veículo indisponível</div>'}
+    <label style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase">Observações de Manutenção</label>
+    <textarea id="obs-man" rows="2" placeholder="Guincho, custo alto, peças críticas pendentes, retrabalho..." style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:12px;font-family:'DM Sans',sans-serif;outline:none;resize:vertical"></textarea>`;
+
+  const conteudoSup=`
+    <div style="color:var(--text3);font-size:12px;margin-bottom:10px">Dados do Almoxarifado — preenchimento pelo Líder de Suprimentos no 2.3</div>
+    <label style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase">Observações de Suprimentos</label>
+    <textarea id="obs-sup" rows="2" placeholder="Kits D+1, divergências, pedidos críticos, peças em falta..." style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:12px;font-family:'DM Sans',sans-serif;outline:none;resize:vertical"></textarea>`;
+
+  const conteudoPess=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div>
+        <label style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase">Absenteísmo</label>
+        <textarea id="obs-aus" rows="3" placeholder="Matrícula · Nome · Motivo" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:12px;font-family:'DM Sans',sans-serif;outline:none;resize:vertical"></textarea>
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase">Dobras / HE</label>
+        <textarea id="obs-dobras" rows="3" placeholder="Matrícula · Nome · Motivo" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:12px;font-family:'DM Sans',sans-serif;outline:none;resize:vertical"></textarea>
+      </div>
+    </div>`;
+
+  // Status geral automático baseado nas seções
+  const autoStatus=stOp==='nok'||stMan==='nok'?'nok':stOp==='parcial'||stMan==='parcial'||stLav==='parcial'?'parcial':'ok';
+
+  setMain(`
+    ${back}${tabs}
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px">
+      <div>
+        <div style="font-size:18px;font-weight:800">📋 2.1 — Fechamento de Turno Garagem</div>
+        <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--blue);margin-top:3px">${numero}</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px">${garagem?.nome||'—'} · ${turno==='dia'?'☀️ Dia':'🌙 Noite'} · ${new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'})}</div>
+      </div>
+    </div>
+
+    ${secCard('🚌','OPERAÇÃO',stOp,conteudoOp)}
+    ${secCard('🔧','MANUTENÇÃO',stMan,conteudoMan)}
+    ${secCard('📦','SUPRIMENTOS','neu',conteudoSup)}
+    ${secCard('👥','PESSOAS','neu',conteudoPess)}
+
+    <!-- PASSAGEM DE BASTÃO -->
+    <div style="background:var(--surface);border:1px solid #EF444430;border-left:3px solid var(--red);border-radius:12px;padding:14px 16px;margin-bottom:14px">
+      <div style="font-weight:700;font-size:13px;color:var(--red);margin-bottom:8px">⚠️ PASSAGEM DE BASTÃO — Pendências para o Próximo Turno</div>
+      <textarea id="obs-bastao" rows="3" placeholder="Pontos críticos, veículos prioritários, peças aguardadas, alertas de segurança..." style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:12px;font-family:'DM Sans',sans-serif;outline:none;resize:vertical"></textarea>
+    </div>
+
+    <!-- STATUS GERAL -->
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:8px">Validação do Coordenador / Supervisor</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        ${['ok','parcial','nok'].map(s=>`<button onclick="document.querySelectorAll('.btn-st21').forEach(b=>{b.style.background='transparent';b.style.borderColor='var(--border)'});this.style.background='${s==='ok'?'#00C48C18':s==='nok'?'#EF444418':'#F59E0B18'}';this.style.borderColor='${s==='ok'?'#00C48C60':s==='nok'?'#EF444460':'#F59E0B60'}';document.getElementById('st21-val').value='${s}'"
+          class="btn-st21" style="flex:1;padding:10px;border-radius:8px;border:1px solid ${s===autoStatus?s==='ok'?'#00C48C60':s==='nok'?'#EF444460':'#F59E0B60':'var(--border)'};background:${s===autoStatus?s==='ok'?'#00C48C18':s==='nok'?'#EF444418':'#F59E0B18':'transparent'};color:${s==='ok'?'var(--green)':s==='nok'?'var(--red)':'var(--amber)'};cursor:pointer;font-weight:700;font-size:13px;font-family:'DM Sans',sans-serif;transition:all .15s">
+          ${s==='ok'?'✅ Turno OK':s==='parcial'?'⚠️ Parcial':'❌ Turno NOK'}
+        </button>`).join('')}
+      </div>
+      <input type="hidden" id="st21-val" value="${autoStatus}">
+      <div style="font-size:10px;color:var(--text4)">Status calculado automaticamente: <strong>${STATUS[autoStatus]?.ic} ${STATUS[autoStatus]?.l}</strong> — você pode ajustar acima.</div>
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button onclick="salvarFechamento21('${gid}','${numero}','${turno}','${data}',false)" class="btn-sec" style="flex:1">💾 Salvar</button>
+      <button onclick="salvarFechamento21('${gid}','${numero}','${turno}','${data}',true)" class="btn-success" style="flex:1.5">💾 Salvar e Enviar para o Grupo 📱</button>
+    </div>
+  `);
+}
+
+async function salvarFechamento21(gid, numero, turno, data, enviarWpp=false){
+  const get=(id)=>document.getElementById(id)?.value?.trim()||'';
+  const garagem=S.garagens.find(g=>g.id===gid);
+
+  const payload={
+    garagem_id:gid, numero, turno, data,
+    responsavel_id:S.perfil?.id,
+    responsavel_nome:S.perfil?.nome,
+    status_geral:get('st21-val')||'ok',
+    op_obs:get('obs-op'),
+    man_obs:get('obs-man'),
+    sup_obs:get('obs-sup'),
+    pess_ausencias:get('obs-aus'),
+    pess_dobras:get('obs-dobras'),
+    bastao_obs:get('obs-bastao'),
+    enviado_wpp:enviarWpp,
+    enviado_em:enviarWpp?new Date().toISOString():null,
+  };
+
+  const{error}=await sb.from('fechamento_turno_garagem').insert(payload);
+  if(error){toast('Erro: '+error.message,'err');return;}
+
+  if(enviarWpp){
+    // Busca KPIs rápidos para a mensagem
+    const agora=new Date();
+    const[{data:ocsAb},{data:sol},{data:lav}]=await Promise.all([
+      sb.from('ocorrencias_22').select('prefixo,status,tipo').eq('garagem_id',gid).neq('status','liberado'),
+      sb.from('soltura_2_10').select('saiu').eq('garagem_id',gid).eq('data',data),
+      sb.from('checklist_lavagem').select('tipo_lavagem,status').eq('garagem_id',gid).eq('data',data),
+    ]);
+    const sSaiu=(sol||[]).filter(r=>r.saiu===true).length;
+    const sTot=(sol||[]).length;
+    const pct=sTot>0?((sSaiu/sTot)*100).toFixed(1):'—';
+    const lavS=(lav||[]).filter(l=>l.tipo_lavagem==='simples'&&l.status==='executado').length;
+    const lavP=(lav||[]).filter(l=>l.tipo_lavagem==='pesada'&&l.status==='executado').length;
+    const stIcon=payload.status_geral==='ok'?'✅':payload.status_geral==='nok'?'❌':'⚠️';
+    const dt=agora.toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+
+    const msg=[
+      `📋 *2.1 — FECHAMENTO DE TURNO GARAGEM*`,
+      `📍 ${garagem?.nome||'JTP'} | ${turno==='dia'?'☀️ Dia':'🌙 Noite'} | ${dt}`,
+      `📄 ${numero}`,``,
+      `${stIcon} *Status Geral: ${payload.status_geral.toUpperCase()}*`,``,
+      `🚌 *OPERAÇÃO*`,
+      `Soltura: ${pct}% (${sSaiu}/${sTot}) | Lav: ${lavS} simples · ${lavP} pesada`,
+      payload.op_obs?`⚠️ ${payload.op_obs}`:'',``,
+      `🔧 *MANUTENÇÃO*`,
+      `Indisponíveis: ${(ocsAb||[]).length} | Ag.Peça: ${(ocsAb||[]).filter(o=>o.status==='aguardando_peca').length}`,
+      (ocsAb||[]).length>0?(ocsAb||[]).map(o=>`  • ${o.prefixo} — ${o.tipo?.replace('_',' ')||'—'}`).join('\n'):'',
+      payload.man_obs?`⚠️ ${payload.man_obs}`:'',``,
+      payload.bastao_obs?`⚠️ *BASTÃO:* ${payload.bastao_obs}`:``,'',
+      `_Responsável: ${payload.responsavel_nome} · JTP Operacional_`,
+    ].filter(l=>l!==null&&l!==undefined).join('\n').replace(/\n{3,}/g,'\n\n');
+
+    try{
+      await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+getAuthKey(),'apikey':getAuthKey()},
+        body:JSON.stringify({ocorrencia_id:'00000000-0000-0000-0000-000000000000',garagem_id:gid,usuario_nome:S.perfil?.nome,status_novo:'fechamento_garagem',mensagem_custom:msg}),
+      });
+    }catch(e){console.warn('WPP err:',e);}
+  }
+
+  toast(enviarWpp?'✅ Fechamento salvo e enviado para o grupo!':'✅ Fechamento salvo!');
+  renderFerr21('historico');
 }
 
 function renderFerrCtrl(){
