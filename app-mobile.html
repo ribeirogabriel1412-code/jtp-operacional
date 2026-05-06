@@ -428,14 +428,19 @@ function filtrarSoltura(busca){
   const cards=filtrada.map(r=>{
     const d=r.saiu===true,n=r.saiu===false;
     const reserva=r.observacao?.startsWith('Reserva:');
+    const zonaObj=r.zona_patio?ZONAS.find(z=>z.z===r.zona_patio):null;
     return`<div class="vcard ${d?'done':n?'nok':''}" onclick="abrirSol('${r.id}','${r.prefixo}','${r.horario_programado||''}','${r.linha||''}','${(r.motorista||'').replace(/'/g,'')}')">
       <div style="flex:1">
         <div style="display:flex;align-items:center;gap:6px">
           <div class="prefixo">${r.prefixo}</div>
           ${reserva?`<span style="font-size:9px;color:var(--purple);font-weight:700;border:1px solid #8B5CF640;background:#8B5CF618;border-radius:4px;padding:1px 5px">RESERVA</span>`:''}
+          ${zonaObj?`<span style="font-size:9px;font-weight:700;border:1px solid ${zonaObj.cor}40;background:${zonaObj.cor}18;color:${zonaObj.cor};border-radius:4px;padding:1px 6px">${zonaObj.nome}</span>`:''}
         </div>
         <div class="vcard-sub">${r.horario_programado||'—'} · ${r.linha||'—'}</div>
-        <div class="vcard-sub">${r.motorista?.split(' ').slice(0,2).join(' ')||'—'}${d&&r.horario_real?' · ✅'+r.horario_real:''}</div>
+        <div class="vcard-sub" style="display:flex;gap:8px">
+          <span>${r.motorista?.split(' ').slice(0,2).join(' ')||'—'}${d&&r.horario_real?' · ✅'+r.horario_real:''}</span>
+          ${r.manobrista?`<span style="color:var(--text4)">🚗 ${r.manobrista.split(' ')[0]}</span>`:''}
+        </div>
       </div>
       <div class="btn-ck ${d?'ok':n?'nok':''}">${d?'✅':n?'❌':'○'}</div>
     </div>`;
@@ -941,25 +946,25 @@ async function salvarPosicaoPatio(){
   if(!prefixo){toast('Informe o prefixo','err');return;}
   if(!zona){toast('Selecione a zona','err');return;}
 
-  // Busca veiculo_id
   const{data:vei}=await sb.from('frota').select('id').eq('garagem_id',gid).eq('prefixo',prefixo).single();
+  const agora=new Date().toISOString();
 
+  // 1. Grava no posicionamento_patio (log histórico)
   const{error}=await sb.from('posicionamento_patio').insert({
-    garagem_id:gid,
-    prefixo,
-    veiculo_id:vei?.id||null,
-    zona,
-    vaga,
-    status:'estacionado',
-    data:hoje(),
-    registrado_por:S.perfil?.nome,
-    observacao:obs,
+    garagem_id:gid, prefixo, veiculo_id:vei?.id||null,
+    zona, vaga, status:'estacionado', data:hoje(),
+    registrado_por:S.perfil?.nome, observacao:obs,
   });
-
   if(error){toast('Erro: '+error.message,'err');return;}
 
+  // 2. Atualiza soltura_2_10 — zona e nome do manobrista (dinâmico)
+  await sb.from('soltura_2_10')
+    .update({zona_patio:zona, manobrista:S.perfil?.nome, posicionado_em:agora})
+    .eq('garagem_id',gid).eq('prefixo',prefixo).eq('data',hoje());
+
   closeSheet(true);
-  toast(`✅ ${prefixo} → Zona ${zona}${vaga?' · '+vaga:''}`);
+  const zonaObj=ZONAS.find(z=>z.z===zona);
+  toast(`✅ ${prefixo} → ${zonaObj?.nome||'Zona '+zona}${vaga?' · '+vaga:''}`);
   telaPatioMan();
 }
 
