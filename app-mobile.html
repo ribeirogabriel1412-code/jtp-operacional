@@ -299,21 +299,38 @@ async function aprPat(){await sb.from('checklist_lavagem').update({validado_pati
 async function reprPat(){await sb.from('checklist_lavagem').update({validado_patio:false,status:'pendente'}).eq('id',_pid);toast('↩ Devolvido');telaPatio()}
 
 // ── SOLTURA (Líder Pátio) ─────────────────────────────────
-let _sid='',_sdata=hoje(),_sLista=[];
+let _sid='',_sdata=hoje(),_sLista=[],_sDatas=[];
 
 async function telaSoltura(dataFiltro=null){
   const gid=getGid();
   if(dataFiltro) _sdata=dataFiltro;
   else if(!_sdata) _sdata=hoje();
 
+  // Busca datas disponíveis na escala (últimos 3 dias + próximos 3)
+  const base=new Date();
+  const datas=[];
+  for(let i=-2;i<=3;i++){
+    const d=new Date(base);d.setDate(d.getDate()+i);
+    datas.push(d.toISOString().split('T')[0]);
+  }
+  const{data:datasDisp}=await sb.from('soltura_2_10')
+    .select('data').eq('garagem_id',gid).in('data',datas);
+  const datasComEscala=[...new Set((datasDisp||[]).map(r=>r.data))].sort();
+
+  // Se a data atual não tem escala, usa hoje
+  if(datasComEscala.length&&!datasComEscala.includes(_sdata)){
+    _sdata=datasComEscala.includes(hoje())?hoje():datasComEscala[datasComEscala.length-1];
+  }
+
   const{data:lista}=await sb.from('soltura_2_10').select('*')
     .eq('garagem_id',gid).eq('data',_sdata).order('horario_programado');
 
   _sLista=lista||[];
-  renderSoltura(_sLista,'');
+  _sDatas=datasComEscala;
+  renderSoltura(_sLista,'',datasComEscala);
 }
 
-function renderSoltura(lista, busca){
+function renderSoltura(lista, busca, datasComEscala=[]){
   const filtrada=busca
     ?lista.filter(r=>r.prefixo?.includes(busca.toUpperCase())||r.horario_programado?.includes(busca)||r.motorista?.toLowerCase().includes(busca.toLowerCase()))
     :lista;
@@ -355,11 +372,19 @@ function renderSoltura(lista, busca){
           <div style="font-family:'DM Mono',monospace;font-weight:700;font-size:14px;color:${pct>=99?'var(--green)':'var(--amber)'}">${pct}%</div>
         </div>
       </div>
-      <!-- Seletor de data -->
-      <div style="display:flex;gap:6px;margin-bottom:8px">
-        <button onclick="navData(-1)" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">◀</button>
-        <button onclick="navData(0)" style="flex:1;padding:6px;border-radius:8px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer" id="btn-hoje-sol">${dataFmt}</button>
-        <button onclick="navData(1)" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">▶</button>
+      <!-- Seletor de data — chips com datas que têm escala -->
+      <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:8px;scrollbar-width:none">
+        ${datasComEscala.length
+          ? datasComEscala.map(d=>{
+              const ativo=d===_sdata;
+              const dFmt=new Date(d+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+              const eHoje=d===hoje();
+              return`<button onclick="telaSoltura('${d}')" style="flex-shrink:0;padding:7px 14px;border-radius:20px;border:1px solid ${ativo?'var(--blue)':'var(--border)'};background:${ativo?'#2563EB18':'transparent'};color:${ativo?'var(--blue)':eHoje?'var(--text)':'var(--text3)'};font-size:12px;font-weight:${ativo?'700':'500'};font-family:inherit;cursor:pointer;white-space:nowrap">
+                ${eHoje?'Hoje · ':''}${dFmt}
+              </button>`;
+            }).join('')
+          : `<div style="font-size:12px;color:var(--text3);padding:6px 0">Nenhuma escala encontrada</div>`
+        }
       </div>
       <!-- Barra de progresso -->
       <div class="prog"><div class="prog-f" style="width:${pct}%;background:${pct>=99?'var(--green)':'var(--amber)'}"></div></div>
@@ -421,7 +446,6 @@ function filtrarSoltura(busca){
   if(el) el.innerHTML=cards||'<div style="padding:20px;text-align:center;color:var(--text3)">Nenhum resultado</div>';
   if(ct) ct.textContent=filtrada.length+(busca?' resultado(s)':' veículo(s)');
 }
-
 function abrirSol(id,prefixo,horario,linha,motorista){
   _sid=id;
   openSheet('📋 '+prefixo+' — '+horario,`
@@ -542,16 +566,11 @@ async function confirmarFechamento(){
 
   const obs=document.getElementById('obs-turno')?.value?.trim();
   const saiu=_sLista.filter(r=>r.saiu===true).length;
-  const nao=_sLista.filter(r=>r.saiu===false).length;
   const pct=_sLista.length?Math.round(saiu/_sLista.length*100):0;
   const gid=getGid();
-  const agora=new Date();
-  const hhmm=String(agora.getHours()).padStart(2,'0')+String(agora.getMinutes()).padStart(2,'0');
-  const garSigla=(S.garagens.find(g=>g.id===gid)?.sigla||'MOB').slice(0,3);
 
   const{error}=await sb.from('fechamento_turno_garagem').insert({
     garagem_id:gid,
-    numero:`2.1/${_sdata.replace(/-/g,'').slice(2)}-${hhmm}/${garSigla}`,
     turno:S.turno||'dia',
     data:_sdata,
     responsavel_id:S.perfil?.id,
@@ -562,7 +581,7 @@ async function confirmarFechamento(){
   });
 
   if(error){
-    toast('Erro ao salvar: '+error.message,'err');
+    toast('Erro: '+error.message,'err');
     if(btn){btn.textContent='⚠️ Tentar Novamente';btn.disabled=false;}
     return;
   }
