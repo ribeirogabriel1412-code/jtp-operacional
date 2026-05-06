@@ -1919,36 +1919,67 @@ async function renderFerr210(tab='painel', dataFiltro=null){
   // ── ABA ARQUIVO ───────────────────────────────────────────
   if(tab==='arquivo'){
     setMain(`<div class="loading"><div class="spinner"></div> Carregando arquivo...</div>`);
-    const gid=S.perfil.garagem_id;
-    let q=sb.from('relatorios_gerados').select('*,garagens(nome,uf)').eq('tipo','2.10').order('created_at',{ascending:false}).limit(50);
-    if(gid) q=q.eq('garagem_id',gid);
-    const{data:rels}=await q;
+    const gid=getGid();
 
-    const rows=(rels||[]).map(r=>{
-      const pct=r.pct_soltura?r.pct_soltura.toFixed(1)+'%':'—';
-      const pColor=parseFloat(r.pct_soltura)>=99.5?'var(--green)':parseFloat(r.pct_soltura)>=95?'var(--amber)':'var(--red)';
-      const st=r.status==='fechado'?`<span class="badge b-ok">Fechado</span>`:`<span class="badge b-nok">Aberto</span>`;
+    // Busca dados reais de soltura agrupados por data (últimos 30 dias)
+    const dataLimite=new Date();dataLimite.setDate(dataLimite.getDate()-30);
+    const[{data:soltura},{data:fechamentos}]=await Promise.all([
+      sb.from('soltura_2_10').select('data,turno,saiu,numero_relatorio,importado_por,prefixo')
+        .eq('garagem_id',gid).gte('data',dataLimite.toISOString().split('T')[0])
+        .order('data',{ascending:false}),
+      sb.from('fechamento_turno_garagem').select('data,turno,responsavel_nome,status_geral,op_soltura')
+        .eq('garagem_id',gid).gte('data',dataLimite.toISOString().split('T')[0])
+        .order('data',{ascending:false}),
+    ]);
+
+    // Agrupa soltura por data+turno
+    const grupos={};
+    (soltura||[]).forEach(r=>{
+      const k=`${r.data}_${r.turno||'dia'}`;
+      if(!grupos[k]) grupos[k]={data:r.data,turno:r.turno||'dia',num:r.numero_relatorio,importado_por:r.importado_por,total:0,saiu:0};
+      grupos[k].total++;
+      if(r.saiu===true) grupos[k].saiu++;
+    });
+
+    // Junta com fechamentos
+    const fechMap={};
+    (fechamentos||[]).forEach(f=>{fechMap[`${f.data}_${f.turno}`]=f;});
+
+    const items=Object.values(grupos).sort((a,b)=>b.data.localeCompare(a.data));
+
+    const rows=items.map(g=>{
+      const pct=g.total>0?((g.saiu/g.total)*100).toFixed(1):null;
+      const pColor=pct&&parseFloat(pct)>=99.5?'var(--green)':pct&&parseFloat(pct)>=95?'var(--amber)':'var(--red)';
+      const fech=fechMap[`${g.data}_${g.turno}`];
+      const st=fech
+        ?`<span class="badge b-ok">✅ Fechado</span>`
+        :`<span class="badge" style="color:var(--amber);background:#F59E0B18;border-color:#F59E0B40">⏳ Aberto</span>`;
+      const resp=fech?.responsavel_nome||g.importado_por||'—';
       return`<tr>
-        <td><span style="font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${r.numero}</span></td>
-        <td>${formatData(r.data_evento)} · ${r.turno==='dia'?'☀️':'🌙'}</td>
-        <td style="color:var(--text3);font-size:12px">${r.garagens?.nome||'—'}</td>
-        <td style="font-family:'DM Mono',monospace">${r.total_programado}</td>
-        <td style="color:${pColor};font-weight:700;font-family:'DM Mono',monospace">${pct}</td>
+        <td><span style="font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${g.num||'—'}</span></td>
+        <td>${formatData(g.data)} · ${g.turno==='dia'?'☀️':'🌙'}</td>
+        <td style="font-family:'DM Mono',monospace">${g.saiu}/${g.total}</td>
+        <td style="color:${pct?pColor:'var(--text4)'};font-weight:700;font-family:'DM Mono',monospace">${pct?pct+'%':'—'}</td>
         <td>${st}</td>
-        <td style="color:var(--text4);font-size:11px">${r.preenchido_por_nome||'—'}</td>
-        <td><button class="btn-sm" onclick="renderFerr210('painel','${r.data_evento}')">Ver →</button></td>
+        <td style="color:var(--text3);font-size:12px">${resp}</td>
+        <td><button class="btn-sm" onclick="renderFerr210('painel','${g.data}')">Ver →</button></td>
       </tr>`;
     }).join('');
 
     setMain(`
       ${secTitle('🗂️','Arquivo — Relatórios 2.10',back)}${tabs}
-      ${(rels||[]).length===0
-        ?`<div class="empty"><div style="font-size:40px">🗂️</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Nenhum relatório gerado ainda</div></div>`
-        :`<div class="tbl-wrap"><div class="tbl-head"><div style="font-size:13px;font-weight:700">${(rels||[]).length} relatórios</div></div>
+      ${items.length===0
+        ?`<div class="empty"><div style="font-size:40px">🗂️</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Nenhuma escala encontrada</div></div>`
+        :`<div class="tbl-wrap">
+          <div class="tbl-head"><div style="font-size:13px;font-weight:700">${items.length} relatório(s)</div></div>
           <div style="overflow-x:auto"><table>
-            <thead><tr><th>Nº Documento</th><th>Data · Turno</th><th>Garagem</th><th>Prog.</th><th>% Soltura</th><th>Status</th><th>Preenchido por</th><th></th></tr></thead>
+            <thead><tr>
+              <th>Nº Documento</th><th>Data · Turno</th><th>Saídas</th>
+              <th>% Soltura</th><th>Status</th><th>Responsável</th><th></th>
+            </tr></thead>
             <tbody>${rows}</tbody>
-          </table></div></div>`}
+          </table></div>
+        </div>`}
       <div class="info-blue info-banner">🔒 Visível apenas para supervisão e diretoria</div>`);
     return;
   }
