@@ -357,9 +357,9 @@ function renderSoltura(lista, busca){
       </div>
       <!-- Seletor de data -->
       <div style="display:flex;gap:6px;margin-bottom:8px">
-        <button onclick="telaSoltura('${new Date(new Date(_sdata).getTime()-86400000).toISOString().split('T')[0]}')" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">◀ Ontem</button>
-        <button onclick="telaSoltura('${hoje()}')" style="flex:1;padding:6px;border-radius:8px;border:1px solid ${_sdata===hoje()?'var(--blue)':'var(--border)'};background:${_sdata===hoje()?'#2563EB18':'transparent'};color:${_sdata===hoje()?'var(--blue)':'var(--text3)'};font-size:12px;font-family:inherit;cursor:pointer">Hoje</button>
-        <button onclick="telaSoltura('${new Date(new Date(_sdata).getTime()+86400000).toISOString().split('T')[0]}')" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">Amanhã ▶</button>
+        <button onclick="navData(-1)" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">◀</button>
+        <button onclick="navData(0)" style="flex:1;padding:6px;border-radius:8px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer" id="btn-hoje-sol">${dataFmt}</button>
+        <button onclick="navData(1)" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">▶</button>
       </div>
       <!-- Barra de progresso -->
       <div class="prog"><div class="prog-f" style="width:${pct}%;background:${pct>=99?'var(--green)':'var(--amber)'}"></div></div>
@@ -369,12 +369,12 @@ function renderSoltura(lista, busca){
       <!-- Busca -->
       <div style="position:relative;margin-top:10px">
         <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:14px">🔍</span>
-        <input type="text" id="busca-sol" placeholder="Prefixo, horário ou motorista..." oninput="renderSoltura(_sLista,this.value)"
+        <input type="text" id="busca-sol" placeholder="Prefixo, horário ou motorista..." oninput="filtrarSoltura(this.value)"
           style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 10px 10px 32px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
       </div>
     </div>
-    <div class="sl">${filtrada.length}${busca?' resultado(s)':' veículo(s)'}</div>
-    ${cards}
+    <div class="sl" id="sl-count">${filtrada.length}${busca?' resultado(s)':' veículo(s)'}</div>
+    <div id="cards-sol">${cards}</div>
     <!-- Botão fechar turno -->
     ${pct>0?`<div style="padding:14px">
       <button onclick="fecharTurnoSoltura()" style="width:100%;padding:14px;border-radius:12px;border:1px solid ${pct>=99?'#00C48C40':'#F59E0B40'};background:${pct>=99?'#00C48C18':'#F59E0B18'};color:${pct>=99?'var(--green)':'var(--amber)'};font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">
@@ -382,6 +382,45 @@ function renderSoltura(lista, busca){
       </button>
     </div>`:''}
   `);
+}
+
+// Navegação de data — recalcula dinamicamente
+function navData(dir){
+  const base = new Date(_sdata+'T12:00:00');
+  if(dir===0){ _sdata=hoje(); }
+  else { base.setDate(base.getDate()+dir); _sdata=base.toISOString().split('T')[0]; }
+  telaSoltura(_sdata);
+}
+
+// Busca sem re-renderizar tudo — só atualiza os cards
+function filtrarSoltura(busca){
+  const lista=_sLista||[];
+  const filtrada=busca
+    ?lista.filter(r=>r.prefixo?.includes(busca.toUpperCase())||r.horario_programado?.includes(busca)||r.motorista?.toLowerCase().includes(busca.toLowerCase()))
+    :lista;
+
+  const TIPO_C={simples:'#3B82F6',pesada:'#10B981'};
+  const cards=filtrada.map(r=>{
+    const d=r.saiu===true,n=r.saiu===false;
+    const reserva=r.observacao?.startsWith('Reserva:');
+    return`<div class="vcard ${d?'done':n?'nok':''}" onclick="abrirSol('${r.id}','${r.prefixo}','${r.horario_programado||''}','${r.linha||''}','${(r.motorista||'').replace(/'/g,'')}')">
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:6px">
+          <div class="prefixo">${r.prefixo}</div>
+          ${reserva?`<span style="font-size:9px;color:var(--purple);font-weight:700;border:1px solid #8B5CF640;background:#8B5CF618;border-radius:4px;padding:1px 5px">RESERVA</span>`:''}
+        </div>
+        <div class="vcard-sub">${r.horario_programado||'—'} · ${r.linha||'—'}</div>
+        <div class="vcard-sub">${r.motorista?.split(' ').slice(0,2).join(' ')||'—'}${d&&r.horario_real?' · ✅'+r.horario_real:''}</div>
+      </div>
+      <div class="btn-ck ${d?'ok':n?'nok':''}">${d?'✅':n?'❌':'○'}</div>
+    </div>`;
+  }).join('');
+
+  const el=document.getElementById('cards-sol');
+  const ct=document.getElementById('sl-count');
+  if(el) el.innerHTML=cards||'<div style="padding:20px;text-align:center;color:var(--text3)">Nenhum resultado</div>';
+  if(ct) ct.textContent=filtrada.length+(busca?' resultado(s)':' veículo(s)');
+}
 }
 
 function abrirSol(id,prefixo,horario,linha,motorista){
@@ -499,16 +538,21 @@ async function fecharTurnoSoltura(){
 }
 
 async function confirmarFechamento(){
+  const btn=document.querySelector('#shbody button[onclick="confirmarFechamento()"]');
+  if(btn){btn.textContent='Salvando...';btn.disabled=true;}
+
   const obs=document.getElementById('obs-turno')?.value?.trim();
   const saiu=_sLista.filter(r=>r.saiu===true).length;
   const nao=_sLista.filter(r=>r.saiu===false).length;
   const pct=_sLista.length?Math.round(saiu/_sLista.length*100):0;
   const gid=getGid();
+  const agora=new Date();
+  const hhmm=String(agora.getHours()).padStart(2,'0')+String(agora.getMinutes()).padStart(2,'0');
+  const garSigla=(S.garagens.find(g=>g.id===gid)?.sigla||'MOB').slice(0,3);
 
-  // Salva fechamento na tabela 2.1
-  await sb.from('fechamento_turno_garagem').insert({
+  const{error}=await sb.from('fechamento_turno_garagem').insert({
     garagem_id:gid,
-    numero:`MOB/${_sdata}/${String(new Date().getHours()).padStart(2,'0')}${String(new Date().getMinutes()).padStart(2,'0')}`,
+    numero:`2.1/${_sdata.replace(/-/g,'').slice(2)}-${hhmm}/${garSigla}`,
     turno:S.turno||'dia',
     data:_sdata,
     responsavel_id:S.perfil?.id,
@@ -516,11 +560,17 @@ async function confirmarFechamento(){
     status_geral:pct>=99?'ok':pct>=90?'parcial':'nok',
     op_soltura:saiu,
     op_obs:obs||null,
-  }).catch(()=>{});
+  });
+
+  if(error){
+    toast('Erro ao salvar: '+error.message,'err');
+    if(btn){btn.textContent='⚠️ Tentar Novamente';btn.disabled=false;}
+    return;
+  }
 
   closeSheet(true);
-  toast('✅ Turno fechado!');
-  telaSoltura();
+  toast('✅ Turno fechado com sucesso!');
+  telaSoltura(_sdata);
 }
 
 
