@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>JTP — Sistema Operacional de Garagem</title>
+<script>
+// Redireciona celular para o app mobile (exceto se ?desktop=1 forçar desktop)
+(function(){
+  const forcaDesktop=new URLSearchParams(location.search).get('desktop')==='1';
+  const isMobile=/Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  if(isMobile&&!forcaDesktop) location.replace('app-mobile.html');
+})();
+</script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -324,6 +332,8 @@ tr:hover td{background:#0F172A80}
           <option value="operacoes_seguras">Operações Seguras</option>
           <option value="lider_oficina">Líder de Oficina</option>
           <option value="lavador">Lavador</option>
+          <option value="manobrista">Manobrista</option>
+          <option value="frentista">Frentista</option>
           <option value="diretoria">Diretoria</option>
         </select>
       </div>
@@ -606,7 +616,7 @@ async function carregarReservasDisponiveis(){
   sel.innerHTML=`<option value="">Selecione o reserva...</option>`+
     disponiveis.map(v=>`<option value="${v.prefixo}">${v.prefixo} — ${v.modelo||'—'} (${v.status==='disponivel'?'✅ Disponível':'🔧 '+v.status})</option>`).join('');
 }
-const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',lider_pcm:'Líder PCM',assistente_pcm:'Assistente PCM',almoxarifado:'Almoxarifado',lider_operacional:'Líder Operacional',lider_suprimentos:'Líder de Suprimentos',operacoes_seguras:'Operações Seguras',lider_oficina:'Líder de Oficina',lider_patio:'Líder de Pátio',lavador:'Lavador'};
+const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',lider_pcm:'Líder PCM',assistente_pcm:'Assistente PCM',almoxarifado:'Almoxarifado',lider_operacional:'Líder Operacional',lider_suprimentos:'Líder de Suprimentos',operacoes_seguras:'Operações Seguras',lider_oficina:'Líder de Oficina',lider_patio:'Líder de Pátio',lavador:'Lavador',manobrista:'Manobrista',frentista:'Frentista'};
 
 // ── FERRAMENTAS E PERMISSÕES ──────────────────────────────
 // ── SISTEMA DE PERMISSÕES 3 NÍVEIS: executa / valida / visualiza ──────────
