@@ -2265,6 +2265,12 @@ async function renderFerr210(tab='painel', dataFiltro=null){
       <td style="color:var(--text3);font-size:12px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.motorista||'—'}</td>
       <td>${sH}</td>
       <td style="text-align:center">${lavH}</td>
+      <td style="text-align:center">
+        ${r.zona_patio
+          ?`<span style="font-size:11px;font-weight:700;color:${['','#3B82F6','#10B981','#F59E0B','#8B5CF6','#EF4444'][r.zona_patio]||'var(--text3)'};background:${['','#3B82F618','#10B98118','#F59E0B18','#8B5CF618','#EF444418'][r.zona_patio]||'var(--surface2)'};border:1px solid;border-color:${['','#3B82F640','#10B98140','#F59E0B40','#8B5CF640','#EF444440'][r.zona_patio]||'var(--border)'};border-radius:5px;padding:2px 7px">Z${r.zona_patio}</span>`
+          :`<span style="color:var(--text4);font-size:11px">—</span>`}
+      </td>
+      <td style="font-size:11px;color:var(--text3)">${r.manobrista?.split(' ')[0]||'—'}</td>
       <td>${pontH}</td>
       <td>${reservaH}</td>
       <td>${obsH}</td>
@@ -2320,7 +2326,7 @@ async function renderFerr210(tab='painel', dataFiltro=null){
       </div>
       <div style="overflow-x:auto">
         <table>
-            <thead><tr><th>Prefixo</th><th>Hor. Prog.</th><th>Linha</th><th>Motorista</th><th>Saída</th><th style="text-align:center">🚿</th><th>Pont.</th><th>Reserva</th><th>Obs.</th></tr></thead>
+            <thead><tr><th>Prefixo</th><th>Hor. Prog.</th><th>Linha</th><th>Motorista</th><th>Saída</th><th style="text-align:center">🚿</th><th style="text-align:center">📍 Zona</th><th style="font-size:10px">🚗 Manobrista</th><th>Pont.</th><th>Reserva</th><th>Obs.</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
