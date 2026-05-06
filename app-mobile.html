@@ -328,6 +328,19 @@ async function telaSoltura(dataFiltro=null){
   _sLista=lista||[];
   _sDatas=datasComEscala;
   renderSoltura(_sLista,'',datasComEscala);
+
+  // Atualiza automaticamente a cada 30s (zona do manobrista aparece em tempo real)
+  clearInterval(window._solturaTimer);
+  window._solturaTimer=setInterval(async()=>{
+    if(S.tela!=='soltura') return clearInterval(window._solturaTimer);
+    const{data:atualizado}=await sb.from('soltura_2_10').select('*')
+      .eq('garagem_id',gid).eq('data',_sdata).order('horario_programado');
+    if(atualizado){
+      _sLista=atualizado;
+      const busca=document.getElementById('busca-sol')?.value||'';
+      filtrarSoltura(busca);
+    }
+  },30000);
 }
 
 function renderSoltura(lista, busca, datasComEscala=[]){
@@ -349,14 +362,19 @@ function renderSoltura(lista, busca, datasComEscala=[]){
   const cards=filtrada.map(r=>{
     const d=r.saiu===true,n=r.saiu===false;
     const reserva=r.observacao?.startsWith('Reserva:');
+    const zonaObj=r.zona_patio?ZONAS.find(z=>z.z===r.zona_patio):null;
     return`<div class="vcard ${d?'done':n?'nok':''}" onclick="abrirSol('${r.id}','${r.prefixo}','${r.horario_programado||''}','${r.linha||''}','${r.motorista||''}')">
       <div style="flex:1">
-        <div style="display:flex;align-items:center;gap:6px">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           <div class="prefixo">${r.prefixo}</div>
           ${reserva?`<span style="font-size:9px;color:var(--purple);font-weight:700;border:1px solid #8B5CF640;background:#8B5CF618;border-radius:4px;padding:1px 5px">RESERVA</span>`:''}
+          ${zonaObj?`<span style="font-size:9px;font-weight:700;border:1px solid ${zonaObj.cor}40;background:${zonaObj.cor}18;color:${zonaObj.cor};border-radius:4px;padding:1px 6px">${zonaObj.nome}</span>`:''}
         </div>
         <div class="vcard-sub">${r.horario_programado||'—'} · ${r.linha||'—'}</div>
-        <div class="vcard-sub">${r.motorista?.split(' ').slice(0,2).join(' ')||'—'}${d&&r.horario_real?' · ✅'+r.horario_real:''}</div>
+        <div class="vcard-sub" style="display:flex;gap:8px">
+          <span>${r.motorista?.split(' ').slice(0,2).join(' ')||'—'}${d&&r.horario_real?' · ✅'+r.horario_real:''}</span>
+          ${r.manobrista?`<span style="color:var(--text4)">🚗 ${r.manobrista.split(' ')[0]}</span>`:''}
+        </div>
       </div>
       <div class="btn-ck ${d?'ok':n?'nok':''}">${d?'✅':n?'❌':'○'}</div>
     </div>`;
