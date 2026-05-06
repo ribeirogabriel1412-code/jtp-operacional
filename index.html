@@ -3098,8 +3098,6 @@ async function carregarChecklistLib(ocId, setorFiltro=null){
     grupos2[grupo].push(it);
   });
 
-  const podePreencher=isLiderOficina()&&!submetido&&!aprovado;
-
   const renderItem=(it)=>{
     const nsa=it.nao_se_aplica;
     const rowBg=nsa?'#47556908':it.trocado?'#00C48C08':it.verificado?'#2563EB08':'var(--surface2)';
