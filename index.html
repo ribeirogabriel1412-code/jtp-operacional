@@ -217,7 +217,10 @@ tr:hover td{background:#0F172A80}
       <span style="font-size:20px">🚌</span>
       <div class="tb-brand">JTP <span>Operacional</span></div>
       <div style="width:1px;height:20px;background:var(--border)"></div>
-      <span style="color:var(--text3);font-size:12px" id="tb-loc">—</span>
+      <!-- Seletor de garagem para Diretoria/Supervisão -->
+      <div id="tb-loc-wrap">
+        <span style="color:var(--text3);font-size:12px" id="tb-loc">—</span>
+      </div>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
       <span style="color:var(--text3);font-size:12px" id="tb-role">—</span>
@@ -741,9 +744,23 @@ async function doLogin(){
 
   const garagem=S.garagens.find(g=>g.id===perfil.garagem_id);
   const isAdmin=perfil.is_admin;
-  const isDiretoria=perfil.cargo==='diretoria';
+  const isDiretoria=['diretoria','operacoes_seguras'].includes(perfil.cargo)||isAdmin;
 
-  document.getElementById('tb-loc').textContent=isDiretoria||isAdmin?'🏢 Todas as Garagens':`📍 ${garagem?.nome||'—'}`;
+  // Define garagem ativa — diretoria começa na primeira, demais na sua
+  S.gidAtivo=isDiretoria?(S.garagens[0]?.id):(perfil.garagem_id||S.garagens[0]?.id);
+
+  // Topbar — seletor para diretoria/supervisão, texto fixo para demais
+  const tbWrap=document.getElementById('tb-loc-wrap');
+  if(tbWrap){
+    if(isDiretoria&&S.garagens.length>1){
+      tbWrap.innerHTML=`<select onchange="setGidAtivo(this.value)"
+        style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--text);font-size:12px;font-family:'DM Sans',sans-serif;cursor:pointer;outline:none">
+        ${S.garagens.map(g=>`<option value="${g.id}">📍 ${g.nome||g.cidade||g.id.slice(0,8)}</option>`).join('')}
+      </select>`;
+    } else {
+      tbWrap.innerHTML=`<span style="color:var(--text3);font-size:12px">📍 ${garagem?.nome||S.garagens[0]?.nome||'—'}</span>`;
+    }
+  }
   document.getElementById('tb-role').textContent=(isAdmin?'👑 Admin — ':'')+CARGOS[perfil.cargo];
   document.getElementById('tb-av').textContent=perfil.nome[0].toUpperCase();
 
@@ -838,7 +855,7 @@ async function renderPainel(){
   const total=S.frota.length;
   const pctD=total>0?(((disp+linha)/total)*100).toFixed(1):0;
   const gNome=S.garagens.find(g=>g.id===S.perfil?.garagem_id)?.nome||'Todas as Garagens';
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
 
   // Busca resumo do 2.10 de hoje
   const{data:soltura}=await sb.from('soltura_2_10').select('saiu,pontual,observacao')
@@ -1009,7 +1026,7 @@ async function renderFrota(){
   const filtrosH=filtros.map(f=>{const cnt=f==='todos'?S.frota.length:S.frota.filter(v=>v.status===f).length;return`<button class="filtro-btn${S.filtroFrota===f?' active':''}" onclick="S.filtroFrota='${f}';renderFrota()">${labels[f]} <span style="opacity:.5;font-size:10px">(${cnt})</span></button>`}).join('');
   // Busca última lavagem de todos os carros
   const{data:todasLav}=await sb.from('checklist_lavagem').select('prefixo,tipo_lavagem,data')
-    .eq('garagem_id',S.perfil?.garagem_id||(S.garagens[0]?.id)).eq('status','executado')
+    .eq('garagem_id',getGid()).eq('status','executado')
     .order('data',{ascending:false});
   const lavMapFrota={};
   (todasLav||[]).forEach(l=>{if(!lavMapFrota[l.prefixo]) lavMapFrota[l.prefixo]=l;});
@@ -1040,7 +1057,7 @@ async function renderFrota(){
 async function renderIndicadores(){
   setMain(`<div class="loading"><div class="spinner"></div> Carregando indicadores...</div>`);
   await loadFrota();
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
   const total=S.frota.length;
   const disp=S.frota.filter(v=>v.status==='disponivel').length;
   const linha=S.frota.filter(v=>v.status==='em_linha').length;
@@ -1719,7 +1736,7 @@ async function renderFerr210(tab='painel', dataFiltro=null){
   // ── ABA CARROS RESERVA ────────────────────────────────────
   if(tab==='reservas'){
     setMain(`<div class="loading"><div class="spinner"></div> Carregando reservas...</div>`);
-    const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+    const gid=getGid();
     const dataConsulta=S.data210||hoje();
 
     // Busca prefixos já escalados para hoje/data selecionada
@@ -2800,7 +2817,7 @@ function tempoDecorrido(iso){
 
 async function renderFerr22(aba='ativas'){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
   const isPCM=['lider_pcm','assistente_pcm','lider_oficina','gerente_garagem','diretoria'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
 
   const tabs=`<div class="filtros">
@@ -2925,7 +2942,7 @@ async function renderFerr22(aba='ativas'){
 
 // Abre modal nova ocorrência
 async function abrirModal22(){
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
   const{data:frota}=await sb.from('frota').select('id,prefixo,modelo,status').eq('garagem_id',gid).in('status',['manutencao','aguardando_peca','disponivel']).order('prefixo');
   const sel=document.getElementById('m22-prefixo');
   sel.innerHTML=`<option value="">Selecione o veículo...</option>`+
@@ -2945,9 +2962,34 @@ async function abrirModal22(){
 // ── NOTIFICAÇÃO WHATSAPP ──────────────────────────────────
 // Retorna o melhor token disponível: JWT do usuário logado ou Publishable Key
 function getAuthKey(){return S?.accessToken||SUPABASE_PK;}
+
+// ── Resolvedor central de garagem ────────────────────────────
+// Diretoria/Op.Seguras: usa S.gidAtivo (selecionado pelo seletor)
+// Demais cargos: usa garagem do perfil
+// Fallback: primeira garagem disponível
+function getGid(){
+  // Se tem garagem ativa selecionada (diretoria/supervisão)
+  if(S.gidAtivo) return S.gidAtivo;
+  // Se tem garagem no perfil
+  if(S.perfil?.garagem_id) return S.perfil.garagem_id;
+  // Fallback: primeira garagem
+  return S.garagens?.[0]?.id;
+}
+
+// Define garagem ativa e recarrega a tela atual
+function setGidAtivo(gid){
+  S.gidAtivo=gid;
+  // Atualiza badge da topbar
+  const garagem=S.garagens?.find(g=>g.id===gid);
+  const badge=document.getElementById('tb-loc');
+  if(badge) badge.textContent='📍 '+( garagem?.nome||'—');
+  // Recarrega tela atual
+  const telas={supervisao:renderSupervisao,ferr26:()=>navToSub('ferr-26'),ferr21:()=>navToSub('ferr-21'),ferr211:()=>navToSub('ferr-211'),ferr212:()=>navToSub('ferr-212')};
+  if(S.tela&&telas[S.tela]) telas[S.tela]();
+}
 async function notificarWhatsApp(ocorrencia_id, status_novo){
   try{
-    const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+    const gid=getGid();
     const resp=await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
       method:'POST',
       headers:{
@@ -2971,7 +3013,7 @@ async function notificarWhatsApp(ocorrencia_id, status_novo){
 }
 
 async function salvarOcorrencia22(){
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
   const prefixoSel=document.getElementById('m22-prefixo').value;
   if(!prefixoSel){toast('Selecione um veículo!','err');return}
   const[vid,prefixo]=prefixoSel.split('|');
@@ -3131,7 +3173,7 @@ async function carregarChecklistLib(ocId, setorFiltro=null){
   const{data:oc}=await sb.from('ocorrencias_22').select('*').eq('id',ocId).single();
   if(!oc) return;
   document.getElementById('mckl-info').textContent=`${oc.prefixo}`;
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
 
   const{data:items0,error:errSelect}=await sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem');
   let items=items0;
@@ -3481,7 +3523,7 @@ async function submeterChecklistLib(ocId){
   if(pendentes.length>0){toast(`⚠️ ${pendentes.length} item(s) ainda sem verificação (V)!`,'err');return;}
   if(naoTrocados.length>0){toast(`⚠️ ${naoTrocados.length} item(s) verificados mas não qualificados (T)!`,'err');return;}
   if(!confirm('Submeter o checklist de liberação para aprovação do PCM?')) return;
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
 
   await sb.from('checklist_liberacao').update({
     submetido:true,submetido_por:S.perfil?.nome,submetido_em:new Date().toISOString(),
@@ -3556,7 +3598,7 @@ async function notificarWhatsAppLiberacao(ocId, liderNome, gid){
 async function aprovarChecklistLib(ocId,aprovado){
   const msg=aprovado?'Aprovar a liberação do veículo?':'Devolver para o Líder de Oficina revisar?';
   if(!confirm(msg)) return;
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
   await sb.from('checklist_liberacao').update({
     aprovado,aprovado_por:S.perfil?.nome,aprovado_em:new Date().toISOString(),
   }).eq('ocorrencia_id',ocId);
@@ -3595,7 +3637,7 @@ async function toggleCheckItem(itemId, ocId){
 
   // ── Auto-fecha ocorrência ao completar 100% ──
   if(pct===100&&concluido){
-    const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+    const gid=getGid();
     const horaLib=new Date().toISOString();
     const{data:oc}=await sb.from('ocorrencias_22').select('*').eq('id',ocId).single();
     if(!oc) return;
@@ -3620,7 +3662,7 @@ async function toggleCheckItem(itemId, ocId){
 
 async function notificarWhatsAppChecklist(ocId, pct, feitos, total){
   try{
-    const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+    const gid=getGid();
     await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
       method:'POST',
       headers:{'Content-Type':'application/json','apikey':getAuthKey(),'Authorization':'Bearer '+getAuthKey()},
@@ -3641,7 +3683,7 @@ async function atualizarStatus22(){
   const previsao=document.getElementById('m22s-previsao').value;
   const horaLib=document.getElementById('m22s-hora-lib').value;
   const isLib=novoStatus==='liberado';
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
 
   if(!S.editId22){toast('Erro: ID da ocorrência não encontrado','err');return;}
 
@@ -3788,7 +3830,7 @@ async function verHistorico22(){
 }
 
 async function abrirFechamentoPCM(){
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
   const agora=new Date();
   const garagem=S.garagens.find(g=>g.id===gid);
 
@@ -3861,7 +3903,7 @@ function setTurnoRapido(tipo){
 }
 
 async function carregarFechamentoPCM(){
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
   const agora=new Date();
   const garagem=S.garagens.find(g=>g.id===gid);
   const iniVal=document.getElementById('fech-ini').value;
@@ -4136,7 +4178,7 @@ async function salvarFechamentoPCM(){
 
 
 async function gerarResumoTurno(){
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
   const agora=new Date();
   const garagem=S.garagens.find(g=>g.id===gid);
   const ini=new Date();ini.setHours(0,0,0,0);
@@ -4216,7 +4258,7 @@ async function gerarResumoTurno(){
 
 async function enviarResumoWpp(){
   const msg=(S._resumoMsg||[]).join('\n');
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
   try{
     await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
       method:'POST',
@@ -4234,7 +4276,7 @@ async function enviarResumoWpp(){
 // ══════════════════════════════════════════════════════════════
 async function renderFerr211(){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
   setMain(`<div class="loading"><div class="spinner"></div> Carregando...</div>`);
 
   // Busca ocorrências em aberto (não liberadas)
@@ -4366,7 +4408,7 @@ async function renderFerr211(){
 }
 
 async function enviar211WhatsApp(){
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
   const{data:ocs}=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado').order('hora_entrada');
   const{data:frota}=await sb.from('frota').select('*').eq('garagem_id',gid).in('status',['manutencao','aguardando_peca','sinistro']);
   const{data:garagem}=await sb.from('garagens').select('nome').eq('id',gid).single();
@@ -4417,7 +4459,7 @@ async function enviar211WhatsApp(){
 // ══════════════════════════════════════════════════════════════
 async function renderFerr212(){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
   setMain(`<div class="loading"><div class="spinner"></div> Carregando...</div>`);
 
   const agora=new Date();
@@ -4554,7 +4596,7 @@ async function renderFerr212(){
 }
 
 async function enviar212WhatsApp(){
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
   const agora=new Date();
   const inicioMes=new Date(agora.getFullYear(),agora.getMonth(),1).toISOString();
   const [{data:frota},{data:ocs},{data:ocsLib},{data:garagem}]=await Promise.all([
@@ -4594,7 +4636,7 @@ async function enviar212WhatsApp(){
 
 async function renderFerrLav(aba='painel'){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
   const data=hoje();
   const podeProgramar=isEscalante();
 
@@ -4940,7 +4982,7 @@ async function publicarProgramacaoLav(){
 // ══════════════════════════════════════════════════════════════
 async function renderFerrLavLavador(){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
   setMain(`<div class="loading"><div class="spinner"></div></div>`);
 
   const data=hoje();
@@ -5278,7 +5320,7 @@ function abrirModalCronograma(){
 }
 
 async function salvarCronograma(){
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
   const{error}=await sb.from('cronograma_lavagem').insert({
     garagem_id:gid,
     hora_inicio:document.getElementById('crono-ini').value,
@@ -5546,7 +5588,7 @@ function renderFerrRotina(cargoSel=null){
 // ══════════════════════════════════════════════════════════════
 async function renderFerr21(aba='fechar'){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
   const turno=S.turno||'dia';
   const data=hoje();
   const agora=new Date();
@@ -5847,7 +5889,7 @@ async function salvarFechamento21(gid, numero, turno, data){
 // ══════════════════════════════════════════════════════════════
 async function renderFerr26(){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
   setMain(`<div class="loading"><div class="spinner"></div></div>`);
 
   // Busca OS abertas + custo previsto salvo
@@ -6245,7 +6287,7 @@ async function imprimir210(numDoc, dataEvento, turno, garagem){
 
       <!-- RESERVAS -->
       ${await (async()=>{
-        const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+        const gid=getGid();
         const{data:escalados}=await sb.from('soltura_2_10').select('prefixo')
           .eq('garagem_id',gid).eq('data',dataEvento).eq('turno',turno);
         const escalSet=new Set((escalados||[]).map(r=>r.prefixo));
@@ -6380,7 +6422,7 @@ function handleFileLav(file){
   };reader.readAsArrayBuffer(file);
 }
 async function confirmarLavagem(dados){
-  const gid=S.perfil?.garagem_id||(S.garagens[0]?.id);
+  const gid=getGid();
   const turno=document.getElementById('lav-turno')?.value||S.turno;
   // Salva na nova tabela checklist_lavagem
   await sb.from('checklist_lavagem').delete().eq('garagem_id',gid).eq('data',hoje()).eq('turno',turno);
