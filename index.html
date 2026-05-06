@@ -1260,36 +1260,57 @@ function toggleGaraModal(){
 
 async function salvarUsuario(){
   const nome=document.getElementById('mu-nome').value.trim();
-  const email=document.getElementById('mu-email').value.trim();
+  const email=document.getElementById('mu-email').value.trim().toLowerCase();
   const senha=document.getElementById('mu-senha').value;
   const cargo=document.getElementById('mu-cargo').value;
   const garagem_id=cargo==='diretoria'?null:document.getElementById('mu-garagem').value;
-  if(!nome||!email){toast('Nome e e-mail são obrigatórios!','err');return}
+  if(!nome||!email){toast('Nome e e-mail são obrigatórios!','err');return;}
 
   const btn=document.getElementById('btn-salvar-user');
   btn.textContent='Salvando...';btn.disabled=true;
 
   if(!S.editUserId){
-    // Criar novo usuário
-    if(!senha||senha.length<6){toast('Senha deve ter mínimo 6 caracteres!','err');btn.textContent='💾 Criar Usuário';btn.disabled=false;return}
-    const{data:authData,error:authErr}=await sb.auth.admin?
-      {data:null,error:{message:'Admin API não disponível no client'}}:
-      await createUserViaAPI(email,senha);
+    // ── CRIAR NOVO USUÁRIO ──────────────────────────────────
+    if(!senha||senha.length<6){
+      toast('Senha deve ter mínimo 6 caracteres!','err');
+      btn.textContent='💾 Criar Usuário';btn.disabled=false;return;
+    }
 
-    // Usa a API de signup do Supabase
-    const{data:signUp,error:signErr}=await sb.auth.signUp({email,password:senha,options:{data:{nome}}});
-    if(signErr){toast('Erro ao criar: '+signErr.message,'err');btn.textContent='💾 Criar Usuário';btn.disabled=false;return}
+    // 1. Verifica se já existe perfil com esse e-mail
+    const{data:existing}=await sb.from('perfis').select('id,email').eq('email',email).single();
+    if(existing){
+      toast('❌ Já existe um usuário com esse e-mail!','err');
+      btn.textContent='💾 Criar Usuário';btn.disabled=false;return;
+    }
+
+    // 2. Tenta criar via signUp (funciona se email não existe no Auth)
+    const{data:signUp,error:signErr}=await sb.auth.signUp({
+      email,password:senha,
+      options:{data:{nome},emailRedirectTo:window.location.origin}
+    });
+
+    if(signErr&&signErr.message.includes('already registered')){
+      // Email já existe no Auth mas sem perfil — tenta via OTP admin workaround
+      toast('❌ Este e-mail já está registrado no sistema de autenticação. Use outro e-mail ou remova o usuário antigo em Supabase → Authentication → Users.','err');
+      btn.textContent='💾 Criar Usuário';btn.disabled=false;return;
+    }
+    if(signErr){toast('Erro ao criar: '+signErr.message,'err');btn.textContent='💾 Criar Usuário';btn.disabled=false;return;}
 
     const uid=signUp.user?.id;
-    if(!uid){toast('Erro ao obter ID do usuário','err');btn.textContent='💾 Criar Usuário';btn.disabled=false;return}
+    if(!uid){toast('Erro: não foi possível obter ID do usuário','err');btn.textContent='💾 Criar Usuário';btn.disabled=false;return;}
 
-    const{error:perfErr}=await sb.from('perfis').insert({id:uid,nome,email,cargo,garagem_id,ativo:true,is_admin:false});
-    if(perfErr){toast('Erro ao salvar perfil: '+perfErr.message,'err');btn.textContent='💾 Criar Usuário';btn.disabled=false;return}
-    toast(`✅ Usuário ${nome} criado com sucesso!`);
+    // 3. Cria perfil
+    const{error:perfErr}=await sb.from('perfis').upsert({
+      id:uid,nome,email,cargo,garagem_id:garagem_id||null,ativo:true,is_admin:false
+    },{onConflict:'id'});
+    if(perfErr){toast('Erro ao salvar perfil: '+perfErr.message,'err');btn.textContent='💾 Criar Usuário';btn.disabled=false;return;}
+
+    toast(`✅ Usuário ${nome} criado! Ele pode fazer login imediatamente.`);
+
   } else {
-    // Editar existente
-    const{error}=await sb.from('perfis').update({nome,email,cargo,garagem_id}).eq('id',S.editUserId);
-    if(error){toast('Erro: '+error.message,'err');btn.textContent='💾 Salvar Alterações';btn.disabled=false;return}
+    // ── EDITAR EXISTENTE ────────────────────────────────────
+    const{error}=await sb.from('perfis').update({nome,email,cargo,garagem_id:garagem_id||null}).eq('id',S.editUserId);
+    if(error){toast('Erro: '+error.message,'err');btn.textContent='💾 Salvar Alterações';btn.disabled=false;return;}
     toast(`✅ Usuário ${nome} atualizado!`);
   }
 
