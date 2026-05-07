@@ -96,7 +96,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 <div id="login">
   <div class="login-logo">🚌</div>
   <div style="text-align:center"><div style="font-size:26px;font-weight:800">JTP Operacional</div><div style="font-size:12px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-top:4px">Acesso ao Sistema</div></div>
-  <div style="width:100%;display:flex;flex-direction:column;gap:4px"><label class="fl">E-mail</label><input class="fi" id="le" type="email" inputmode="email" autocomplete="email" placeholder="seu@email.com"></div>
+  <div style="width:100%;display:flex;flex-direction:column;gap:4px"><label class="fl">Matrícula ou E-mail</label><input class="fi" id="le" type="text" inputmode="text" autocomplete="username" placeholder="Ex: 4521 ou seu@email.com"></div>
   <div style="width:100%;display:flex;flex-direction:column;gap:4px"><label class="fl">Senha</label><input class="fi" id="ls" type="password" autocomplete="current-password" placeholder="••••••"></div>
   <div id="lerr" style="color:var(--red);font-size:13px;text-align:center;min-height:20px"></div>
   <button class="btn-p" onclick="doLogin()">Entrar</button>
@@ -135,7 +135,7 @@ const S={user:null,perfil:null,garagens:[],tela:'home',turno:'dia'};
 function hoje(){return new Date().toISOString().split('T')[0]}
 function getGid(){return S.perfil?.garagem_id||S.garagens?.[0]?.id}
 function cargo(){return S.perfil?.cargo}
-const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente',lider_pcm:'Líder PCM',assistente_pcm:'Ass. PCM',almoxarifado:'Almoxarifado',lider_operacional:'L. Operacional',lider_suprimentos:'L. Suprimentos',operacoes_seguras:'Op. Seguras',lider_oficina:'L. Oficina',lider_patio:'L. Pátio',lavador:'Lavador',manobrista:'Manobrista',frentista:'Frentista'};
+const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente',lider_pcm:'Líder PCM',assistente_pcm:'Ass. PCM',almoxarifado:'Almoxarifado',lider_operacional:'L. Operacional',lider_suprimentos:'L. Suprimentos',operacoes_seguras:'Op. Seguras',lider_oficina:'L. Oficina',lider_patio:'L. Pátio',lavador:'Lavador',manobrista:'Manobrista',frentista:'Frentista',plantao:'Plantão'};
 function toast(msg,tipo='ok',dur=2200){const t=document.getElementById('toast');t.textContent=msg;t.className='show'+(tipo==='err'?' err':'');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',dur);}
 function render(html){document.getElementById('content').innerHTML=html}
 function setTela(t){S.tela=t;buildNav();render('<div class="loading"><div class="sp"></div></div>');TELAS[t]&&TELAS[t]()}
@@ -144,13 +144,27 @@ function closeSheet(e){if(e===true||e.target===document.getElementById('shov'))d
 
 // LOGIN
 async function doLogin(){
-  const email=document.getElementById('le').value.trim();
+  const input=document.getElementById('le').value.trim();
   const senha=document.getElementById('ls').value;
   const err=document.getElementById('lerr');
-  if(!email||!senha){err.textContent='Preencha e-mail e senha.';return}
-  err.textContent='';
+  if(!input||!senha){err.textContent='Preencha matrícula/e-mail e senha.';return}
+  err.textContent='Entrando...';
+
+  // Resolve e-mail — pode ser matrícula ou e-mail direto
+  let email=input;
+  if(!input.includes('@')){
+    // É matrícula — busca o e-mail correspondente
+    const{data:perfil}=await sb.from('perfis').select('email').eq('matricula',input).single();
+    if(!perfil?.email){
+      err.textContent='Matrícula não encontrada. Verifique com o administrador.';
+      return;
+    }
+    email=perfil.email;
+  }
+
   const{data,error}=await sb.auth.signInWithPassword({email,password:senha});
-  if(error){err.textContent='E-mail ou senha incorretos.';return}
+  if(error){err.textContent='Matrícula/e-mail ou senha incorretos.';return}
+  err.textContent='';
   S.user=data.user;await init();
 }
 async function init(){
@@ -171,15 +185,17 @@ async function init(){
 async function doLogout(){await sb.auth.signOut();location.reload()}
 
 // NAVBAR
-const TELA_INICIO={lavador:'lavagem',lider_patio:'patio',lider_oficina:'oficina',lider_pcm:'oficina',assistente_pcm:'oficina',manobrista:'patio_man',frentista:'home'};
+const TELA_INICIO={lavador:'lavagem',lider_patio:'patio',lider_oficina:'oficina',lider_pcm:'oficina',assistente_pcm:'oficina',manobrista:'patio_man',frentista:'home',plantao:'recolha'};
 const NAV={
   lavador:[{id:'lavagem',ic:'🚿',lb:'Lavagem'},{id:'home',ic:'🏠',lb:'Início'}],
-  lider_patio:[{id:'patio',ic:'✅',lb:'Validar'},{id:'soltura',ic:'📋',lb:'Soltura'},{id:'home',ic:'🏠',lb:'Início'}],
+  lider_patio:[{id:'patio',ic:'✅',lb:'Validar'},{id:'soltura',ic:'📋',lb:'Soltura'},{id:'patio_man',ic:'🚗',lb:'Pátio'},{id:'home',ic:'🏠',lb:'Início'}],
+  lider_operacional:[{id:'patio_man',ic:'🚗',lb:'Pátio'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_oficina:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_pcm:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'prev26',ic:'💰',lb:'2.6'},{id:'home',ic:'🏠',lb:'Início'}],
   assistente_pcm:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'prev26',ic:'💰',lb:'2.6'},{id:'home',ic:'🏠',lb:'Início'}],
   manobrista:[{id:'patio_man',ic:'🚗',lb:'Pátio'},{id:'home',ic:'🏠',lb:'Início'}],
   frentista:[{id:'home',ic:'🏠',lb:'Início'}],
+  plantao:[{id:'recolha',ic:'🔑',lb:'Recolha'},{id:'home',ic:'🏠',lb:'Início'}],
 };
 const NAV_DEF=[{id:'home',ic:'🏠',lb:'Início'}];
 function buildNav(){
@@ -1012,8 +1028,222 @@ async function salvarPosicaoPatio(){
   telaPatioMan(data);
 }
 
+// ── RECOLHA (Plantão / Porteiro) ──────────────────────────
+async function telaRecolha(){
+  const gid=getGid();
+  const data=hoje();
+  setMain('<div class="loading"><div class="sp"></div></div>');
+
+  // Busca recolhas já feitas hoje
+  const{data:recolhas}=await sb.from('recolha_checklist').select('*')
+    .eq('garagem_id',gid).eq('data_recolha',data).order('created_at',{ascending:false});
+
+  const tot=(recolhas||[]).length;
+  const agora=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+
+  const cards=(recolhas||[]).map(r=>`
+    <div class="card" style="margin-bottom:8px;border-left:3px solid ${r.visual_externo==='avaria'||r.visual_interno==='avaria'?'var(--amber)':'var(--green)'}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div class="prefixo" style="font-size:18px;color:var(--blue)">${r.prefixo}</div>
+        <div style="font-size:10px;color:var(--text3)">${r.horario_real||'—'}</div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);display:flex;gap:12px;flex-wrap:wrap">
+        ${r.linha?`<span>🚌 ${r.linha}</span>`:''}
+        ${r.motorista?`<span>👤 ${r.motorista.split(' ').slice(0,2).join(' ')}</span>`:''}
+        ${r.km_hodometro?`<span>📍 ${r.km_hodometro.toLocaleString()} km</span>`:''}
+        <span style="color:${r.visual_externo==='avaria'?'var(--amber)':'var(--green)'}">Ext: ${r.visual_externo==='avaria'?'⚠️ Avaria':'✅ OK'}</span>
+        <span style="color:${r.visual_interno==='avaria'?'var(--amber)':'var(--green)'}">Int: ${r.visual_interno==='avaria'?'⚠️ Avaria':'✅ OK'}</span>
+      </div>
+      ${r.observacao?`<div style="font-size:11px;color:var(--amber);margin-top:4px">⚠️ ${r.observacao}</div>`:''}
+    </div>`).join('');
+
+  render(`
+    <div style="padding:14px 14px 0">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div>
+          <div style="font-weight:800;font-size:17px">🔑 Recolha</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${tot} veículo(s) recebidos hoje · ${agora}</div>
+        </div>
+        <button onclick="telaRecolha()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>
+      </div>
+    </div>
+    ${tot===0
+      ?`<div class="empty"><div class="empty-ic">🔑</div><div style="font-weight:700;font-size:15px;margin-bottom:8px">Nenhum carro recebido ainda</div><div style="font-size:13px;color:var(--text3)">Toque + para registrar a chegada</div></div>`
+      :`<div class="sl">${tot} recebido(s) hoje</div>${cards}`}
+  `);
+
+  document.getElementById('content').insertAdjacentHTML('beforeend',
+    `<button class="fab" onclick="abrirRecolha()">＋</button>`);
+}
+
+let _recolhaId='';
+async function abrirRecolha(){
+  openSheet('🔑 Receber Veículo',`
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label class="fl">Prefixo do Veículo</label>
+        <input class="fi2" id="rc-prefixo" type="text" placeholder="Ex: 02.210"
+          style="font-family:'DM Mono',monospace;font-size:20px;text-transform:uppercase"
+          oninput="this.value=this.value.toUpperCase();buscarEscalaRecolha(this.value)">
+      </div>
+      <!-- Info da escala (preenchida automaticamente) -->
+      <div id="rc-escala-info" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px">
+        <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;margin-bottom:6px">Da Escala de Hoje</div>
+        <div id="rc-escala-body" style="font-size:12px;color:var(--text2)"></div>
+      </div>
+      <div>
+        <label class="fl">KM Hodômetro</label>
+        <input class="fi2" id="rc-km" type="number" placeholder="Ex: 125430" inputmode="numeric">
+      </div>
+      <div>
+        <label class="fl">Visual Externo</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
+          <button onclick="selOpt('rc-ext','ok',this,'var(--green)')" data-opt="ok"
+            style="padding:12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">✅ OK</button>
+          <button onclick="selOpt('rc-ext','avaria',this,'var(--amber)')" data-opt="avaria"
+            style="padding:12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">⚠️ Avaria</button>
+        </div>
+        <input type="hidden" id="rc-ext" value="ok">
+      </div>
+      <div>
+        <label class="fl">Visual Interno</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
+          <button onclick="selOpt('rc-int','ok',this,'var(--green)')" data-opt="ok"
+            style="padding:12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">✅ OK</button>
+          <button onclick="selOpt('rc-int','avaria',this,'var(--amber)')" data-opt="avaria"
+            style="padding:12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">⚠️ Avaria</button>
+        </div>
+        <input type="hidden" id="rc-int" value="ok">
+      </div>
+      <div id="rc-obs-wrap" style="display:none">
+        <label class="fl">Descreva a avaria</label>
+        <textarea class="fi2" id="rc-obs" rows="2" placeholder="Ex: Vidro quebrado, amassado lateral..."
+          style="resize:none"></textarea>
+      </div>
+      <button onclick="salvarRecolha()" style="padding:15px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">🔑 Confirmar Recebimento</button>
+    </div>
+  `);
+  // Seleciona OK por padrão nos dois campos visuais
+  setTimeout(()=>{
+    document.querySelector('[data-opt="ok"][onclick*="rc-ext"]')?.click();
+    document.querySelector('[data-opt="ok"][onclick*="rc-int"]')?.click();
+  },100);
+}
+
+// Seleciona opção nos botões de visual
+function selOpt(fieldId, val, btn, cor){
+  document.getElementById(fieldId).value=val;
+  const grupo=btn.parentElement.querySelectorAll('button');
+  grupo.forEach(b=>{b.style.background='transparent';b.style.borderColor='var(--border)';b.style.color='var(--text3)';});
+  btn.style.background=val==='ok'?'#00C48C18':'#F59E0B18';
+  btn.style.borderColor=val==='ok'?'#00C48C40':'#F59E0B40';
+  btn.style.color=cor;
+  // Mostra campo de observação se algum tiver avaria
+  const extVal=document.getElementById('rc-ext')?.value;
+  const intVal=document.getElementById('rc-int')?.value;
+  const obsWrap=document.getElementById('rc-obs-wrap');
+  if(obsWrap) obsWrap.style.display=(extVal==='avaria'||intVal==='avaria')?'block':'none';
+}
+
+// Busca dados da escala ao digitar prefixo
+let _rcTimer=null;
+async function buscarEscalaRecolha(prefixo){
+  if(prefixo.length<4) return;
+  clearTimeout(_rcTimer);
+  _rcTimer=setTimeout(async()=>{
+    const gid=getGid();
+    const{data:esc}=await sb.from('soltura_2_10').select('*')
+      .eq('garagem_id',gid).eq('prefixo',prefixo).eq('data',hoje())
+      .order('horario_programado',{ascending:false}).limit(1);
+    const info=document.getElementById('rc-escala-info');
+    const body=document.getElementById('rc-escala-body');
+    if(!info||!body) return;
+    if(esc?.length){
+      const e=esc[0];
+      info.style.display='block';
+      body.innerHTML=`
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <span>🚌 ${e.linha||'—'}</span>
+          <span>👤 ${e.motorista?.split(' ').slice(0,2).join(' ')||'—'}</span>
+          <span>⏱ Prev. fim: ${e.horario_fim||e.horario_programado||'—'}</span>
+          ${e.saiu===true?`<span style="color:var(--green)">✅ Saiu às ${e.horario_real||'—'}</span>`:''}
+        </div>`;
+      // Pré-preenche dados da escala
+      window._rcEscala={motorista:e.motorista,linha:e.linha,horario_previsto:e.horario_fim||e.horario_programado};
+    } else {
+      info.style.display='block';
+      body.innerHTML='<span style="color:var(--text4)">Não encontrado na escala de hoje</span>';
+      window._rcEscala=null;
+    }
+  },600);
+}
+
+async function salvarRecolha(){
+  const prefixo=document.getElementById('rc-prefixo')?.value?.trim().toUpperCase();
+  const km=parseInt(document.getElementById('rc-km')?.value||'0')||null;
+  const externo=document.getElementById('rc-ext')?.value||'ok';
+  const interno=document.getElementById('rc-int')?.value||'ok';
+  const obs=document.getElementById('rc-obs')?.value?.trim()||null;
+  const gid=getGid();
+  const agora=new Date();
+  const horarioReal=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+
+  if(!prefixo){toast('Informe o prefixo','err');return;}
+
+  const esc=window._rcEscala||{};
+  const status=externo==='avaria'||interno==='avaria'?'avaria':'recebido';
+
+  // Busca veiculo_id
+  const{data:vei}=await sb.from('frota').select('id').eq('garagem_id',gid).eq('prefixo',prefixo).single();
+
+  // 1. Grava checklist de recolha
+  const{error}=await sb.from('recolha_checklist').insert({
+    garagem_id:gid,
+    prefixo,
+    veiculo_id:vei?.id||null,
+    data_recolha:hoje(),
+    horario_real:horarioReal,
+    horario_previsto:esc.horario_previsto||null,
+    motorista:esc.motorista||null,
+    linha:esc.linha||null,
+    km_hodometro:km,
+    visual_externo:externo,
+    visual_interno:interno,
+    observacao:obs,
+    status,
+    plantao_nome:S.perfil?.nome,
+    plantao_id:S.perfil?.id,
+  });
+  if(error){toast('Erro: '+error.message,'err');return;}
+
+  // 2. Se OK → cria/atualiza entrada no 2.10 do próximo dia
+  if(status==='recebido'&&vei?.id){
+    const amanha=new Date(agora);amanha.setDate(amanha.getDate()+1);
+    const dataAmanha=amanha.toISOString().split('T')[0];
+
+    // Verifica se já tem entrada para amanhã
+    const{data:jaExiste}=await sb.from('soltura_2_10').select('id')
+      .eq('garagem_id',gid).eq('prefixo',prefixo).eq('data',dataAmanha).single();
+
+    if(jaExiste){
+      // Atualiza marcando como disponível (saiu = null = pendente de confirmar)
+      await sb.from('soltura_2_10').update({
+        observacao:`Recolhido ${horarioReal} por ${S.perfil?.nome?.split(' ')[0]}`
+      }).eq('id',jaExiste.id);
+    }
+
+    // Garante que o carro está como disponível na frota
+    await sb.from('frota').update({status:'disponivel'}).eq('id',vei.id);
+  }
+
+  closeSheet(true);
+  window._rcEscala=null;
+  toast(status==='recebido'?`✅ ${prefixo} recebido e disponível p/ amanhã!`:`⚠️ ${prefixo} recebido com avaria`);
+  telaRecolha();
+}
+
 // ── MAPA DE TELAS ──────────────────────────────────────────
-const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,prev26:telaPrev26,patio_man:telaPatioMan};
+const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,prev26:telaPrev26,patio_man:telaPatioMan,recolha:telaRecolha};
 
 // ── INIT ───────────────────────────────────────────────────
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login').style.display!=='none')doLogin()});
