@@ -966,18 +966,16 @@ async function abrirRegistroPatio(){
   openSheet('🚗 Registrar Posição',`
     <div style="display:flex;flex-direction:column;gap:12px">
       <div>
-        <label class="fl">Selecione o Veículo</label>
-        <div id="lista-carros-patio" style="max-height:180px;overflow-y:auto;margin-top:6px">
+        <label class="fl">Veículo</label>
+        <div style="position:relative;margin-top:6px">
+          <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:14px">🔍</span>
+          <input type="text" id="busca-carro-patio" placeholder="Buscar prefixo..." oninput="filtrarCarrosPatio(this.value)"
+            style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 10px 10px 32px;color:var(--text);font-size:14px;font-family:'DM Mono',monospace;outline:none;text-transform:uppercase" oninput="this.value=this.value.toUpperCase();filtrarCarrosPatio(this.value)">
+        </div>
+        <div id="lista-carros-patio" style="max-height:200px;overflow-y:auto;margin-top:6px">
           ${listaCars||'<div style="text-align:center;color:var(--text3);padding:16px;font-size:13px">Nenhum carro na escala</div>'}
         </div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-          <div style="flex:1;height:1px;background:var(--border)"></div>
-          <span style="font-size:10px;color:var(--text4)">ou digita</span>
-          <div style="flex:1;height:1px;background:var(--border)"></div>
-        </div>
-        <input class="fi2" id="mp-prefixo" type="text" placeholder="Ex: 02.015"
-          style="font-family:'DM Mono',monospace;font-size:18px;text-transform:uppercase;margin-top:8px"
-          oninput="this.value=this.value.toUpperCase()">
+        <input type="hidden" id="mp-prefixo" value="">
       </div>
       <div>
         <label class="fl">Zona</label>
@@ -1001,12 +999,27 @@ async function abrirRegistroPatio(){
 }
 
 function selCarPatio(prefixo, el){
+  // Preenche o hidden input com o prefixo selecionado
   const inp=document.getElementById('mp-prefixo');
   if(inp) inp.value=prefixo;
+  // Também atualiza a busca para mostrar o selecionado
+  const busca=document.getElementById('busca-carro-patio');
+  if(busca) busca.value=prefixo;
   document.querySelectorAll('#lista-carros-patio [data-prefixo]').forEach(c=>{
     c.style.background='var(--surface2)';c.style.borderColor='var(--border)';
   });
   el.style.background='#2563EB18';el.style.borderColor='#2563EB60';
+}
+
+function filtrarCarrosPatio(busca){
+  const lista=document.querySelectorAll('#lista-carros-patio [data-prefixo]');
+  lista.forEach(el=>{
+    const prefixo=el.dataset.prefixo||'';
+    el.style.display=prefixo.includes(busca.toUpperCase())||!busca?'flex':'none';
+  });
+  // Também atualiza o hidden input se digitou direto
+  const inp=document.getElementById('mp-prefixo');
+  if(inp&&busca.length>=4) inp.value=busca.toUpperCase();
 }
 
 
