@@ -319,6 +319,7 @@ tr:hover td{background:#0F172A80}
     <div class="mgrid">
       <div class="full"><label class="fl">Nome Completo *</label><input class="fi" id="mu-nome" placeholder="Nome do usuário" style="margin-bottom:0"></div>
       <div class="full"><label class="fl">E-mail *</label><input class="fi" id="mu-email" type="email" placeholder="usuario@jtptransportes.com.br" style="margin-bottom:0"></div>
+      <div class="full"><label class="fl">Matrícula <span style="color:var(--text3);font-weight:400">(opcional — para login no app mobile)</span></label><input class="fi" id="mu-matricula" placeholder="Ex: 4521" style="margin-bottom:0;font-family:'DM Mono',monospace"></div>
       <div class="full"><label class="fl">Senha * <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text4)">(mín. 6 caracteres)</span></label><input class="fi" id="mu-senha" type="password" placeholder="••••••••" style="margin-bottom:0"></div>
       <div><label class="fl">Cargo *</label>
         <select class="fs" id="mu-cargo" style="margin-bottom:0" onchange="toggleGaraModal()">
@@ -1465,7 +1466,7 @@ async function renderAdmin(){
       <div class="user-avatar" style="background:${corCargo}20;color:${corCargo};border:1px solid ${corCargo}30">${initials}</div>
       <div class="user-info">
         <div class="user-name">${u.nome} ${u.is_admin?'<span class="badge b-admin" style="font-size:9px;padding:1px 7px">Admin</span>':''}</div>
-        <div class="user-meta">📧 ${u.email} &nbsp;·&nbsp; 💼 ${CARGOS[u.cargo]||u.cargo} &nbsp;·&nbsp; 📍 ${gNome}</div>
+        <div class="user-meta">📧 ${u.email} &nbsp;·&nbsp; 💼 ${CARGOS[u.cargo]||u.cargo} &nbsp;·&nbsp; 📍 ${gNome}${u.matricula?` &nbsp;·&nbsp; 🪪 Mat: <strong>${u.matricula}</strong>`:''}</div>
       </div>
       <div class="user-actions">
         <span class="badge ${u.ativo?'b-ativo':'b-inativo'}">${u.ativo?'Ativo':'Inativo'}</span>
@@ -1596,6 +1597,7 @@ async function editarUsuario(id){
   document.getElementById('btn-salvar-user').textContent='💾 Salvar Alterações';
   document.getElementById('mu-nome').value=u.nome;
   document.getElementById('mu-email').value=u.email;
+  if(document.getElementById('mu-matricula')) document.getElementById('mu-matricula').value=u.matricula||'';
   document.getElementById('mu-senha').value='';
   document.getElementById('mu-cargo').value=u.cargo;
   const sel=document.getElementById('mu-garagem');
@@ -1614,6 +1616,7 @@ async function salvarUsuario(){
   const email=document.getElementById('mu-email').value.trim().toLowerCase();
   const senha=document.getElementById('mu-senha').value;
   const cargo=document.getElementById('mu-cargo').value;
+  const matricula=document.getElementById('mu-matricula')?.value?.trim()||null;
   const garagem_id=cargo==='diretoria'?null:document.getElementById('mu-garagem').value;
   if(!nome||!email){toast('Nome e e-mail são obrigatórios!','err');return;}
 
@@ -1652,7 +1655,7 @@ async function salvarUsuario(){
 
     // 3. Cria perfil
     const{error:perfErr}=await sb.from('perfis').upsert({
-      id:uid,nome,email,cargo,garagem_id:garagem_id||null,ativo:true,is_admin:false
+      id:uid,nome,email,cargo,garagem_id:garagem_id||null,ativo:true,is_admin:false,matricula:matricula||null
     },{onConflict:'id'});
     if(perfErr){toast('Erro ao salvar perfil: '+perfErr.message,'err');btn.textContent='💾 Criar Usuário';btn.disabled=false;return;}
 
@@ -1660,7 +1663,7 @@ async function salvarUsuario(){
 
   } else {
     // ── EDITAR EXISTENTE ────────────────────────────────────
-    const{error}=await sb.from('perfis').update({nome,email,cargo,garagem_id:garagem_id||null}).eq('id',S.editUserId);
+    const{error}=await sb.from('perfis').update({nome,email,cargo,garagem_id:garagem_id||null,matricula:matricula||null}).eq('id',S.editUserId);
     if(error){toast('Erro: '+error.message,'err');btn.textContent='💾 Salvar Alterações';btn.disabled=false;return;}
     toast(`✅ Usuário ${nome} atualizado!`);
   }
