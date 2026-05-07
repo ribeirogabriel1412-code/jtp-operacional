@@ -948,13 +948,35 @@ async function telaPatioMan(dataFiltro=null){
 
 function setMain(html){render(html)}
 
-function abrirRegistroPatio(){
+async function abrirRegistroPatio(){
+  const gid=getGid();
+  const{data:escala}=await sb.from('soltura_2_10').select('prefixo,horario_programado,linha,zona_patio')
+    .eq('garagem_id',gid).eq('data',_patioData).order('horario_programado');
+
+  const listaCars=(escala||[]).map(r=>{
+    const zonaObj=r.zona_patio?ZONAS.find(z=>z.z===r.zona_patio):null;
+    return`<div onclick="selCarPatio('${r.prefixo}',this)" data-prefixo="${r.prefixo}"
+      style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border:1px solid ${r.zona_patio?zonaObj?.cor+'40':'var(--border)'};border-radius:10px;margin-bottom:6px;cursor:pointer">
+      <div style="font-family:'DM Mono',monospace;font-weight:700;font-size:16px;color:var(--blue)">${r.prefixo}</div>
+      <div style="flex:1;font-size:11px;color:var(--text3)">${r.horario_programado||'—'} · ${r.linha||'—'}</div>
+      ${r.zona_patio?`<span style="font-size:10px;font-weight:700;color:${zonaObj?.cor};background:${zonaObj?.cor}18;border:1px solid ${zonaObj?.cor}40;border-radius:5px;padding:2px 7px">${zonaObj?.nome||'Z'+r.zona_patio}</span>`:'<span style="font-size:10px;color:var(--text4)">—</span>'}
+    </div>`;
+  }).join('');
+
   openSheet('🚗 Registrar Posição',`
     <div style="display:flex;flex-direction:column;gap:12px">
       <div>
-        <label class="fl">Prefixo do Veículo</label>
+        <label class="fl">Selecione o Veículo</label>
+        <div id="lista-carros-patio" style="max-height:180px;overflow-y:auto;margin-top:6px">
+          ${listaCars||'<div style="text-align:center;color:var(--text3);padding:16px;font-size:13px">Nenhum carro na escala</div>'}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+          <div style="flex:1;height:1px;background:var(--border)"></div>
+          <span style="font-size:10px;color:var(--text4)">ou digita</span>
+          <div style="flex:1;height:1px;background:var(--border)"></div>
+        </div>
         <input class="fi2" id="mp-prefixo" type="text" placeholder="Ex: 02.015"
-          style="font-family:'DM Mono',monospace;font-size:20px;text-transform:uppercase"
+          style="font-family:'DM Mono',monospace;font-size:18px;text-transform:uppercase;margin-top:8px"
           oninput="this.value=this.value.toUpperCase()">
       </div>
       <div>
@@ -973,14 +995,21 @@ function abrirRegistroPatio(){
         <input class="fi2" id="mp-vaga" type="text" placeholder="Ex: A3, B7..."
           style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()">
       </div>
-      <div>
-        <label class="fl">Observação (opcional)</label>
-        <input class="fi2" id="mp-obs" type="text" placeholder="Ex: próximo à saída...">
-      </div>
-      <button onclick="salvarPosicaoPatio()" style="padding:15px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;margin-top:4px">✅ Confirmar Posição</button>
+      <button onclick="salvarPosicaoPatio()" style="padding:15px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">✅ Confirmar Posição</button>
     </div>
   `);
 }
+
+function selCarPatio(prefixo, el){
+  const inp=document.getElementById('mp-prefixo');
+  if(inp) inp.value=prefixo;
+  document.querySelectorAll('#lista-carros-patio [data-prefixo]').forEach(c=>{
+    c.style.background='var(--surface2)';c.style.borderColor='var(--border)';
+  });
+  el.style.background='#2563EB18';el.style.borderColor='#2563EB60';
+}
+
+
 
 let _zonaSelect=null;
 function selecionarZona(z,btn){
