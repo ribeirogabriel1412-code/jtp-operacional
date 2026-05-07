@@ -6152,23 +6152,23 @@ function renderFerrCtrl(){
 // RELATÓRIOS
 function renderRelatorios(){
   const lista=[
-    {cod:'2.1',nome:'Fechamento de Turno – Garagem',resp:'Supervisor',freq:'Diário/Turno',icon:'📋',ativo:false},
-    {cod:'2.3',nome:'Fechamento de Turno – Almoxarifado',resp:'Almoxarife',freq:'Diário/Turno',icon:'📦',ativo:false},
-    {cod:'2.4',nome:'Fechamento de Turno – PCM',resp:'Assist. PCM',freq:'Diário/Turno',icon:'🔧',ativo:false},
-    {cod:'2.5',nome:'Controle Preditivo – Valetamento',resp:'Líder PCM',freq:'Semanal',icon:'📅',ativo:false},
-    {cod:'2.6',nome:'Previsibilidade de Investimento',resp:'Líder PCM',freq:'Diário',icon:'💰',ativo:false},
-    {cod:'2.7',nome:'Fechamento da Oficina',resp:'Líder Oficina',freq:'Diário/Turno',icon:'🏭',ativo:false},
-    {cod:'2.9',nome:'Relatório de Inventário',resp:'Almoxarife',freq:'Diário/Turno',icon:'🗂️',ativo:false},
-    {cod:'2.10',nome:'Soltura de Frota',resp:'Líder Pátio',freq:'Diário',icon:'🚌',ativo:true,action:"navToSub('ferr-210')"},
-    {cod:'2.2',nome:'Priorização Oficina — Carros Parados',resp:'Líder PCM',freq:'Por ocorrência',icon:'🔧',ativo:true,action:"navToSub('ferr-22')"},
-    {cod:'2.11',nome:'Carros Indisponíveis',resp:'Líder PCM',freq:'Diário',icon:'🔴',ativo:false},
-    {cod:'2.12',nome:'Indicadores Técnicos',resp:'PCM/Almox/Op',freq:'Diário',icon:'📊',ativo:false},
-    {cod:'2.14',nome:'Análise de Desvio – 5 Porquês',resp:'Líderes',freq:'Diário',icon:'🔍',ativo:false},
-    {cod:'2.16',nome:'Fechamento de Abastecimento',resp:'Assist. PCM',freq:'Diário/Turno',icon:'⛽',ativo:false},
-    {cod:'2.17',nome:'Utilização de Lubrificantes',resp:'Assist. PCM',freq:'Diário/Turno',icon:'🛢️',ativo:false},
-    {cod:'2.18',nome:'SOS – Recolha Anormal',resp:'Assist. PCM',freq:'Por ocorrência',icon:'🆘',ativo:false},
-    {cod:'2.21',nome:'RJNP – Justif. Necessidade de Peças',resp:'Assist. PCM',freq:'Diário/Turno',icon:'🔩',ativo:false},
-    {cod:'3.2',nome:'Checklist de Lavagem — Hora a Hora',resp:'Líder Oficina',freq:'A cada 1 hora',icon:'🧼',ativo:true,action:"navToSub('ferr-lav')"},
+    {cod:'2.1', nome:'Fechamento de Turno – Garagem',      resp:'Supervisor',   freq:'Diário/Turno',  icon:'📋',ativo:true, action:"navToSub('ferr-21')",     pdf:"pdfFerr21"},
+    {cod:'2.3', nome:'Fechamento de Turno – Almoxarifado', resp:'Almoxarife',   freq:'Diário/Turno',  icon:'📦',ativo:false},
+    {cod:'2.4', nome:'Fechamento de Turno – PCM',          resp:'Assist. PCM',  freq:'Diário/Turno',  icon:'🔧',ativo:false},
+    {cod:'2.5', nome:'Controle Preditivo – Valetamento',   resp:'Líder PCM',    freq:'Semanal',       icon:'📅',ativo:false},
+    {cod:'2.6', nome:'Previsibilidade de Investimento',    resp:'Líder PCM',    freq:'Diário',        icon:'💰',ativo:true, action:"navToSub('ferr-26')",     pdf:"pdfFerr26"},
+    {cod:'2.7', nome:'Fechamento da Oficina',              resp:'Líder Oficina', freq:'Diário/Turno', icon:'🏭',ativo:false},
+    {cod:'2.9', nome:'Relatório de Inventário',            resp:'Almoxarife',   freq:'Diário/Turno',  icon:'🗂️',ativo:false},
+    {cod:'2.10',nome:'Soltura de Frota',                   resp:'Líder Pátio',  freq:'Diário',        icon:'🚌',ativo:true, action:"navToSub('ferr-210')",    pdf:"pdfFerr210"},
+    {cod:'2.2', nome:'Priorização Oficina — Carros Parados',resp:'Líder PCM',   freq:'Por ocorrência',icon:'🔧',ativo:true, action:"navToSub('ferr-22')",     pdf:"pdfFerr22"},
+    {cod:'2.11',nome:'Carros Indisponíveis',               resp:'Líder PCM',    freq:'Diário',        icon:'🔴',ativo:false},
+    {cod:'2.12',nome:'Indicadores Técnicos',               resp:'PCM/Almox/Op', freq:'Diário',        icon:'📊',ativo:false},
+    {cod:'2.14',nome:'Análise de Desvio – 5 Porquês',      resp:'Líderes',      freq:'Diário',        icon:'🔍',ativo:false},
+    {cod:'2.16',nome:'Fechamento de Abastecimento',        resp:'Assist. PCM',  freq:'Diário/Turno',  icon:'⛽',ativo:false},
+    {cod:'2.17',nome:'Utilização de Lubrificantes',        resp:'Assist. PCM',  freq:'Diário/Turno',  icon:'🛢️',ativo:false},
+    {cod:'2.18',nome:'SOS – Recolha Anormal',              resp:'Assist. PCM',  freq:'Por ocorrência',icon:'🆘',ativo:false},
+    {cod:'2.21',nome:'RJNP – Justif. Necessidade de Peças',resp:'Assist. PCM',  freq:'Diário/Turno',  icon:'🔩',ativo:false},
+    {cod:'3.2', nome:'Checklist de Lavagem — Hora a Hora', resp:'Líder Oficina', freq:'A cada 1 hora',icon:'🧼',ativo:true, action:"navToSub('ferr-lav')"},
   ];
   const ativos=lista.filter(r=>r.ativo).length;
   setMain(`
@@ -6178,9 +6178,247 @@ function renderRelatorios(){
       <div class="kpi ok" style="flex:1"><div class="kpi-label">Ativos</div><div class="kpi-val">${ativos}</div></div>
       <div class="kpi neu" style="flex:1"><div class="kpi-label">Em breve</div><div class="kpi-val">${lista.length-ativos}</div></div>
     </div>
-    <div class="rel-grid">${lista.map(r=>`<div class="rel-card${r.ativo?' ativo':''}" ${r.ativo&&r.action?`onclick="${r.action}"`:''}><div style="background:var(--border);border-radius:9px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${r.icon}</div><div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:3px"><span style="color:var(--text3);font-size:10px;font-weight:700">${r.cod}</span><span class="badge ${r.ativo?'b-ativo':'b-breve'}" style="font-size:9px;padding:1px 7px">${r.ativo?'Ativo':'Em breve'}</span></div><div style="color:var(--text);font-size:13px;font-weight:600;line-height:1.35">${r.nome}</div><div style="color:var(--text4);font-size:11px;margin-top:5px">👤 ${r.resp} · 🔄 ${r.freq}</div></div>${r.ativo?'<span style="color:var(--blue);font-size:16px">→</span>':''}</div>`).join('')}</div>
-    <div class="info-blue info-banner">💡 Relatórios marcados como Ativo são clicáveis. Os demais serão digitalizados nas próximas fases.</div>`);
+    <div class="rel-grid">${lista.map(r=>`
+      <div class="rel-card${r.ativo?' ativo':''}" ${r.ativo&&r.action?`onclick="${r.action}"`:''}>
+        <div style="background:var(--border);border-radius:9px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${r.icon}</div>
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+            <span style="color:var(--text3);font-size:10px;font-weight:700">${r.cod}</span>
+            <span class="badge ${r.ativo?'b-ativo':'b-breve'}" style="font-size:9px;padding:1px 7px">${r.ativo?'Ativo':'Em breve'}</span>
+          </div>
+          <div style="color:var(--text);font-size:13px;font-weight:600;line-height:1.35">${r.nome}</div>
+          <div style="color:var(--text4);font-size:11px;margin-top:5px">👤 ${r.resp} · 🔄 ${r.freq}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+          ${r.ativo?'<span style="color:var(--blue);font-size:16px">→</span>':''}
+          ${r.pdf?`<button onclick="event.stopPropagation();${r.pdf}()" style="background:#EF444418;border:1px solid #EF444440;color:var(--red);border-radius:6px;padding:3px 8px;font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🖨️ PDF</button>`:''}
+        </div>
+      </div>`).join('')}
+    </div>
+    <div class="info-blue info-banner">💡 Clique no relatório para abrir · 🖨️ PDF para imprimir ou salvar</div>`);
 }
+
+// ══════════════════════════════════════════════════════════
+// FUNÇÕES DE PDF — IMPRESSÃO NATIVA
+// ══════════════════════════════════════════════════════════
+function abrirJanelaPDF(html, titulo){
+  const w=window.open('','_blank','width=900,height=700');
+  w.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="UTF-8">
+    <title>${titulo}</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:'Arial',sans-serif;font-size:11px;color:#111;background:#fff;padding:20px}
+      h1{font-size:16px;font-weight:700;margin-bottom:4px}
+      h2{font-size:13px;font-weight:700;margin:14px 0 6px;border-bottom:1px solid #ddd;padding-bottom:4px}
+      .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid #111}
+      .logo{font-size:18px;font-weight:800;letter-spacing:-0.5px}
+      .meta{text-align:right;font-size:10px;color:#555}
+      table{width:100%;border-collapse:collapse;margin-bottom:12px;font-size:10px}
+      th{background:#111;color:#fff;padding:6px 8px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase}
+      td{padding:5px 8px;border-bottom:1px solid #eee;vertical-align:middle}
+      tr:nth-child(even){background:#f9f9f9}
+      .badge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:9px;font-weight:700}
+      .ok{background:#d1fae5;color:#065f46}
+      .nok{background:#fee2e2;color:#991b1b}
+      .pend{background:#fef3c7;color:#92400e}
+      .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+      .kpi{border:1px solid #ddd;border-radius:6px;padding:8px;text-align:center}
+      .kpi-val{font-size:20px;font-weight:800}
+      .kpi-lab{font-size:9px;color:#666;text-transform:uppercase;margin-top:2px}
+      .footer{margin-top:20px;padding-top:10px;border-top:1px solid #ddd;font-size:9px;color:#888;display:flex;justify-content:space-between}
+      @media print{body{padding:10px}.no-print{display:none!important}@page{margin:15mm}}
+    </style>
+  </head><body>
+    <div class="no-print" style="background:#f0f0f0;padding:10px;margin-bottom:16px;border-radius:6px;display:flex;gap:10px;align-items:center">
+      <button onclick="window.print()" style="background:#111;color:#fff;border:none;border-radius:6px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer">🖨️ Imprimir / Salvar PDF</button>
+      <button onclick="window.close()" style="background:#eee;color:#111;border:none;border-radius:6px;padding:8px 16px;font-size:12px;cursor:pointer">✕ Fechar</button>
+      <span style="font-size:11px;color:#666">Para salvar como PDF: escolha "Salvar como PDF" na impressora</span>
+    </div>
+    ${html}
+    <div class="footer">
+      <span>JTP Transportes — Sistema Operacional</span>
+      <span>Gerado em ${new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'})}</span>
+    </div>
+  </body></html>`);
+  w.document.close();
+}
+
+// PDF 2.10 — Soltura de Frota
+async function pdfFerr210(){
+  const gid=getGid();
+  const data=S.data210||hoje();
+  const garagem=S.garagens.find(g=>g.id===gid);
+  const[{data:sol},{data:frota}]=await Promise.all([
+    sb.from('soltura_2_10').select('*').eq('garagem_id',gid).eq('data',data).order('horario_programado'),
+    sb.from('frota').select('*').eq('garagem_id',gid),
+  ]);
+  const saiu=(sol||[]).filter(r=>r.saiu===true).length;
+  const nao=(sol||[]).filter(r=>r.saiu===false).length;
+  const pend=(sol||[]).filter(r=>r.saiu==null).length;
+  const pct=(sol||[]).length>0?((saiu/(sol||[]).length)*100).toFixed(1):0;
+  const dataFmt=new Date(data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
+
+  const rows=(sol||[]).map(r=>{
+    const st=r.saiu===true?`<span class="badge ok">✅ Saiu${r.horario_real?' '+r.horario_real:''}</span>`:r.saiu===false?`<span class="badge nok">❌ Não saiu</span>`:`<span class="badge pend">Pendente</span>`;
+    const reserva=r.observacao?.startsWith('Reserva:')?`<br><small style="color:#7c3aed">🔄 ${r.observacao.split('Reserva:')[1]?.split('|')[0]?.trim()}</small>`:'';
+    return`<tr>
+      <td style="font-weight:700;font-family:monospace">${r.prefixo}</td>
+      <td style="color:#d97706;font-weight:700">${r.horario_programado||'—'}</td>
+      <td>${r.linha||'—'}</td>
+      <td>${r.motorista||'—'}</td>
+      <td>${st}${reserva}</td>
+      <td>${r.zona_patio?`Z${r.zona_patio}`:'—'}</td>
+      <td>${r.manobrista?.split(' ')[0]||'—'}</td>
+    </tr>`;
+  }).join('');
+
+  abrirJanelaPDF(`
+    <div class="header">
+      <div><div class="logo">JTP Transportes</div><h1>2.10 — Soltura de Frota</h1><div style="font-size:10px;color:#555">${garagem?.nome||'—'} · ${dataFmt} · Turno ${S.turno==='dia'?'☀️ Dia':'🌙 Noite'}</div></div>
+      <div class="meta"><div style="font-size:22px;font-weight:800;color:${parseFloat(pct)>=99.5?'#059669':'#d97706'}">${pct}%</div><div>Meta: 99,5%</div></div>
+    </div>
+    <div class="kpi-row">
+      <div class="kpi"><div class="kpi-val" style="color:#059669">${saiu}</div><div class="kpi-lab">Saíram</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#dc2626">${nao}</div><div class="kpi-lab">Não Saíram</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#d97706">${pend}</div><div class="kpi-lab">Pendentes</div></div>
+      <div class="kpi"><div class="kpi-val">${(sol||[]).length}</div><div class="kpi-lab">Total</div></div>
+    </div>
+    <table>
+      <thead><tr><th>Prefixo</th><th>Hor. Prog.</th><th>Linha</th><th>Motorista</th><th>Status</th><th>Zona</th><th>Manobrista</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`, '2.10 Soltura de Frota');
+}
+
+// PDF 2.1 — Fechamento de Turno Garagem
+async function pdfFerr21(){
+  const gid=getGid();
+  const garagem=S.garagens.find(g=>g.id===gid);
+  const{data:fechamentos}=await sb.from('fechamento_turno_garagem').select('*')
+    .eq('garagem_id',gid).order('created_at',{ascending:false}).limit(10);
+  if(!fechamentos?.length){toast('Nenhum fechamento encontrado','err');return;}
+  const f=fechamentos[0]; // Último fechamento
+  const dataFmt=new Date(f.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
+  const stColor=f.status_geral==='ok'?'#059669':f.status_geral==='nok'?'#dc2626':'#d97706';
+  const stLabel=f.status_geral==='ok'?'✅ OK':f.status_geral==='nok'?'❌ NOK':'⚠️ Parcial';
+
+  const rows=fechamentos.map(f=>`<tr>
+    <td style="font-family:monospace;font-size:9px">${f.data}</td>
+    <td>${f.turno==='dia'?'☀️ Dia':'🌙 Noite'}</td>
+    <td>${f.responsavel_nome||'—'}</td>
+    <td><span class="badge ${f.status_geral==='ok'?'ok':f.status_geral==='nok'?'nok':'pend'}">${f.status_geral==='ok'?'OK':f.status_geral==='nok'?'NOK':'Parcial'}</span></td>
+    <td>${f.op_soltura||'—'}</td>
+    <td style="max-width:200px;font-size:9px">${f.op_obs||'—'}</td>
+    <td style="max-width:200px;font-size:9px">${f.bastao_obs||'—'}</td>
+  </tr>`).join('');
+
+  abrirJanelaPDF(`
+    <div class="header">
+      <div><div class="logo">JTP Transportes</div><h1>2.1 — Fechamento de Turno Garagem</h1><div style="font-size:10px;color:#555">${garagem?.nome||'—'} · Último: ${dataFmt} · ${f.turno==='dia'?'☀️ Dia':'🌙 Noite'}</div></div>
+      <div class="meta"><div style="font-size:22px;font-weight:800;color:${stColor}">${stLabel}</div><div>Status do turno</div></div>
+    </div>
+    <h2>Histórico de Fechamentos</h2>
+    <table>
+      <thead><tr><th>Data</th><th>Turno</th><th>Responsável</th><th>Status</th><th>Soltura</th><th>Obs. Operação</th><th>Passagem de Bastão</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`, '2.1 Fechamento de Turno');
+}
+
+// PDF 2.6 — Previsibilidade de Investimento
+async function pdfFerr26(){
+  const gid=getGid();
+  const garagem=S.garagens.find(g=>g.id===gid);
+  const data=hoje();
+  const[{data:ocs},{data:custos}]=await Promise.all([
+    sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado').order('hora_entrada'),
+    sb.from('previsibilidade_26').select('*').eq('garagem_id',gid).eq('data',data),
+  ]);
+  const cm={};(custos||[]).forEach(c=>{cm[c.ocorrencia_id]=c;});
+  let totalP=0,totalR=0;
+  (custos||[]).forEach(c=>{totalP+=parseFloat(c.custo_prev||0);totalR+=parseFloat(c.custo_real||0);});
+  const agora=new Date();
+
+  const rows=(ocs||[]).map(o=>{
+    const c=cm[o.id]||{};
+    const min=Math.round((agora-new Date(o.hora_entrada))/60000);
+    const h=Math.floor(min/60),m=min%60;
+    return`<tr>
+      <td style="font-weight:700;font-family:monospace">${o.prefixo}</td>
+      <td>${o.tipo?.replace('_',' ')||'—'}</td>
+      <td>${o.status?.replace('_',' ')||'—'}</td>
+      <td>${h>0?h+'h'+m+'min':m+'min'}</td>
+      <td>${o.mecanico||'—'}</td>
+      <td style="text-align:right;font-weight:700">${c.custo_prev?'R$ '+parseFloat(c.custo_prev).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</td>
+      <td style="text-align:right;font-weight:700">${c.custo_real?'R$ '+parseFloat(c.custo_real).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</td>
+      <td style="font-size:9px">${c.obs||'—'}</td>
+    </tr>`;
+  }).join('');
+
+  abrirJanelaPDF(`
+    <div class="header">
+      <div><div class="logo">JTP Transportes</div><h1>2.6 — Previsibilidade de Investimento</h1><div style="font-size:10px;color:#555">${garagem?.nome||'—'} · ${new Date().toLocaleDateString('pt-BR',{timeZone:'America/Manaus',weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'})}</div></div>
+      <div class="meta">
+        <div style="font-size:12px;font-weight:700">${(ocs||[]).length} veículo(s) parados</div>
+        <div style="margin-top:4px">Previsto: <strong>R$ ${totalP.toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong></div>
+        <div>Real: <strong>R$ ${totalR.toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong></div>
+        <div style="color:${totalR>totalP?'#dc2626':'#059669'}">Δ: R$ ${(totalR-totalP).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+      </div>
+    </div>
+    <table>
+      <thead><tr><th>Prefixo</th><th>Tipo</th><th>Status</th><th>Tempo</th><th>Mecânico</th><th>Custo Prev.</th><th>Custo Real</th><th>Obs.</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="8" style="text-align:center;color:#999">Nenhum veículo indisponível</td></tr>'}</tbody>
+    </table>`, '2.6 Previsibilidade');
+}
+
+// PDF 2.2 — Priorização Oficina
+async function pdfFerr22(){
+  const gid=getGid();
+  const garagem=S.garagens.find(g=>g.id===gid);
+  const agora=new Date();
+  const[{data:ativas},{data:historico}]=await Promise.all([
+    sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado').order('hora_entrada'),
+    sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).eq('status','liberado')
+      .gte('hora_liberacao',new Date(agora.getFullYear(),agora.getMonth(),agora.getDate()).toISOString())
+      .order('hora_liberacao',{ascending:false}),
+  ]);
+  const SC={em_manutencao:'pend',aguardando_peca:'nok',aguardando_aprovacao:'pend',liberado:'ok'};
+  const SL={em_manutencao:'Em Manutenção',aguardando_peca:'Ag. Peça',aguardando_aprovacao:'Ag. Aprovação',liberado:'Liberado'};
+
+  const mkRow=(o,tipo)=>{
+    const min=Math.round((agora-new Date(o.hora_entrada))/60000);
+    const h=Math.floor(min/60),m=min%60;
+    const venc=o.hora_previsao&&new Date(o.hora_previsao)<agora;
+    return`<tr>
+      <td style="font-weight:700;font-family:monospace">${o.prefixo}</td>
+      <td>${o.tipo?.replace('_',' ')||'—'}</td>
+      <td><span class="badge ${SC[o.status]||'pend'}">${SL[o.status]||o.status}</span></td>
+      <td>${o.hora_entrada?new Date(o.hora_entrada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—'}</td>
+      <td>${tipo==='ativa'?(h>0?h+'h'+m+'min':m+'min'):o.hora_liberacao?new Date(o.hora_liberacao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—'}</td>
+      <td>${o.mecanico||'—'}</td>
+      <td style="font-size:9px">${venc?'🔴 VENCIDA':o.hora_previsao?new Date(o.hora_previsao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—'}</td>
+    </tr>`;
+  };
+
+  abrirJanelaPDF(`
+    <div class="header">
+      <div><div class="logo">JTP Transportes</div><h1>2.2 — Priorização Oficina</h1><div style="font-size:10px;color:#555">${garagem?.nome||'—'} · ${agora.toLocaleDateString('pt-BR',{timeZone:'America/Manaus',weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'})}</div></div>
+      <div class="meta">
+        <div style="font-size:18px;font-weight:800;color:#dc2626">${(ativas||[]).length}</div><div>OS em aberto</div>
+        <div style="margin-top:6px;font-size:18px;font-weight:800;color:#059669">${(historico||[]).length}</div><div>Liberadas hoje</div>
+      </div>
+    </div>
+    <h2>OS em Aberto (${(ativas||[]).length})</h2>
+    <table>
+      <thead><tr><th>Prefixo</th><th>Tipo</th><th>Status</th><th>Entrada</th><th>Tempo</th><th>Mecânico</th><th>Previsão</th></tr></thead>
+      <tbody>${(ativas||[]).map(o=>mkRow(o,'ativa')).join('')||'<tr><td colspan="7" style="text-align:center;color:#999">Nenhuma OS em aberto</td></tr>'}</tbody>
+    </table>
+    <h2>Liberadas Hoje (${(historico||[]).length})</h2>
+    <table>
+      <thead><tr><th>Prefixo</th><th>Tipo</th><th>Status</th><th>Entrada</th><th>Liberação</th><th>Mecânico</th><th>OS Praxio</th></tr></thead>
+      <tbody>${(historico||[]).map(o=>mkRow(o,'hist')).join('')||'<tr><td colspan="7" style="text-align:center;color:#999">Nenhuma OS liberada hoje</td></tr>'}</tbody>
+    </table>`, '2.2 Priorização Oficina');
+}
+
 
 // DIRETORIA
 async function renderDiretoria(){
