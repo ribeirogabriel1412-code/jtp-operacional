@@ -619,6 +619,31 @@ async function carregarReservasDisponiveis(){
   sel.innerHTML=`<option value="">Selecione o reserva...</option>`+
     disponiveis.map(v=>`<option value="${v.prefixo}">${v.prefixo} — ${v.modelo||'—'} (${v.status==='disponivel'?'✅ Disponível':'🔧 '+v.status})</option>`).join('');
 }
+async function trocarCarroPreviamente210(id, prefixoOriginal, dataEvento, turno){
+  const gid=S.perfil.garagem_id||(S.garagens[0]?.id);
+  const{data:escalados,error:eEsc}=await sb.from('soltura_2_10').select('prefixo')
+    .eq('garagem_id',gid).eq('data',dataEvento).eq('turno',turno);
+  if(eEsc){toast('Erro ao buscar escala: '+eEsc.message,'err');return;}
+  const prefixosEscalados=new Set((escalados||[]).map(r=>r.prefixo));
+  const{data:frota,error:eFrota}=await sb.from('frota').select('id,prefixo,modelo,status')
+    .eq('garagem_id',gid).eq('status','disponivel').order('prefixo');
+  if(eFrota){toast('Erro ao buscar frota: '+eFrota.message,'err');return;}
+  const disponiveis=(frota||[]).filter(v=>!prefixosEscalados.has(v.prefixo));
+  if(!disponiveis.length){toast('Nenhum carro reserva disponível para troca prévia.','err');return;}
+  const lista=disponiveis.slice(0,30).map(v=>`${v.prefixo} — ${v.modelo||'—'}`).join('\n');
+  const novo=(prompt(`Troca prévia do carro ${prefixoOriginal}.\nDigite o prefixo reserva disponível:\n\n${lista}`)||'').trim().toUpperCase();
+  if(!novo)return;
+  const escolhido=disponiveis.find(v=>v.prefixo===novo);
+  if(!escolhido){toast('Prefixo indisponível ou já escalado nesta data/turno.','err');return;}
+  const{error}=await sb.from('soltura_2_10').update({
+    prefixo:escolhido.prefixo,
+    veiculo_id:escolhido.id,
+    observacao:`Troca prévia: ${prefixoOriginal} → ${escolhido.prefixo}`,
+  }).eq('id',id).is('saiu',null);
+  if(error){toast('Erro ao salvar troca: '+error.message,'err');return;}
+  toast(`🔄 Troca prévia salva: ${prefixoOriginal} → ${escolhido.prefixo}`);
+  renderFerr210('painel',dataEvento);
+}
 const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',lider_pcm:'Líder PCM',assistente_pcm:'Assistente PCM',almoxarifado:'Almoxarifado',lider_operacional:'Líder Operacional',lider_suprimentos:'Líder de Suprimentos',operacoes_seguras:'Operações Seguras',lider_oficina:'Líder de Oficina',lider_patio:'Líder de Pátio',lavador:'Lavador',manobrista:'Manobrista',frentista:'Frentista',plantao:'Plantão'};
 
 // ── FERRAMENTAS E PERMISSÕES ──────────────────────────────
@@ -2244,13 +2269,21 @@ async function renderFerr210(tab='painel', dataFiltro=null){
 
   const rows=S.soltura210.map(r=>{
     const usouReserva=r.observacao&&r.observacao.startsWith('Reserva:');
+    const trocaPrevia=r.observacao&&r.observacao.startsWith('Troca prévia:');
     const sH=r.saiu===true
       ?`<button class="status-btn sb-sim" onclick="openModalSaida('${r.id}','${r.prefixo}','${r.horario_programado}')">✅ ${r.horario_real||'Saiu'}</button>`
       :r.saiu===false
         ?`<button class="status-btn sb-nao" onclick="openModalSaida('${r.id}','${r.prefixo}','${r.horario_programado}')">❌ Não saiu</button>`
         :`<button class="status-btn sb-pend" onclick="openModalSaida('${r.id}','${r.prefixo}','${r.horario_programado}')">○ Confirmar</button>`;
     const pontH=r.pontual===true?`<span style="color:var(--green);font-size:11px;font-weight:600">✓</span>`:r.pontual===false?`<span style="color:var(--red);font-size:11px;font-weight:600">⏰</span>`:`<span style="color:var(--text4)">—</span>`;
-    const reservaH=usouReserva?`<span style="color:var(--purple);font-family:'DM Mono',monospace;font-size:11px">🔄 ${r.observacao.split('Reserva:')[1].split('|')[0].trim()}</span>`:`<span style="color:var(--text4)">—</span>`;
+    const trocaInfo=trocaPrevia?r.observacao.split('Troca prévia:')[1].split('|')[0].trim():'';
+    const reservaH=usouReserva
+      ?`<span style="color:var(--purple);font-family:'DM Mono',monospace;font-size:11px">🔄 ${r.observacao.split('Reserva:')[1].split('|')[0].trim()}</span>`
+      :trocaPrevia
+        ?`<span style="color:var(--amber);font-family:'DM Mono',monospace;font-size:11px" title="${trocaInfo}">🔄 Prévia</span>`
+        :r.saiu==null
+          ?`<button class="btn-sm" style="font-size:10px;padding:4px 7px;color:var(--purple)" onclick="trocarCarroPreviamente210('${r.id}','${r.prefixo}','${dataConsulta}','${turnoFiltro}')">🔄 Trocar</button>`
+          :`<span style="color:var(--text4)">—</span>`;
     const obsH=r.observacao&&!usouReserva?`<span style="color:var(--text3);font-size:11px">${r.observacao.substring(0,30)}</span>`:'';
     // Badge de lavagem
     const lav=lavMap[r.prefixo];
