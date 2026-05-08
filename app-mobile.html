@@ -419,12 +419,14 @@ function renderSoltura(lista, busca, datasComEscala=[]){
   const cards=filtrada.map(r=>{
     const d=r.saiu===true,n=r.saiu===false;
     const reserva=r.observacao?.startsWith('Reserva:');
+    const trocaPrevia=r.observacao?.startsWith('Troca prévia:');
     const zonaObj=r.zona_patio?ZONAS.find(z=>z.z===r.zona_patio):null;
     return`<div class="vcard ${d?'done':n?'nok':''}" onclick="abrirSol('${r.id}','${r.prefixo}','${r.horario_programado||''}','${r.linha||''}','${r.motorista||''}')">
       <div style="flex:1">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           <div class="prefixo">${r.prefixo}</div>
           ${reserva?`<span style="font-size:9px;color:var(--purple);font-weight:700;border:1px solid #8B5CF640;background:#8B5CF618;border-radius:4px;padding:1px 5px">RESERVA</span>`:''}
+          ${trocaPrevia?`<span style="font-size:9px;color:var(--amber);font-weight:700;border:1px solid #F59E0B40;background:#F59E0B18;border-radius:4px;padding:1px 5px">TROCA PRÉVIA</span>`:''}
           ${zonaObj?`<span style="font-size:9px;font-weight:700;border:1px solid ${zonaObj.cor}40;background:${zonaObj.cor}18;color:${zonaObj.cor};border-radius:4px;padding:1px 6px">${zonaObj.nome}</span>`:
           `<span style="font-size:9px;color:var(--red);font-weight:700;border:1px solid #EF444430;background:#EF444410;border-radius:4px;padding:1px 6px">Sem zona</span>`}
         </div>
@@ -505,12 +507,14 @@ function filtrarSoltura(busca){
   const cards=filtrada.map(r=>{
     const d=r.saiu===true,n=r.saiu===false;
     const reserva=r.observacao?.startsWith('Reserva:');
+    const trocaPrevia=r.observacao?.startsWith('Troca prévia:');
     const zonaObj=r.zona_patio?ZONAS.find(z=>z.z===r.zona_patio):null;
     return`<div class="vcard ${d?'done':n?'nok':''}" onclick="abrirSol('${r.id}','${r.prefixo}','${r.horario_programado||''}','${r.linha||''}','${(r.motorista||'').replace(/'/g,'')}')">
       <div style="flex:1">
         <div style="display:flex;align-items:center;gap:6px">
           <div class="prefixo">${r.prefixo}</div>
           ${reserva?`<span style="font-size:9px;color:var(--purple);font-weight:700;border:1px solid #8B5CF640;background:#8B5CF618;border-radius:4px;padding:1px 5px">RESERVA</span>`:''}
+          ${trocaPrevia?`<span style="font-size:9px;color:var(--amber);font-weight:700;border:1px solid #F59E0B40;background:#F59E0B18;border-radius:4px;padding:1px 5px">TROCA PRÉVIA</span>`:''}
           ${zonaObj?`<span style="font-size:9px;font-weight:700;border:1px solid ${zonaObj.cor}40;background:${zonaObj.cor}18;color:${zonaObj.cor};border-radius:4px;padding:1px 6px">${zonaObj.nome}</span>`:''}
         </div>
         <div class="vcard-sub">${r.horario_programado||'—'} · ${r.linha||'—'}</div>
@@ -530,12 +534,14 @@ function filtrarSoltura(busca){
 }
 function abrirSol(id,prefixo,horario,linha,motorista){
   _sid=id;
+  const reg=(_sLista||[]).find(r=>r.id===id);
+  const pendente=!reg||reg.saiu==null;
   openSheet('📋 '+prefixo+' — '+horario,`
     <div style="font-size:12px;color:var(--text3);margin-bottom:14px">${linha||'—'} · ${motorista?.split(' ').slice(0,2).join(' ')||'—'}</div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
       <button onclick="cfmSol(true)" style="padding:15px;border-radius:12px;border:1px solid #00C48C40;background:#00C48C18;color:var(--green);font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">✅ Saiu</button>
       <button onclick="mostrarNaoSaiu()" style="padding:15px;border-radius:12px;border:1px solid #EF444440;background:#EF444418;color:var(--red);font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">❌ Não saiu</button>
-      <button onclick="mostrarTrocaCarro('${prefixo}')" style="padding:13px;border-radius:12px;border:1px solid #8B5CF640;background:#8B5CF618;color:var(--purple);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">🔄 Trocar Carro</button>
+      ${pendente?`<button onclick="mostrarTrocaCarro('${prefixo}')" style="padding:13px;border-radius:12px;border:1px solid #8B5CF640;background:#8B5CF618;color:var(--purple);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">🔄 Trocar Carro Previamente</button>`:''}
       <button onclick="cfmSol(null)" style="padding:11px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-family:inherit;cursor:pointer">↩ Pendente</button>
     </div>
   `);
@@ -556,16 +562,16 @@ async function mostrarTrocaCarro(prefixoOriginal){
   // Busca carros disponíveis não escalados
   const{data:escalados}=await sb.from('soltura_2_10').select('prefixo').eq('garagem_id',gid).eq('data',_sdata);
   const prefixosEsc=(escalados||[]).map(e=>e.prefixo);
-  const{data:frota}=await sb.from('frota').select('prefixo,modelo').eq('garagem_id',gid).eq('status','disponivel');
+  const{data:frota}=await sb.from('frota').select('id,prefixo,modelo').eq('garagem_id',gid).eq('status','disponivel');
   const disponiveis=(frota||[]).filter(v=>!prefixosEsc.includes(v.prefixo));
 
   document.getElementById('shbody').innerHTML=`
-    <div style="font-size:13px;color:var(--text3);margin-bottom:10px">Substituindo: <strong style="color:var(--text)">${prefixoOriginal}</strong></div>
+    <div style="font-size:13px;color:var(--text3);margin-bottom:10px">Troca prévia: <strong style="color:var(--text)">${prefixoOriginal}</strong> será substituído na escala sem registrar saída.</div>
     <input type="text" id="busca-reserva" placeholder="Buscar prefixo..." oninput="filtrarReservas(this.value)"
       style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px;color:var(--text);font-size:14px;font-family:'DM Mono',monospace;outline:none;margin-bottom:10px">
     <div id="lista-reservas" style="max-height:40vh;overflow-y:auto">
       ${disponiveis.map(v=>`
-        <div onclick="confirmarTroca('${v.prefixo}','${prefixoOriginal}')" style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;margin-bottom:6px;cursor:pointer">
+        <div onclick="confirmarTrocaPrevia('${v.id}','${v.prefixo}','${prefixoOriginal}')" style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;margin-bottom:6px;cursor:pointer">
           <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--blue)">${v.prefixo}</div>
           <div style="font-size:12px;color:var(--text3)">${v.modelo||'—'}</div>
           <div style="margin-left:auto;font-size:11px;color:var(--green);font-weight:700">DISPONÍVEL</div>
@@ -574,26 +580,30 @@ async function mostrarTrocaCarro(prefixoOriginal){
     <button onclick="abrirSol('${_sid}','${prefixoOriginal}','','')" style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-family:inherit;cursor:pointer;margin-top:8px">← Voltar</button>
   `;
   window._reservasLista=disponiveis;
+  window._prefixoOriginalTroca=prefixoOriginal;
 }
 
 function filtrarReservas(busca){
   const lista=window._reservasLista||[];
   const filtrada=busca?lista.filter(v=>v.prefixo.includes(busca.toUpperCase())):lista;
   document.getElementById('lista-reservas').innerHTML=filtrada.map(v=>`
-    <div onclick="confirmarTroca('${v.prefixo}','')" style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;margin-bottom:6px;cursor:pointer">
+    <div onclick="confirmarTrocaPrevia('${v.id}','${v.prefixo}',window._prefixoOriginalTroca||'')" style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;margin-bottom:6px;cursor:pointer">
       <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--blue)">${v.prefixo}</div>
       <div style="font-size:12px;color:var(--text3)">${v.modelo||'—'}</div>
       <div style="margin-left:auto;font-size:11px;color:var(--green);font-weight:700">DISPONÍVEL</div>
     </div>`).join('')||'<div style="text-align:center;color:var(--text3);padding:20px">Nenhum resultado</div>';
 }
 
-async function confirmarTroca(novoPrefixo, prefixoOriginal){
-  await sb.from('soltura_2_10').update({
-    saiu:true,
-    horario_real:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),
-    observacao:`Reserva: ${novoPrefixo} | Original: ${prefixoOriginal}`,
-  }).eq('id',_sid);
-  closeSheet(true);toast(`🔄 Saiu com reserva ${novoPrefixo}!`);telaSoltura();
+async function confirmarTrocaPrevia(veiculoId, novoPrefixo, prefixoOriginal){
+  if(!novoPrefixo){toast('Selecione um carro reserva.','err');return;}
+  const obsBase=`Troca prévia: ${prefixoOriginal} → ${novoPrefixo}`;
+  const{error}=await sb.from('soltura_2_10').update({
+    prefixo:novoPrefixo,
+    veiculo_id:veiculoId||null,
+    observacao:obsBase,
+  }).eq('id',_sid).is('saiu',null);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  closeSheet(true);toast(`🔄 Troca prévia salva: ${prefixoOriginal} → ${novoPrefixo}`);telaSoltura(_sdata);
 }
 
 async function cfmSol(saiu){
