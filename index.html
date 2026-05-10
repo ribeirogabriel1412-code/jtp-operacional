@@ -6976,10 +6976,25 @@ async function handle210(file){
     const raw=await parsePDF(file);
     if(!raw.length) throw new Error('Nenhum dado extraído do PDF');
 
-    prog('Filtrando Turno A...',60);
-    const map={};
-    for(const r of raw){if(!r.posicao.endsWith('A'))continue;if(!map[r.veiculo]||r.inicio<map[r.veiculo].inicio)map[r.veiculo]=r}
-    const data=Object.values(map).sort((a,b)=>a.inicio.localeCompare(b.inicio));
+    prog('Filtrando Turno A e B...',60);
+
+    // Turno A — horário de saída (início da operação)
+    const mapA={};
+    for(const r of raw){
+      if(!r.posicao.endsWith('A')) continue;
+      if(!mapA[r.veiculo]||r.inicio<mapA[r.veiculo].inicio) mapA[r.veiculo]=r;
+    }
+
+    // Turno B — último horário (fim da operação do veículo no dia)
+    const mapB={};
+    for(const r of raw){
+      if(!r.posicao.endsWith('B')) continue;
+      // Guarda o registro com maior horário de FIM (campo fim quando disponível, senão inicio)
+      const horaRef=r.fim||r.inicio;
+      if(!mapB[r.veiculo]||horaRef>( mapB[r.veiculo].fim||mapB[r.veiculo].inicio)) mapB[r.veiculo]=r;
+    }
+
+    const data=Object.values(mapA).sort((a,b)=>a.inicio.localeCompare(b.inicio));
     if(!data.length) throw new Error('Nenhum registro Turno A encontrado');
 
     prog(`Salvando ${data.length} veículos para ${formatData(dataImport)}...`,80);
@@ -7002,6 +7017,10 @@ async function handle210(file){
       motorista:r.motorista, saiu:null,
       importado_por:S.perfil.nome,
       numero_relatorio:numDoc,
+      // Turno B — horário e motorista do último turno do dia
+      horario_fim: mapB[r.veiculo]?.fim || mapB[r.veiculo]?.inicio || null,
+      motorista_fim: mapB[r.veiculo]?.motorista || null,
+      posicao: r.posicao || null,
     })));
     if(error) throw new Error('Erro ao salvar: '+error.message);
 
@@ -7069,7 +7088,8 @@ async function parsePDF(file){
     all.push(...groupRows(items));}return extractData(all);
 }
 function groupRows(items){if(!items.length)return[];items.sort((a,b)=>a.y!==b.y?a.y-b.y:a.x-b.x);const rows=[];let cur=[items[0]],bY=items[0].y;for(let i=1;i<items.length;i++){if(Math.abs(items[i].y-bY)<=3)cur.push(items[i]);else{rows.push(cur.sort((a,b)=>a.x-b.x));cur=[items[i]];bY=items[i].y;}}if(cur.length)rows.push(cur.sort((a,b)=>a.x-b.x));return rows;}
-function extractData(rows){const data=[];let linha='';const rP=/^\d\d[AB]$/,rV=/^\d\d\.\d\d\d$/,rT=/^\d\d:\d\d$/,rH=/^(\d\d\d[A-Z]?(?:\.\d)?)\s*[-–]\s*(.+)$/;const sk=['Relat','Quinta','Segunda','Terç','Quarta','Sexta','Sáb','Dom','Posiç','Empresa','Motorista','Filtros','Veíc','Início','Fim','JTP','COOL'];for(const row of rows){const ts=row.map(r=>r.t).filter(t=>t.length>0);if(!ts.length)continue;const ft=ts.join(' ');if(ts.length<2&&ts[0].length<5)continue;if(sk.some(w=>ft.startsWith(w)))continue;if(/^\d+\s*[-–]\s*\d+$/.test(ft))continue;if(/\d\d\/\d\d\/\d\d\d\d/.test(ft))continue;if(rH.test(ft)&&!rP.test(ts[0])){linha=ft.trim();continue;}if(!rP.test(ts[0])||!rV.test(ts[1])||ts.length<4)continue;let fi=-1,ii=-1;for(let i=ts.length-1;i>=2;i--){if(rT.test(ts[i])){if(fi===-1)fi=i;else if(ii===-1){ii=i;break;}}}if(ii<0||fi<0)continue;const mot=ts.slice(2,ii).join(' ').trim();if(!mot||!linha)continue;data.push({linha,posicao:ts[0],veiculo:ts[1],motorista:mot,inicio:ts[ii]});}return data;}
+function extractData(rows){const data=[];let linha='';const rP=/^\d\d[AB]$/,rV=/^\d\d\.\d\d\d$/,rT=/^\d\d:\d\d$/,rH=/^(\d\d\d[A-Z]?(?:\.\d)?)\s*[-–]\s*(.+)$/;const sk=['Relat','Quinta','Segunda','Terç','Quarta','Sexta','Sáb','Dom','Posiç','Empresa','Motorista','Filtros','Veíc','Início','Fim','JTP','COOL'];for(const row of rows){const ts=row.map(r=>r.t).filter(t=>t.length>0);if(!ts.length)continue;const ft=ts.join(' ');if(ts.length<2&&ts[0].length<5)continue;if(sk.some(w=>ft.startsWith(w)))continue;if(/^\d+\s*[-–]\s*\d+$/.test(ft))continue;if(/\d\d\/\d\d\/\d\d\d\d/.test(ft))continue;if(rH.test(ft)&&!rP.test(ts[0])){linha=ft.trim();continue;}if(!rP.test(ts[0])||!rV.test(ts[1])||ts.length<4)continue;let fi=-1,ii=-1;for(let i=ts.length-1;i>=2;i--){if(rT.test(ts[i])){if(fi===-1)fi=i;else if(ii===-1){ii=i;break;}}}if(ii<0||fi<0)continue;const mot=ts.slice(2,ii).join(' ').trim();if(!mot||!linha)continue;// fi = índice do horário de FIM, ii = índice do horário de INÍCIO
+data.push({linha,posicao:ts[0],veiculo:ts[1],motorista:mot,inicio:ts[ii],fim:ts[fi]});}return data;}
 
 // INIT
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none')doLogin()});
