@@ -1179,7 +1179,7 @@ async function telaRecolha(dataFiltro=null){
   }
 
   // Busca escala de referência + recolhas já feitas hoje
-  const{data:escala}=await sb.from('soltura_2_10').select('*')
+  const{data:escala}=await sb.from('soltura_2_10').select('prefixo,linha,motorista,motorista_fim,horario_programado,horario_fim')
     .eq('garagem_id',gid).eq('data',_rcEscalaData).order('horario_programado');
   let recolhas=[];
   try{
@@ -1216,11 +1216,11 @@ async function telaRecolha(dataFiltro=null){
     const ab=abastMap[e.prefixo];
     const recOk=!!rec;
     const abOk=!!ab;
-    return`<div class="vcard ${recOk?'done':''}" onclick="abrirRecolha('${e.prefixo}','${e.linha||''}','${(e.motorista||'').replace(/'/g,'')}','${e.horario_programado||''}')">
+    return`<div class="vcard ${recOk?'done':''}" onclick="abrirRecolha('${e.prefixo}','${e.linha||''}','${(e.motorista_fim||e.motorista||'').replace(/'/g,'')}','${e.horario_fim||e.horario_programado||''}')">
       <div style="flex:1">
         <div class="prefixo" style="color:${recOk?'var(--green)':'var(--text)'}">${e.prefixo}</div>
-        <div class="vcard-sub">${e.horario_programado||'—'} · ${e.linha||'—'}</div>
-        <div class="vcard-sub" style="font-size:10px">${e.motorista?.split(' ').slice(0,2).join(' ')||'—'}${rec?.km_hodometro?' · 📍'+rec.km_hodometro.toLocaleString()+'km':''}</div>
+        <div class="vcard-sub">${e.horario_fim||e.horario_programado||'—'} · ${e.linha||'—'}</div>
+        <div class="vcard-sub" style="font-size:10px">${e.motorista_fim||e.motorista||'—'}${rec?.km_hodometro?' · 📍'+rec.km_hodometro.toLocaleString()+'km':''}</div>
       </div>
       <!-- Indicadores: Recolhido + Abastecido -->
       <div style="display:flex;gap:8px;align-items:center">
