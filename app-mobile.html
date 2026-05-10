@@ -185,7 +185,7 @@ async function init(){
 async function doLogout(){await sb.auth.signOut();location.reload()}
 
 // NAVBAR
-const TELA_INICIO={lavador:'lavagem',lider_patio:'patio',lider_oficina:'oficina',lider_pcm:'oficina',assistente_pcm:'oficina',manobrista:'patio_man',frentista:'home',plantao:'recolha'};
+const TELA_INICIO={lavador:'lavagem',lider_patio:'patio',lider_oficina:'oficina',lider_pcm:'oficina',assistente_pcm:'oficina',manobrista:'patio_man',frentista:'abastecimento',plantao:'recolha'};
 const NAV={
   lavador:[{id:'lavagem',ic:'🚿',lb:'Lavagem'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_patio:[{id:'patio',ic:'✅',lb:'Validar'},{id:'soltura',ic:'📋',lb:'Soltura'},{id:'patio_man',ic:'🚗',lb:'Pátio'},{id:'home',ic:'🏠',lb:'Início'}],
@@ -194,7 +194,7 @@ const NAV={
   lider_pcm:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'prev26',ic:'💰',lb:'2.6'},{id:'home',ic:'🏠',lb:'Início'}],
   assistente_pcm:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'prev26',ic:'💰',lb:'2.6'},{id:'home',ic:'🏠',lb:'Início'}],
   manobrista:[{id:'patio_man',ic:'🚗',lb:'Pátio'},{id:'home',ic:'🏠',lb:'Início'}],
-  frentista:[{id:'home',ic:'🏠',lb:'Início'}],
+  frentista:[{id:'abastecimento',ic:'⛽',lb:'Abastecer'},{id:'home',ic:'🏠',lb:'Início'}],
   plantao:[{id:'recolha',ic:'🔑',lb:'Recolha'},{id:'home',ic:'🏠',lb:'Início'}],
 };
 const NAV_DEF=[{id:'home',ic:'🏠',lb:'Início'}];
@@ -341,6 +341,14 @@ async function telaSoltura(dataFiltro=null){
   const{data:lista}=await sb.from('soltura_2_10').select('*')
     .eq('garagem_id',gid).eq('data',_sdata).order('horario_programado');
 
+  // Busca recolhas e abastecimentos do dia para indicadores
+  const[{data:recolhas},{data:abast}]=await Promise.all([
+    sb.from('recolha_checklist').select('prefixo').eq('garagem_id',gid).eq('data_recolha',_sdata),
+    sb.from('abastecimento_checklist').select('prefixo').eq('garagem_id',gid).eq('data',_sdata).catch(()=>({data:[]})),
+  ]);
+  window._recMap=new Set((recolhas||[]).map(r=>r.prefixo));
+  window._abMap=new Set((abast||[]).map(r=>r.prefixo));
+
   _sLista=lista||[];
   _sDatas=datasComEscala;
   renderSoltura(_sLista,'',datasComEscala);
@@ -420,6 +428,8 @@ function renderSoltura(lista, busca, datasComEscala=[]){
     const d=r.saiu===true,n=r.saiu===false;
     const reserva=r.observacao?.startsWith('Reserva:');
     const zonaObj=r.zona_patio?ZONAS.find(z=>z.z===r.zona_patio):null;
+    const recOk=window._recMap?.has(r.prefixo);
+    const abOk=window._abMap?.has(r.prefixo);
     return`<div class="vcard ${d?'done':n?'nok':''}" onclick="abrirSol('${r.id}','${r.prefixo}','${r.horario_programado||''}','${r.linha||''}','${r.motorista||''}')">
       <div style="flex:1">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -434,7 +444,11 @@ function renderSoltura(lista, busca, datasComEscala=[]){
           ${r.manobrista?`<span style="color:var(--text4)">🚗 ${r.manobrista.split(' ')[0]}</span>`:''}
         </div>
       </div>
-      <div class="btn-ck ${d?'ok':n?'nok':''}">${d?'✅':n?'❌':'○'}</div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+        <div class="btn-ck ${d?'ok':n?'nok':''}">${d?'✅':n?'❌':'○'}</div>
+        <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:5px;border:1px solid ${recOk?'#00C48C40':'#33415520'};background:${recOk?'#00C48C18':'transparent'};color:${recOk?'var(--green)':'var(--text4)'}">🔑${recOk?'✓':'·'}</span>
+        <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:5px;border:1px solid ${abOk?'#00C48C40':'#33415520'};background:${abOk?'#00C48C18':'transparent'};color:${abOk?'var(--green)':'var(--text4)'}">⛽${abOk?'✓':'·'}</span>
+      </div>
     </div>`;
   }).join('');
 
@@ -535,7 +549,7 @@ function abrirSol(id,prefixo,horario,linha,motorista){
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
       <button onclick="cfmSol(true)" style="padding:15px;border-radius:12px;border:1px solid #00C48C40;background:#00C48C18;color:var(--green);font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">✅ Saiu</button>
       <button onclick="mostrarNaoSaiu()" style="padding:15px;border-radius:12px;border:1px solid #EF444440;background:#EF444418;color:var(--red);font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">❌ Não saiu</button>
-      <button onclick="mostrarTrocaCarro('${prefixo}')" style="padding:13px;border-radius:12px;border:1px solid #8B5CF640;background:#8B5CF618;color:var(--purple);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">🔄 Trocar Carro</button>
+      <button onclick="closeSheet(true);abrirTrocaPrevia('${id}','${prefixo}')" style="padding:13px;border-radius:12px;border:1px solid #8B5CF640;background:#8B5CF618;color:var(--purple);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">🔄 Trocar por Reserva</button>
       <button onclick="cfmSol(null)" style="padding:11px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-family:inherit;cursor:pointer">↩ Pendente</button>
     </div>
   `);
@@ -1114,52 +1128,415 @@ async function salvarPosicaoPatio(){
 }
 
 // ── RECOLHA (Plantão / Porteiro) ──────────────────────────
-async function telaRecolha(){
+// ══════════════════════════════════════════════════════════
+// RECOLHA (Plantão) — usa escala do próximo dia como referência
+// ══════════════════════════════════════════════════════════
+let _rcData=hoje(), _rcEscalaData='', _rcEscalaLista=[];
+
+async function telaRecolha(dataFiltro=null){
   const gid=getGid();
-  const data=hoje();
+  if(dataFiltro) _rcData=dataFiltro;
+
   setMain('<div class="loading"><div class="sp"></div></div>');
 
-  // Busca recolhas já feitas hoje
-  const{data:recolhas}=await sb.from('recolha_checklist').select('*')
-    .eq('garagem_id',gid).eq('data_recolha',data).order('created_at',{ascending:false});
+  // Busca escalas disponíveis para selecionar
+  const base=new Date();
+  const datas=[];
+  for(let i=-1;i<=2;i++){const d=new Date(base);d.setDate(d.getDate()+i);datas.push(d.toISOString().split('T')[0]);}
+  const{data:escalasDisp}=await sb.from('soltura_2_10').select('data').eq('garagem_id',gid).in('data',datas);
+  const datasEscala=[...new Set((escalasDisp||[]).map(r=>r.data))].sort();
 
-  const tot=(recolhas||[]).length;
-  const agora=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  // Data de recolha = dia atual, mas referência da escala pode ser D+1
+  // Identifica qual escala usar como referência (a mais próxima)
+  if(!_rcEscalaData||!datasEscala.includes(_rcEscalaData)){
+    // Prefere a escala de amanhã ou hoje
+    const amanha=new Date(base);amanha.setDate(amanha.getDate()+1);
+    const dataAmanha=amanha.toISOString().split('T')[0];
+    _rcEscalaData=datasEscala.includes(dataAmanha)?dataAmanha:(datasEscala[datasEscala.length-1]||hoje());
+  }
 
-  const cards=(recolhas||[]).map(r=>`
-    <div class="card" style="margin-bottom:8px;border-left:3px solid ${r.visual_externo==='avaria'||r.visual_interno==='avaria'?'var(--amber)':'var(--green)'}">
+  // Busca escala de referência + recolhas já feitas hoje
+  const[{data:escala},{data:recolhas}]=await Promise.all([
+    sb.from('soltura_2_10').select('*').eq('garagem_id',gid).eq('data',_rcEscalaData).order('horario_programado'),
+    sb.from('recolha_checklist').select('*').eq('garagem_id',gid).eq('data_recolha',_rcData).order('created_at',{ascending:false}),
+  ]);
+  _rcEscalaLista=escala||[];
+
+  // Mapa de recolhas por prefixo
+  const recMap={};(recolhas||[]).forEach(r=>{recMap[r.prefixo]=r;});
+  // Mapa de abastecimento por prefixo
+  const{data:abast}=await sb.from('abastecimento_checklist').select('prefixo,litros,arla').eq('garagem_id',gid).eq('data',_rcData).catch(()=>({data:[]}));
+  const abastMap={};(abast||[]).forEach(a=>{abastMap[a.prefixo]=a;});
+
+  const tot=Object.keys(recMap).length;
+  const totEscala=_rcEscalaLista.length;
+  const pct=totEscala>0?Math.round((tot/totEscala)*100):0;
+
+  // Chips de seleção de escala referência
+  const chipsEscala=datasEscala.map(d=>{
+    const ativo=d===_rcEscalaData;
+    const dFmt=new Date(d+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+    const eHoje=d===hoje();
+    return`<button onclick="mudarEscalaRef('${d}')" style="flex-shrink:0;padding:6px 12px;border-radius:20px;border:1px solid ${ativo?'#8B5CF6':'var(--border)'};background:${ativo?'#8B5CF618':'transparent'};color:${ativo?'#8B5CF6':eHoje?'var(--text)':'var(--text3)'};font-size:11px;font-weight:${ativo?'700':'500'};font-family:inherit;cursor:pointer;white-space:nowrap">${eHoje?'Hoje':''}${eHoje?'':dFmt}</button>`;
+  }).join('');
+
+  // Lista de carros da escala
+  const cards=_rcEscalaLista.map(e=>{
+    const rec=recMap[e.prefixo];
+    const ab=abastMap[e.prefixo];
+    const recOk=!!rec;
+    const abOk=!!ab;
+    return`<div class="vcard ${recOk?'done':''}" onclick="abrirRecolha('${e.prefixo}','${e.linha||''}','${(e.motorista||'').replace(/'/g,'')}','${e.horario_programado||''}')">
+      <div style="flex:1">
+        <div class="prefixo" style="color:${recOk?'var(--green)':'var(--text)'}">${e.prefixo}</div>
+        <div class="vcard-sub">${e.horario_programado||'—'} · ${e.linha||'—'}</div>
+        <div class="vcard-sub" style="font-size:10px">${e.motorista?.split(' ').slice(0,2).join(' ')||'—'}${rec?.km_hodometro?' · 📍'+rec.km_hodometro.toLocaleString()+'km':''}</div>
+      </div>
+      <!-- Indicadores: Recolhido + Abastecido -->
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+        <span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;border:1px solid ${recOk?'#00C48C40':'#EF444430'};background:${recOk?'#00C48C18':'#EF444410'};color:${recOk?'var(--green)':'var(--red)'}">🔑 ${recOk?'Recolhido':'Pendente'}</span>
+        <span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;border:1px solid ${abOk?'#00C48C40':'#EF444430'};background:${abOk?'#00C48C18':'#EF444410'};color:${abOk?'var(--green)':'var(--red)'}">⛽ ${abOk?'Abastecido':'Pendente'}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  render(`
+    <div style="padding:14px 14px 0">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <div class="prefixo" style="font-size:18px;color:var(--blue)">${r.prefixo}</div>
-        <div style="font-size:10px;color:var(--text3)">${r.horario_real||'—'}</div>
+        <div style="font-weight:800;font-size:17px">🔑 Recolha</div>
+        <button onclick="telaRecolha()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>
       </div>
-      <div style="font-size:11px;color:var(--text3);display:flex;gap:12px;flex-wrap:wrap">
-        ${r.linha?`<span>🚌 ${r.linha}</span>`:''}
-        ${r.motorista?`<span>👤 ${r.motorista.split(' ').slice(0,2).join(' ')}</span>`:''}
-        ${r.km_hodometro?`<span>📍 ${r.km_hodometro.toLocaleString()} km</span>`:''}
-        <span style="color:${r.visual_externo==='avaria'?'var(--amber)':'var(--green)'}">Ext: ${r.visual_externo==='avaria'?'⚠️ Avaria':'✅ OK'}</span>
-        <span style="color:${r.visual_interno==='avaria'?'var(--amber)':'var(--green)'}">Int: ${r.visual_interno==='avaria'?'⚠️ Avaria':'✅ OK'}</span>
+      <!-- Referência de escala -->
+      <div style="font-size:10px;color:var(--text3);margin-bottom:4px">📋 Referência de escala:</div>
+      <div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:8px;scrollbar-width:none">${chipsEscala||'<span style="font-size:12px;color:var(--text4)">Nenhuma escala</span>'}</div>
+      <!-- Progresso -->
+      <div class="prog"><div class="prog-f" style="width:${pct}%;background:${pct===100?'var(--green)':'var(--blue)'}"></div></div>
+      <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:11px;color:var(--text3)">
+        <span>🔑 ${tot}/${totEscala} recolhidos</span>
+        <span>⛽ ${Object.keys(abastMap).length}/${totEscala} abastecidos</span>
       </div>
-      ${r.observacao?`<div style="font-size:11px;color:var(--amber);margin-top:4px">⚠️ ${r.observacao}</div>`:''}
-    </div>`).join('');
+      <!-- Busca -->
+      <div style="position:relative;margin-top:10px">
+        <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:14px">🔍</span>
+        <input type="text" placeholder="Buscar prefixo, linha ou motorista..." id="busca-recolha"
+          oninput="filtrarRecolha(this.value)"
+          style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 10px 10px 32px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+      </div>
+    </div>
+    <div class="sl" id="sl-recolha">${totEscala} veículo(s)</div>
+    <div id="cards-recolha">${cards}</div>
+  `);
+}
+
+function mudarEscalaRef(data){_rcEscalaData=data;telaRecolha();}
+
+function filtrarRecolha(busca){
+  const lista=_rcEscalaLista||[];
+  const filtrada=busca?lista.filter(r=>r.prefixo?.includes(busca.toUpperCase())||r.linha?.toLowerCase().includes(busca.toLowerCase())||r.motorista?.toLowerCase().includes(busca.toLowerCase())):lista;
+  // Só atualiza o contador — a lista é static após render
+  const sl=document.getElementById('sl-recolha');
+  if(sl) sl.textContent=filtrada.length+' veículo(s)';
+  // Filtra os cards
+  document.querySelectorAll('#cards-recolha .vcard').forEach((el,i)=>{
+    const prefixo=el.querySelector('.prefixo')?.textContent||'';
+    const sub=el.querySelectorAll('.vcard-sub');
+    const linha=sub[0]?.textContent||'';
+    const mot=sub[1]?.textContent||'';
+    const show=!busca||prefixo.includes(busca.toUpperCase())||linha.toLowerCase().includes(busca.toLowerCase())||mot.toLowerCase().includes(busca.toLowerCase());
+    el.style.display=show?'flex':'none';
+  });
+}
+
+async function abrirRecolha(prefixo='',linha='',motorista='',horario=''){
+  openSheet('🔑 Receber Veículo',`
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <!-- Prefixo -->
+      <div>
+        <label class="fl">Prefixo</label>
+        <input class="fi2" id="rc-prefixo" type="text" value="${prefixo}" placeholder="Ex: 02.210"
+          style="font-family:'DM Mono',monospace;font-size:22px;text-transform:uppercase"
+          oninput="this.value=this.value.toUpperCase()">
+      </div>
+      <!-- Referência da escala (pré-preenchida) -->
+      ${prefixo?`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px">
+        <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;margin-bottom:4px">📋 Referência da Escala</div>
+        <div style="font-size:12px;display:flex;gap:10px;flex-wrap:wrap;color:var(--text2)">
+          <span>🚌 ${linha||'—'}</span>
+          <span>⏱ ${horario||'—'}</span>
+          <span>👤 ${motorista?.split(' ').slice(0,2).join(' ')||'—'}</span>
+        </div>
+      </div>`:''}
+      <!-- KM -->
+      <div>
+        <label class="fl">KM Hodômetro</label>
+        <input class="fi2" id="rc-km" type="number" placeholder="Ex: 125430" inputmode="numeric">
+      </div>
+      <!-- Matrícula motorista -->
+      <div>
+        <label class="fl">Matrícula do Motorista <span style="color:var(--text3);font-weight:400">(conferência)</span></label>
+        <input class="fi2" id="rc-matricula" type="text" placeholder="Ex: 3390" inputmode="numeric"
+          style="font-family:'DM Mono',monospace;font-size:18px">
+      </div>
+      <!-- Visual Externo -->
+      <div>
+        <label class="fl">Visual Externo</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
+          <button onclick="selOpt('rc-ext','ok',this,'var(--green)')" data-opt="ok"
+            style="padding:12px;border-radius:10px;border:1px solid var(--border);background:#00C48C18;border-color:#00C48C40;color:var(--green);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">✅ OK</button>
+          <button onclick="selOpt('rc-ext','avaria',this,'var(--amber)')" data-opt="avaria"
+            style="padding:12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">⚠️ Avaria</button>
+        </div>
+        <input type="hidden" id="rc-ext" value="ok">
+      </div>
+      <!-- Visual Interno -->
+      <div>
+        <label class="fl">Visual Interno</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
+          <button onclick="selOpt('rc-int','ok',this,'var(--green)')" data-opt="ok"
+            style="padding:12px;border-radius:10px;border:1px solid var(--border);background:#00C48C18;border-color:#00C48C40;color:var(--green);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">✅ OK</button>
+          <button onclick="selOpt('rc-int','avaria',this,'var(--amber)')" data-opt="avaria"
+            style="padding:12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">⚠️ Avaria</button>
+        </div>
+        <input type="hidden" id="rc-int" value="ok">
+      </div>
+      <div id="rc-obs-wrap" style="display:none">
+        <label class="fl">Descrição da Avaria</label>
+        <textarea class="fi2" id="rc-obs" rows="2" placeholder="Ex: Vidro quebrado..." style="resize:none"></textarea>
+      </div>
+      <button onclick="salvarRecolha('${linha}','${motorista}','${horario}')" style="padding:15px;border-radius:12px;border:none;background:var(--green);color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">🔑 Confirmar Recolha</button>
+    </div>
+  `);
+}
+
+async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
+  const prefixo=document.getElementById('rc-prefixo')?.value?.trim().toUpperCase();
+  const km=parseInt(document.getElementById('rc-km')?.value||'0')||null;
+  const matricula=document.getElementById('rc-matricula')?.value?.trim()||null;
+  const externo=document.getElementById('rc-ext')?.value||'ok';
+  const interno=document.getElementById('rc-int')?.value||'ok';
+  const obs=document.getElementById('rc-obs')?.value?.trim()||null;
+  const gid=getGid();
+  const agora=new Date();
+  const horarioReal=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+
+  if(!prefixo){toast('Informe o prefixo','err');return;}
+
+  const status=externo==='avaria'||interno==='avaria'?'avaria':'recebido';
+  const{data:vei}=await sb.from('frota').select('id').eq('garagem_id',gid).eq('prefixo',prefixo).single();
+
+  const{error}=await sb.from('recolha_checklist').insert({
+    garagem_id:gid, prefixo, veiculo_id:vei?.id||null,
+    data_recolha:_rcData, horario_real:horarioReal,
+    horario_previsto:horarioRef||null,
+    motorista:motoristaRef||null, linha:linhaRef||null,
+    km_hodometro:km, matricula_motorista:matricula,
+    visual_externo:externo, visual_interno:interno,
+    observacao:obs, status,
+    plantao_nome:S.perfil?.nome, plantao_id:S.perfil?.id,
+  });
+  if(error){toast('Erro: '+error.message,'err');return;}
+
+  // Marca frota como disponível se OK
+  if(status==='recebido'&&vei?.id){
+    await sb.from('frota').update({status:'disponivel'}).eq('id',vei.id);
+  }
+
+  closeSheet(true);
+  toast(status==='recebido'?`✅ ${prefixo} recolhido!`:`⚠️ ${prefixo} com avaria`);
+  telaRecolha();
+}
+
+// ══════════════════════════════════════════════════════════
+// ABASTECIMENTO (Frentista)
+// ══════════════════════════════════════════════════════════
+let _abData=hoje(), _abEscalaLista=[];
+
+async function telaAbastecimento(){
+  const gid=getGid();
+  setMain('<div class="loading"><div class="sp"></div></div>');
+
+  // Busca escala de referência (amanhã preferencial)
+  const base=new Date();
+  const amanha=new Date(base);amanha.setDate(amanha.getDate()+1);
+  const dataAmanha=amanha.toISOString().split('T')[0];
+  const{data:escalaAmanha}=await sb.from('soltura_2_10').select('prefixo,linha,motorista,horario_programado').eq('garagem_id',gid).eq('data',dataAmanha).order('horario_programado');
+  const{data:escalaHoje}=await sb.from('soltura_2_10').select('prefixo,linha,motorista,horario_programado').eq('garagem_id',gid).eq('data',hoje()).order('horario_programado');
+  _abEscalaLista=(escalaAmanha?.length?escalaAmanha:escalaHoje)||[];
+
+  // Abastecimentos já feitos hoje
+  const{data:abast}=await sb.from('abastecimento_checklist').select('*').eq('garagem_id',gid).eq('data',_abData).order('created_at',{ascending:false}).catch(()=>({data:[]}));
+  const abastMap={};(abast||[]).forEach(a=>{abastMap[a.prefixo]=a;});
+  const tot=Object.keys(abastMap).length;
+  const totEscala=_abEscalaLista.length;
+  const pct=totEscala>0?Math.round((tot/totEscala)*100):0;
+
+  const cards=_abEscalaLista.map(e=>{
+    const ab=abastMap[e.prefixo];
+    return`<div class="vcard ${ab?'done':''}" onclick="abrirAbastecimento('${e.prefixo}','${e.linha||''}')">
+      <div style="flex:1">
+        <div class="prefixo" style="color:${ab?'var(--green)':'var(--text)'}">${e.prefixo}</div>
+        <div class="vcard-sub">${e.horario_programado||'—'} · ${e.linha||'—'}</div>
+        ${ab?`<div class="vcard-sub" style="color:var(--green)">⛽ ${ab.litros}L ${ab.arla_litros?'· ARLA '+ab.arla_litros+'L':''}</div>`:''}
+      </div>
+      <div class="btn-ck ${ab?'ok':''}">${ab?'✅':'○'}</div>
+    </div>`;
+  }).join('');
 
   render(`
     <div style="padding:14px 14px 0">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <div>
-          <div style="font-weight:800;font-size:17px">🔑 Recolha</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">${tot} veículo(s) recebidos hoje · ${agora}</div>
-        </div>
-        <button onclick="telaRecolha()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>
+        <div style="font-weight:800;font-size:17px">⛽ Abastecimento</div>
+        <button onclick="telaAbastecimento()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>
+      </div>
+      <div class="prog"><div class="prog-f" style="width:${pct}%;background:${pct===100?'var(--green)':'var(--blue)'}"></div></div>
+      <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:11px;color:var(--text3);margin-bottom:10px">
+        <span>⛽ ${tot}/${totEscala} abastecidos</span><span>${pct}%</span>
+      </div>
+      <div style="position:relative">
+        <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:14px">🔍</span>
+        <input type="text" placeholder="Buscar prefixo..." oninput="filtrarAbastecimento(this.value)"
+          style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 10px 10px 32px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
       </div>
     </div>
-    ${tot===0
-      ?`<div class="empty"><div class="empty-ic">🔑</div><div style="font-weight:700;font-size:15px;margin-bottom:8px">Nenhum carro recebido ainda</div><div style="font-size:13px;color:var(--text3)">Toque + para registrar a chegada</div></div>`
-      :`<div class="sl">${tot} recebido(s) hoje</div>${cards}`}
+    <div class="sl">${totEscala} veículo(s)</div>
+    <div id="cards-abast">${cards}</div>
   `);
-
   document.getElementById('content').insertAdjacentHTML('beforeend',
-    `<button class="fab" onclick="abrirRecolha()">＋</button>`);
+    `<button class="fab" onclick="abrirAbastecimento('','')">＋</button>`);
 }
+
+function filtrarAbastecimento(busca){
+  document.querySelectorAll('#cards-abast .vcard').forEach(el=>{
+    const p=el.querySelector('.prefixo')?.textContent||'';
+    el.style.display=!busca||p.includes(busca.toUpperCase())?'flex':'none';
+  });
+}
+
+function abrirAbastecimento(prefixo='',linha=''){
+  openSheet('⛽ Registrar Abastecimento',`
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label class="fl">Prefixo</label>
+        <input class="fi2" id="ab-prefixo" type="text" value="${prefixo}" placeholder="Ex: 02.210"
+          style="font-family:'DM Mono',monospace;font-size:22px;text-transform:uppercase"
+          oninput="this.value=this.value.toUpperCase()">
+      </div>
+      ${linha?`<div style="font-size:12px;color:var(--text3);background:var(--surface2);border-radius:8px;padding:8px 10px">🚌 ${linha}</div>`:''}
+      <div>
+        <label class="fl">Litros Abastecidos</label>
+        <input class="fi2" id="ab-litros" type="number" placeholder="Ex: 120" inputmode="decimal" step="0.1"
+          style="font-family:'DM Mono',monospace;font-size:22px">
+      </div>
+      <div>
+        <label class="fl">ARLA 32</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px" id="arla-btns">
+          <button onclick="selArla('nao',this)" style="padding:12px;border-radius:10px;border:1px solid #EF444440;background:#EF444418;color:var(--red);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">❌ Não</button>
+          <button onclick="selArla('sim',this)" style="padding:12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">✅ Sim</button>
+        </div>
+        <input type="hidden" id="ab-arla" value="nao">
+        <div id="ab-arla-litros-wrap" style="display:none;margin-top:8px">
+          <label class="fl">Litros de ARLA</label>
+          <input class="fi2" id="ab-arla-litros" type="number" placeholder="Ex: 5" inputmode="decimal" step="0.1"
+            style="font-family:'DM Mono',monospace;font-size:18px">
+        </div>
+      </div>
+      <button onclick="salvarAbastecimento()" style="padding:15px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">⛽ Confirmar Abastecimento</button>
+    </div>
+  `);
+}
+
+function selArla(val,btn){
+  document.getElementById('ab-arla').value=val;
+  document.querySelectorAll('#arla-btns button').forEach(b=>{
+    b.style.background='transparent';b.style.borderColor='var(--border)';b.style.color='var(--text3)';
+  });
+  btn.style.background=val==='sim'?'#00C48C18':'#EF444418';
+  btn.style.borderColor=val==='sim'?'#00C48C40':'#EF444440';
+  btn.style.color=val==='sim'?'var(--green)':'var(--red)';
+  document.getElementById('ab-arla-litros-wrap').style.display=val==='sim'?'block':'none';
+}
+
+async function salvarAbastecimento(){
+  const prefixo=document.getElementById('ab-prefixo')?.value?.trim().toUpperCase();
+  const litros=parseFloat(document.getElementById('ab-litros')?.value||0)||null;
+  const arla=document.getElementById('ab-arla')?.value==='sim';
+  const arlaLitros=arla?parseFloat(document.getElementById('ab-arla-litros')?.value||0)||null:null;
+  const gid=getGid();
+
+  if(!prefixo){toast('Informe o prefixo','err');return;}
+  if(!litros){toast('Informe os litros','err');return;}
+
+  const{data:vei}=await sb.from('frota').select('id').eq('garagem_id',gid).eq('prefixo',prefixo).single();
+
+  // Tenta inserir na tabela (cria se não existir ainda)
+  const{error}=await sb.from('abastecimento_checklist').upsert({
+    garagem_id:gid, prefixo, veiculo_id:vei?.id||null,
+    data:_abData, litros, arla, arla_litros:arlaLitros,
+    frentista_nome:S.perfil?.nome, frentista_id:S.perfil?.id,
+    horario:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),
+  },{onConflict:'garagem_id,prefixo,data'});
+
+  if(error){toast('Erro: '+error.message,'err');return;}
+  closeSheet(true);
+  toast(`✅ ${prefixo} abastecido — ${litros}L${arla?' + ARLA '+arlaLitros+'L':''}`);
+  telaAbastecimento();
+}
+
+// ══════════════════════════════════════════════════════════
+// TROCA PRÉVIA (Líder de Pátio — trocar antes de sair)
+// ══════════════════════════════════════════════════════════
+async function abrirTrocaPrevia(solId, prefixoAtual){
+  const gid=getGid();
+  // Busca carros disponíveis
+  const{data:frota}=await sb.from('frota').select('prefixo,modelo').eq('garagem_id',gid).eq('status','disponivel');
+  // Remove os já escalados no mesmo dia
+  const{data:escalados}=await sb.from('soltura_2_10').select('prefixo').eq('garagem_id',gid).eq('data',_sdata);
+  const prefEsc=new Set((escalados||[]).map(e=>e.prefixo));
+  const disponiveis=(frota||[]).filter(v=>!prefEsc.has(v.prefixo)&&v.prefixo!==prefixoAtual);
+
+  openSheet(`🔄 Trocar ${prefixoAtual}`,`
+    <div style="margin-bottom:10px;font-size:12px;color:var(--text3)">Substituindo: <strong style="color:var(--text);font-family:'DM Mono',monospace">${prefixoAtual}</strong></div>
+    <div style="margin-bottom:10px">
+      <label class="fl">Motivo da troca</label>
+      <textarea id="troca-motivo" rows="2" placeholder="Ex: Manutenção preventiva, veículo reservado..."
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px;color:var(--text);font-size:13px;font-family:inherit;outline:none;resize:none;margin-top:4px"></textarea>
+    </div>
+    <div style="position:relative;margin-bottom:8px">
+      <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:14px">🔍</span>
+      <input type="text" placeholder="Buscar reserva..." oninput="filtrarTrocaPrevia(this.value)"
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 10px 10px 32px;color:var(--text);font-size:13px;font-family:'DM Mono',monospace;outline:none;text-transform:uppercase" oninput="this.value=this.value.toUpperCase();filtrarTrocaPrevia(this.value)">
+    </div>
+    <div id="lista-troca" style="max-height:45vh;overflow-y:auto">
+      ${disponiveis.map(v=>`
+        <div onclick="confirmarTrocaPrevia('${solId}','${v.prefixo}','${prefixoAtual}')" data-prefixo="${v.prefixo}"
+          style="display:flex;align-items:center;gap:10px;padding:11px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;margin-bottom:6px;cursor:pointer">
+          <div style="font-family:'DM Mono',monospace;font-weight:700;font-size:16px;color:var(--blue)">${v.prefixo}</div>
+          <div style="flex:1;font-size:12px;color:var(--text3)">${v.modelo||'—'}</div>
+          <span style="font-size:10px;color:var(--green);font-weight:700">DISPONÍVEL</span>
+        </div>`).join('')||'<div style="text-align:center;color:var(--text3);padding:20px">Nenhum carro disponível</div>'}
+    </div>
+  `);
+  window._trocaDisponiveis=disponiveis;
+}
+
+function filtrarTrocaPrevia(busca){
+  document.querySelectorAll('#lista-troca [data-prefixo]').forEach(el=>{
+    el.style.display=!busca||el.dataset.prefixo.includes(busca.toUpperCase())?'flex':'none';
+  });
+}
+
+async function confirmarTrocaPrevia(solId, novoPrefixo, prefixoOriginal){
+  const motivo=document.getElementById('troca-motivo')?.value?.trim()||'Troca prévia';
+  const{error}=await sb.from('soltura_2_10').update({
+    prefixo:novoPrefixo,
+    observacao:`Reserva: ${novoPrefixo} | Original: ${prefixoOriginal} | ${motivo}`,
+  }).eq('id',solId);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  closeSheet(true);
+  toast(`🔄 ${prefixoOriginal} → ${novoPrefixo} (troca prévia)`);
+  telaSoltura(_sdata);
+}
+
 
 let _recolhaId='';
 async function abrirRecolha(){
@@ -1328,7 +1705,7 @@ async function salvarRecolha(){
 }
 
 // ── MAPA DE TELAS ──────────────────────────────────────────
-const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,prev26:telaPrev26,patio_man:telaPatioMan,recolha:telaRecolha};
+const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,prev26:telaPrev26,patio_man:telaPatioMan,recolha:telaRecolha,abastecimento:telaAbastecimento};
 
 // ── INIT ───────────────────────────────────────────────────
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login').style.display!=='none')doLogin()});
