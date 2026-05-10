@@ -2023,7 +2023,11 @@ async function renderFerr210(tab='painel', dataFiltro=null){
         <td style="font-family:'DM Mono',monospace">${g.total}</td>
         <td style="color:var(--text3);font-size:12px">${g.importado_por||'—'}</td>
         <td><span class="badge b-ok">✅ Importado</span></td>
-        <td><button class="btn-sm" onclick="renderFerr210('painel','${g.data}')">Ver painel →</button></td>
+        <td style="display:flex;gap:6px">
+          <button class="btn-sm" onclick="renderFerr210('painel','${g.data}')">Ver painel →</button>
+          <button class="btn-sm" onclick="excluirEscala('${g.data}','${g.turno}','${g.num||''}')"
+            style="border-color:#EF444440;color:var(--red);background:#EF444410">🗑️ Excluir</button>
+        </td>
       </tr>`;
     }).join('');
 
@@ -4656,6 +4660,17 @@ async function salvarCustoRapido(ocId, gid, data){
     await sb.from('previsibilidade_26').insert({garagem_id:gid,ocorrencia_id:ocId,data,custo_prev:prev,custo_real:real,registrado_por:S.perfil?.nome});
   }
   toast('💰 Custo salvo');
+}
+
+async function excluirEscala(data, turno, num){
+  const dataFmt=formatData(data);
+  const turnoFmt=turno==='dia'?'☀️ Dia':'🌙 Noite';
+  if(!confirm(`Excluir escala ${num||dataFmt} (${turnoFmt})?\n\nIsso irá remover todos os ${turno==='dia'?'veículos':'registros'} importados para este dia e turno. Esta ação não pode ser desfeita.`)) return;
+  const gid=getGid();
+  const{error}=await sb.from('soltura_2_10').delete().eq('garagem_id',gid).eq('data',data).eq('turno',turno);
+  if(error){toast('Erro ao excluir: '+error.message,'err');return;}
+  toast(`✅ Escala ${dataFmt} excluída`);
+  renderFerr210('historico');
 }
 
 async function renderFerr211(){
