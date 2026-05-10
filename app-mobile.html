@@ -1210,23 +1210,27 @@ async function telaRecolha(dataFiltro=null){
     return`<button onclick="mudarEscalaRef('${d}')" style="flex-shrink:0;padding:6px 12px;border-radius:20px;border:1px solid ${ativo?'#8B5CF6':'var(--border)'};background:${ativo?'#8B5CF618':'transparent'};color:${ativo?'#8B5CF6':eHoje?'var(--text)':'var(--text3)'};font-size:11px;font-weight:${ativo?'700':'500'};font-family:inherit;cursor:pointer;white-space:nowrap">${eHoje?'Hoje':''}${eHoje?'':dFmt}</button>`;
   }).join('');
 
-  // Lista de carros da escala
-  const cards=_rcEscalaLista.map(e=>{
+  // Lista de carros da escala — ordenada por horario_fim (último a voltar primeiro)
+  const escalaSorted=[..._rcEscalaLista].sort((a,b)=>{
+    const hA=a.horario_fim||a.horario_programado||'00:00';
+    const hB=b.horario_fim||b.horario_programado||'00:00';
+    return hA.localeCompare(hB);
+  });
+
+  const cards=escalaSorted.map(e=>{
     const rec=recMap[e.prefixo];
-    const ab=abastMap[e.prefixo];
     const recOk=!!rec;
-    const abOk=!!ab;
-    return`<div class="vcard ${recOk?'done':''}" onclick="abrirRecolha('${e.prefixo}','${e.linha||''}','${(e.motorista_fim||e.motorista||'').replace(/'/g,'')}','${e.horario_fim||e.horario_programado||''}')">
-      <div style="flex:1">
+    const horaRef=e.horario_fim||e.horario_programado||'—';
+    const motRef=e.motorista_fim||e.motorista||'—';
+    return`<div class="vcard ${recOk?'done':''}" onclick="abrirRecolha('${e.prefixo}','${e.linha||''}','${motRef.replace(/'/g,'')}','${horaRef}')">
+      <div style="flex:1;min-width:0">
         <div class="prefixo" style="color:${recOk?'var(--green)':'var(--text)'}">${e.prefixo}</div>
-        <div class="vcard-sub">${e.horario_fim||e.horario_programado||'—'} · ${e.linha||'—'}</div>
-        <div class="vcard-sub" style="font-size:10px">${e.motorista_fim||e.motorista||'—'}${rec?.km_hodometro?' · 📍'+rec.km_hodometro.toLocaleString()+'km':''}</div>
+        <div class="vcard-sub">${horaRef} · ${e.linha||'—'}</div>
+        <div class="vcard-sub" style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${motRef.split(' ').slice(0,2).join(' ')}${rec?.km_hodometro?' · 📍'+rec.km_hodometro.toLocaleString()+'km':''}</div>
       </div>
-      <!-- Indicadores: Recolhido + Abastecido -->
-      <div style="display:flex;gap:8px;align-items:center">
-        <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
-          <div style="min-width:62px;height:22px;border-radius:5px;border:2px solid ${recOk?'var(--green)':'var(--red)'};background:${recOk?'#00C48C18':'#EF444410'};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:${recOk?'var(--green)':'var(--red)'}">Recolha</div>
-          <span style="font-size:8px;font-weight:700;color:${recOk?'var(--green)':'var(--red)'}">${recOk?rec?.horario_real||'✓':'—'}</span>
+      <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:2px;margin-left:8px">
+        <div style="min-width:62px;height:22px;border-radius:5px;border:2px solid ${recOk?'var(--green)':'var(--red)'};background:${recOk?'#00C48C18':'#EF444410'};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:${recOk?'var(--green)':'var(--red)'}">Recolha</div>
+        <span style="font-size:8px;font-weight:700;color:${recOk?'var(--green)':'var(--red)'}">${recOk?rec?.horario_real||'✓':'—'}</span>
       </div>
     </div>`;
   }).join('');
