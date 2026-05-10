@@ -168,6 +168,7 @@ async function doLogin(){
   S.user=data.user;await init();
 }
 async function init(){
+  try{
   const[{data:p},{data:g}]=await Promise.all([
     sb.from('perfis').select('*').eq('id',S.user.id).single(),
     sb.from('garagens').select('*').order('nome'),
@@ -181,6 +182,12 @@ async function init(){
   document.getElementById('app').style.display='flex';
   buildNav();
   setTela(TELA_INICIO[cargo()]||'home');
+  }catch(err){
+    console.error('Init error:',err);
+    document.getElementById('lerr').textContent='Erro ao carregar: '+err.message;
+    document.getElementById('login').style.display='flex';
+    document.getElementById('app').style.display='none';
+  }
 }
 async function doLogout(){await sb.auth.signOut();location.reload()}
 
@@ -343,7 +350,7 @@ async function telaSoltura(dataFiltro=null){
 
   // Busca recolhas e abastecimentos do dia para indicadores
   const[{data:recolhas},{data:abast}]=await Promise.all([
-    sb.from('recolha_checklist').select('prefixo').eq('garagem_id',gid).eq('data_recolha',_sdata),
+    sb.from('recolha_checklist').select('prefixo').eq('garagem_id',gid).eq('data_recolha',_sdata).catch(()=>({data:[]})),
     sb.from('abastecimento_checklist').select('prefixo').eq('garagem_id',gid).eq('data',_sdata).catch(()=>({data:[]})),
   ]);
   window._recMap=new Set((recolhas||[]).map(r=>r.prefixo));
@@ -1158,7 +1165,7 @@ async function telaRecolha(dataFiltro=null){
   // Busca escala de referência + recolhas já feitas hoje
   const[{data:escala},{data:recolhas}]=await Promise.all([
     sb.from('soltura_2_10').select('*').eq('garagem_id',gid).eq('data',_rcEscalaData).order('horario_programado'),
-    sb.from('recolha_checklist').select('*').eq('garagem_id',gid).eq('data_recolha',_rcData).order('created_at',{ascending:false}),
+    sb.from('recolha_checklist').select('*').eq('garagem_id',gid).eq('data_recolha',_rcData).order('created_at',{ascending:false}).catch(()=>({data:[]})),
   ]);
   _rcEscalaLista=escala||[];
 
