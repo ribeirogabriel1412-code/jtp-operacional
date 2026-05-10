@@ -1598,60 +1598,6 @@ async function confirmarTrocaPrevia(solId, novoPrefixo, prefixoOriginal){
 }
 
 
-let _recolhaId='';
-async function abrirRecolha(){
-  openSheet('🔑 Receber Veículo',`
-    <div style="display:flex;flex-direction:column;gap:12px">
-      <div>
-        <label class="fl">Prefixo do Veículo</label>
-        <input class="fi2" id="rc-prefixo" type="text" placeholder="Ex: 02.210"
-          style="font-family:'DM Mono',monospace;font-size:20px;text-transform:uppercase"
-          oninput="this.value=this.value.toUpperCase();buscarEscalaRecolha(this.value)">
-      </div>
-      <!-- Info da escala (preenchida automaticamente) -->
-      <div id="rc-escala-info" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px">
-        <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;margin-bottom:6px">Da Escala de Hoje</div>
-        <div id="rc-escala-body" style="font-size:12px;color:var(--text2)"></div>
-      </div>
-      <div>
-        <label class="fl">KM Hodômetro</label>
-        <input class="fi2" id="rc-km" type="number" placeholder="Ex: 125430" inputmode="numeric">
-      </div>
-      <div>
-        <label class="fl">Visual Externo</label>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
-          <button onclick="selOpt('rc-ext','ok',this,'var(--green)')" data-opt="ok"
-            style="padding:12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">✅ OK</button>
-          <button onclick="selOpt('rc-ext','avaria',this,'var(--amber)')" data-opt="avaria"
-            style="padding:12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">⚠️ Avaria</button>
-        </div>
-        <input type="hidden" id="rc-ext" value="ok">
-      </div>
-      <div>
-        <label class="fl">Visual Interno</label>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
-          <button onclick="selOpt('rc-int','ok',this,'var(--green)')" data-opt="ok"
-            style="padding:12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">✅ OK</button>
-          <button onclick="selOpt('rc-int','avaria',this,'var(--amber)')" data-opt="avaria"
-            style="padding:12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">⚠️ Avaria</button>
-        </div>
-        <input type="hidden" id="rc-int" value="ok">
-      </div>
-      <div id="rc-obs-wrap" style="display:none">
-        <label class="fl">Descreva a avaria</label>
-        <textarea class="fi2" id="rc-obs" rows="2" placeholder="Ex: Vidro quebrado, amassado lateral..."
-          style="resize:none"></textarea>
-      </div>
-      <button onclick="salvarRecolha()" style="padding:15px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">🔑 Confirmar Recebimento</button>
-    </div>
-  `);
-  // Seleciona OK por padrão nos dois campos visuais
-  setTimeout(()=>{
-    document.querySelector('[data-opt="ok"][onclick*="rc-ext"]')?.click();
-    document.querySelector('[data-opt="ok"][onclick*="rc-int"]')?.click();
-  },100);
-}
-
 // Seleciona opção nos botões de visual
 function selOpt(fieldId, val, btn, cor){
   document.getElementById(fieldId).value=val;
