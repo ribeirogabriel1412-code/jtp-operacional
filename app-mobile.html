@@ -350,16 +350,19 @@ async function telaSoltura(dataFiltro=null){
 
   // Busca recolhas e abastecimentos — tabelas podem não existir ainda
   let recSet=new Set(), abSet=new Set();
+  let recHoraMap=new Map(), abHoraMap=new Map();
   try{
-    const{data:r}=await sb.from('recolha_checklist').select('prefixo').eq('garagem_id',gid).eq('data_recolha',_sdata);
-    if(r) recSet=new Set(r.map(x=>x.prefixo));
+    const{data:r}=await sb.from('recolha_checklist').select('prefixo,horario_real').eq('garagem_id',gid).eq('data_recolha',_sdata);
+    if(r){r.forEach(x=>{recSet.add(x.prefixo);if(x.horario_real)recHoraMap.set(x.prefixo,x.horario_real);});}
   }catch(e){}
   try{
-    const{data:a}=await sb.from('abastecimento_checklist').select('prefixo').eq('garagem_id',gid).eq('data',_sdata);
-    if(a) abSet=new Set(a.map(x=>x.prefixo));
+    const{data:a}=await sb.from('abastecimento_checklist').select('prefixo,horario').eq('garagem_id',gid).eq('data',_sdata);
+    if(a){a.forEach(x=>{abSet.add(x.prefixo);if(x.horario)abHoraMap.set(x.prefixo,x.horario);});}
   }catch(e){}
   window._recMap=recSet;
   window._abMap=abSet;
+  window._recHoraMap=recHoraMap;
+  window._abHoraMap=abHoraMap;
 
   _sLista=lista||[];
   _sDatas=datasComEscala;
@@ -442,6 +445,8 @@ function renderSoltura(lista, busca, datasComEscala=[]){
     const zonaObj=r.zona_patio?ZONAS.find(z=>z.z===r.zona_patio):null;
     const recOk=window._recMap?.has(r.prefixo);
     const abOk=window._abMap?.has(r.prefixo);
+    const recHora=window._recHoraMap?.get(r.prefixo);
+    const abHora=window._abHoraMap?.get(r.prefixo);
     return`<div class="vcard ${d?'done':n?'nok':''}" onclick="abrirSol('${r.id}','${r.prefixo}','${r.horario_programado||''}','${r.linha||''}','${r.motorista||''}')">
       <div style="flex:1">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -456,10 +461,16 @@ function renderSoltura(lista, busca, datasComEscala=[]){
           ${r.manobrista?`<span style="color:var(--text4)">🚗 ${r.manobrista.split(' ')[0]}</span>`:''}
         </div>
       </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
         <div class="btn-ck ${d?'ok':n?'nok':''}">${d?'✅':n?'❌':'○'}</div>
-        <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:5px;border:1px solid ${recOk?'#00C48C40':'#33415520'};background:${recOk?'#00C48C18':'transparent'};color:${recOk?'var(--green)':'var(--text4)'}">🔑${recOk?'✓':'·'}</span>
-        <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:5px;border:1px solid ${abOk?'#00C48C40':'#33415520'};background:${abOk?'#00C48C18':'transparent'};color:${abOk?'var(--green)':'var(--text4)'}">⛽${abOk?'✓':'·'}</span>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+          <div style="width:28px;height:28px;border-radius:50%;border:2px solid ${recOk?'var(--green)':'var(--red)'};background:${recOk?'#00C48C18':'#EF444410'};display:flex;align-items:center;justify-content:center;font-size:12px">${recOk?'🔑':'🔑'}</div>
+          <span style="font-size:8px;color:${recOk?'var(--green)':'var(--red)'};font-weight:700;line-height:1">${recOk?recHora||'✓':'—'}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+          <div style="width:28px;height:28px;border-radius:50%;border:2px solid ${abOk?'var(--green)':'var(--red)'};background:${abOk?'#00C48C18':'#EF444410'};display:flex;align-items:center;justify-content:center;font-size:12px">⛽</div>
+          <span style="font-size:8px;color:${abOk?'var(--green)':'var(--red)'};font-weight:700;line-height:1">${abOk?abHora||'✓':'—'}</span>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -1212,21 +1223,33 @@ async function telaRecolha(dataFiltro=null){
         <div class="vcard-sub" style="font-size:10px">${e.motorista?.split(' ').slice(0,2).join(' ')||'—'}${rec?.km_hodometro?' · 📍'+rec.km_hodometro.toLocaleString()+'km':''}</div>
       </div>
       <!-- Indicadores: Recolhido + Abastecido -->
-      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-        <span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;border:1px solid ${recOk?'#00C48C40':'#EF444430'};background:${recOk?'#00C48C18':'#EF444410'};color:${recOk?'var(--green)':'var(--red)'}">🔑 ${recOk?'Recolhido':'Pendente'}</span>
-        <span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;border:1px solid ${abOk?'#00C48C40':'#EF444430'};background:${abOk?'#00C48C18':'#EF444410'};color:${abOk?'var(--green)':'var(--red)'}">⛽ ${abOk?'Abastecido':'Pendente'}</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+          <div style="width:32px;height:32px;border-radius:50%;border:2px solid ${recOk?'var(--green)':'var(--red)'};background:${recOk?'#00C48C18':'#EF444410'};display:flex;align-items:center;justify-content:center;font-size:14px">🔑</div>
+          <span style="font-size:8px;font-weight:700;color:${recOk?'var(--green)':'var(--red)'}">${recOk?rec?.horario_real||'✓':'—'}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+          <div style="width:32px;height:32px;border-radius:50%;border:2px solid ${abOk?'var(--green)':'var(--red)'};background:${abOk?'#00C48C18':'#EF444410'};display:flex;align-items:center;justify-content:center;font-size:14px">⛽</div>
+          <span style="font-size:8px;font-weight:700;color:${abOk?'var(--green)':'var(--red)'}">${abOk?ab?.horario||'✓':'—'}</span>
+        </div>
       </div>
     </div>`;
   }).join('');
 
+  const dataExec=new Date(_rcData+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+  const dataRef=new Date(_rcEscalaData+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+
   render(`
     <div style="padding:14px 14px 0">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <div style="font-weight:800;font-size:17px">🔑 Recolha</div>
+        <div>
+          <div style="font-weight:800;font-size:17px">🔑 Recolha</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Executando: <strong style="color:var(--text)">${dataExec}</strong></div>
+        </div>
         <button onclick="telaRecolha()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>
       </div>
       <!-- Referência de escala -->
-      <div style="font-size:10px;color:var(--text3);margin-bottom:4px">📋 Referência de escala:</div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:4px">📋 Referência escala: <strong style="color:#8B5CF6">${dataRef}</strong></div>
       <div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:8px;scrollbar-width:none">${chipsEscala||'<span style="font-size:12px;color:var(--text4)">Nenhuma escala</span>'}</div>
       <!-- Progresso -->
       <div class="prog"><div class="prog-f" style="width:${pct}%;background:${pct===100?'var(--green)':'var(--blue)'}"></div></div>
@@ -1398,16 +1421,25 @@ async function telaAbastecimento(){
       <div style="flex:1">
         <div class="prefixo" style="color:${ab?'var(--green)':'var(--text)'}">${e.prefixo}</div>
         <div class="vcard-sub">${e.horario_programado||'—'} · ${e.linha||'—'}</div>
-        ${ab?`<div class="vcard-sub" style="color:var(--green)">⛽ ${ab.litros}L ${ab.arla_litros?'· ARLA '+ab.arla_litros+'L':''}</div>`:''}
+        ${ab?`<div class="vcard-sub" style="color:var(--green)">⛽ ${ab.litros}L${ab.arla_litros?' · ARLA '+ab.arla_litros+'L':''}${ab.km_hodometro?' · 📍'+ab.km_hodometro.toLocaleString()+'km':''}</div>`:''}
       </div>
-      <div class="btn-ck ${ab?'ok':''}">${ab?'✅':'○'}</div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+        <div style="width:32px;height:32px;border-radius:50%;border:2px solid ${ab?'var(--green)':'var(--red)'};background:${ab?'#00C48C18':'#EF444410'};display:flex;align-items:center;justify-content:center;font-size:14px">⛽</div>
+        <span style="font-size:8px;font-weight:700;color:${ab?'var(--green)':'var(--red)'}">${ab?ab.horario||'✓':'—'}</span>
+      </div>
     </div>`;
   }).join('');
 
+  const dataExecAb=new Date(_abData+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+  const dataRefAb=_abEscalaLista.length>0?(new Date((_abEscalaLista[0]?.data||_abData)+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'})):dataExecAb;
+
   render(`
     <div style="padding:14px 14px 0">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <div style="font-weight:800;font-size:17px">⛽ Abastecimento</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div>
+          <div style="font-weight:800;font-size:17px">⛽ Abastecimento</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Executando: <strong style="color:var(--text)">${dataExecAb}</strong></div>
+        </div>
         <button onclick="telaAbastecimento()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>
       </div>
       <div class="prog"><div class="prog-f" style="width:${pct}%;background:${pct===100?'var(--green)':'var(--blue)'}"></div></div>
@@ -1444,10 +1476,17 @@ function abrirAbastecimento(prefixo='',linha=''){
           oninput="this.value=this.value.toUpperCase()">
       </div>
       ${linha?`<div style="font-size:12px;color:var(--text3);background:var(--surface2);border-radius:8px;padding:8px 10px">🚌 ${linha}</div>`:''}
-      <div>
-        <label class="fl">Litros Abastecidos</label>
-        <input class="fi2" id="ab-litros" type="number" placeholder="Ex: 120" inputmode="decimal" step="0.1"
-          style="font-family:'DM Mono',monospace;font-size:22px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label class="fl">Litros Abastecidos</label>
+          <input class="fi2" id="ab-litros" type="number" placeholder="Ex: 120" inputmode="decimal" step="0.1"
+            style="font-family:'DM Mono',monospace;font-size:20px">
+        </div>
+        <div>
+          <label class="fl">KM Hodômetro</label>
+          <input class="fi2" id="ab-km" type="number" placeholder="Ex: 125430" inputmode="numeric"
+            style="font-family:'DM Mono',monospace;font-size:20px">
+        </div>
       </div>
       <div>
         <label class="fl">ARLA 32</label>
@@ -1481,6 +1520,7 @@ function selArla(val,btn){
 async function salvarAbastecimento(){
   const prefixo=document.getElementById('ab-prefixo')?.value?.trim().toUpperCase();
   const litros=parseFloat(document.getElementById('ab-litros')?.value||0)||null;
+  const km=parseInt(document.getElementById('ab-km')?.value||0)||null;
   const arla=document.getElementById('ab-arla')?.value==='sim';
   const arlaLitros=arla?parseFloat(document.getElementById('ab-arla-litros')?.value||0)||null:null;
   const gid=getGid();
@@ -1493,7 +1533,7 @@ async function salvarAbastecimento(){
   // Tenta inserir na tabela (cria se não existir ainda)
   const{error}=await sb.from('abastecimento_checklist').upsert({
     garagem_id:gid, prefixo, veiculo_id:vei?.id||null,
-    data:_abData, litros, arla, arla_litros:arlaLitros,
+    data:_abData, litros, arla, arla_litros:arlaLitros, km_hodometro:km,
     frentista_nome:S.perfil?.nome, frentista_id:S.perfil?.id,
     horario:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),
   },{onConflict:'garagem_id,prefixo,data'});
