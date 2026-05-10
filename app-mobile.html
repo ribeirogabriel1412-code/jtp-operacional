@@ -348,13 +348,18 @@ async function telaSoltura(dataFiltro=null){
   const{data:lista}=await sb.from('soltura_2_10').select('*')
     .eq('garagem_id',gid).eq('data',_sdata).order('horario_programado');
 
-  // Busca recolhas e abastecimentos do dia para indicadores
-  const[{data:recolhas},{data:abast}]=await Promise.all([
-    sb.from('recolha_checklist').select('prefixo').eq('garagem_id',gid).eq('data_recolha',_sdata).catch(()=>({data:[]})),
-    sb.from('abastecimento_checklist').select('prefixo').eq('garagem_id',gid).eq('data',_sdata).catch(()=>({data:[]})),
-  ]);
-  window._recMap=new Set((recolhas||[]).map(r=>r.prefixo));
-  window._abMap=new Set((abast||[]).map(r=>r.prefixo));
+  // Busca recolhas e abastecimentos — tabelas podem não existir ainda
+  let recSet=new Set(), abSet=new Set();
+  try{
+    const{data:r}=await sb.from('recolha_checklist').select('prefixo').eq('garagem_id',gid).eq('data_recolha',_sdata);
+    if(r) recSet=new Set(r.map(x=>x.prefixo));
+  }catch(e){}
+  try{
+    const{data:a}=await sb.from('abastecimento_checklist').select('prefixo').eq('garagem_id',gid).eq('data',_sdata);
+    if(a) abSet=new Set(a.map(x=>x.prefixo));
+  }catch(e){}
+  window._recMap=recSet;
+  window._abMap=abSet;
 
   _sLista=lista||[];
   _sDatas=datasComEscala;
@@ -1163,17 +1168,24 @@ async function telaRecolha(dataFiltro=null){
   }
 
   // Busca escala de referência + recolhas já feitas hoje
-  const[{data:escala},{data:recolhas}]=await Promise.all([
-    sb.from('soltura_2_10').select('*').eq('garagem_id',gid).eq('data',_rcEscalaData).order('horario_programado'),
-    sb.from('recolha_checklist').select('*').eq('garagem_id',gid).eq('data_recolha',_rcData).order('created_at',{ascending:false}).catch(()=>({data:[]})),
-  ]);
+  const{data:escala}=await sb.from('soltura_2_10').select('*')
+    .eq('garagem_id',gid).eq('data',_rcEscalaData).order('horario_programado');
+  let recolhas=[];
+  try{
+    const{data:r}=await sb.from('recolha_checklist').select('*')
+      .eq('garagem_id',gid).eq('data_recolha',_rcData).order('created_at',{ascending:false});
+    if(r) recolhas=r;
+  }catch(e){}
   _rcEscalaLista=escala||[];
 
   // Mapa de recolhas por prefixo
   const recMap={};(recolhas||[]).forEach(r=>{recMap[r.prefixo]=r;});
   // Mapa de abastecimento por prefixo
-  const{data:abast}=await sb.from('abastecimento_checklist').select('prefixo,litros,arla').eq('garagem_id',gid).eq('data',_rcData).catch(()=>({data:[]}));
-  const abastMap={};(abast||[]).forEach(a=>{abastMap[a.prefixo]=a;});
+  let abastMap={};
+  try{
+    const{data:abast}=await sb.from('abastecimento_checklist').select('prefixo,litros,arla').eq('garagem_id',gid).eq('data',_rcData);
+    if(abast) abast.forEach(a=>{abastMap[a.prefixo]=a;});
+  }catch(e){}
 
   const tot=Object.keys(recMap).length;
   const totEscala=_rcEscalaLista.length;
@@ -1371,8 +1383,11 @@ async function telaAbastecimento(){
   _abEscalaLista=(escalaAmanha?.length?escalaAmanha:escalaHoje)||[];
 
   // Abastecimentos já feitos hoje
-  const{data:abast}=await sb.from('abastecimento_checklist').select('*').eq('garagem_id',gid).eq('data',_abData).order('created_at',{ascending:false}).catch(()=>({data:[]}));
-  const abastMap={};(abast||[]).forEach(a=>{abastMap[a.prefixo]=a;});
+  let abastMap={};
+  try{
+    const{data:abast}=await sb.from('abastecimento_checklist').select('*').eq('garagem_id',gid).eq('data',_abData).order('created_at',{ascending:false});
+    if(abast) abast.forEach(a=>{abastMap[a.prefixo]=a;});
+  }catch(e){}
   const tot=Object.keys(abastMap).length;
   const totEscala=_abEscalaLista.length;
   const pct=totEscala>0?Math.round((tot/totEscala)*100):0;
