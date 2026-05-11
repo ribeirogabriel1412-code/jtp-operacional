@@ -1697,69 +1697,6 @@ async function buscarEscalaRecolha(prefixo){
   },600);
 }
 
-async function salvarRecolha(){
-  const prefixo=document.getElementById('rc-prefixo')?.value?.trim().toUpperCase();
-  const km=parseInt(document.getElementById('rc-km')?.value||'0')||null;
-  const externo=document.getElementById('rc-ext')?.value||'ok';
-  const interno=document.getElementById('rc-int')?.value||'ok';
-  const obs=document.getElementById('rc-obs')?.value?.trim()||null;
-  const gid=getGid();
-  const agora=new Date();
-  const horarioReal=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-
-  if(!prefixo){toast('Informe o prefixo','err');return;}
-
-  const esc=window._rcEscala||{};
-  const status=externo==='avaria'||interno==='avaria'?'avaria':'recebido';
-
-  // Busca veiculo_id
-  const{data:vei}=await sb.from('frota').select('id').eq('garagem_id',gid).eq('prefixo',prefixo).single();
-
-  // 1. Grava checklist de recolha
-  const{error}=await sb.from('recolha_checklist').insert({
-    garagem_id:gid,
-    prefixo,
-    veiculo_id:vei?.id||null,
-    data_recolha:hoje(),
-    horario_real:horarioReal,
-    horario_previsto:esc.horario_previsto||null,
-    motorista:esc.motorista||null,
-    linha:esc.linha||null,
-    km_hodometro:km,
-    visual_externo:externo,
-    visual_interno:interno,
-    observacao:obs,
-    status,
-    plantao_nome:S.perfil?.nome,
-    plantao_id:S.perfil?.id,
-  });
-  if(error){toast('Erro: '+error.message,'err');return;}
-
-  // 2. Se OK → cria/atualiza entrada no 2.10 do próximo dia
-  if(status==='recebido'&&vei?.id){
-    const amanha=new Date(agora);amanha.setDate(amanha.getDate()+1);
-    const dataAmanha=amanha.toISOString().split('T')[0];
-
-    // Verifica se já tem entrada para amanhã
-    const{data:jaExiste}=await sb.from('soltura_2_10').select('id')
-      .eq('garagem_id',gid).eq('prefixo',prefixo).eq('data',dataAmanha).single();
-
-    if(jaExiste){
-      // Atualiza marcando como disponível (saiu = null = pendente de confirmar)
-      await sb.from('soltura_2_10').update({
-        observacao:`Recolhido ${horarioReal} por ${S.perfil?.nome?.split(' ')[0]}`
-      }).eq('id',jaExiste.id);
-    }
-
-    // Garante que o carro está como disponível na frota
-    await sb.from('frota').update({status:'disponivel'}).eq('id',vei.id);
-  }
-
-  closeSheet(true);
-  window._rcEscala=null;
-  toast(status==='recebido'?`✅ ${prefixo} recebido e disponível p/ amanhã!`:`⚠️ ${prefixo} recebido com avaria`);
-  telaRecolha();
-}
 
 // ── MAPA DE TELAS ──────────────────────────────────────────
 const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,prev26:telaPrev26,patio_man:telaPatioMan,recolha:telaRecolha,abastecimento:telaAbastecimento};
