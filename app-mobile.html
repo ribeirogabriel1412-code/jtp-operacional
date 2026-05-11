@@ -1413,7 +1413,7 @@ async function telaAbastecimento(){
   // Abastecimentos já feitos hoje
   let abastMap={};
   try{
-    const{data:abast}=await sb.from('abastecimento_checklist').select('*').eq('garagem_id',gid).eq('data',_abData).order('created_at',{ascending:false});
+    const{data:abast}=await sb.from('abastecimento_checklist').select('*').eq('garagem_id',gid).eq('data',_abEscalaData).order('created_at',{ascending:false});
     if(abast) abast.forEach(a=>{abastMap[a.prefixo]=a;});
   }catch(e){}
   const tot=Object.keys(abastMap).length;
@@ -1541,7 +1541,7 @@ async function salvarAbastecimento(){
 
   const agora=new Date();
   const horario=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-  const dataGravar=_abData||hoje();
+  const dataGravar=_abEscalaData||hoje();
 
   // Busca veiculo_id
   let veiId=null;
