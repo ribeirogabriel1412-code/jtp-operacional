@@ -1331,7 +1331,6 @@ async function abrirRecolha(prefixo='',linha='',motorista='',horario=''){
 async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
   const prefixo=document.getElementById('rc-prefixo')?.value?.trim().toUpperCase();
   const km=parseInt(document.getElementById('rc-km')?.value||'0')||null;
-  const matricula=document.getElementById('rc-matricula')?.value?.trim()||null;
   const externo=document.getElementById('rc-ext')?.value||'ok';
   const interno=document.getElementById('rc-int')?.value||'ok';
   const obs=document.getElementById('rc-obs')?.value?.trim()||null;
@@ -1342,42 +1341,47 @@ async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
   if(!prefixo){toast('Informe o prefixo','err');return;}
 
   const status=externo==='avaria'||interno==='avaria'?'avaria':'recebido';
-  const{data:vei}=await sb.from('frota').select('id').eq('garagem_id',gid).eq('prefixo',prefixo).single();
+  const dataGravar=_rcEscalaData||hoje();
 
+  // Busca veiculo_id
+  let veiId=null;
+  try{
+    const{data:vei}=await sb.from('frota').select('id').eq('garagem_id',gid).eq('prefixo',prefixo).single();
+    veiId=vei?.id||null;
+  }catch(e){}
+
+  // Insere na recolha_checklist
   const{error}=await sb.from('recolha_checklist').insert({
-    garagem_id:gid, prefixo, veiculo_id:vei?.id||null,
-    data_recolha:_rcEscalaData, horario_real:horarioReal,
+    garagem_id:gid, prefixo, veiculo_id:veiId,
+    data_recolha:dataGravar,
+    horario_real:horarioReal,
     horario_previsto:horarioRef||null,
-    motorista:motoristaRef||null, linha:linhaRef||null,
-    km_hodometro:km, matricula_motorista:matricula,
-    visual_externo:externo, visual_interno:interno,
-    observacao:obs, status,
-    plantao_nome:S.perfil?.nome, plantao_id:S.perfil?.id,
+    motorista:motoristaRef||null,
+    linha:linhaRef||null,
+    km_hodometro:km||null,
+    visual_externo:externo,
+    visual_interno:interno,
+    observacao:obs||null,
+    status,
+    plantao_nome:S.perfil?.nome||null,
+    plantao_id:S.perfil?.id||null,
   });
-  if(error){toast('Erro: '+error.message,'err');return;}
 
-  // Marca frota como disponível se OK
-  if(status==='recebido'&&vei?.id){
-    await sb.from('frota').update({status:'disponivel'}).eq('id',vei.id);
+  if(error){toast('Erro: '+error.message,'err');console.error('recolha error:',error);return;}
+
+  // Marca frota disponível se OK
+  if(status==='recebido'&&veiId){
+    await sb.from('frota').update({status:'disponivel'}).eq('id',veiId);
   }
 
-  // ✅ ATUALIZA soltura_2_10 da próxima escala — marca carro como recolhido
-  const dataAlvo=_rcEscalaData;
-  if(dataAlvo&&dataAlvo>hoje()&&status==='recebido'){
-    const{error:updErr}=await sb.from('soltura_2_10')
-      .update({
-        recolhido:true,
-        recolhido_em:new Date().toISOString(),
-        recolhido_por:S.perfil?.nome,
-        km_recolha:km||null,
-      })
-      .eq('garagem_id',gid)
-      .eq('prefixo',prefixo)
-      .eq('data',dataAlvo);
-    if(updErr) console.warn('Update soltura erro:',updErr.message);
-    else console.log('Recolha gravada na soltura de',dataAlvo,'para',prefixo);
-  } else {
-    console.warn('dataAlvo inválido:',dataAlvo,'hoje:',hoje());
+  // Marca recolhido na soltura D+1
+  if(dataGravar&&dataGravar>hoje()&&status==='recebido'){
+    await sb.from('soltura_2_10').update({
+      recolhido:true,
+      recolhido_em:agora.toISOString(),
+      recolhido_por:S.perfil?.nome,
+      km_recolha:km||null,
+    }).eq('garagem_id',gid).eq('prefixo',prefixo).eq('data',dataGravar);
   }
 
   closeSheet(true);
