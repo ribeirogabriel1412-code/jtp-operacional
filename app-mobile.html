@@ -398,46 +398,8 @@ function renderSoltura(lista, busca, datasComEscala=[]){
   const pct=lista.length?Math.round(saiu/lista.length*100):0;
   const dataFmt=new Date(_sdata+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
 
-  // ── Painel de Zonas ─────────────────────────────────────
-  // Regras de zona por horário
-  const ZONA_FAIXAS=[
-    {z:1,cor:'#3B82F6',label:'Z1',faixa:'04:00–05:00',de:'04:00',ate:'05:00'},
-    {z:2,cor:'#10B981',label:'Z2',faixa:'05:00–06:00',de:'05:00',ate:'06:00'},
-    {z:3,cor:'#F59E0B',label:'Z3',faixa:'05:00–06:00',de:'05:00',ate:'06:00'},
-    {z:4,cor:'#8B5CF6',label:'Z4',faixa:'05:00–06:00',de:'05:00',ate:'06:00'},
-    {z:5,cor:'#EF4444',label:'Z5',faixa:'06:00+',     de:'06:00',ate:'99:99'},
-  ];
-  const horaToMin=h=>{const[hh,mm]=(h||'00:00').split(':').map(Number);return hh*60+mm;};
-  // Conta carros esperados por zona (baseado na faixa horária)
-  const esperadoZona={1:0,2:0,3:0,4:0,5:0};
-  const alocadoZona={1:0,2:0,3:0,4:0,5:0};
-  lista.forEach(r=>{
-    const hm=horaToMin(r.horario_programado);
-    // Esperado: classifica pela faixa
-    if(hm<horaToMin('05:00')) esperadoZona[1]++;
-    else if(hm<horaToMin('06:00')){esperadoZona[2]++;esperadoZona[3]++;esperadoZona[4]++;}
-    else esperadoZona[5]++;
-    // Alocado: tem zona_patio registrada
-    if(r.zona_patio) alocadoZona[r.zona_patio]=(alocadoZona[r.zona_patio]||0)+1;
-  });
-  // Distribui esperado Z2/Z3/Z4 igualmente
-  const esp234=Math.round(esperadoZona[2]/3);
-  esperadoZona[2]=esp234;esperadoZona[3]=esp234;esperadoZona[4]=esp234;
+  // (zonas removidas — substituídas por painel recolha/abastecimento)
 
-  const zonaCards=ZONA_FAIXAS.map(z=>{
-    const esp=esperadoZona[z.z]||0;
-    const aloc=alocadoZona[z.z]||0;
-    const completo=aloc>=esp&&esp>0;
-    const parcial=aloc>0&&aloc<esp;
-    const cor=completo?'var(--green)':parcial?'var(--amber)':'var(--red)';
-    const bg=completo?'#00C48C18':parcial?'#F59E0B18':'#EF444418';
-    const border=completo?'#00C48C40':parcial?'#F59E0B40':'#EF444430';
-    return`<div style="flex:1;background:${bg};border:1px solid ${border};border-radius:10px;padding:8px 6px;text-align:center">
-      <div style="font-size:11px;font-weight:800;color:${z.cor}">${z.label}</div>
-      <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;color:${cor};margin:2px 0">${aloc}<span style="font-size:10px;color:var(--text4)">/${esp}</span></div>
-      <div style="font-size:9px;color:var(--text4)">${z.faixa}</div>
-    </div>`;
-  }).join('');
 
   const cards=filtrada.map(r=>{
     const d=r.saiu===true,n=r.saiu===false;
@@ -504,8 +466,17 @@ function renderSoltura(lista, busca, datasComEscala=[]){
       <div style="display:flex;gap:12px;margin-top:6px;font-size:11px;color:var(--text3)">
         <span>✅ ${saiu}</span><span>❌ ${nao}</span><span>○ ${pend}</span><span style="margin-left:auto">${lista.length} veíc.</span>
       </div>
-      <!-- Painel de Zonas -->
-      <div style="display:flex;gap:6px;margin-top:10px">${zonaCards}</div>
+      <!-- Painel Recolha / Abastecimento -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+        <div style="background:#EF444412;border:1px solid ${window._recMap?.size>0?'#00C48C40':'#EF444430'};border-radius:10px;padding:10px;text-align:center;transition:all .3s" id="painel-rec">
+          <div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:4px">🔑 Recolhidos</div>
+          <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:800;color:${(window._recMap?.size||0)===lista.length&&lista.length>0?'var(--green)':'var(--red)'}"><span id="cnt-rec">${window._recMap?.size||0}</span><span style="font-size:13px;color:var(--text3)">/${lista.length}</span></div>
+        </div>
+        <div style="background:#EF444412;border:1px solid ${window._abMap?.size>0?'#00C48C40':'#EF444430'};border-radius:10px;padding:10px;text-align:center;transition:all .3s" id="painel-ab">
+          <div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:4px">⛽ Abastecidos</div>
+          <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:800;color:${(window._abMap?.size||0)===lista.length&&lista.length>0?'var(--green)':'var(--red)'}"><span id="cnt-ab">${window._abMap?.size||0}</span><span style="font-size:13px;color:var(--text3)">/${lista.length}</span></div>
+        </div>
+      </div>
       <!-- Busca -->
       <div style="position:relative;margin-top:10px">
         <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:14px">🔍</span>
@@ -1389,19 +1360,30 @@ async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
 // ══════════════════════════════════════════════════════════
 // ABASTECIMENTO (Frentista)
 // ══════════════════════════════════════════════════════════
-let _abData=hoje(), _abEscalaLista=[];
+let _abData=hoje(), _abEscalaLista=[], _abEscalaData='';
 
 async function telaAbastecimento(){
   const gid=getGid();
   setMain('<div class="loading"><div class="sp"></div></div>');
 
-  // Busca escala de referência (amanhã preferencial)
+  // Busca escalas disponíveis — sempre pega a próxima futura
   const base=new Date();
-  const amanha=new Date(base);amanha.setDate(amanha.getDate()+1);
-  const dataAmanha=amanha.toISOString().split('T')[0];
-  const{data:escalaAmanha}=await sb.from('soltura_2_10').select('prefixo,linha,motorista,horario_programado').eq('garagem_id',gid).eq('data',dataAmanha).order('horario_programado');
-  const{data:escalaHoje}=await sb.from('soltura_2_10').select('prefixo,linha,motorista,horario_programado').eq('garagem_id',gid).eq('data',hoje()).order('horario_programado');
-  _abEscalaLista=(escalaAmanha?.length?escalaAmanha:escalaHoje)||[];
+  const datas=[];
+  for(let i=-1;i<=4;i++){const d=new Date(base);d.setDate(d.getDate()+i);datas.push(d.toISOString().split('T')[0]);}
+  const{data:escalasDisp}=await sb.from('soltura_2_10').select('data').eq('garagem_id',gid).in('data',datas);
+  const datasEscala=[...new Set((escalasDisp||[]).map(r=>r.data))].sort();
+
+  // Sempre prefere próxima futura (D+1 ou mais)
+  if(!_abEscalaData||!datasEscala.includes(_abEscalaData)){
+    const hojeStr=hoje();
+    const futuras=datasEscala.filter(d=>d>hojeStr).sort();
+    const passadas=datasEscala.filter(d=>d<=hojeStr).sort().reverse();
+    _abEscalaData=futuras[0]||passadas[0]||hojeStr;
+  }
+
+  const{data:escala}=await sb.from('soltura_2_10').select('prefixo,linha,motorista,horario_programado')
+    .eq('garagem_id',gid).eq('data',_abEscalaData).order('horario_programado');
+  _abEscalaLista=escala||[];
 
   // Abastecimentos já feitos hoje
   let abastMap={};
@@ -1428,18 +1410,24 @@ async function telaAbastecimento(){
     </div>`;
   }).join('');
 
-  const dataExecAb=new Date(_abData+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
-  const dataRefAb=_abEscalaLista.length>0?(new Date((_abEscalaLista[0]?.data||_abData)+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'})):dataExecAb;
+  const dataRef=new Date(_abEscalaData+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+  const chipsAb=datasEscala.map(d=>{
+    const ativo=d===_abEscalaData;
+    const dFmt=new Date(d+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+    const eHoje=d===hoje();
+    return`<button onclick="_abEscalaData='${d}';telaAbastecimento()" style="flex-shrink:0;padding:6px 12px;border-radius:20px;border:1px solid ${ativo?'var(--blue)':'var(--border)'};background:${ativo?'#2563EB18':'transparent'};color:${ativo?'var(--blue)':eHoje?'var(--text)':'var(--text3)'};font-size:11px;font-weight:${ativo?'700':'500'};font-family:inherit;cursor:pointer;white-space:nowrap">${eHoje?'Hoje · ':''}${dFmt}</button>`;
+  }).join('');
 
   render(`
     <div style="padding:14px 14px 0">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
         <div>
           <div style="font-weight:800;font-size:17px">⛽ Abastecimento</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">Executando: <strong style="color:var(--text)">${dataExecAb}</strong></div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Referência: <strong style="color:var(--blue)">${dataRef}</strong></div>
         </div>
         <button onclick="telaAbastecimento()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>
       </div>
+      <div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:8px;scrollbar-width:none">${chipsAb||''}</div>
       <div class="prog"><div class="prog-f" style="width:${pct}%;background:${pct===100?'var(--green)':'var(--blue)'}"></div></div>
       <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:11px;color:var(--text3);margin-bottom:10px">
         <span>⛽ ${tot}/${totEscala} abastecidos</span><span>${pct}%</span>
