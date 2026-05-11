@@ -345,26 +345,29 @@ async function telaSoltura(dataFiltro=null){
     _sdata=datasComEscala.includes(hoje())?hoje():datasComEscala[datasComEscala.length-1];
   }
 
-  const{data:lista}=await sb.from('soltura_2_10').select('*,recolhido,recolhido_em,abastecido,abastecido_em')
+  const{data:lista}=await sb.from('soltura_2_10').select('*')
     .eq('garagem_id',gid).eq('data',_sdata).order('horario_programado');
 
   // Busca recolhas e abastecimentos — direto da soltura_2_10 (campo recolhido)
   // e da tabela de abastecimento
   let recSet=new Set(), abSet=new Set();
   let recHoraMap=new Map(), abHoraMap=new Map();
-  // Recolha: lê campo recolhido da própria soltura
+  // Indicadores: lê recolhido/abastecido direto dos campos da soltura
   (lista||[]).forEach(r=>{
-    if(r.recolhido){
+    if(r.recolhido===true){
       recSet.add(r.prefixo);
-      if(r.recolhido_em) recHoraMap.set(r.prefixo,new Date(r.recolhido_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}));
+      if(r.recolhido_em){
+        try{recHoraMap.set(r.prefixo,new Date(r.recolhido_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}));}catch(e){}
+      }
     }
-    // Abastecimento: lê campo abastecido da própria soltura
-    if(r.abastecido){
+    if(r.abastecido===true){
       abSet.add(r.prefixo);
-      if(r.abastecido_em) abHoraMap.set(r.prefixo,new Date(r.abastecido_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}));
+      if(r.abastecido_em){
+        try{abHoraMap.set(r.prefixo,new Date(r.abastecido_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}));}catch(e){}
+      }
     }
   });
-  // Fallback abastecimento da tabela separada (para registros antigos)
+  // Fallback abastecimento da tabela separada
   try{
     const{data:a}=await sb.from('abastecimento_checklist').select('prefixo,horario').eq('garagem_id',gid).eq('data',_sdata);
     if(a){a.forEach(x=>{abSet.add(x.prefixo);if(x.horario&&!abHoraMap.has(x.prefixo))abHoraMap.set(x.prefixo,x.horario);});}
@@ -1358,10 +1361,10 @@ async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
     await sb.from('frota').update({status:'disponivel'}).eq('id',vei.id);
   }
 
-  // ✅ ATUALIZA soltura_2_10 de amanhã — marca carro como recolhido
-  // _rcEscalaData é sempre D+1 (a escala da próxima operação)
-  if(_rcEscalaData&&status==='recebido'){
-    await sb.from('soltura_2_10')
+  // ✅ ATUALIZA soltura_2_10 da próxima escala — marca carro como recolhido
+  const dataAlvo=_rcEscalaData;
+  if(dataAlvo&&dataAlvo>hoje()&&status==='recebido'){
+    const{error:updErr}=await sb.from('soltura_2_10')
       .update({
         recolhido:true,
         recolhido_em:new Date().toISOString(),
@@ -1370,7 +1373,11 @@ async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
       })
       .eq('garagem_id',gid)
       .eq('prefixo',prefixo)
-      .eq('data',_rcEscalaData);
+      .eq('data',dataAlvo);
+    if(updErr) console.warn('Update soltura erro:',updErr.message);
+    else console.log('Recolha gravada na soltura de',dataAlvo,'para',prefixo);
+  } else {
+    console.warn('dataAlvo inválido:',dataAlvo,'hoje:',hoje());
   }
 
   closeSheet(true);
