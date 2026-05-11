@@ -523,6 +523,29 @@ tr:hover td{background:#0F172A80}
       <input class="fi" id="m22s-obs" placeholder="Ex: Aguardando chegada da peça, prazo 2 dias..." style="margin-bottom:0">
     </div>
 
+    <!-- Campos de custo e peças -->
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">💰 Custos & Peças</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div>
+          <label class="fl" style="color:var(--amber)">Custo Previsto (R$)</label>
+          <input class="fi" id="m22s-custo-prev" type="number" placeholder="0,00" step="0.01" min="0" style="margin-bottom:0;font-family:'DM Mono',monospace">
+        </div>
+        <div>
+          <label class="fl" style="color:var(--blue)">Custo Real (R$)</label>
+          <input class="fi" id="m22s-custo-real" type="number" placeholder="0,00" step="0.01" min="0" style="margin-bottom:0;font-family:'DM Mono',monospace">
+        </div>
+      </div>
+      <div style="margin-bottom:8px">
+        <label class="fl">Peças Necessárias</label>
+        <textarea class="fi" id="m22s-pecas-nec" rows="2" placeholder="Peças necessárias para execução..." style="margin-bottom:0;resize:vertical"></textarea>
+      </div>
+      <div>
+        <label class="fl">Peças Utilizadas</label>
+        <textarea class="fi" id="m22s-pecas-util" rows="2" placeholder="Peças efetivamente utilizadas..." style="margin-bottom:0;resize:vertical"></textarea>
+      </div>
+    </div>
+
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
       <button class="btn-sec" onclick="closeM('modal-22-status')">Cancelar</button>
       <button class="btn-success" onclick="atualizarStatus22()">✓ Confirmar</button>
@@ -3199,6 +3222,66 @@ async function setPrioridadeOS(ocId, prioridade){
   renderFerr22('ativas');
 }
 
+// Nova OS com custo previsto e peças necessárias
+function abrirNovaOcorrencia(){
+  const gid=getGid();
+  const garagem=S.garagens.find(g=>g.id===gid);
+  showModal(`
+    <div class="modal-header"><h3>+ Nova Ocorrência</h3><button onclick="closeModal()" class="btn-close">✕</button></div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label class="fl">Prefixo *</label><input class="fi" id="no-pref" placeholder="Ex: 02.015" style="font-family:'DM Mono',monospace"></div>
+        <div><label class="fl">Tipo *</label><select class="fi" id="no-tipo">
+          <option value="preventiva_leve">🟡 Preventiva Leve</option>
+          <option value="preventiva_pesada">🟣 Preventiva Pesada</option>
+          <option value="corretiva">🔴 Corretiva</option>
+          <option value="eletrica">⚡ Elétrica</option>
+          <option value="funilaria">🔨 Funilaria</option>
+          <option value="pneu">⭕ Pneu</option>
+          <option value="sinistro">⚠️ Sinistro</option>
+        </select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label class="fl">Mecânico</label><input class="fi" id="no-mec" placeholder="Nome do mecânico"></div>
+        <div><label class="fl">Custo Previsto (R$)</label><input class="fi" id="no-custo-prev" type="number" placeholder="0,00" step="0.01" min="0" style="font-family:'DM Mono',monospace"></div>
+      </div>
+      <div><label class="fl">Peças Necessárias</label><textarea class="fi" id="no-pecas" rows="2" placeholder="Liste as peças necessárias para execução..." style="resize:vertical"></textarea></div>
+      <div><label class="fl">Descrição / Defeito</label><textarea class="fi" id="no-desc" rows="2" placeholder="Descreva o defeito ou serviço..." style="resize:vertical"></textarea></div>
+      <div style="display:flex;gap:10px">
+        <button onclick="closeModal()" class="btn-sec" style="flex:1">Cancelar</button>
+        <button onclick="salvarNovaOcorrencia('${gid}')" class="btn-add" style="flex:1">Abrir OS</button>
+      </div>
+    </div>`);
+}
+
+async function salvarNovaOcorrencia(gid){
+  const prefixo=document.getElementById('no-pref')?.value?.trim().toUpperCase();
+  const tipo=document.getElementById('no-tipo')?.value;
+  const mecanico=document.getElementById('no-mec')?.value?.trim()||null;
+  const custoPrev=parseFloat(document.getElementById('no-custo-prev')?.value||0)||null;
+  const pecas=document.getElementById('no-pecas')?.value?.trim()||null;
+  const desc=document.getElementById('no-desc')?.value?.trim()||null;
+  if(!prefixo){toast('Informe o prefixo','err');return;}
+  const{data:vei}=await sb.from('frota').select('id').eq('garagem_id',gid).eq('prefixo',prefixo).single().catch(()=>({data:null}));
+  const a=new Date();
+  const sigla=(S.garagens.find(x=>x.id===gid)?.sigla||'JTP').slice(0,3);
+  const num=`2.2/${String(a.getDate()).padStart(2,'0')}${String(a.getMonth()+1).padStart(2,'0')}${String(a.getFullYear()).slice(2)}-${String(a.getHours()).padStart(2,'0')}${String(a.getMinutes()).padStart(2,'0')}/${sigla}`;
+  const{error}=await sb.from('ocorrencias_22').insert({
+    garagem_id:gid, veiculo_id:vei?.id||null, prefixo, tipo,
+    mecanico, numero:num, status:'em_manutencao',
+    hora_entrada:new Date().toISOString(),
+    aberto_por:S.perfil?.id, aberto_por_nome:S.perfil?.nome,
+    custo_previsto:custoPrev,
+    pecas_necessarias:pecas,
+    descricao:desc,
+  });
+  if(error){toast('Erro: '+error.message,'err');return;}
+  if(vei?.id) await sb.from('frota').update({status:'manutencao'}).eq('id',vei.id);
+  closeModal();
+  toast('✅ OS aberta!');
+  renderFerrPCM('painel');
+}
+
 function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
   S.editId22=id;
   document.getElementById('m22s-info').textContent=prefixo;
@@ -3224,6 +3307,15 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
     document.getElementById('m22s-desc-atual').textContent=oc.descricao||'—';
     if(oc.praxio_os_id) document.getElementById('m22s-os').value=oc.praxio_os_id;
     if(oc.mecanico) document.getElementById('m22s-mecanico').value=oc.mecanico;
+    // Preenche campos de custo e peças se existirem no modal
+    const cpEl=document.getElementById('m22s-custo-prev');
+    const crEl=document.getElementById('m22s-custo-real');
+    const puEl=document.getElementById('m22s-pecas-util');
+    const pnEl=document.getElementById('m22s-pecas-nec');
+    if(cpEl) cpEl.value=oc.custo_previsto||'';
+    if(crEl) crEl.value=oc.custo_real||'';
+    if(puEl) puEl.value=oc.pecas_utilizadas||'';
+    if(pnEl) pnEl.value=oc.pecas_necessarias||'';
   });
 
   // Carrega checklist de liberação para mostrar progresso e botões
@@ -3820,12 +3912,21 @@ async function atualizarStatus22(){
     }
   }
 
+  const custoPrev=parseFloat(document.getElementById('m22s-custo-prev')?.value||0)||null;
+  const custoReal=parseFloat(document.getElementById('m22s-custo-real')?.value||0)||null;
+  const pecasNec=document.getElementById('m22s-pecas-nec')?.value?.trim()||null;
+  const pecasUtil=document.getElementById('m22s-pecas-util')?.value?.trim()||null;
+
   const payload={
     status:novoStatus,
     mecanico:mecanico||oc.mecanico||null,
     updated_at:new Date().toISOString(),
     ...(os&&{praxio_os_id:os}),
     ...(previsao&&{hora_previsao:new Date(previsao).toISOString()}),
+    ...(custoPrev!==null&&{custo_previsto:custoPrev}),
+    ...(custoReal!==null&&{custo_real:custoReal}),
+    ...(pecasNec&&{pecas_necessarias:pecasNec}),
+    ...(pecasUtil&&{pecas_utilizadas:pecasUtil}),
     ...(isLib&&{
       hora_liberacao:horaLib?new Date(horaLib).toISOString():new Date().toISOString(),
       fechado_por_nome:S.perfil.nome,
@@ -4394,6 +4495,10 @@ async function enviarResumoWpp(){
 // ══════════════════════════════════════════════════════════════
 // PAINEL PCM — Tela unificada: 2.11 + 2.2 + 2.6
 // ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// PAINEL PCM — Reformulado
+// Fluxo: Orçamento → Abrir OS → Acompanhar → Fechar OS
+// ══════════════════════════════════════════════════════════════
 async function renderFerrPCM(aba='painel'){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
   const gid=getGid();
@@ -4402,147 +4507,72 @@ async function renderFerrPCM(aba='painel'){
 
   const tabs=`<div class="filtros">
     <button class="filtro-btn${aba==='painel'?' active':''}" onclick="renderFerrPCM('painel')">📊 Painel</button>
-    <button class="filtro-btn${aba==='custos'?' active':''}" onclick="renderFerrPCM('custos')">💰 Custos 2.6</button>
     <button class="filtro-btn${aba==='historico'?' active':''}" onclick="renderFerrPCM('historico')">📋 Histórico</button>
   </div>`;
 
   setMain(`<div class="loading"><div class="spinner"></div></div>`);
-
-  // ── ABA CUSTOS (2.6) ──────────────────────────────────────
-  if(aba==='custos'){
-    const[{data:ocs},{data:custos}]=await Promise.all([
-      sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado').order('hora_entrada'),
-      sb.from('previsibilidade_26').select('*').eq('garagem_id',gid).eq('data',data),
-    ]);
-    const cm={};(custos||[]).forEach(c=>{cm[c.ocorrencia_id]={prev:c.custo_prev,real:c.custo_real,obs:c.obs};});
-    let totalPrev=0,totalReal=0,totalPrev_corr=0,totalPrev_prev=0,totalReal_corr=0,totalReal_prev=0;
-    (custos||[]).forEach(c=>{totalPrev+=parseFloat(c.custo_prev||0);totalReal+=parseFloat(c.custo_real||0);});
-    (ocs||[]).forEach(o=>{
-      const c=cm[o.id]||{};
-      const isCorr=o.tipo==='corretiva';
-      if(isCorr){totalPrev_corr+=parseFloat(c.prev||0);totalReal_corr+=parseFloat(c.real||0);}
-      else{totalPrev_prev+=parseFloat(c.prev||0);totalReal_prev+=parseFloat(c.real||0);}
-    });
-    window._ids26=(ocs||[]).map(o=>o.id);
-    window._gid26=gid;window._data26=data;
-
-    const rows=(ocs||[]).map(o=>{
-      const c=cm[o.id]||{};
-      const isCorr=o.tipo==='corretiva';
-      return`<tr style="border-bottom:1px solid var(--border2)">
-        <td style="padding:8px 10px">
-          <div style="font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${o.prefixo}</div>
-          <div style="font-size:10px;color:${isCorr?'var(--red)':'var(--amber)'}">${isCorr?'🔴 Corretiva':'🟡 Preventiva'}</div>
-        </td>
-        <td style="padding:8px 6px">
-          <div style="position:relative">
-            <span style="position:absolute;left:6px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:11px">R$</span>
-            <input type="number" id="prev-${o.id}" placeholder="0" min="0" step="0.01" value="${c.prev||''}"
-              onchange="atualizarTotal26()"
-              style="width:90px;padding:5px 4px 5px 22px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--amber);font-size:12px;font-family:'DM Mono',monospace;outline:none">
-          </div>
-        </td>
-        <td style="padding:8px 6px">
-          <div style="position:relative">
-            <span style="position:absolute;left:6px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:11px">R$</span>
-            <input type="number" id="real-${o.id}" placeholder="0" min="0" step="0.01" value="${c.real||''}"
-              onchange="atualizarTotal26()"
-              style="width:90px;padding:5px 4px 5px 22px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--blue);font-size:12px;font-family:'DM Mono',monospace;outline:none">
-          </div>
-        </td>
-        <td style="padding:8px 6px">
-          <input type="text" id="obs-26-${o.id}" placeholder="Peças..." value="${c.obs||''}"
-            style="width:110px;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:11px;padding:3px;outline:none;font-family:'DM Sans',sans-serif">
-        </td>
-      </tr>`;
-    }).join('');
-
-    setMain(`${back}${tabs}
-      <!-- Totais por tipo -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-        <div class="kpi neu">
-          <div class="kpi-label">🔴 Corretiva — Previsto</div>
-          <div class="kpi-val" style="color:var(--red);font-size:16px" id="tot-corr-prev">R$ ${totalPrev_corr.toFixed(2)}</div>
-          <div class="kpi-meta" style="color:var(--blue)">Real: R$ ${totalReal_corr.toFixed(2)}</div>
-        </div>
-        <div class="kpi neu">
-          <div class="kpi-label">🟡 Preventiva — Previsto</div>
-          <div class="kpi-val" style="color:var(--amber);font-size:16px" id="tot-prev-prev">R$ ${totalPrev_prev.toFixed(2)}</div>
-          <div class="kpi-meta" style="color:var(--blue)">Real: R$ ${totalReal_prev.toFixed(2)}</div>
-        </div>
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div style="font-size:13px;color:var(--text3)">${(ocs||[]).length} veículos · Total previsto: <strong style="color:var(--amber)">R$ ${totalPrev.toFixed(2)}</strong> · Real: <strong style="color:var(--blue)">R$ ${totalReal.toFixed(2)}</strong></div>
-        <button onclick="salvar26()" class="btn-add">💾 Salvar</button>
-      </div>
-      ${!(ocs||[]).length
-        ?`<div class="empty"><div style="font-size:40px">✅</div><div style="color:var(--green);font-weight:600">Nenhuma OS em aberto</div></div>`
-        :`<div class="tbl-wrap"><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
-          <thead><tr style="background:var(--surface2)">
-            <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--text3);text-transform:uppercase">Veículo</th>
-            <th style="padding:8px 6px;text-align:left;font-size:10px;color:var(--amber);text-transform:uppercase">Previsto R$</th>
-            <th style="padding:8px 6px;text-align:left;font-size:10px;color:var(--blue);text-transform:uppercase">Real R$</th>
-            <th style="padding:8px 6px;text-align:left;font-size:10px;color:var(--text3);text-transform:uppercase">Obs / Peças</th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table></div></div>`}
-    `);
-    return;
-  }
 
   // ── ABA HISTÓRICO ─────────────────────────────────────────
   if(aba==='historico'){
     const{data:hist}=await sb.from('ocorrencias_22').select('*')
       .eq('garagem_id',gid).eq('status','liberado')
       .order('hora_liberacao',{ascending:false}).limit(30);
+
     const rows=(hist||[]).map(o=>{
       const tempos=o.hora_entrada&&o.hora_liberacao?(new Date(o.hora_liberacao)-new Date(o.hora_entrada))/3600000:null;
       const h=tempos?Math.floor(tempos):0,m=tempos?Math.round((tempos%1)*60):0;
+      const isCorr=o.tipo==='corretiva';
       return`<tr style="border-bottom:1px solid var(--border2)">
         <td style="padding:8px 10px;font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${o.prefixo}</td>
-        <td style="padding:8px 10px;font-size:11px;color:${o.tipo==='corretiva'?'var(--red)':'var(--amber)'}">${o.tipo?.replace('_',' ')||'—'}</td>
-        <td style="padding:8px 10px;font-size:11px;color:var(--text3)">${o.hora_entrada?new Date(o.hora_entrada).toLocaleDateString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit'}):'—'}</td>
-        <td style="padding:8px 10px;font-size:11px;color:var(--green)">${o.hora_liberacao?new Date(o.hora_liberacao).toLocaleTimeString('pt-BR',{timeZone:'America/Manaus',hour:'2-digit',minute:'2-digit'}):'—'}</td>
-        <td style="padding:8px 10px;font-family:'DM Mono',monospace;font-size:11px">${tempos?h+'h'+m+'m':'—'}</td>
-        <td style="padding:8px 10px;font-size:11px;color:var(--text3)">${o.mecanico||'—'}</td>
+        <td style="padding:8px 10px;font-size:11px;color:${isCorr?'var(--red)':'var(--amber)'}">${o.tipo?.replace('_',' ')||'—'}</td>
+        <td style="padding:8px 10px;font-size:11px">${o.mecanico||'—'}</td>
+        <td style="padding:8px 10px;font-size:11px;color:var(--text3)">${tempos?h+'h'+m+'m':'—'}</td>
+        <td style="padding:8px 10px;font-family:'DM Mono',monospace;color:var(--amber)">${o.custo_previsto?'R$ '+parseFloat(o.custo_previsto).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</td>
+        <td style="padding:8px 10px;font-family:'DM Mono',monospace;color:var(--blue)">${o.custo_real?'R$ '+parseFloat(o.custo_real).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</td>
+        <td style="padding:8px 10px;font-size:11px;color:var(--text3)">${o.pecas_utilizadas||'—'}</td>
       </tr>`;
     }).join('');
+
     setMain(`${back}${tabs}
       <div style="font-size:13px;font-weight:700;margin-bottom:12px">Últimas ${(hist||[]).length} OS liberadas</div>
       <div class="tbl-wrap"><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
         <thead><tr style="background:var(--surface2)">
           <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--text3)">Prefixo</th>
           <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--text3)">Tipo</th>
-          <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--text3)">Entrada</th>
-          <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--text3)">Liberação</th>
-          <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--text3)">MTTR</th>
           <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--text3)">Mecânico</th>
+          <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--text3)">Tempo</th>
+          <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--amber)">Previsto</th>
+          <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--blue)">Real</th>
+          <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--text3)">Peças</th>
         </tr></thead>
-        <tbody>${rows||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text3)">Nenhuma OS liberada</td></tr>'}</tbody>
+        <tbody>${rows||'<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text3)">Nenhuma OS liberada</td></tr>'}</tbody>
       </table></div></div>
     `);
     return;
   }
 
   // ── ABA PAINEL (principal) ────────────────────────────────
-  const[{data:ocs},{data:frota},{data:custosDia}]=await Promise.all([
-    sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado').order('hora_entrada'),
+  const[{data:ocs},{data:frota},{data:orcamento}]=await Promise.all([
+    sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado')
+      .order('hora_entrada',{ascending:true}),
     sb.from('frota').select('*').eq('garagem_id',gid),
-    sb.from('previsibilidade_26').select('*').eq('garagem_id',gid).eq('data',data),
+    sb.from('pcm_orcamento').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',S.turno||'dia')
+      .order('created_at',{ascending:false}).limit(1).catch(()=>({data:[]})),
   ]);
 
   // KPIs
   const totalFrota=(frota||[]).length;
   const parados=(ocs||[]).length;
-  const agPeca=(ocs||[]).filter(o=>o.status==='aguardando_peca').length;
-  const prevVencida=(ocs||[]).filter(o=>o.hora_previsao&&new Date(o.hora_previsao)<agora).length;
-  const corretivas=(ocs||[]).filter(o=>o.tipo==='corretiva').length;
-  const preventivas=(ocs||[]).filter(o=>o.tipo?.includes('preventiva')).length;
   const pctDisp=totalFrota>0?(((totalFrota-parados)/totalFrota)*100).toFixed(1):100;
-  const cmDia={};(custosDia||[]).forEach(c=>{cmDia[c.ocorrencia_id]=c;});
-  const totalCustoPrev=(custosDia||[]).reduce((s,c)=>s+parseFloat(c.custo_prev||0),0);
+  const corretivas=(ocs||[]).filter(o=>o.tipo==='corretiva').length;
+  const agPeca=(ocs||[]).filter(o=>o.status==='aguardando_peca').length;
+  const totalPrevisto=(ocs||[]).reduce((s,o)=>s+parseFloat(o.custo_previsto||0),0);
+  const totalReal=(ocs||[]).reduce((s,o)=>s+parseFloat(o.custo_real||0),0);
+  const orc=orcamento?.[0];
+  const orcDisp=orc?.valor_disponivel||0;
+  const orcSaldo=orcDisp-totalPrevisto;
 
-  // Ordena: urgente → normal → aguardando
+  // Ordena por prioridade
   const PORD={urgente:0,normal:1,aguardando:2};
   const lista=(ocs||[]).sort((a,b)=>(PORD[a.prioridade||'normal'])-(PORD[b.prioridade||'normal']));
 
@@ -4551,9 +4581,7 @@ async function renderFerrPCM(aba='painel'){
     normal:  {ic:'🟢',l:'EM ANDAMENTO',c:'#00C48C',bg:'#00C48C18',border:'#00C48C40'},
     aguardando:{ic:'🟡',l:'AGUARDANDO',c:'#F59E0B',bg:'#F59E0B18',border:'#F59E0B40'},
   };
-  const SC={em_manutencao:{l:'Em Manutenção',c:'var(--amber)',cls:'b-manut'},
-            aguardando_peca:{l:'Ag. Peça',c:'var(--red)',cls:'b-nok'},
-            aguardando_aprovacao:{l:'Ag. Aprovação',c:'#8B5CF6',cls:'b-aprov'}};
+  const SC={em_manutencao:{l:'Manutenção',c:'var(--amber)'},aguardando_peca:{l:'Ag. Peça',c:'var(--red)'},aguardando_aprovacao:{l:'Ag. Aprovação',c:'#8B5CF6'}};
 
   const cards=lista.map(o=>{
     const min=Math.round((agora-new Date(o.hora_entrada))/60000);
@@ -4561,13 +4589,12 @@ async function renderFerrPCM(aba='painel'){
     const tempo=h>0?`${h}h${m}min`:`${m}min`;
     const venc=o.hora_previsao&&new Date(o.hora_previsao)<agora;
     const prio=PDEF[o.prioridade||'normal'];
-    const st=SC[o.status]||{l:o.status,c:'var(--text3)',cls:''};
-    const custo=cmDia[o.id];
+    const st=SC[o.status]||{l:o.status,c:'var(--text3)'};
     const isCorr=o.tipo==='corretiva';
     const borderC=o.prioridade==='urgente'?'#EF4444':o.prioridade==='aguardando'?'#F59E0B':'var(--border)';
 
     return`<div style="background:var(--surface);border:1px solid ${borderC};border-left:4px solid ${prio.c};border-radius:12px;padding:14px 16px;margin-bottom:10px">
-      <!-- Linha 1: Prefixo + tipo + status + tempo -->
+      <!-- Linha 1: Prefixo + tipo + tempo + status -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div style="display:flex;align-items:center;gap:10px">
           <span style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700">${o.prefixo}</span>
@@ -4575,71 +4602,98 @@ async function renderFerrPCM(aba='painel'){
         </div>
         <div style="display:flex;gap:6px;align-items:center">
           <span style="color:var(--text4);font-size:11px">⏱ ${tempo}</span>
-          <span class="badge ${st.cls}" style="font-size:10px">${st.l}</span>
+          <span class="badge" style="color:${st.c};background:${st.c}18;border-color:${st.c}40;font-size:10px">${st.l}</span>
         </div>
       </div>
-      <!-- Linha 2: Prioridade + botões rápidos -->
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+      <!-- Linha 2: Prioridade -->
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
         <span style="background:${prio.bg};border:1px solid ${prio.border};color:${prio.c};border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700">${prio.ic} ${prio.l}</span>
-        ${Object.entries(PDEF).map(([k,p])=>`<button onclick="setPrioridadeOS('${o.id}','${k}')" style="padding:2px 7px;border-radius:5px;border:1px solid ${p.border};background:${(o.prioridade||'normal')===k?p.bg:'transparent'};color:${p.c};font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">${p.ic}</button>`).join('')}
+        ${Object.entries(PDEF).map(([k,p])=>`<button onclick="setPrioridadeOS('${o.id}','${k}')"
+          style="padding:2px 7px;border-radius:5px;border:1px solid ${p.border};background:${(o.prioridade||'normal')===k?p.bg:'transparent'};color:${p.c};font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">${p.ic}</button>`).join('')}
+        <button onclick="abrirModalStatus22('${o.id}','${o.prefixo}','${o.status}','${o.mecanico||''}')"
+          style="margin-left:auto;padding:3px 10px;border-radius:6px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Atualizar →</button>
       </div>
-      <!-- Linha 3: Mecânico + previsão + custo inline -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;margin-bottom:8px">
+      <!-- Linha 3: Info -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;margin-bottom:10px">
         <div><span style="color:var(--text3)">Mecânico:</span> ${o.mecanico||'<span style="color:var(--text4)">—</span>'}</div>
         <div><span style="color:${venc?'var(--red)':'var(--text3)'}">Previsão:</span> <span style="color:${venc?'var(--red)':'var(--text)'}">${o.hora_previsao?new Date(o.hora_previsao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—'}${venc?' ⚠️':''}</span></div>
+        ${o.pecas_necessarias?`<div style="grid-column:1/-1;color:var(--text3)">🔩 <strong>Peças:</strong> ${o.pecas_necessarias}</div>`:''}
         ${o.descricao?`<div style="grid-column:1/-1;color:var(--text3)">📝 ${o.descricao}</div>`:''}
       </div>
-      <!-- Linha 4: Custo rápido -->
-      <div style="display:flex;gap:8px;align-items:center;padding:8px 10px;background:var(--surface2);border-radius:8px">
-        <span style="font-size:10px;color:var(--text3);font-weight:700;flex-shrink:0">💰 Custo</span>
-        <div style="display:flex;gap:6px;flex:1">
-          <div style="position:relative;flex:1">
-            <span style="position:absolute;left:5px;top:50%;transform:translateY(-50%);font-size:9px;color:var(--amber)">Prev R$</span>
-            <input type="number" id="qp-prev-${o.id}" value="${custo?.custo_prev||''}" placeholder="0"
-              style="width:100%;padding:5px 4px 5px 46px;background:var(--surface);border:1px solid var(--border);border-radius:5px;color:var(--amber);font-size:11px;font-family:'DM Mono',monospace;outline:none"
-              onchange="salvarCustoRapido('${o.id}','${gid}','${data}')">
-          </div>
-          <div style="position:relative;flex:1">
-            <span style="position:absolute;left:5px;top:50%;transform:translateY(-50%);font-size:9px;color:var(--blue)">Real R$</span>
-            <input type="number" id="qp-real-${o.id}" value="${custo?.custo_real||''}" placeholder="0"
-              style="width:100%;padding:5px 4px 5px 42px;background:var(--surface);border:1px solid var(--border);border-radius:5px;color:var(--blue);font-size:11px;font-family:'DM Mono',monospace;outline:none"
-              onchange="salvarCustoRapido('${o.id}','${gid}','${data}')">
-          </div>
+      <!-- Linha 4: Custos -->
+      <div style="display:flex;gap:8px;padding:8px 10px;background:var(--surface2);border-radius:8px;align-items:center">
+        <div style="flex:1;text-align:center">
+          <div style="font-size:9px;color:var(--amber);font-weight:700;margin-bottom:2px">PREVISTO</div>
+          <div style="font-family:'DM Mono',monospace;font-size:13px;color:var(--amber)">${o.custo_previsto?'R$ '+parseFloat(o.custo_previsto).toFixed(2):'—'}</div>
         </div>
-        <button onclick="abrirModalStatus22('${o.id}','${o.prefixo}','${o.status}','${o.mecanico||''}')" style="background:var(--blue);border:none;border-radius:6px;padding:5px 10px;color:#fff;font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;flex-shrink:0">Atualizar →</button>
+        <div style="width:1px;height:30px;background:var(--border)"></div>
+        <div style="flex:1;text-align:center">
+          <div style="font-size:9px;color:var(--blue);font-weight:700;margin-bottom:2px">REAL</div>
+          <div style="font-family:'DM Mono',monospace;font-size:13px;color:var(--blue)">${o.custo_real?'R$ '+parseFloat(o.custo_real).toFixed(2):'—'}</div>
+        </div>
+        <div style="width:1px;height:30px;background:var(--border)"></div>
+        <div style="flex:1;text-align:center">
+          <div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:2px">PEÇAS USADAS</div>
+          <div style="font-size:10px;color:var(--text2)">${o.pecas_utilizadas||'<span style="color:var(--text4)">—</span>'}</div>
+        </div>
       </div>
     </div>`;
   }).join('');
 
   setMain(`${back}${tabs}
-    <!-- KPIs -->
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
+    <!-- 1. ORÇAMENTO DO TURNO -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:13px;font-weight:700">💰 Orçamento do Turno</div>
+        <span style="font-size:10px;color:var(--text3)">${S.turno==='dia'?'☀️ Dia':'🌙 Noite'} · ${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:4px">DISPONÍVEL</div>
+          <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;color:var(--green)" id="orc-disp">R$ ${orcDisp.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:4px">PREVISTO</div>
+          <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;color:var(--amber)">R$ ${totalPrevisto.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:4px">SALDO</div>
+          <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;color:${orcSaldo>=0?'var(--green)':'var(--red)'}">R$ ${orcSaldo.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div style="position:relative;flex:1">
+          <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3)">R$</span>
+          <input type="number" id="orc-input" placeholder="Digite o valor disponível do Power BI..." value="${orcDisp||''}"
+            style="width:100%;padding:9px 10px 9px 28px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:'DM Mono',monospace;outline:none">
+        </div>
+        <button onclick="salvarOrcamento('${gid}','${data}')" class="btn-add" style="white-space:nowrap">💾 Salvar</button>
+      </div>
+    </div>
+    <!-- 2. KPIs -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">
       <div class="kpi ${parseFloat(pctDisp)>=95?'ok':'nok'}">
-        <div class="kpi-label">Disponibilidade</div>
+        <div class="kpi-label">Disponib.</div>
         <div class="kpi-val" style="color:${parseFloat(pctDisp)>=95?'var(--green)':'var(--red)'}">${pctDisp}%</div>
-        <div class="kpi-meta">Meta: 95%</div>
       </div>
       <div class="kpi ${parados>0?'nok':'ok'}">
         <div class="kpi-label">Parados</div>
         <div class="kpi-val" style="color:${parados>0?'var(--red)':'var(--green)'}">${parados}</div>
-        <div class="kpi-meta">${corretivas} corr · ${preventivas} prev</div>
       </div>
-      <div class="kpi ${prevVencida>0?'nok':'neu'}">
-        <div class="kpi-label">Prev. Vencida</div>
-        <div class="kpi-val" style="color:${prevVencida>0?'var(--red)':'var(--text3)'}">${prevVencida}</div>
-        <div class="kpi-meta">${agPeca} ag. peça</div>
+      <div class="kpi ${corretivas>0?'nok':'neu'}">
+        <div class="kpi-label">Corretivas</div>
+        <div class="kpi-val" style="color:${corretivas>0?'var(--red)':'var(--text3)'}">${corretivas}</div>
+      </div>
+      <div class="kpi ${agPeca>0?'nok':'neu'}">
+        <div class="kpi-label">Ag. Peça</div>
+        <div class="kpi-val" style="color:${agPeca>0?'var(--red)':'var(--text3)'}">${agPeca}</div>
       </div>
     </div>
-    <!-- Custo total do dia -->
-    ${totalCustoPrev>0?`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
-      <span style="font-size:12px;color:var(--text3)">💰 Custo previsto hoje</span>
-      <span style="font-family:'DM Mono',monospace;font-weight:700;color:var(--amber)">R$ ${totalCustoPrev.toFixed(2)}</span>
-    </div>`:''}
-    <!-- OS em aberto -->
+    <!-- 3. OS EM ABERTO -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div style="font-size:13px;font-weight:700">${parados} OS em aberto</div>
       <div style="display:flex;gap:8px">
-        <button onclick="renderFerrPCM('custos')" class="btn-sm">💰 Ver Custos</button>
+        <button onclick="renderFerrPCM('historico')" class="btn-sm">📋 Histórico</button>
         <button onclick="abrirNovaOcorrencia()" class="btn-add">+ Nova OS</button>
       </div>
     </div>
@@ -4649,28 +4703,31 @@ async function renderFerrPCM(aba='painel'){
   `);
 }
 
+async function salvarOrcamento(gid, data){
+  const val=parseFloat(document.getElementById('orc-input')?.value||0);
+  if(!val){toast('Informe o valor','err');return;}
+  const turno=S.turno||'dia';
+  // Tenta update primeiro, depois insert
+  const{data:exist}=await sb.from('pcm_orcamento').select('id').eq('garagem_id',gid).eq('data',data).eq('turno',turno).single().catch(()=>({data:null}));
+  if(exist?.id){
+    await sb.from('pcm_orcamento').update({valor_disponivel:val,atualizado_em:new Date().toISOString(),atualizado_por:S.perfil?.nome}).eq('id',exist.id);
+  } else {
+    await sb.from('pcm_orcamento').insert({garagem_id:gid,data,turno,valor_disponivel:val,criado_por:S.perfil?.nome});
+  }
+  toast('✅ Orçamento salvo!');
+  renderFerrPCM('painel');
+}
+
 async function salvarCustoRapido(ocId, gid, data){
   const prev=parseFloat(document.getElementById('qp-prev-'+ocId)?.value||0)||null;
   const real=parseFloat(document.getElementById('qp-real-'+ocId)?.value||0)||null;
-  // Upsert
-  const{data:exist}=await sb.from('previsibilidade_26').select('id').eq('ocorrencia_id',ocId).eq('data',data).single();
+  const{data:exist}=await sb.from('previsibilidade_26').select('id').eq('ocorrencia_id',ocId).eq('data',data).single().catch(()=>({data:null}));
   if(exist){
     await sb.from('previsibilidade_26').update({custo_prev:prev,custo_real:real}).eq('id',exist.id);
   } else {
     await sb.from('previsibilidade_26').insert({garagem_id:gid,ocorrencia_id:ocId,data,custo_prev:prev,custo_real:real,registrado_por:S.perfil?.nome});
   }
   toast('💰 Custo salvo');
-}
-
-async function excluirEscala(data, turno, num){
-  const dataFmt=formatData(data);
-  const turnoFmt=turno==='dia'?'☀️ Dia':'🌙 Noite';
-  if(!confirm(`Excluir escala ${num||dataFmt} (${turnoFmt})?\n\nIsso irá remover todos os ${turno==='dia'?'veículos':'registros'} importados para este dia e turno. Esta ação não pode ser desfeita.`)) return;
-  const gid=getGid();
-  const{error}=await sb.from('soltura_2_10').delete().eq('garagem_id',gid).eq('data',data).eq('turno',turno);
-  if(error){toast('Erro ao excluir: '+error.message,'err');return;}
-  toast(`✅ Escala ${dataFmt} excluída`);
-  renderFerr210('historico');
 }
 
 async function renderFerr211(){
