@@ -345,19 +345,29 @@ async function telaSoltura(dataFiltro=null){
     _sdata=datasComEscala.includes(hoje())?hoje():datasComEscala[datasComEscala.length-1];
   }
 
-  const{data:lista}=await sb.from('soltura_2_10').select('*')
+  const{data:lista}=await sb.from('soltura_2_10').select('*,recolhido,recolhido_em,abastecido,abastecido_em')
     .eq('garagem_id',gid).eq('data',_sdata).order('horario_programado');
 
-  // Busca recolhas e abastecimentos — tabelas podem não existir ainda
+  // Busca recolhas e abastecimentos — direto da soltura_2_10 (campo recolhido)
+  // e da tabela de abastecimento
   let recSet=new Set(), abSet=new Set();
   let recHoraMap=new Map(), abHoraMap=new Map();
-  try{
-    const{data:r}=await sb.from('recolha_checklist').select('prefixo,horario_real').eq('garagem_id',gid).eq('data_recolha',_sdata);
-    if(r){r.forEach(x=>{recSet.add(x.prefixo);if(x.horario_real)recHoraMap.set(x.prefixo,x.horario_real);});}
-  }catch(e){}
+  // Recolha: lê campo recolhido da própria soltura
+  (lista||[]).forEach(r=>{
+    if(r.recolhido){
+      recSet.add(r.prefixo);
+      if(r.recolhido_em) recHoraMap.set(r.prefixo,new Date(r.recolhido_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}));
+    }
+    // Abastecimento: lê campo abastecido da própria soltura
+    if(r.abastecido){
+      abSet.add(r.prefixo);
+      if(r.abastecido_em) abHoraMap.set(r.prefixo,new Date(r.abastecido_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}));
+    }
+  });
+  // Fallback abastecimento da tabela separada (para registros antigos)
   try{
     const{data:a}=await sb.from('abastecimento_checklist').select('prefixo,horario').eq('garagem_id',gid).eq('data',_sdata);
-    if(a){a.forEach(x=>{abSet.add(x.prefixo);if(x.horario)abHoraMap.set(x.prefixo,x.horario);});}
+    if(a){a.forEach(x=>{abSet.add(x.prefixo);if(x.horario&&!abHoraMap.has(x.prefixo))abHoraMap.set(x.prefixo,x.horario);});}
   }catch(e){}
   window._recMap=recSet;
   window._abMap=abSet;
@@ -1348,6 +1358,21 @@ async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
     await sb.from('frota').update({status:'disponivel'}).eq('id',vei.id);
   }
 
+  // ✅ ATUALIZA soltura_2_10 de amanhã — marca carro como recolhido
+  // _rcEscalaData é sempre D+1 (a escala da próxima operação)
+  if(_rcEscalaData&&status==='recebido'){
+    await sb.from('soltura_2_10')
+      .update({
+        recolhido:true,
+        recolhido_em:new Date().toISOString(),
+        recolhido_por:S.perfil?.nome,
+        km_recolha:km||null,
+      })
+      .eq('garagem_id',gid)
+      .eq('prefixo',prefixo)
+      .eq('data',_rcEscalaData);
+  }
+
   closeSheet(true);
   toast(status==='recebido'?`✅ ${prefixo} recolhido!`:`⚠️ ${prefixo} com avaria`);
   telaRecolha();
@@ -1518,6 +1543,20 @@ async function salvarAbastecimento(){
   },{onConflict:'garagem_id,prefixo,data'});
 
   if(error){toast('Erro: '+error.message,'err');return;}
+
+  // ✅ ATUALIZA soltura_2_10 de amanhã — marca carro como abastecido
+  if(_abEscalaData){
+    await sb.from('soltura_2_10')
+      .update({
+        abastecido:true,
+        abastecido_em:new Date().toISOString(),
+        abastecido_por:S.perfil?.nome,
+      })
+      .eq('garagem_id',gid)
+      .eq('prefixo',prefixo)
+      .eq('data',_abEscalaData);
+  }
+
   closeSheet(true);
   toast(`✅ ${prefixo} abastecido — ${litros}L${arla?' + ARLA '+arlaLitros+'L':''}`);
   telaAbastecimento();
