@@ -1362,18 +1362,16 @@ async function telaAbastecimento(){
   const gid=getGid();
   setMain('<div class="loading"><div class="sp"></div></div>');
 
-  // Busca escalas disponíveis — sempre pega a próxima futura
-  const base=new Date();
-  const datas=[];
-  for(let i=-1;i<=4;i++){const d=new Date(base);d.setDate(d.getDate()+i);datas.push(d.toISOString().split('T')[0]);}
-  const{data:escalasDisp}=await sb.from('soltura_2_10').select('data').eq('garagem_id',gid).in('data',datas);
+  // Referência SEMPRE D+1 — busca só dias futuros
+  const hojeStrAb=hoje();
+  const datasProxAb=[];
+  for(let i=1;i<=7;i++){const d=new Date();d.setDate(d.getDate()+i);datasProxAb.push(d.toISOString().split('T')[0]);}
+  const{data:escalasDisp}=await sb.from('soltura_2_10').select('data').eq('garagem_id',gid).in('data',datasProxAb);
   const datasEscala=[...new Set((escalasDisp||[]).map(r=>r.data))].sort();
 
-  // Sempre prefere próxima futura (D+1 ou mais)
-  if(!_abEscalaData||!datasEscala.includes(_abEscalaData)||_abEscalaData<=hojeStr){
-    const hojeStr=hoje();
-    const futuras=datasEscala.filter(d=>d>hojeStr).sort();
-    _abEscalaData=futuras[0]||datasEscala[0]||hojeStr;
+  // Reseta se vazio, inválido ou é hoje/passado
+  if(!_abEscalaData||!datasEscala.includes(_abEscalaData)||_abEscalaData<=hojeStrAb){
+    _abEscalaData=datasEscala[0]||datasProxAb[0];
   }
 
   const{data:escala}=await sb.from('soltura_2_10').select('prefixo,linha,motorista,horario_programado')
