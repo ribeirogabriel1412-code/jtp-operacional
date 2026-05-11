@@ -1162,20 +1162,20 @@ async function telaRecolha(dataFiltro=null){
 
   setMain('<div class="loading"><div class="sp"></div></div>');
 
-  // Busca escalas disponíveis para selecionar
+  // Busca escalas disponíveis — janela maior para pegar futuras
   const base=new Date();
   const datas=[];
-  for(let i=-1;i<=2;i++){const d=new Date(base);d.setDate(d.getDate()+i);datas.push(d.toISOString().split('T')[0]);}
+  for(let i=-1;i<=4;i++){const d=new Date(base);d.setDate(d.getDate()+i);datas.push(d.toISOString().split('T')[0]);}
   const{data:escalasDisp}=await sb.from('soltura_2_10').select('data').eq('garagem_id',gid).in('data',datas);
   const datasEscala=[...new Set((escalasDisp||[]).map(r=>r.data))].sort();
 
-  // Data de recolha = dia atual, mas referência da escala pode ser D+1
-  // Identifica qual escala usar como referência (a mais próxima)
+  // Data de recolha = dia atual, mas referência sempre é a PRÓXIMA escala futura
   if(!_rcEscalaData||!datasEscala.includes(_rcEscalaData)){
-    // Prefere a escala de amanhã ou hoje
-    const amanha=new Date(base);amanha.setDate(amanha.getDate()+1);
-    const dataAmanha=amanha.toISOString().split('T')[0];
-    _rcEscalaData=datasEscala.includes(dataAmanha)?dataAmanha:(datasEscala[datasEscala.length-1]||hoje());
+    const hojeStr=hoje();
+    // Pega a escala mais próxima no futuro (>=amanhã), ou a mais recente se não tiver
+    const futuras=datasEscala.filter(d=>d>hojeStr).sort();
+    const passadas=datasEscala.filter(d=>d<=hojeStr).sort().reverse();
+    _rcEscalaData=futuras[0]||passadas[0]||hojeStr;
   }
 
   // Busca escala de referência + recolhas já feitas hoje
