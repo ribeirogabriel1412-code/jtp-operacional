@@ -1351,7 +1351,7 @@ async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
   }catch(e){}
 
   // Insere na recolha_checklist
-  const{error}=await sb.from('recolha_checklist').insert({
+  const payload={
     garagem_id:gid, prefixo, veiculo_id:veiId,
     data_recolha:dataGravar,
     horario_real:horarioReal,
@@ -1365,9 +1365,13 @@ async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
     status,
     plantao_nome:S.perfil?.nome||null,
     plantao_id:S.perfil?.id||null,
-  });
+  };
+  console.log('Salvando recolha:',JSON.stringify(payload));
+  const{data:saved,error}=await sb.from('recolha_checklist').insert(payload).select();
+  console.log('Resultado:',saved,error);
 
   if(error){toast('Erro: '+error.message,'err');console.error('recolha error:',error);return;}
+  if(!saved?.length){toast('Aviso: registro não confirmado','err');return;}
 
   // Marca frota disponível se OK
   if(status==='recebido'&&veiId){
