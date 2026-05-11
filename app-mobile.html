@@ -1133,20 +1133,16 @@ async function telaRecolha(dataFiltro=null){
 
   setMain('<div class="loading"><div class="sp"></div></div>');
 
-  // Busca escalas disponíveis — janela maior para pegar futuras
-  const base=new Date();
-  const datas=[];
-  for(let i=-1;i<=4;i++){const d=new Date(base);d.setDate(d.getDate()+i);datas.push(d.toISOString().split('T')[0]);}
-  const{data:escalasDisp}=await sb.from('soltura_2_10').select('data').eq('garagem_id',gid).in('data',datas);
+  // Referência SEMPRE D+1 ou próxima futura — busca 7 dias à frente
+  const hojeStr=hoje();
+  const datasProxRc=[];
+  for(let i=1;i<=7;i++){const d=new Date();d.setDate(d.getDate()+i);datasProxRc.push(d.toISOString().split('T')[0]);}
+  const{data:escalasDisp}=await sb.from('soltura_2_10').select('data').eq('garagem_id',gid).in('data',datasProxRc);
   const datasEscala=[...new Set((escalasDisp||[]).map(r=>r.data))].sort();
 
-  // Data de recolha = dia atual, mas referência sempre é a PRÓXIMA escala futura
-  if(!_rcEscalaData||!datasEscala.includes(_rcEscalaData)){
-    const hojeStr=hoje();
-    // Pega a escala mais próxima no futuro (>=amanhã), ou a mais recente se não tiver
-    const futuras=datasEscala.filter(d=>d>hojeStr).sort();
-    const passadas=datasEscala.filter(d=>d<=hojeStr).sort().reverse();
-    _rcEscalaData=futuras[0]||passadas[0]||hojeStr;
+  // Reseta se não tem seleção, ou se a seleção atual é hoje ou no passado
+  if(!_rcEscalaData||!datasEscala.includes(_rcEscalaData)||_rcEscalaData<=hojeStr){
+    _rcEscalaData=datasEscala[0]||datasProxRc[0];
   }
 
   // Busca escala de referência + recolhas já feitas hoje
@@ -1374,11 +1370,10 @@ async function telaAbastecimento(){
   const datasEscala=[...new Set((escalasDisp||[]).map(r=>r.data))].sort();
 
   // Sempre prefere próxima futura (D+1 ou mais)
-  if(!_abEscalaData||!datasEscala.includes(_abEscalaData)){
+  if(!_abEscalaData||!datasEscala.includes(_abEscalaData)||_abEscalaData<=hojeStr){
     const hojeStr=hoje();
     const futuras=datasEscala.filter(d=>d>hojeStr).sort();
-    const passadas=datasEscala.filter(d=>d<=hojeStr).sort().reverse();
-    _abEscalaData=futuras[0]||passadas[0]||hojeStr;
+    _abEscalaData=futuras[0]||datasEscala[0]||hojeStr;
   }
 
   const{data:escala}=await sb.from('soltura_2_10').select('prefixo,linha,motorista,horario_programado')
