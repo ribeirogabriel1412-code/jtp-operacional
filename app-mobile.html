@@ -1335,11 +1335,11 @@ async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
   const interno=document.getElementById('rc-int')?.value||'ok';
   const obs=document.getElementById('rc-obs')?.value?.trim()||null;
   const gid=getGid();
-  const agora=new Date();
-  const horarioReal=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 
   if(!prefixo){toast('Informe o prefixo','err');return;}
 
+  const agora=new Date();
+  const horarioReal=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   const status=externo==='avaria'||interno==='avaria'?'avaria':'recebido';
   const dataGravar=_rcEscalaData||hoje();
 
@@ -1350,9 +1350,11 @@ async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
     veiId=vei?.id||null;
   }catch(e){}
 
-  // Insere na recolha_checklist
-  const payload={
-    garagem_id:gid, prefixo, veiculo_id:veiId,
+  // Insere na recolha_checklist — igual ao abastecimento
+  const{error}=await sb.from('recolha_checklist').insert({
+    garagem_id:gid,
+    prefixo,
+    veiculo_id:veiId,
     data_recolha:dataGravar,
     horario_real:horarioReal,
     horario_previsto:horarioRef||null,
@@ -1365,27 +1367,23 @@ async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
     status,
     plantao_nome:S.perfil?.nome||null,
     plantao_id:S.perfil?.id||null,
-  };
-  console.log('Salvando recolha:',JSON.stringify(payload));
-  const{data:saved,error}=await sb.from('recolha_checklist').insert(payload).select();
-  console.log('Resultado:',saved,error);
+  });
 
-  if(error){toast('Erro: '+error.message,'err');console.error('recolha error:',error);return;}
-  if(!saved?.length){toast('Aviso: registro não confirmado','err');return;}
+  if(error){toast('Erro: '+error.message,'err');return;}
 
   // Marca frota disponível se OK
   if(status==='recebido'&&veiId){
     await sb.from('frota').update({status:'disponivel'}).eq('id',veiId);
   }
 
-  // Marca recolhido na soltura D+1
-  if(dataGravar&&dataGravar>hoje()&&status==='recebido'){
+  // Marca recolhido na soltura D+1 — igual ao abastecimento
+  if(_rcEscalaData&&_rcEscalaData>hoje()&&status==='recebido'){
     await sb.from('soltura_2_10').update({
       recolhido:true,
       recolhido_em:agora.toISOString(),
       recolhido_por:S.perfil?.nome,
       km_recolha:km||null,
-    }).eq('garagem_id',gid).eq('prefixo',prefixo).eq('data',dataGravar);
+    }).eq('garagem_id',gid).eq('prefixo',prefixo).eq('data',_rcEscalaData);
   }
 
   closeSheet(true);
