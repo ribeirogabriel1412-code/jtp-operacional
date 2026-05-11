@@ -1540,14 +1540,28 @@ async function salvarAbastecimento(){
   if(!litros){toast('Informe os litros','err');return;}
 
   const{data:vei}=await sb.from('frota').select('id').eq('garagem_id',gid).eq('prefixo',prefixo).single();
+  const agora=new Date();
+  const horario=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 
-  // Tenta inserir na tabela (cria se não existir ainda)
-  const{error}=await sb.from('abastecimento_checklist').upsert({
-    garagem_id:gid, prefixo, veiculo_id:vei?.id||null,
-    data:_abData, litros, arla, arla_litros:arlaLitros, km_hodometro:km,
-    frentista_nome:S.perfil?.nome, frentista_id:S.perfil?.id,
-    horario:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),
-  },{onConflict:'garagem_id,prefixo,data'});
+  // Verifica se já existe registro para este prefixo/data — atualiza ou insere
+  let error;
+  const{data:exist}=await sb.from('abastecimento_checklist').select('id')
+    .eq('garagem_id',gid).eq('prefixo',prefixo).eq('data',_abData).single().catch(()=>({data:null}));
+
+  if(exist?.id){
+    const{error:updErr}=await sb.from('abastecimento_checklist').update({
+      litros, arla, arla_litros:arlaLitros, km_hodometro:km,
+      frentista_nome:S.perfil?.nome, frentista_id:S.perfil?.id, horario,
+    }).eq('id',exist.id);
+    error=updErr;
+  } else {
+    const{error:insErr}=await sb.from('abastecimento_checklist').insert({
+      garagem_id:gid, prefixo, veiculo_id:vei?.id||null,
+      data:_abData, litros, arla, arla_litros:arlaLitros, km_hodometro:km,
+      frentista_nome:S.perfil?.nome, frentista_id:S.perfil?.id, horario,
+    });
+    error=insErr;
+  }
 
   if(error){toast('Erro: '+error.message,'err');return;}
 
