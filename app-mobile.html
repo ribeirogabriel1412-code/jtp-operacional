@@ -1164,7 +1164,7 @@ async function telaRecolha(dataFiltro=null){
   let recolhas=[];
   try{
     const{data:r}=await sb.from('recolha_checklist').select('*')
-      .eq('garagem_id',gid).eq('data_recolha',_rcData).order('created_at',{ascending:false});
+      .eq('garagem_id',gid).eq('data_recolha',_rcEscalaData).order('created_at',{ascending:false});
     if(r) recolhas=r;
   }catch(e){}
   _rcEscalaLista=escala||[];
@@ -1174,7 +1174,7 @@ async function telaRecolha(dataFiltro=null){
   // Mapa de abastecimento por prefixo
   let abastMap={};
   try{
-    const{data:abast}=await sb.from('abastecimento_checklist').select('prefixo,litros,arla').eq('garagem_id',gid).eq('data',_rcData);
+    const{data:abast}=await sb.from('abastecimento_checklist').select('prefixo,litros,arla').eq('garagem_id',gid).eq('data',_rcEscalaData);
     if(abast) abast.forEach(a=>{abastMap[a.prefixo]=a;});
   }catch(e){}
 
@@ -1215,7 +1215,7 @@ async function telaRecolha(dataFiltro=null){
     </div>`;
   }).join('');
 
-  const dataExec=new Date(_rcData+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+  const dataExec=new Date(_rcEscalaData+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
   const dataRef=new Date(_rcEscalaData+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
 
   render(`
@@ -1346,7 +1346,7 @@ async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
 
   const{error}=await sb.from('recolha_checklist').insert({
     garagem_id:gid, prefixo, veiculo_id:vei?.id||null,
-    data_recolha:_rcData, horario_real:horarioReal,
+    data_recolha:_rcEscalaData, horario_real:horarioReal,
     horario_previsto:horarioRef||null,
     motorista:motoristaRef||null, linha:linhaRef||null,
     km_hodometro:km, matricula_motorista:matricula,
