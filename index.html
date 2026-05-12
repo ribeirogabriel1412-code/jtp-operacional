@@ -253,6 +253,7 @@ tr:hover td{background:#0F172A80}
       <div class="submenu" id="sub-ferr">
         <button class="sub-btn" onclick="navToSub('ferr-210')">📋 2.10 Soltura de Frota</button>
         <button class="sub-btn" onclick="navToSub('ferr-pcm')">🔧 Painel PCM</button>
+        <button class="sub-btn" onclick="navToSub('ferr-prev')">🔩 Painel Preventivas</button>
         <button class="sub-btn" onclick="navToSub('ferr-22')">🔧 Painel do Manutentor</button>
         <button class="sub-btn" onclick="navToSub('ferr-211')">🔴 2.11 Carros Indisponíveis</button>
         <button class="sub-btn" onclick="navToSub('ferr-212')">📊 2.12 Indicadores Técnicos</button>
@@ -665,6 +666,11 @@ const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',lider_p
 // Cada ferramenta define papéis padrão por cargo
 // Admin pode customizar no painel de Gestão de Usuários
 const FERRAMENTAS_DEF=[
+  {id:'ferr-prev', icon:'🔩', nome:'Painel Preventivas',
+    executa:  ['lider_pcm','assistente_pcm'],
+    valida:   ['lider_pcm'],
+    visualiza:['gerente_garagem','diretoria','lider_oficina'],
+  },
   {id:'ferr-pcm', icon:'🔧', nome:'Painel PCM',
     executa:  ['lider_pcm','assistente_pcm'],
     valida:   ['lider_pcm'],
@@ -881,7 +887,7 @@ function navToSub(sub){
   S.subtela=sub;
   document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes(sub))b.classList.add('active')});
-  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios};
+  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios};
   if(map[sub]) map[sub]();
 }
 
@@ -5060,6 +5066,282 @@ async function salvarCustoRapido(ocId, gid, data){
     await sb.from('previsibilidade_26').insert({garagem_id:gid,ocorrencia_id:ocId,data,custo_prev:prev,custo_real:real,registrado_por:S.perfil?.nome});
   }
   toast('💰 Custo salvo');
+}
+
+// ══════════════════════════════════════════════════════════════
+// PAINEL PREVENTIVAS — Upload MAN + Visualização por Plano
+// ══════════════════════════════════════════════════════════════
+let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='todos';
+
+async function renderFerrPrev(){
+  const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  const gid=getGid();
+
+  // Carrega do banco se existir
+  if(!_prevDados.length){
+    try{
+      const{data:imp}=await sb.from('preventiva_import').select('*')
+        .eq('garagem_id',gid).order('created_at',{ascending:false}).limit(1);
+      if(imp?.length){
+        _prevDados=JSON.parse(imp[0].dados||'[]');
+        _prevImportadoEm=imp[0].created_at;
+      }
+    }catch(e){}
+  }
+
+  if(!_prevDados.length){
+    setMain(`${back}
+      <div style="text-align:center;padding:40px 20px">
+        <div style="font-size:48px;margin-bottom:16px">🔩</div>
+        <h2 style="margin-bottom:8px">Painel de Preventivas</h2>
+        <p style="color:var(--text3);margin-bottom:24px">Importe o relatório do MAN para visualizar os planos de manutenção preventiva</p>
+        <div class="drop-zone" id="dz-prev" onclick="document.getElementById('fi-prev').click()"
+          ondragover="event.preventDefault();this.classList.add('drag-over')"
+          ondragleave="this.classList.remove('drag-over')"
+          ondrop="event.preventDefault();this.classList.remove('drag-over');processarPrevPDF(event.dataTransfer.files[0])">
+          <div style="font-size:40px;margin-bottom:12px">📄</div>
+          <div style="font-size:16px;font-weight:700;margin-bottom:6px">Importar Relatório MAN</div>
+          <div style="font-size:13px;color:var(--text3)">MAN — Km atual dos serviços/planos</div>
+          <button class="btn-add" style="margin-top:16px" onclick="event.stopPropagation();document.getElementById('fi-prev').click()">📂 Selecionar PDF</button>
+        </div>
+        <input type="file" id="fi-prev" accept=".pdf" style="display:none" onchange="processarPrevPDF(this.files[0])">
+        <div id="prev-prog" style="margin-top:16px;color:var(--text3);font-size:13px"></div>
+      </div>`);
+    return;
+  }
+
+  renderPrevPainel(back);
+}
+
+async function processarPrevPDF(file){
+  if(!file) return;
+  const prog=document.getElementById('prev-prog');
+  if(prog) prog.textContent='📄 Lendo PDF...';
+
+  const pdfjsLib=window['pdfjs-dist/build/pdf'];
+  if(!pdfjsLib){
+    if(prog) prog.textContent='❌ PDF.js não disponível';
+    return;
+  }
+
+  const ab=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:ab}).promise;
+  let textoTotal='';
+  for(let i=1;i<=pdf.numPages;i++){
+    const page=await pdf.getPage(i);
+    const tc=await page.getTextContent();
+    // Reconstrói linhas por posição Y
+    const items=tc.items.sort((a,b)=>b.transform[5]-a.transform[5]||a.transform[4]-b.transform[4]);
+    let lastY=null,linha='';
+    for(const item of items){
+      const y=Math.round(item.transform[5]);
+      if(lastY!==null&&Math.abs(y-lastY)>3){textoTotal+=linha.trim()+'\n';linha='';}
+      linha+=(item.str||'')+' ';
+      lastY=y;
+    }
+    if(linha.trim()) textoTotal+=linha.trim()+'\n';
+  }
+
+  if(prog) prog.textContent='🔍 Processando dados...';
+  const dados=parsearRelatorioMAN(textoTotal);
+  if(!dados.length){
+    if(prog) prog.textContent='❌ Nenhum dado encontrado. Verifique se é o relatório correto.';
+    return;
+  }
+
+  if(prog) prog.textContent=`💾 Salvando ${dados.length} registros...`;
+  const gid=getGid();
+  try{
+    await sb.from('preventiva_import').insert({
+      garagem_id:gid,
+      dados:JSON.stringify(dados),
+      total_registros:dados.length,
+      importado_por:S.perfil?.nome,
+      nome_arquivo:file.name,
+    });
+  }catch(e){ console.warn('Tabela preventiva_import não existe ainda:',e.message); }
+
+  _prevDados=dados;
+  _prevImportadoEm=new Date().toISOString();
+  toast(`✅ ${dados.length} planos importados!`);
+  renderFerrPrev();
+}
+
+function parsearRelatorioMAN(texto){
+  const linhas=texto.split('\n');
+  const dados=[];
+  const rCarro=/^0002(\d{3})/;
+  const rNum=/[\d.]+/g;
+
+  for(const linha of linhas){
+    const t=linha.trim();
+    if(!rCarro.test(t)) continue;
+
+    // Extrai carro (prefixo)
+    const carro='02.'+t.slice(4,7);
+
+    // Extrai número do plano e nome
+    const mPlano=t.match(/\d{3}\s+\((KM|DIAS)\)\s+([A-ZÁÉÍÓÚÃÕÂÊÎÔÛÇ0-9\s\-_\.\/]+?)(?:\s{2,}|\d{2}\/\d{2}\/\d{4}|$)/i);
+    if(!mPlano) continue;
+    const planoNum=t.match(/(\d{3})\s+\(/)?.[1]||'';
+    const tipoMetrica=mPlano[1]; // KM ou DIAS
+    const planoNome=mPlano[2].trim();
+
+    // Extrai todos os números da linha
+    const partes=t.replace(/[^\d.\s\/]/g,' ').split(/\s+/).filter(Boolean);
+
+    // Encontra data (dd/mm/yyyy)
+    const mData=t.match(/(\d{2}\/\d{2}\/\d{4})/);
+    const ultimaExec=mData?mData[1]:null;
+
+    // Extrai números numéricos significativos (km values)
+    const nums=[];
+    for(const p of partes){
+      const n=parseFloat(p.replace(',','.'));
+      if(!isNaN(n)&&n>0&&p.length>0) nums.push(n);
+    }
+
+    // Ordem esperada: [kmUltExec, qtdExec, kmAtual, proximaExec, kmPercorrido, excessoKm, excessoDias]
+    let kmUltExec=0,qtdExec=0,kmAtual=0,proximaExec=0,excessoKm=0,excessoDias=0;
+    if(nums.length>=4){
+      // Identifica pelos valores relativos
+      const ordered=nums.filter(n=>n>0).sort((a,b)=>b-a);
+      kmAtual=ordered[0]||0; // maior valor = km atual
+      proximaExec=nums.find(n=>n>1000&&n<kmAtual*0.8)||0;
+      excessoKm=nums.find(n=>n<100000&&n>0&&n!==kmAtual&&n!==proximaExec)||0;
+    }
+
+    // Pega valores diretos das colunas por posição
+    const cols=t.replace(/\d{2}\/\d{2}\/\d{4}/g,'').split(/\s{2,}/);
+    const numCols=cols.map(c=>parseFloat(c.replace(/[^0-9.]/g,''))).filter(n=>!isNaN(n)&&n>0);
+
+    if(numCols.length>=5){
+      kmUltExec=numCols.find(n=>n>10000&&n<500000)||0;
+      qtdExec=numCols.find(n=>n<200)||0;
+      kmAtual=numCols.reduce((m,n)=>n>m?n:m,0);
+      // Próxima execução é o valor do plano (ex: 5000, 60000, 120000)
+      proximaExec=numCols.find(n=>n>=1000&&n<kmAtual*0.5)||0;
+      excessoKm=numCols[numCols.length-3]||0;
+      excessoDias=numCols[numCols.length-2]||0;
+    }
+
+    const pendente=t.includes('Sim');
+    const emitido=t.match(/Sim\s+Sim/);
+
+    dados.push({
+      carro, planoNum, planoNome, tipoMetrica,
+      ultimaExec, kmAtual, proximaExec,
+      excessoKm, excessoDias, pendente:!!pendente, emitido:!!emitido,
+    });
+  }
+  return dados;
+}
+
+function renderPrevPainel(back){
+  const gid=getGid();
+  const garagem=S.garagens.find(g=>g.id===gid);
+
+  // Agrupa por plano
+  const grupos={};
+  for(const r of _prevDados){
+    const key=r.planoNum+' '+r.planoNome;
+    if(!grupos[key]) grupos[key]={nome:r.planoNome,num:r.planoNum,tipo:r.tipoMetrica,itens:[]};
+    grupos[key].itens.push(r);
+  }
+
+  // Ordena cada grupo por excessoKm desc
+  Object.values(grupos).forEach(g=>g.itens.sort((a,b)=>b.excessoKm-a.excessoKm));
+
+  // KPIs globais
+  const total=_prevDados.length;
+  const pendentes=_prevDados.filter(r=>r.pendente).length;
+  const criticos=_prevDados.filter(r=>r.excessoKm>50000).length;
+  const dtImp=_prevImportadoEm?new Date(_prevImportadoEm).toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+
+  // Filtro de grupo
+  const gruposKeys=Object.keys(grupos).sort();
+  const chipsFiltro=[{k:'todos',l:'Todos'},
+    ...gruposKeys.map(k=>({k,l:`${grupos[k].num} · ${grupos[k].nome.slice(0,25)}`}))
+  ];
+
+  const chips=chipsFiltro.map(c=>`
+    <button onclick="_prevGrupoAtivo='${c.k}';renderPrevPainel(document.querySelector('.btn-back')?.outerHTML||'')"
+      style="flex-shrink:0;padding:6px 12px;border-radius:20px;border:1px solid ${_prevGrupoAtivo===c.k?'var(--blue)':'var(--border)'};background:${_prevGrupoAtivo===c.k?'#2563EB18':'transparent'};color:${_prevGrupoAtivo===c.k?'var(--blue)':'var(--text3)'};font-size:11px;font-weight:${_prevGrupoAtivo===c.k?'700':'500'};font-family:inherit;cursor:pointer;white-space:nowrap">${c.l}</button>
+  `).join('');
+
+  // Filtra grupos a mostrar
+  const gruposVisiveis=_prevGrupoAtivo==='todos'?gruposKeys:[_prevGrupoAtivo];
+
+  const tabelaGrupos=gruposVisiveis.filter(k=>grupos[k]).map(k=>{
+    const g=grupos[k];
+    const rows=g.itens.map(r=>{
+      const excCor=r.excessoKm>100000?'var(--red)':r.excessoKm>50000?'var(--amber)':r.excessoKm>0?'#F97316':'var(--green)';
+      const barra=r.proximaExec>0?Math.min(100,Math.round((r.excessoKm/r.proximaExec)*100)):0;
+      return`<tr style="border-bottom:1px solid var(--border2)">
+        <td style="padding:7px 10px;font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${r.carro}</td>
+        <td style="padding:7px 10px;font-size:11px;color:var(--text3)">${r.ultimaExec||'—'}</td>
+        <td style="padding:7px 10px;font-family:'DM Mono',monospace;font-size:11px">${r.kmAtual?r.kmAtual.toLocaleString('pt-BR'):'—'}</td>
+        <td style="padding:7px 10px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text3)">${r.proximaExec?r.proximaExec.toLocaleString('pt-BR'):'—'}</td>
+        <td style="padding:7px 10px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:${excCor}">${r.excessoKm>0?'+'+r.excessoKm.toLocaleString('pt-BR'):r.excessoKm<0?r.excessoKm.toLocaleString('pt-BR'):'OK'}</span>
+            ${barra>0?`<div style="flex:1;max-width:80px;background:var(--border);border-radius:99px;height:6px;overflow:hidden"><div style="height:100%;width:${Math.min(100,barra)}%;background:${excCor};border-radius:99px"></div></div>`:''}
+          </div>
+        </td>
+        <td style="padding:7px 10px;font-size:11px;color:var(--text3)">${r.excessoDias>0?r.excessoDias+' dias':'—'}</td>
+        <td style="padding:7px 10px;text-align:center">${r.pendente?'<span style="color:var(--amber);font-size:11px;font-weight:700">⚠️ Sim</span>':'<span style="color:var(--green);font-size:11px">✅</span>'}</td>
+      </tr>`;
+    }).join('');
+
+    const totalExc=g.itens.filter(i=>i.excessoKm>0).length;
+    const corHeader=totalExc>g.itens.length*0.5?'var(--red)':totalExc>0?'var(--amber)':'var(--green)';
+
+    return`<div style="margin-bottom:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:10px;color:var(--text3);font-weight:700;background:var(--surface2);padding:2px 8px;border-radius:4px">${g.num}</span>
+          <span style="font-size:14px;font-weight:700">${g.nome}</span>
+          <span style="font-size:10px;color:var(--text3)">${g.tipo}</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="font-size:11px;color:${corHeader};font-weight:700">${totalExc}/${g.itens.length} com excesso</span>
+        </div>
+      </div>
+      <div class="tbl-wrap"><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--surface2)">
+          <th style="padding:7px 10px;text-align:left;font-size:10px;color:var(--text3)">Carro</th>
+          <th style="padding:7px 10px;text-align:left;font-size:10px;color:var(--text3)">Última Exec.</th>
+          <th style="padding:7px 10px;text-align:left;font-size:10px;color:var(--text3)">KM Atual</th>
+          <th style="padding:7px 10px;text-align:left;font-size:10px;color:var(--text3)">Próxima Exec.</th>
+          <th style="padding:7px 10px;text-align:left;font-size:10px;color:var(--red)">Excesso KM</th>
+          <th style="padding:7px 10px;text-align:left;font-size:10px;color:var(--text3)">Excesso Dias</th>
+          <th style="padding:7px 10px;text-align:center;font-size:10px;color:var(--text3)">Pendente</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div></div>
+    </div>`;
+  }).join('');
+
+  setMain(`${back}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div>
+        <div style="font-size:16px;font-weight:800">🔩 Painel de Preventivas</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Importado em ${dtImp} · ${garagem?.nome||'—'}</div>
+      </div>
+      <button onclick="_prevDados=[];_prevGrupoAtivo='todos';renderFerrPrev()" class="btn-sm">🔄 Nova Importação</button>
+    </div>
+    <!-- KPIs -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+      <div class="kpi neu"><div class="kpi-label">Total Planos</div><div class="kpi-val">${total}</div></div>
+      <div class="kpi ${pendentes>0?'nok':'ok'}"><div class="kpi-label">Pendentes</div><div class="kpi-val" style="color:${pendentes>0?'var(--amber)':'var(--green)'}">${pendentes}</div></div>
+      <div class="kpi ${criticos>0?'nok':'ok'}"><div class="kpi-label">Críticos (+50k)</div><div class="kpi-val" style="color:${criticos>0?'var(--red)':'var(--green)'}">${criticos}</div></div>
+      <div class="kpi neu"><div class="kpi-label">Grupos</div><div class="kpi-val">${gruposKeys.length}</div></div>
+    </div>
+    <!-- Filtro por grupo -->
+    <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:16px;scrollbar-width:none">${chips}</div>
+    <!-- Tabelas por grupo -->
+    ${tabelaGrupos||'<div class="empty">Nenhum dado para exibir</div>'}
+  `);
 }
 
 async function renderFerr211(){
