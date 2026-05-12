@@ -436,6 +436,14 @@ tr:hover td{background:#0F172A80}
           <option value="sinistro">⚠️ Sinistro</option>
         </select>
       </div>
+      <div>
+        <label class="fl">Prioridade</label>
+        <select class="fs" id="m22-prioridade" style="margin-bottom:0">
+          <option value="urgente">🔴 Urgente</option>
+          <option value="normal" selected>🟢 Normal</option>
+          <option value="aguardando">🟡 Aguardando</option>
+        </select>
+      </div>
       <div class="full">
         <label class="fl">Nº OS Praxio <span style="font-weight:400;color:var(--text4)">(opcional)</span></label>
         <input class="fi" id="m22-os" placeholder="Ex: OS-2025-04521" style="margin-bottom:0;font-family:'DM Mono',monospace">
@@ -3164,7 +3172,8 @@ async function salvarOcorrencia22(){
   const vid=document.getElementById('m22-veiculo-id')?.value||null;
   if(!prefixo){toast('Informe o prefixo!','err');return;}
   const tipo=document.getElementById('m22-tipo').value;
-  const status='em_manutencao'; // sempre inicia em manutenção
+  const prioridade=document.getElementById('m22-prioridade')?.value||'normal';
+  const status='em_manutencao';
   const os=document.getElementById('m22-os').value.trim();
   const desc=document.getElementById('m22-desc').value.trim();
   const mecanico=document.getElementById('m22-mecanico').value.trim();
@@ -3190,6 +3199,7 @@ async function salvarOcorrencia22(){
 
   const{data:novaOc,error}=await sb.from('ocorrencias_22').insert({
     garagem_id:gid, veiculo_id:vid, prefixo, numero, tipo, status,
+    prioridade,
     praxio_os_id:os||null,
     descricao:desc||null, mecanico:mecanico||null,
     hora_entrada:entrada?new Date(entrada).toISOString():new Date().toISOString(),
@@ -4614,10 +4624,13 @@ async function renderFerrPCM(aba='painel'){
 
   // ── ABA RESUMO DO TURNO ───────────────────────────────────
   if(aba==='resumo'){
+    // Filtro de data
+    const dataFiltro=S._pcmResumoData||data;
     const[{data:abertas},{data:fechadas}]=await Promise.all([
       sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado').order('hora_entrada'),
       sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).eq('status','liberado')
-        .gte('hora_liberacao',new Date(agora.getFullYear(),agora.getMonth(),agora.getDate()).toISOString())
+        .gte('hora_liberacao',new Date(dataFiltro+'T00:00:00').toISOString())
+        .lte('hora_liberacao',new Date(dataFiltro+'T23:59:59').toISOString())
         .order('hora_liberacao',{ascending:false}),
     ]);
 
@@ -4669,7 +4682,14 @@ async function renderFerrPCM(aba='painel'){
     setMain(`${back}${tabs}
       <!-- Totais do turno -->
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px">
-        <div style="font-size:13px;font-weight:700;margin-bottom:12px">📊 Resumo do Turno — ${agora.toLocaleDateString('pt-BR',{timeZone:'America/Manaus',weekday:'long',day:'2-digit',month:'2-digit'})} · ${S.turno==='dia'?'☀️ Dia':'🌙 Noite'}</div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:10px">
+          📊 Resumo do Turno
+          <input type="date" value="${dataFiltro}" onchange="S._pcmResumoData=this.value;renderFerrPCM('resumo')"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:12px;cursor:pointer">
+          <span style="font-size:12px;color:var(--text3)">${new Date(dataFiltro+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long'})} · ${S.turno==='dia'?'☀️ Dia':'🌙 Noite'}</span>
+          <button onclick="pdfResumoPCM()" class="btn-sm" style="margin-left:auto">🖨️ Imprimir</button>
+          <button onclick="enviarSituacaoPCM()" class="btn-sm" style="border-color:#25D36640;color:#25D366;background:#25D36610">📲 WhatsApp</button>
+        </div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
           <div class="kpi ok"><div class="kpi-label">OS Fechadas</div><div class="kpi-val" style="color:var(--green)">${(fechadas||[]).length}</div><div class="kpi-meta">${corrFech} corr · ${prevFech} prev</div></div>
           <div class="kpi ${(abertas||[]).length>0?'nok':'ok'}"><div class="kpi-label">Em Aberto</div><div class="kpi-val" style="color:${(abertas||[]).length>0?'var(--red)':'var(--green)'}">${(abertas||[]).length}</div><div class="kpi-meta">${corrAb} corr · ${prevAb} prev</div></div>
@@ -4744,17 +4764,24 @@ async function renderFerrPCM(aba='painel'){
     sb.from('frota').select('*').eq('garagem_id',gid),
   ]);
 
-  // KPIs
+  // KPIs — busca OS fechadas hoje para calcular gasto real
+  const{data:fechadasHoje}=await sb.from('ocorrencias_22').select('custo_real,custo_previsto,tipo')
+    .eq('garagem_id',gid).eq('status','liberado')
+    .gte('hora_liberacao',new Date(agora.getFullYear(),agora.getMonth(),agora.getDate()).toISOString());
+
   const totalFrota=(frota||[]).length;
   const parados=(ocs||[]).length;
   const pctDisp=totalFrota>0?(((totalFrota-parados)/totalFrota)*100).toFixed(1):100;
   const corretivas=(ocs||[]).filter(o=>o.tipo==='corretiva').length;
   const agPeca=(ocs||[]).filter(o=>o.status==='aguardando_peca').length;
+  // Previsto = custo_previsto das OS abertas
   const totalPrevisto=(ocs||[]).reduce((s,o)=>s+parseFloat(o.custo_previsto||0),0);
-  const totalReal=(ocs||[]).reduce((s,o)=>s+parseFloat(o.custo_real||0),0);
+  // Real = custo_real das OS fechadas hoje (já debitado)
+  const totalRealFechado=(fechadasHoje||[]).reduce((s,o)=>s+parseFloat(o.custo_real||o.custo_previsto||0),0);
+  // Saldo = disponível - real já gasto - previsto em aberto
   const orc=orcamento?.[0];
   const orcDisp=orc?.valor_disponivel||0;
-  const orcSaldo=orcDisp-totalPrevisto;
+  const orcSaldo=orcDisp-totalRealFechado-totalPrevisto;
 
   // Ordena por prioridade
   const PORD={urgente:0,normal:1,aguardando:2};
@@ -4832,18 +4859,22 @@ async function renderFerrPCM(aba='painel'){
         <div style="font-size:13px;font-weight:700">💰 Orçamento do Turno</div>
         <span style="font-size:10px;color:var(--text3)">${S.turno==='dia'?'☀️ Dia':'🌙 Noite'} · ${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</span>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
         <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:4px">DISPONÍVEL</div>
-          <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;color:var(--green)" id="orc-disp">R$ ${orcDisp.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+          <div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:2px">DISPONÍVEL</div>
+          <div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--green)" id="orc-disp">R$ ${orcDisp.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
         </div>
         <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:4px">PREVISTO</div>
-          <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;color:var(--amber)">R$ ${totalPrevisto.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+          <div style="font-size:9px;color:var(--red);font-weight:700;margin-bottom:2px">GASTO REAL</div>
+          <div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--red)">R$ ${totalRealFechado.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
         </div>
         <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:4px">SALDO</div>
-          <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;color:${orcSaldo>=0?'var(--green)':'var(--red)'}">R$ ${orcSaldo.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+          <div style="font-size:9px;color:var(--amber);font-weight:700;margin-bottom:2px">PREVISTO ABERTO</div>
+          <div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--amber)">R$ ${totalPrevisto.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:2px">SALDO</div>
+          <div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:${orcSaldo>=0?'var(--green)':'var(--red)'}">R$ ${orcSaldo.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
         </div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
@@ -4878,6 +4909,7 @@ async function renderFerrPCM(aba='painel'){
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div style="font-size:13px;font-weight:700">${parados} OS em aberto</div>
       <div style="display:flex;gap:8px">
+        <button onclick="enviarSituacaoPCM()" class="btn-sm" style="border-color:#25D36640;color:#25D366;background:#25D36610">📲 WhatsApp</button>
         <button onclick="renderFerrPCM('historico')" class="btn-sm">📋 Histórico</button>
         <button onclick="abrirNovaOcorrencia()" class="btn-add">+ Nova OS</button>
       </div>
@@ -4904,6 +4936,55 @@ async function salvarOrcamento(gid, data){
   }
   toast('✅ Orçamento salvo!');
   renderFerrPCM('painel');
+}
+
+async function enviarSituacaoPCM(){
+  const gid=getGid();
+  const garagem=S.garagens.find(g=>g.id===gid);
+  const agora=new Date();
+  const hora=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'});
+  const dataHoje=agora.toLocaleDateString('pt-BR',{timeZone:'America/Manaus',weekday:'long',day:'2-digit',month:'2-digit'});
+
+  const[{data:ocs},{data:fechHoje},{data:orc}]=await Promise.all([
+    sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado').order('hora_entrada'),
+    sb.from('ocorrencias_22').select('custo_real,custo_previsto,tipo').eq('garagem_id',gid).eq('status','liberado')
+      .gte('hora_liberacao',new Date(agora.getFullYear(),agora.getMonth(),agora.getDate()).toISOString()),
+    sb.from('pcm_orcamento').select('valor_disponivel').eq('garagem_id',gid).eq('data',hoje()).eq('turno',S.turno||'dia').limit(1),
+  ]);
+
+  const orcDisp=orc?.[0]?.valor_disponivel||0;
+  const gastoReal=(fechHoje||[]).reduce((s,o)=>s+parseFloat(o.custo_real||o.custo_previsto||0),0);
+  const prevAberto=(ocs||[]).reduce((s,o)=>s+parseFloat(o.custo_previsto||0),0);
+  const saldo=orcDisp-gastoReal-prevAberto;
+
+  const PRIO={urgente:'🔴',normal:'🟢',aguardando:'🟡'};
+  const linhasOS=(ocs||[]).map(o=>`• ${PRIO[o.prioridade||'normal']} *${o.prefixo}* — ${o.tipo?.replace('_',' ')||'—'}${o.mecanico?' ('+o.mecanico+')':''}${o.custo_previsto?' — R$'+parseFloat(o.custo_previsto).toFixed(2):''}`).join('\n');
+
+  const msg=`🔧 *SITUAÇÃO PCM — ${garagem?.nome||'Garagem'}*
+📅 ${dataHoje} · ${S.turno==='dia'?'☀️ Dia':'🌙 Noite'} · ${hora}
+
+💰 *Orçamento do Turno*
+• Disponível: R$ ${orcDisp.toLocaleString('pt-BR',{minimumFractionDigits:2})}
+• Gasto Real: R$ ${gastoReal.toLocaleString('pt-BR',{minimumFractionDigits:2})}
+• Previsto Aberto: R$ ${prevAberto.toLocaleString('pt-BR',{minimumFractionDigits:2})}
+• Saldo: R$ ${saldo.toLocaleString('pt-BR',{minimumFractionDigits:2})}
+
+🚌 *OS em Aberto (${(ocs||[]).length})*
+${linhasOS||'Nenhuma OS em aberto'}
+
+✅ *OS Concluídas Hoje: ${(fechHoje||[]).length}*
+
+_Enviado pelo Sistema JTP_`;
+
+  try{
+    const r=await fetch(`https://evolution-api-production-8d56.up.railway.app/message/sendText/jtp-garagem`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':'4289AC11F437-43AD-96D7-9F27C2735696'},
+      body:JSON.stringify({number:'120363427489152994@g.us',textMessage:{text:msg}}),
+    });
+    if(r.ok) toast('📲 Situação enviada para o grupo!');
+    else toast('Erro ao enviar WhatsApp','err');
+  }catch(e){toast('Erro: '+e.message,'err');}
 }
 
 async function pdfResumoPCM(){
