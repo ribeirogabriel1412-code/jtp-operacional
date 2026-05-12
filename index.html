@@ -5185,70 +5185,74 @@ async function processarPrevPDF(file){
 }
 
 function parsearRelatorioMAN(texto){
+  // Parser corrigido — lê colunas na ordem exata do Praxio MAN:
+  // Carro | Linha | NNN (KM) NOME | Data | KmUltExec | QtdExec | KmAtual | ProxExec | KmPercorrido | ExcessoKm | ExcessoDias | [Pendente] [Emitido]
+  // O ponto é separador de milhar (421.458 = 421458), excesso pode ser negativo
   const linhas=texto.split('\n');
   const dados=[];
-  const rCarro=/^0002(\d{3})/;
-  const rNum=/[\d.]+/g;
 
   for(const linha of linhas){
     const t=linha.trim();
-    if(!rCarro.test(t)) continue;
+    if(!/^0002\d{3}/.test(t)) continue;
 
-    // Extrai carro (prefixo)
     const carro='02.'+t.slice(4,7);
 
-    // Extrai número do plano e nome
-    const mPlano=t.match(/\d{3}\s+\((KM|DIAS)\)\s+([A-ZÁÉÍÓÚÃÕÂÊÎÔÛÇ0-9\s\-_\.\/]+?)(?:\s{2,}|\d{2}\/\d{2}\/\d{4}|$)/i);
-    if(!mPlano) continue;
-    const planoNum=t.match(/(\d{3})\s+\(/)?.[1]||'';
-    const tipoMetrica=mPlano[1]; // KM ou DIAS
-    const planoNome=mPlano[2].trim();
+    // Plano: número + tipo métrica
+    const mTipo=t.match(/(\d{3})\s+\((KM|Km|DIAS)\)/i);
+    if(!mTipo) continue;
+    const planoNum=mTipo[1];
+    const tipoMetrica=mTipo[2].toUpperCase();
 
-    // Extrai todos os números da linha
-    const partes=t.replace(/[^\d.\s\/]/g,' ').split(/\s+/).filter(Boolean);
+    // Nome do plano: após "(KM)" até data ou "0 0"
+    const posApos=t.indexOf(mTipo[0])+mTipo[0].length;
+    const nomeRaw=t.slice(posApos).trim();
+    const mData=nomeRaw.match(/(\d{2}\/\d{2}\/\d{4})/);
+    const mZero=nomeRaw.match(/\s+0\s+0\s+/);
 
-    // Encontra data (dd/mm/yyyy)
-    const mData=t.match(/(\d{2}\/\d{2}\/\d{4})/);
-    const ultimaExec=mData?mData[1]:null;
+    let planoNome, ultimaExec, numsStr;
+    if(mData){
+      planoNome=nomeRaw.slice(0,mData.index).trim().replace(/\s*-\s*$/,'').trim();
+      ultimaExec=mData[1];
+      numsStr=nomeRaw.slice(mData.index+mData[0].length);
+    } else if(mZero){
+      planoNome=nomeRaw.slice(0,mZero.index).trim().replace(/\s*-\s*$/,'').trim();
+      ultimaExec=null;
+      numsStr=nomeRaw.slice(mZero.index);
+    } else continue;
 
-    // Extrai números numéricos significativos (km values)
+    // Extrair todos os tokens numéricos (incluindo negativos)
+    // Ponto é separador de milhar → remover antes de converter
+    const tokens=numsStr.trim().split(/\s+/);
     const nums=[];
-    for(const p of partes){
-      const n=parseFloat(p.replace(',','.'));
-      if(!isNaN(n)&&n>0&&p.length>0) nums.push(n);
+    for(const tok of tokens){
+      const n=parseInt(tok.replace(/\./g,''),10);
+      if(!isNaN(n)) nums.push(n);
     }
 
-    // Ordem esperada: [kmUltExec, qtdExec, kmAtual, proximaExec, kmPercorrido, excessoKm, excessoDias]
-    let kmUltExec=0,qtdExec=0,kmAtual=0,proximaExec=0,excessoKm=0,excessoDias=0;
-    if(nums.length>=4){
-      // Identifica pelos valores relativos
-      const ordered=nums.filter(n=>n>0).sort((a,b)=>b-a);
-      kmAtual=ordered[0]||0; // maior valor = km atual
-      proximaExec=nums.find(n=>n>1000&&n<kmAtual*0.8)||0;
-      excessoKm=nums.find(n=>n<100000&&n>0&&n!==kmAtual&&n!==proximaExec)||0;
-    }
-
-    // Pega valores diretos das colunas por posição
-    const cols=t.replace(/\d{2}\/\d{2}\/\d{4}/g,'').split(/\s{2,}/);
-    const numCols=cols.map(c=>parseFloat(c.replace(/[^0-9.]/g,''))).filter(n=>!isNaN(n)&&n>0);
-
-    if(numCols.length>=5){
-      kmUltExec=numCols.find(n=>n>10000&&n<500000)||0;
-      qtdExec=numCols.find(n=>n<200)||0;
-      kmAtual=numCols.reduce((m,n)=>n>m?n:m,0);
-      // Próxima execução é o valor do plano (ex: 5000, 60000, 120000)
-      proximaExec=numCols.find(n=>n>=1000&&n<kmAtual*0.5)||0;
-      excessoKm=numCols[numCols.length-3]||0;
-      excessoDias=numCols[numCols.length-2]||0;
+    // Com data: [kmUltExec, qtdExec, kmAtual, proxExec, kmPercorrido, excessoKm, excessoDias]
+    // Sem data: [0, 0, kmAtual, proxExec, 0, excessoKm, excessoDias]
+    let kmAtual=0,proximaExec=0,excessoKm=0,excessoDias=0;
+    if(ultimaExec){
+      if(nums.length<5) continue;
+      kmAtual     = nums[2];
+      proximaExec = nums[3];
+      excessoKm   = nums.length>5 ? nums[5] : 0;
+      excessoDias = nums.length>6 ? nums[6] : 0;
+    } else {
+      if(nums.length<4) continue;
+      kmAtual     = nums[2];
+      proximaExec = nums[3];
+      excessoKm   = nums.length>5 ? nums[5] : 0;
+      excessoDias = nums.length>6 ? nums[6] : 0;
     }
 
     const pendente=t.includes('Sim');
-    const emitido=t.match(/Sim\s+Sim/);
+    const emitido=t.split('Sim').length-1>=2;
 
     dados.push({
       carro, planoNum, planoNome, tipoMetrica,
       ultimaExec, kmAtual, proximaExec,
-      excessoKm, excessoDias, pendente:!!pendente, emitido:!!emitido,
+      excessoKm, excessoDias, pendente, emitido,
     });
   }
   return dados;
@@ -5257,6 +5261,11 @@ function parsearRelatorioMAN(texto){
 async function renderPrevPainel(back){
   const gid=getGid();
   const garagem=S.garagens.find(g=>g.id===gid);
+
+  // Filtra: apenas itens a ≤1000km do vencimento OU já vencidos (excessoKm >= -1000)
+  // E ordena cada grupo do mais vencido (+) para o menos vencido (-)
+  // ── FILTRAR _prevDados ──────────────────────────────────────────────────
+  const _dadosFiltrados = _prevDados.filter(r => r.excessoKm >= -1000);
 
   // Carrega programações salvas (próximos 7 dias)
   let progMap={};
@@ -5275,16 +5284,16 @@ async function renderPrevPainel(back){
 
   // Agrupa por plano
   const grupos={};
-  for(const r of _prevDados){
+  for(const r of _dadosFiltrados){
     const key=r.planoNum+' '+r.planoNome;
     if(!grupos[key]) grupos[key]={nome:r.planoNome,num:r.planoNum,tipo:r.tipoMetrica,itens:[]};
     grupos[key].itens.push(r);
   }
   Object.values(grupos).forEach(g=>g.itens.sort((a,b)=>b.excessoKm-a.excessoKm));
 
-  const total=_prevDados.length;
-  const pendentes=_prevDados.filter(r=>r.pendente).length;
-  const criticos=_prevDados.filter(r=>r.excessoKm>50000).length;
+  const total=_prevDados.length; // total geral (sem filtro)
+  const pendentes=_dadosFiltrados.filter(r=>r.pendente).length;
+  const criticos=_dadosFiltrados.filter(r=>r.excessoKm>0).length; // já vencidos
   const programados=Object.values(progMap).reduce((s,arr)=>s+arr.length,0);
   const dtImp=_prevImportadoEm?new Date(_prevImportadoEm).toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
 
