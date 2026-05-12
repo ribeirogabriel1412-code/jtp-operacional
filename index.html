@@ -3013,6 +3013,17 @@ async function renderFerr22(aba='ativas'){
     if(c.concluido) ckMap[c.ocorrencia_id].feitos++;
   });
 
+  // Busca preventivas programadas (próximos 3 dias) para badge nos cards
+  const _hoje3=new Date().toISOString().slice(0,10);
+  const _em3=new Date(Date.now()+3*86400000).toISOString().slice(0,10);
+  let prevProgMap22={};
+  try{
+    const{data:prevProgs22}=await sb.from('programacao_preventiva')
+      .select('prefixo,data_prevista,turno,cesto_separado')
+      .eq('garagem_id',gid).eq('status','programado').lte('data_prevista',_em3);
+    (prevProgs22||[]).forEach(p=>{ prevProgMap22[p.prefixo]=p; });
+  }catch(e){}
+
   const cards=lista.map(o=>{
     const st=STATUS22[o.status]||{l:o.status,ic:'?',c:'#475569',cls:''};
     const tp=TIPO22[o.tipo]||{l:o.tipo,ic:'?',c:'#475569'};
@@ -3059,6 +3070,12 @@ async function renderFerr22(aba='ativas'){
           <div style="background:var(--border);border-radius:99px;height:4px;overflow:hidden">
             <div style="height:100%;width:${Math.round((ckMap[o.id].feitos/ckMap[o.id].total)*100)}%;background:${ckMap[o.id].feitos===ckMap[o.id].total?'var(--green)':'var(--amber)'};border-radius:99px"></div>
           </div>
+        </div>`:''}
+      ${prevProgMap22[o.prefixo]?`
+        <div style="margin-top:8px;display:flex;align-items:center;gap:6px;background:#2563EB10;border:1px solid #2563EB30;border-radius:8px;padding:6px 10px">
+          <span style="font-size:12px">🔩</span>
+          <span style="font-size:11px;color:var(--blue);font-weight:700">Preventiva prog. ${prevProgMap22[o.prefixo].data_prevista.split('-').reverse().join('/')} T${prevProgMap22[o.prefixo].turno} ${prevProgMap22[o.prefixo].cesto_separado?'· ✅ Cesto OK':'· ⚠️ Cesto pendente'}</span>
+          <button onclick="event.stopPropagation();renderPrevProgramadas(o.prefixo,'')" style="margin-left:auto;padding:2px 8px;border-radius:5px;border:1px solid #2563EB40;background:transparent;color:var(--blue);font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif">Ver →</button>
         </div>`:''}
     </div>`;
   }).join('');
@@ -5237,9 +5254,24 @@ function parsearRelatorioMAN(texto){
   return dados;
 }
 
-function renderPrevPainel(back){
+async function renderPrevPainel(back){
   const gid=getGid();
   const garagem=S.garagens.find(g=>g.id===gid);
+
+  // Carrega programações salvas (próximos 7 dias)
+  let progMap={};
+  try{
+    const em7=new Date(Date.now()+7*86400000).toISOString().slice(0,10);
+    const{data:progs}=await sb.from('programacao_preventiva')
+      .select('*').eq('garagem_id',gid)
+      .in('status',['programado','em_execucao'])
+      .lte('data_prevista',em7);
+    (progs||[]).forEach(p=>{
+      const key=p.prefixo+'::'+p.plano_nome;
+      if(!progMap[key]) progMap[key]=[];
+      progMap[key].push(p);
+    });
+  }catch(e){}
 
   // Agrupa por plano
   const grupos={};
@@ -5248,28 +5280,23 @@ function renderPrevPainel(back){
     if(!grupos[key]) grupos[key]={nome:r.planoNome,num:r.planoNum,tipo:r.tipoMetrica,itens:[]};
     grupos[key].itens.push(r);
   }
-
-  // Ordena cada grupo por excessoKm desc
   Object.values(grupos).forEach(g=>g.itens.sort((a,b)=>b.excessoKm-a.excessoKm));
 
-  // KPIs globais
   const total=_prevDados.length;
   const pendentes=_prevDados.filter(r=>r.pendente).length;
   const criticos=_prevDados.filter(r=>r.excessoKm>50000).length;
+  const programados=Object.values(progMap).reduce((s,arr)=>s+arr.length,0);
   const dtImp=_prevImportadoEm?new Date(_prevImportadoEm).toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
 
-  // Filtro de grupo
   const gruposKeys=Object.keys(grupos).sort();
   const chipsFiltro=[{k:'todos',l:'Todos'},
     ...gruposKeys.map(k=>({k,l:`${grupos[k].num} · ${grupos[k].nome.slice(0,25)}`}))
   ];
-
   const chips=chipsFiltro.map(c=>`
     <button onclick="_prevGrupoAtivo='${c.k}';renderPrevPainel(document.querySelector('.btn-back')?.outerHTML||'')"
       style="flex-shrink:0;padding:6px 12px;border-radius:20px;border:1px solid ${_prevGrupoAtivo===c.k?'var(--blue)':'var(--border)'};background:${_prevGrupoAtivo===c.k?'#2563EB18':'transparent'};color:${_prevGrupoAtivo===c.k?'var(--blue)':'var(--text3)'};font-size:11px;font-weight:${_prevGrupoAtivo===c.k?'700':'500'};font-family:inherit;cursor:pointer;white-space:nowrap">${c.l}</button>
   `).join('');
 
-  // Filtra grupos a mostrar
   const gruposVisiveis=_prevGrupoAtivo==='todos'?gruposKeys:[_prevGrupoAtivo];
 
   const tabelaGrupos=gruposVisiveis.filter(k=>grupos[k]).map(k=>{
@@ -5277,6 +5304,16 @@ function renderPrevPainel(back){
     const rows=g.itens.map(r=>{
       const excCor=r.excessoKm>100000?'var(--red)':r.excessoKm>50000?'var(--amber)':r.excessoKm>0?'#F97316':'var(--green)';
       const barra=r.proximaExec>0?Math.min(100,Math.round((r.excessoKm/r.proximaExec)*100)):0;
+      const pKey=r.carro+'::'+r.planoNome;
+      const pArr=progMap[pKey]||[];
+      const pBadge=pArr.length>0
+        ?`<span style="background:#2563EB18;border:1px solid #2563EB40;color:var(--blue);border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;cursor:pointer" onclick="event.stopPropagation();renderPrevProgramadas('${r.carro}','${r.planoNome.replace(/'/g,"\\'")}')">📅 ${pArr[0].data_prevista.split('-').reverse().join('/')} T${pArr[0].turno}${pArr[0].cesto_separado?' 📦':''}</span>`
+        :`<button onclick="event.stopPropagation();abrirModalProgramarPrev('${r.carro}','${r.planoNome.replace(/'/g,"\\'")}','${r.planoNum}','${r.tipoMetrica}',${r.excessoKm||0},${r.excessoDias||0},${r.kmAtual||0})"
+            style="padding:3px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:10px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s"
+            onmouseover="this.style.borderColor='var(--blue)';this.style.color='var(--blue)'"
+            onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text3)'">
+            📅 Programar
+          </button>`;
       return`<tr style="border-bottom:1px solid var(--border2)">
         <td style="padding:7px 10px;font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${r.carro}</td>
         <td style="padding:7px 10px;font-size:11px;color:var(--text3)">${r.ultimaExec||'—'}</td>
@@ -5290,12 +5327,12 @@ function renderPrevPainel(back){
         </td>
         <td style="padding:7px 10px;font-size:11px;color:var(--text3)">${r.excessoDias>0?r.excessoDias+' dias':'—'}</td>
         <td style="padding:7px 10px;text-align:center">${r.pendente?'<span style="color:var(--amber);font-size:11px;font-weight:700">⚠️ Sim</span>':'<span style="color:var(--green);font-size:11px">✅</span>'}</td>
+        <td style="padding:7px 10px">${pBadge}</td>
       </tr>`;
     }).join('');
 
     const totalExc=g.itens.filter(i=>i.excessoKm>0).length;
     const corHeader=totalExc>g.itens.length*0.5?'var(--red)':totalExc>0?'var(--amber)':'var(--green)';
-
     return`<div style="margin-bottom:20px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div style="display:flex;align-items:center;gap:10px">
@@ -5303,9 +5340,7 @@ function renderPrevPainel(back){
           <span style="font-size:14px;font-weight:700">${g.nome}</span>
           <span style="font-size:10px;color:var(--text3)">${g.tipo}</span>
         </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <span style="font-size:11px;color:${corHeader};font-weight:700">${totalExc}/${g.itens.length} com excesso</span>
-        </div>
+        <span style="font-size:11px;color:${corHeader};font-weight:700">${totalExc}/${g.itens.length} com excesso</span>
       </div>
       <div class="tbl-wrap"><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
         <thead><tr style="background:var(--surface2)">
@@ -5316,6 +5351,7 @@ function renderPrevPainel(back){
           <th style="padding:7px 10px;text-align:left;font-size:10px;color:var(--red)">Excesso KM</th>
           <th style="padding:7px 10px;text-align:left;font-size:10px;color:var(--text3)">Excesso Dias</th>
           <th style="padding:7px 10px;text-align:center;font-size:10px;color:var(--text3)">Pendente</th>
+          <th style="padding:7px 10px;text-align:left;font-size:10px;color:var(--blue)">Programação</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table></div></div>
@@ -5328,21 +5364,224 @@ function renderPrevPainel(back){
         <div style="font-size:16px;font-weight:800">🔩 Painel de Preventivas</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">Importado em ${dtImp} · ${garagem?.nome||'—'}</div>
       </div>
-      <button onclick="_prevDados=[];_prevGrupoAtivo='todos';renderFerrPrev()" class="btn-sm">🔄 Nova Importação</button>
+      <div style="display:flex;gap:8px">
+        <button onclick="renderPrevProgramadas()" class="btn-sm" style="background:#2563EB18;border-color:#2563EB40;color:var(--blue)">📅 Programações (${programados})</button>
+        <button onclick="_prevDados=[];_prevGrupoAtivo='todos';renderFerrPrev()" class="btn-sm">🔄 Nova Importação</button>
+      </div>
     </div>
     <!-- KPIs -->
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px">
       <div class="kpi neu"><div class="kpi-label">Total Planos</div><div class="kpi-val">${total}</div></div>
       <div class="kpi ${pendentes>0?'nok':'ok'}"><div class="kpi-label">Pendentes</div><div class="kpi-val" style="color:${pendentes>0?'var(--amber)':'var(--green)'}">${pendentes}</div></div>
       <div class="kpi ${criticos>0?'nok':'ok'}"><div class="kpi-label">Críticos (+50k)</div><div class="kpi-val" style="color:${criticos>0?'var(--red)':'var(--green)'}">${criticos}</div></div>
       <div class="kpi neu"><div class="kpi-label">Grupos</div><div class="kpi-val">${gruposKeys.length}</div></div>
+      <div class="kpi ${programados>0?'ok':'neu'}"><div class="kpi-label">Programados</div><div class="kpi-val" style="color:${programados>0?'var(--blue)':'var(--text3)'}">${programados}</div></div>
     </div>
-    <!-- Filtro por grupo -->
+    <!-- Filtro -->
     <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:16px;scrollbar-width:none">${chips}</div>
-    <!-- Tabelas por grupo -->
+    <!-- Tabelas -->
     ${tabelaGrupos||'<div class="empty">Nenhum dado para exibir</div>'}
   `);
 }
+
+// ── MODAL DE PROGRAMAÇÃO ─────────────────────────────────────────────────
+function abrirModalProgramarPrev(carro,planoNome,planoNum,tipoMetrica,excessoKm,excessoDias,kmAtual){
+  const hoje=new Date().toISOString().slice(0,10);
+  const amanha=new Date(Date.now()+86400000).toISOString().slice(0,10);
+  const excCor=excessoKm>100000?'var(--red)':excessoKm>50000?'var(--amber)':excessoKm>0?'#F97316':'var(--green)';
+  const html=`
+    <div id="modal-prog-prev" style="position:fixed;inset:0;background:#00000080;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px">
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:480px;box-shadow:0 20px 60px #00000060">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px">
+          <div>
+            <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Programar Preventiva</div>
+            <div style="font-size:20px;font-weight:800;font-family:'DM Mono',monospace;color:var(--blue)">${carro}</div>
+            <div style="font-size:13px;color:var(--text2);margin-top:2px">${planoNum} · ${planoNome}</div>
+          </div>
+          <button onclick="document.getElementById('modal-prog-prev').remove()" style="background:var(--surface2);border:none;border-radius:8px;width:32px;height:32px;font-size:18px;cursor:pointer;color:var(--text3)">✕</button>
+        </div>
+        ${excessoKm>0?`
+        <div style="background:${excessoKm>50000?'#EF444410':'#F9731610'};border:1px solid ${excessoKm>50000?'#EF444430':'#F9731630'};border-radius:10px;padding:12px 14px;margin-bottom:16px;display:flex;gap:16px">
+          <div><div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Excesso KM</div><div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:800;color:${excCor}">+${excessoKm.toLocaleString('pt-BR')}</div></div>
+          ${excessoDias>0?`<div><div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Excesso Dias</div><div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:800;color:${excCor}">${excessoDias}d</div></div>`:''}
+          <div><div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">KM Atual</div><div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;color:var(--text2)">${kmAtual.toLocaleString('pt-BR')}</div></div>
+        </div>`:''}
+        <div style="display:grid;gap:14px">
+          <div>
+            <label style="font-size:11px;font-weight:700;color:var(--text3);display:block;margin-bottom:6px">📅 Data Prevista</label>
+            <div style="display:flex;gap:8px;margin-bottom:6px">
+              <button onclick="document.getElementById('pp-data').value='${hoje}'" style="flex:1;padding:6px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">Hoje<br><span style="font-size:10px;color:var(--text3)">${hoje.split('-').reverse().join('/')}</span></button>
+              <button onclick="document.getElementById('pp-data').value='${amanha}'" style="flex:1;padding:6px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">Amanhã<br><span style="font-size:10px;color:var(--text3)">${amanha.split('-').reverse().join('/')}</span></button>
+            </div>
+            <input type="date" id="pp-data" value="${amanha}" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text1);font-family:'DM Sans',sans-serif;font-size:13px">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:var(--text3);display:block;margin-bottom:6px">⏰ Turno</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <button id="pp-ta" onclick="selTurnoPrev('A')" style="padding:10px;border-radius:10px;border:2px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🌅 Turno A<br><span style="font-size:10px;font-weight:400">07:30 ~ 15:50</span></button>
+              <button id="pp-tb" onclick="selTurnoPrev('B')" style="padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🌙 Turno B<br><span style="font-size:10px;font-weight:400">21:30 ~ 05:50</span></button>
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:var(--text3);display:block;margin-bottom:6px">📦 Cesto de Peças</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <button id="pp-cs" onclick="selCestoPrev(true)" style="padding:8px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">✅ Já separado</button>
+              <button id="pp-cn" onclick="selCestoPrev(false)" style="padding:8px;border-radius:10px;border:2px solid var(--amber);background:#F59E0B18;color:var(--amber);font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">⚠️ Pendente</button>
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:var(--text3);display:block;margin-bottom:6px">💬 Observação (opcional)</label>
+            <textarea id="pp-obs" placeholder="Ex: Aguardar peça X, carro escalonado para amanhã..." rows="2" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text1);font-family:'DM Sans',sans-serif;font-size:13px;resize:vertical"></textarea>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:20px">
+          <button onclick="document.getElementById('modal-prog-prev').remove()" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">Cancelar</button>
+          <button id="pp-btn-salvar" onclick="salvarProgramacaoPrev('${carro}','${planoNome.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}','${planoNum}','${tipoMetrica}',${excessoKm},${excessoDias},${kmAtual})" style="flex:2;padding:10px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">📅 Confirmar + Notificar WPP</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+  window._ppTurno='A'; window._ppCesto=false;
+}
+
+function selTurnoPrev(t){
+  window._ppTurno=t;
+  const a=document.getElementById('pp-ta'),b=document.getElementById('pp-tb');
+  if(!a||!b)return;
+  if(t==='A'){
+    a.style.border='2px solid var(--blue)';a.style.background='#2563EB18';a.style.color='var(--blue)';
+    b.style.border='1px solid var(--border)';b.style.background='transparent';b.style.color='var(--text3)';
+  }else{
+    b.style.border='2px solid var(--blue)';b.style.background='#2563EB18';b.style.color='var(--blue)';
+    a.style.border='1px solid var(--border)';a.style.background='transparent';a.style.color='var(--text3)';
+  }
+}
+
+function selCestoPrev(v){
+  window._ppCesto=v;
+  const s=document.getElementById('pp-cs'),n=document.getElementById('pp-cn');
+  if(!s||!n)return;
+  if(v){
+    s.style.border='2px solid var(--green)';s.style.background='#00C48C18';s.style.color='var(--green)';
+    n.style.border='1px solid var(--border)';n.style.background='transparent';n.style.color='var(--text3)';
+  }else{
+    n.style.border='2px solid var(--amber)';n.style.background='#F59E0B18';n.style.color='var(--amber)';
+    s.style.border='1px solid var(--border)';s.style.background='transparent';s.style.color='var(--text3)';
+  }
+}
+
+async function salvarProgramacaoPrev(carro,planoNome,planoNum,tipoMetrica,excessoKm,excessoDias,kmAtual){
+  const gid=getGid();
+  const data=document.getElementById('pp-data')?.value;
+  const turno=window._ppTurno||'A';
+  const cesto=window._ppCesto||false;
+  const obs=document.getElementById('pp-obs')?.value||'';
+  if(!data){toast('Selecione a data!','err');return;}
+  const btn=document.getElementById('pp-btn-salvar');
+  if(btn){btn.disabled=true;btn.textContent='Salvando...';}
+  try{
+    const{error}=await sb.from('programacao_preventiva').insert({
+      garagem_id:gid,prefixo:carro,plano_num:planoNum,plano_nome:planoNome,
+      tipo_metrica:tipoMetrica,excesso_km:excessoKm,excesso_dias:excessoDias,
+      km_atual:kmAtual,data_prevista:data,turno,cesto_separado:cesto,
+      observacao:obs||null,status:'programado',
+      criado_por:S.perfil?.nome,criado_por_id:S.perfil?.id,
+    });
+    if(error)throw error;
+    const dataFmt=data.split('-').reverse().join('/');
+    const garagem=S.garagens.find(g=>g.id===gid);
+    const msg=`🔩 *PREVENTIVA PROGRAMADA — JTP Transportes*\n📍 ${garagem?.nome||'Porto Velho'}\n\n🚌 *Carro:* ${carro}\n📋 *Plano:* ${planoNum} · ${planoNome}\n📅 *Data:* ${dataFmt}\n⏰ *Turno:* ${turno==='A'?'A (07:30~15:50)':'B (21:30~05:50)'}\n📦 *Cesto de peças:* ${cesto?'✅ Já separado':'⚠️ Pendente separação'}${obs?'\n💬 *Obs:* '+obs:''}${excessoKm>0?'\n⚠️ *Excesso KM:* +'+excessoKm.toLocaleString('pt-BR')+' km':''}\n\n_Programado por: ${S.perfil?.nome||'PCM'}_`;
+    let wppOk=false;
+    try{
+      const r=await fetch(`https://evolution-api-production-8d56.up.railway.app/message/sendText/jtp-garagem`,{
+        method:'POST',headers:{'Content-Type':'application/json','apikey':'4289AC11F437-43AD-96D7-9F27C2735696'},
+        body:JSON.stringify({number:'120363427489152994@g.us',options:{delay:0},textMessage:{text:msg}}),
+      });
+      wppOk=r.ok;
+    }catch(e){console.warn('WPP err:',e);}
+    if(wppOk){
+      await sb.from('programacao_preventiva')
+        .update({wpp_enviado:true,wpp_enviado_em:new Date().toISOString()})
+        .eq('garagem_id',gid).eq('prefixo',carro).eq('plano_nome',planoNome).eq('data_prevista',data);
+    }
+    document.getElementById('modal-prog-prev')?.remove();
+    toast(`✅ ${carro} programado para ${dataFmt} T${turno}${wppOk?' · 📲 WPP enviado':''}!`);
+    renderFerrPrev();
+  }catch(e){
+    toast('Erro ao salvar: '+e.message,'err');
+    if(btn){btn.disabled=false;btn.textContent='📅 Confirmar + Notificar WPP';}
+  }
+}
+
+// ── TELA DE PROGRAMAÇÕES ─────────────────────────────────────────────────
+async function renderPrevProgramadas(filtroCarro='',filtroPlano=''){
+  const gid=getGid();
+  const back=`<button class="btn-back" onclick="renderFerrPrev()">← Painel Preventivas</button>`;
+  setMain(`<div class="loading"><div class="spinner"></div> Carregando...</div>`);
+  let q=sb.from('programacao_preventiva').select('*').eq('garagem_id',gid)
+    .order('data_prevista',{ascending:true}).limit(100);
+  if(filtroCarro) q=q.eq('prefixo',filtroCarro);
+  const{data:progs}=await q;
+  const lista=progs||[];
+  const STATUS_P={
+    programado:{ic:'📅',l:'Programado',c:'var(--blue)'},
+    em_execucao:{ic:'🔧',l:'Em Execução',c:'var(--amber)'},
+    concluido:{ic:'✅',l:'Concluído',c:'var(--green)'},
+    cancelado:{ic:'❌',l:'Cancelado',c:'var(--text4)'},
+  };
+  const hoje=new Date().toISOString().slice(0,10);
+  const rows=lista.map(p=>{
+    const st=STATUS_P[p.status]||{ic:'?',l:p.status,c:'var(--text3)'};
+    const atrasado=p.status==='programado'&&p.data_prevista<hoje;
+    const dataFmt=(p.data_prevista||'').split('-').reverse().join('/');
+    return`<tr style="border-bottom:1px solid var(--border2)${atrasado?';background:#EF444408':''}">
+      <td style="padding:8px 10px;font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${p.prefixo}</td>
+      <td style="padding:8px 10px;font-size:11px;color:var(--text2)">${p.plano_num||''} · ${p.plano_nome}</td>
+      <td style="padding:8px 10px;font-size:12px;font-weight:700${atrasado?';color:var(--red)':''}">${dataFmt}${atrasado?' ⚠️':''}</td>
+      <td style="padding:8px 10px;font-size:12px">T${p.turno}</td>
+      <td style="padding:8px 10px;text-align:center">${p.cesto_separado?'<span style="color:var(--green);font-size:13px">✅</span>':'<span style="color:var(--amber);font-size:13px">⚠️</span>'}</td>
+      <td style="padding:8px 10px"><span style="color:${st.c};font-size:11px;font-weight:700">${st.ic} ${st.l}</span></td>
+      <td style="padding:8px 10px;font-size:11px;color:var(--text3)">${p.criado_por||'—'}</td>
+      <td style="padding:8px 10px;text-align:center">${p.wpp_enviado?'📱':'—'}</td>
+      <td style="padding:8px 10px">${p.status==='programado'?`<button onclick="cancelarProgPrev('${p.id}')" style="padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif">❌ Cancelar</button>`:''}</td>
+    </tr>`;
+  }).join('');
+  const atrasados=lista.filter(p=>p.status==='programado'&&p.data_prevista<hoje).length;
+  const programados=lista.filter(p=>p.status==='programado').length;
+  setMain(`${back}
+    <div style="font-size:16px;font-weight:800;margin-bottom:4px">📅 Programações de Preventiva</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:16px">${filtroCarro?'Filtrado: '+filtroCarro:'Todas as programações'}</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
+      <div class="kpi neu"><div class="kpi-label">Total</div><div class="kpi-val">${lista.length}</div></div>
+      <div class="kpi neu"><div class="kpi-label">Programados</div><div class="kpi-val" style="color:var(--blue)">${programados}</div></div>
+      <div class="kpi ${atrasados>0?'nok':'ok'}"><div class="kpi-label">Atrasados</div><div class="kpi-val" style="color:${atrasados>0?'var(--red)':'var(--green)'}">${atrasados}</div></div>
+    </div>
+    <div class="tbl-wrap"><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="background:var(--surface2)">
+        <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--text3)">Carro</th>
+        <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--text3)">Plano</th>
+        <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--text3)">Data</th>
+        <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--text3)">Turno</th>
+        <th style="padding:8px 10px;text-align:center;font-size:10px;color:var(--text3)">Cesto</th>
+        <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--text3)">Status</th>
+        <th style="padding:8px 10px;text-align:left;font-size:10px;color:var(--text3)">Criado por</th>
+        <th style="padding:8px 10px;text-align:center;font-size:10px;color:var(--text3)">WPP</th>
+        <th style="padding:8px 10px;font-size:10px;color:var(--text3)">Ações</th>
+      </tr></thead>
+      <tbody>${rows||`<tr><td colspan="9" style="padding:24px;text-align:center;color:var(--text3)">Nenhuma programação encontrada</td></tr>`}</tbody>
+    </table></div></div>
+  `);
+}
+
+async function cancelarProgPrev(id){
+  if(!confirm('Cancelar esta programação?'))return;
+  const{error}=await sb.from('programacao_preventiva').update({status:'cancelado',updated_at:new Date().toISOString()}).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('Programação cancelada');
+  renderPrevProgramadas();
+}
+
+
 
 async function renderFerr211(){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
