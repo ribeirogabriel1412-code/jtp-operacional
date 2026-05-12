@@ -411,15 +411,19 @@ tr:hover td{background:#0F172A80}
 <div class="modal-ov" id="modal-22" style="display:none" onclick="if(event.target===this)closeM('modal-22')">
   <div class="modal" style="max-width:520px">
     <div class="modal-title">
-      <span id="m22-titulo">Nova Ocorrência</span>
+      <span id="m22-titulo">Nova OS</span>
       <button class="btn-x" onclick="closeM('modal-22')">✕</button>
     </div>
     <div class="mgrid">
       <div>
         <label class="fl">Prefixo *</label>
-        <select class="fs" id="m22-prefixo" style="margin-bottom:0">
-          <option value="">Selecione o veículo...</option>
-        </select>
+        <div style="position:relative">
+          <input class="fi" id="m22-busca-pref" placeholder="🔍 Digite o prefixo..." style="margin-bottom:0;font-family:'DM Mono',monospace;font-size:15px;text-transform:uppercase"
+            oninput="filtrarPrefixos22(this.value)" autocomplete="off">
+          <div id="m22-pref-lista" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;max-height:180px;overflow-y:auto;z-index:100;box-shadow:0 4px 20px rgba(0,0,0,.3)"></div>
+        </div>
+        <input type="hidden" id="m22-prefixo" value="">
+        <input type="hidden" id="m22-veiculo-id" value="">
       </div>
       <div>
         <label class="fl">Tipo *</label>
@@ -427,27 +431,22 @@ tr:hover td{background:#0F172A80}
           <option value="corretiva">🔴 Corretiva</option>
           <option value="preventiva_leve">🟡 Preventiva Leve</option>
           <option value="preventiva_pesada">🟠 Preventiva Pesada</option>
+          <option value="eletrica">⚡ Elétrica</option>
+          <option value="pneu">⭕ Pneu</option>
+          <option value="sinistro">⚠️ Sinistro</option>
         </select>
       </div>
       <div class="full">
-        <label class="fl">Nº OS Praxio <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text4)">(opcional — futura integração automática)</span></label>
+        <label class="fl">Nº OS Praxio <span style="font-weight:400;color:var(--text4)">(opcional)</span></label>
         <input class="fi" id="m22-os" placeholder="Ex: OS-2025-04521" style="margin-bottom:0;font-family:'DM Mono',monospace">
       </div>
       <div class="full">
-        <label class="fl">Descrição do Problema</label>
+        <label class="fl">Descrição / Defeito</label>
         <input class="fi" id="m22-desc" placeholder="Ex: Motor superaquecendo, troca de embreagem..." style="margin-bottom:0">
       </div>
       <div>
         <label class="fl">Mecânico Responsável</label>
         <input class="fi" id="m22-mecanico" placeholder="Nome do mecânico" style="margin-bottom:0">
-      </div>
-      <div>
-        <label class="fl">Status Inicial</label>
-        <select class="fs" id="m22-status" style="margin-bottom:0">
-          <option value="em_manutencao">🔧 Em Manutenção</option>
-          <option value="aguardando_peca">📦 Aguardando Peça</option>
-          <option value="aguardando_aprovacao">⏳ Aguardando Aprovação</option>
-        </select>
       </div>
       <div>
         <label class="fl">Hora de Entrada</label>
@@ -468,7 +467,7 @@ tr:hover td{background:#0F172A80}
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
       <button class="btn-sec" onclick="closeM('modal-22')">Cancelar</button>
-      <button class="btn-success" id="btn-salvar-22" onclick="salvarOcorrencia22()">💾 Abrir Ocorrência</button>
+      <button class="btn-success" id="btn-salvar-22" onclick="salvarOcorrencia22()">💾 Abrir OS</button>
     </div>
   </div>
 </div>
@@ -3161,11 +3160,11 @@ async function notificarWhatsApp(ocorrencia_id, status_novo){
 
 async function salvarOcorrencia22(){
   const gid=getGid();
-  const prefixoSel=document.getElementById('m22-prefixo').value;
-  if(!prefixoSel){toast('Selecione um veículo!','err');return}
-  const[vid,prefixo]=prefixoSel.split('|');
+  const prefixo=document.getElementById('m22-prefixo')?.value?.trim().toUpperCase();
+  const vid=document.getElementById('m22-veiculo-id')?.value||null;
+  if(!prefixo){toast('Informe o prefixo!','err');return;}
   const tipo=document.getElementById('m22-tipo').value;
-  const status=document.getElementById('m22-status').value;
+  const status='em_manutencao'; // sempre inicia em manutenção
   const os=document.getElementById('m22-os').value.trim();
   const desc=document.getElementById('m22-desc').value.trim();
   const mecanico=document.getElementById('m22-mecanico').value.trim();
@@ -3187,7 +3186,7 @@ async function salvarOcorrencia22(){
   btn.textContent='Salvando...';btn.disabled=true;
 
   const statusFrota=status==='aguardando_peca'?'aguardando_peca':'manutencao';
-  await sb.from('frota').update({status:statusFrota,updated_at:new Date().toISOString()}).eq('id',vid);
+  if(vid) await sb.from('frota').update({status:statusFrota,updated_at:new Date().toISOString()}).eq('id',vid);
 
   const{data:novaOc,error}=await sb.from('ocorrencias_22').insert({
     garagem_id:gid, veiculo_id:vid, prefixo, numero, tipo, status,
@@ -3240,20 +3239,47 @@ async function setPrioridadeOS(ocId, prioridade){
   renderFerr22('ativas');
 }
 
+// Busca prefixos enquanto digita no modal de OS
+function filtrarPrefixos22(busca){
+  const lista=document.getElementById('m22-pref-lista');
+  if(!lista) return;
+  const b=busca.toUpperCase().trim();
+  const frota=(S.frota||[]).filter(v=>v.status!=='inativo');
+  const filtrada=b?frota.filter(v=>v.prefixo?.includes(b)):frota;
+  if(!filtrada.length||!b){lista.style.display='none';return;}
+  lista.style.display='block';
+  lista.innerHTML=filtrada.slice(0,10).map(v=>`
+    <div onclick="selecionarPrefixo22('${v.id}','${v.prefixo}')"
+      style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border2);display:flex;align-items:center;gap:8px"
+      onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+      <span style="font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${v.prefixo}</span>
+      <span style="font-size:11px;color:var(--text3)">${v.modelo||''}</span>
+      <span style="margin-left:auto;font-size:10px;color:${v.status==='disponivel'?'var(--green)':'var(--amber)'}">${v.status||''}</span>
+    </div>`).join('');
+}
+
+function selecionarPrefixo22(vid, prefixo){
+  document.getElementById('m22-busca-pref').value=prefixo;
+  document.getElementById('m22-prefixo').value=prefixo;
+  document.getElementById('m22-veiculo-id').value=vid;
+  document.getElementById('m22-pref-lista').style.display='none';
+}
+
 // Nova OS — abre o modal-22 existente já limpo
 function abrirNovaOcorrencia(){
   document.getElementById('m22-titulo').textContent='+ Nova OS';
+  document.getElementById('m22-busca-pref').value='';
   document.getElementById('m22-prefixo').value='';
+  document.getElementById('m22-veiculo-id').value='';
+  document.getElementById('m22-pref-lista').style.display='none';
   document.getElementById('m22-tipo').value='corretiva';
   document.getElementById('m22-os').value='';
   document.getElementById('m22-desc').value='';
   document.getElementById('m22-mecanico').value='';
-  document.getElementById('m22-status').value='em_manutencao';
   document.getElementById('m22-entrada').value='';
   document.getElementById('m22-previsao').value='';
   if(document.getElementById('m22-custo-prev')) document.getElementById('m22-custo-prev').value='';
   if(document.getElementById('m22-pecas-nec')) document.getElementById('m22-pecas-nec').value='';
-  // Seta hora atual
   const agora=new Date();
   agora.setMinutes(agora.getMinutes()-agora.getTimezoneOffset());
   document.getElementById('m22-entrada').value=agora.toISOString().slice(0,16);
@@ -4836,8 +4862,11 @@ async function salvarOrcamento(gid, data){
   const val=parseFloat(document.getElementById('orc-input')?.value||0);
   if(!val){toast('Informe o valor','err');return;}
   const turno=S.turno||'dia';
-  // Tenta update primeiro, depois insert
-  const{data:exist}=await sb.from('pcm_orcamento').select('id').eq('garagem_id',gid).eq('data',data).eq('turno',turno).single().catch(()=>({data:null}));
+  let exist=null;
+  try{
+    const{data:e}=await sb.from('pcm_orcamento').select('id').eq('garagem_id',gid).eq('data',data).eq('turno',turno).single();
+    exist=e;
+  }catch(e){}
   if(exist?.id){
     await sb.from('pcm_orcamento').update({valor_disponivel:val,atualizado_em:new Date().toISOString(),atualizado_por:S.perfil?.nome}).eq('id',exist.id);
   } else {
