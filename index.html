@@ -650,6 +650,11 @@ const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',lider_p
 // Cada ferramenta define papéis padrão por cargo
 // Admin pode customizar no painel de Gestão de Usuários
 const FERRAMENTAS_DEF=[
+  {id:'ferr-pcm', icon:'🔧', nome:'Painel PCM',
+    executa:  ['lider_pcm','assistente_pcm'],
+    valida:   ['lider_pcm'],
+    visualiza:['gerente_garagem','diretoria','lider_oficina'],
+  },
   {id:'ferr-210', icon:'📋', nome:'2.10 Soltura de Frota',
     executa:  ['lider_patio'],
     valida:   ['lider_patio'],
@@ -4553,12 +4558,18 @@ async function renderFerrPCM(aba='painel'){
   }
 
   // ── ABA PAINEL (principal) ────────────────────────────────
-  const[{data:ocs},{data:frota},{data:orcamento}]=await Promise.all([
+  // Busca orçamento separado para não quebrar o Promise.all
+  let orcamento=[];
+  try{
+    const{data:orc}=await sb.from('pcm_orcamento').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',S.turno||'dia')
+      .order('created_at',{ascending:false}).limit(1);
+    orcamento=orc||[];
+  }catch(e){}
+
+  const[{data:ocs},{data:frota}]=await Promise.all([
     sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado')
       .order('hora_entrada',{ascending:true}),
     sb.from('frota').select('*').eq('garagem_id',gid),
-    sb.from('pcm_orcamento').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',S.turno||'dia')
-      .order('created_at',{ascending:false}).limit(1).catch(()=>({data:[]})),
   ]);
 
   // KPIs
