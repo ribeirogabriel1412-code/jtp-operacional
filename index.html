@@ -5546,7 +5546,17 @@ async function renderPrevPainel(back){
         <td style="padding:7px 10px;font-size:11px;color:var(--text3)">${r.excessoDias>0?r.excessoDias+' dias':'—'}</td>
         <td style="padding:7px 10px;text-align:center">${r.pendente?'<span style="color:var(--amber);font-size:11px;font-weight:700">⚠️ Sim</span>':'<span style="color:var(--green);font-size:11px">✅</span>'}</td>
         <td style="padding:7px 10px">${pBadge}</td>
-      </tr>`;
+        <td style="padding:7px 10px">
+          ${(()=>{
+            const ops=calcularOportunistas(_prevDados.filter(p=>p.carro===r.carro),r);
+            if(!ops.length) return '<span style="color:var(--text4);font-size:11px">—</span>';
+            const cores={vencido:'var(--red)',critico:'var(--amber)',proximo:'#F97316'};
+            return ops.slice(0,3).map(op=>
+              `<span title="${op.nome} (${op.excesso>=0?'+'+op.excesso.toLocaleString('pt-BR'):op.excesso.toLocaleString('pt-BR')} km)" style="display:inline-block;background:${cores[op.status]}18;border:1px solid ${cores[op.status]}40;color:${cores[op.status]};border-radius:5px;padding:1px 6px;font-size:10px;font-weight:700;margin:1px;white-space:nowrap">${op.nome.split(' ').slice(0,2).join(' ')}</span>`
+            ).join('')+(ops.length>3?`<span style="color:var(--text4);font-size:10px;margin-left:2px">+${ops.length-3}</span>`:'');
+          })()}
+        </td>
+      </tr>\``;
     }).join('');
 
     const totalExc=g.itens.filter(i=>i.excessoKm>0).length;
@@ -5570,6 +5580,7 @@ async function renderPrevPainel(back){
           <th style="padding:7px 10px;text-align:left;font-size:10px;color:var(--text3)">Excesso Dias</th>
           <th style="padding:7px 10px;text-align:center;font-size:10px;color:var(--text3)">Pendente</th>
           <th style="padding:7px 10px;text-align:left;font-size:10px;color:var(--blue)">Programação</th>
+          <th style="padding:7px 10px;text-align:left;font-size:10px;color:var(--amber)">⚡ Oportunistas</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table></div></div>
@@ -5605,28 +5616,168 @@ async function renderPrevPainel(back){
 }
 
 // ── MODAL DE PROGRAMAÇÃO ─────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+// HIERARQUIA E OPORTUNISMO
+// ══════════════════════════════════════════════════════════════
+
+// Planos que, quando executados, "matam" outros (hierarquia)
+const PREV_HIERARQUIA = {
+  '003': ['002','001'],  // Garantia mata Pesada e Leve
+  '029': ['002','001'],  // Garantia (variante) mata Pesada e Leve
+  '002': ['001'],        // Pesada mata Leve
+};
+
+// Planos ignorados no oportunismo (lavagem, preditiva, etc.)
+const PREV_IGNORAR = new Set(['023','031','040']);
+
+// Nomes legíveis para cada plano
+const PREV_NOMES = {
+  '001':'Preventiva Leve','002':'Preventiva Pesada','003':'Óleo Motor - Garantia',
+  '005':'Troca Óleo Moto','006':'Troca Óleo Moto','009':'Troca Óleo Câmbio',
+  '010':'Troca Óleo Câmbio','012':'Óleo Diferencial','013':'Óleo Diferencial',
+  '014':'Óleo Diferencial','015':'Alinhamento','016':'Rodízio',
+  '017':'Calibração','018':'Higienização Técnica','019':'Revisão A/C',
+  '021':'Sist. Pós-Tratamento','029':'Óleo Motor - Garantia 2',
+  '033':'Prev. Cubo Dianteiro','036':'Limpeza Filtro DPF',
+  '038':'Regulagem de Válvulas','039':'Filtro do ARLA',
+  '041':'Troca Óleo Moto',
+};
+
+// Calcula planos oportunistas de um carro dado o plano âncora
+function calcularOportunistas(todosPlanosCarro, planoAncora) {
+  const numAncora = planoAncora.planoNum || planoAncora.plano_num;
+  
+  // Planos que serão "eliminados" pela hierarquia do plano âncora
+  const eliminados = new Set(PREV_HIERARQUIA[numAncora] || []);
+  if (numAncora === '002') eliminados.add('001'); // pesada já inclui leve
+  
+  // Para cada plano do carro, checar se é oportunista
+  const oportunistas = [];
+  for (const p of todosPlanosCarro) {
+    const num = p.planoNum || p.plano_num;
+    if (!num) continue;
+    if (num === numAncora) continue;          // é o próprio âncora
+    if (eliminados.has(num)) continue;        // será feito junto (filho hierárquico)
+    if (PREV_IGNORAR.has(num)) continue;      // lavagem/preditiva ignorar
+    
+    const intervalo = p.proximaExec || p.prox_exec || 0;
+    const excesso   = p.excessoKm   || p.excesso_km || 0;
+    if (intervalo <= 0) continue;
+    
+    const threshold = -Math.round(intervalo * 0.05); // 5% do intervalo
+    if (excesso >= threshold) {
+      oportunistas.push({
+        num,
+        nome: PREV_NOMES[num] || p.planoNome || p.plano_nome,
+        excesso,
+        intervalo,
+        threshold,
+        status: excesso >= 0 ? 'vencido' : excesso >= threshold*0.5 ? 'critico' : 'proximo',
+      });
+    }
+  }
+  
+  // Ordenar: vencidos primeiro, depois mais próximos
+  oportunistas.sort((a,b) => b.excesso - a.excesso);
+  return oportunistas;
+}
+
+// ── MODAL DE PROGRAMAÇÃO COM OPORTUNISMO ─────────────────────────────────
 function abrirModalProgramarPrev(carro,planoNome,planoNum,tipoMetrica,excessoKm,excessoDias,kmAtual){
   const hoje=new Date().toISOString().slice(0,10);
   const amanha=new Date(Date.now()+86400000).toISOString().slice(0,10);
-  const excCor=excessoKm>100000?'var(--red)':excessoKm>50000?'var(--amber)':excessoKm>0?'#F97316':'var(--green)';
+  const excCor=excessoKm>0?'var(--red)':'var(--amber)';
+
+  // Calcular oportunistas a partir dos dados em memória
+  const todosPlanosCarro = _prevDados.filter(p => p.carro === carro);
+  const planoAncora = {planoNum, planoNome, proximaExec: 0, excessoKm};
+  const oportunistas = calcularOportunistas(todosPlanosCarro, planoAncora);
+
+  // Planos eliminados pela hierarquia (serão feitos junto automaticamente)
+  const eliminados = PREV_HIERARQUIA[planoNum] || [];
+  const planosFilhos = todosPlanosCarro.filter(p => eliminados.includes(p.planoNum) && p.excessoKm >= -1000);
+
+  // Bloqueados por hierarquia (se este plano for Pesada ou Garantia, a Leve não deve aparecer separada)
+  const bloqueadosDe = Object.entries(PREV_HIERARQUIA)
+    .filter(([k,v]) => v.includes(planoNum))
+    .map(([k]) => k);
+
+  // HTML dos oportunistas
+  const oportunistasHtml = oportunistas.length > 0 ? `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span style="font-size:14px">⚡</span>
+        <span style="font-size:12px;font-weight:800;color:var(--text2)">Manutenção por Oportunidade</span>
+        <span style="background:#F59E0B18;border:1px solid #F59E0B40;color:var(--amber);border-radius:5px;padding:1px 7px;font-size:10px;font-weight:700">${oportunistas.length} plano${oportunistas.length>1?'s':''} prestes a vencer</span>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Estes planos estão dentro de 5% do vencimento — execute junto para evitar retorno ao box:</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${oportunistas.map(op => {
+          const cor = op.status==='vencido' ? 'var(--red)' : op.status==='critico' ? 'var(--amber)' : '#F97316';
+          const badge = op.excesso >= 0
+            ? `<span style="color:${cor};font-weight:700;font-size:11px;font-family:'DM Mono',monospace">+${op.excesso.toLocaleString('pt-BR')} km vencido</span>`
+            : `<span style="color:${cor};font-weight:700;font-size:11px;font-family:'DM Mono',monospace">faltam ${Math.abs(op.excesso).toLocaleString('pt-BR')} km (${Math.round(Math.abs(op.excesso)/op.intervalo*100)}% do plano)</span>`;
+          return `<div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg);border:1px solid ${cor}30;border-left:3px solid ${cor};border-radius:8px;padding:8px 12px">
+            <div>
+              <span style="font-size:12px;font-weight:700;color:var(--text1)">${op.nome}</span>
+              <span style="font-size:10px;color:var(--text3);margin-left:6px">Plano ${op.num}</span>
+            </div>
+            ${badge}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+
+  // HTML dos filhos hierárquicos (executados automaticamente)
+  const filhosHtml = planosFilhos.length > 0 ? `
+    <div style="background:#00C48C08;border:1px solid #00C48C30;border-radius:10px;padding:10px 14px;margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:6px">✅ Executados automaticamente com esta preventiva:</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${planosFilhos.map(p => `<span style="background:#00C48C18;border:1px solid #00C48C40;color:var(--green);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600">${PREV_NOMES[p.planoNum]||p.planoNome} (${p.excessoKm >= 0 ? '+'+p.excessoKm.toLocaleString('pt-BR')+' km' : p.excessoKm.toLocaleString('pt-BR')+' km'})</span>`).join('')}
+      </div>
+    </div>` : '';
+
+  // Aviso de bloqueio se este plano elimina outros
+  const bloqHtml = (PREV_HIERARQUIA[planoNum]||[]).length > 0 ? `
+    <div style="background:#2563EB08;border:1px solid #2563EB30;border-radius:8px;padding:8px 12px;margin-bottom:14px">
+      <span style="font-size:11px;color:var(--blue)">ℹ️ Esta preventiva inclui os planos: <strong>${(PREV_HIERARQUIA[planoNum]||[]).map(n=>PREV_NOMES[n]||n).join(', ')}</strong> — não escalar separadamente.</span>
+    </div>` : '';
+
   const html=`
-    <div id="modal-prog-prev" style="position:fixed;inset:0;background:#00000080;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px">
-      <div style="background:var(--bg);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:480px;box-shadow:0 20px 60px #00000060">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px">
+    <div id="modal-prog-prev" style="position:fixed;inset:0;background:#00000088;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;overflow-y:auto">
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:520px;box-shadow:0 20px 60px #00000070;margin:auto">
+
+        <!-- Header -->
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px">
           <div>
             <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Programar Preventiva</div>
-            <div style="font-size:20px;font-weight:800;font-family:'DM Mono',monospace;color:var(--blue)">${carro}</div>
+            <div style="font-size:22px;font-weight:800;font-family:'DM Mono',monospace;color:var(--blue)">${carro}</div>
             <div style="font-size:13px;color:var(--text2);margin-top:2px">${planoNum} · ${planoNome}</div>
           </div>
           <button onclick="document.getElementById('modal-prog-prev').remove()" style="background:var(--surface2);border:none;border-radius:8px;width:32px;height:32px;font-size:18px;cursor:pointer;color:var(--text3)">✕</button>
         </div>
-        ${excessoKm>0?`
-        <div style="background:${excessoKm>50000?'#EF444410':'#F9731610'};border:1px solid ${excessoKm>50000?'#EF444430':'#F9731630'};border-radius:10px;padding:12px 14px;margin-bottom:16px;display:flex;gap:16px">
-          <div><div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Excesso KM</div><div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:800;color:${excCor}">+${excessoKm.toLocaleString('pt-BR')}</div></div>
-          ${excessoDias>0?`<div><div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Excesso Dias</div><div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:800;color:${excCor}">${excessoDias}d</div></div>`:''}
-          <div><div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">KM Atual</div><div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;color:var(--text2)">${kmAtual.toLocaleString('pt-BR')}</div></div>
-        </div>`:''}
+
+        <!-- Info excesso -->
+        ${excessoKm !== 0 ? `
+        <div style="background:${excessoKm>0?'#EF444410':'#F9731610'};border:1px solid ${excessoKm>0?'#EF444430':'#F9731630'};border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;gap:20px;align-items:center">
+          <div><div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Excesso KM</div>
+          <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:800;color:${excCor}">${excessoKm>0?'+':''}${excessoKm.toLocaleString('pt-BR')}</div></div>
+          ${excessoDias !== 0 ? `<div><div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Excesso Dias</div>
+          <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:800;color:${excCor}">${excessoDias}d</div></div>` : ''}
+          <div><div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">KM Atual</div>
+          <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:700;color:var(--text2)">${kmAtual.toLocaleString('pt-BR')}</div></div>
+        </div>` : ''}
+
+        <!-- Hierarquia / filhos automáticos -->
+        ${bloqHtml}
+        ${filhosHtml}
+
+        <!-- Oportunistas -->
+        ${oportunistasHtml}
+
+        <!-- Form -->
         <div style="display:grid;gap:14px">
+          <!-- Data -->
           <div>
             <label style="font-size:11px;font-weight:700;color:var(--text3);display:block;margin-bottom:6px">📅 Data Prevista</label>
             <div style="display:flex;gap:8px;margin-bottom:6px">
@@ -5635,6 +5786,7 @@ function abrirModalProgramarPrev(carro,planoNome,planoNum,tipoMetrica,excessoKm,
             </div>
             <input type="date" id="pp-data" value="${amanha}" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text1);font-family:'DM Sans',sans-serif;font-size:13px">
           </div>
+          <!-- Turno -->
           <div>
             <label style="font-size:11px;font-weight:700;color:var(--text3);display:block;margin-bottom:6px">⏰ Turno</label>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -5642,6 +5794,7 @@ function abrirModalProgramarPrev(carro,planoNome,planoNum,tipoMetrica,excessoKm,
               <button id="pp-tb" onclick="selTurnoPrev('B')" style="padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🌙 Turno B<br><span style="font-size:10px;font-weight:400">21:30 ~ 05:50</span></button>
             </div>
           </div>
+          <!-- Cesto -->
           <div>
             <label style="font-size:11px;font-weight:700;color:var(--text3);display:block;margin-bottom:6px">📦 Cesto de Peças</label>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -5649,17 +5802,23 @@ function abrirModalProgramarPrev(carro,planoNome,planoNum,tipoMetrica,excessoKm,
               <button id="pp-cn" onclick="selCestoPrev(false)" style="padding:8px;border-radius:10px;border:2px solid var(--amber);background:#F59E0B18;color:var(--amber);font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">⚠️ Pendente</button>
             </div>
           </div>
+          <!-- Observação -->
           <div>
             <label style="font-size:11px;font-weight:700;color:var(--text3);display:block;margin-bottom:6px">💬 Observação (opcional)</label>
-            <textarea id="pp-obs" placeholder="Ex: Aguardar peça X, carro escalonado para amanhã..." rows="2" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text1);font-family:'DM Sans',sans-serif;font-size:13px;resize:vertical"></textarea>
+            <textarea id="pp-obs" placeholder="Ex: Aproveitar Rodízio + Óleo junto com a Leve..." rows="2" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text1);font-family:'DM Sans',sans-serif;font-size:13px;resize:vertical"></textarea>
           </div>
         </div>
+
+        <!-- Botões -->
         <div style="display:flex;gap:10px;margin-top:20px">
           <button onclick="document.getElementById('modal-prog-prev').remove()" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">Cancelar</button>
-          <button id="pp-btn-salvar" onclick="salvarProgramacaoPrev('${carro}','${planoNome.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}','${planoNum}','${tipoMetrica}',${excessoKm},${excessoDias},${kmAtual})" style="flex:2;padding:10px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">📅 Confirmar + Notificar WPP</button>
+          <button id="pp-btn-salvar" onclick="salvarProgramacaoPrev('${carro}','${planoNome.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}','${planoNum}','${tipoMetrica}',${excessoKm},${excessoDias},${kmAtual},${JSON.stringify(oportunistas.map(o=>o.num))})" style="flex:2;padding:10px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
+            📅 Confirmar${oportunistas.length>0?' + '+oportunistas.length+' oportunista'+(oportunistas.length>1?'s':''):''} + WPP
+          </button>
         </div>
       </div>
     </div>`;
+
   document.body.insertAdjacentHTML('beforeend',html);
   window._ppTurno='A'; window._ppCesto=false;
 }
@@ -5690,7 +5849,7 @@ function selCestoPrev(v){
   }
 }
 
-async function salvarProgramacaoPrev(carro,planoNome,planoNum,tipoMetrica,excessoKm,excessoDias,kmAtual){
+async function salvarProgramacaoPrev(carro,planoNome,planoNum,tipoMetrica,excessoKm,excessoDias,kmAtual,planosOportunistasNums){
   const gid=getGid();
   const data=document.getElementById('pp-data')?.value;
   const turno=window._ppTurno||'A';
@@ -5699,18 +5858,34 @@ async function salvarProgramacaoPrev(carro,planoNome,planoNum,tipoMetrica,excess
   if(!data){toast('Selecione a data!','err');return;}
   const btn=document.getElementById('pp-btn-salvar');
   if(btn){btn.disabled=true;btn.textContent='Salvando...';}
+
+  // Planos oportunistas para gravar na observação e no WPP
+  const oportunistasNums = planosOportunistasNums || [];
+  const oportunistasNomes = oportunistasNums.map(n=>PREV_NOMES[n]||n);
+  // Planos filhos hierárquicos
+  const filhosNomes = (PREV_HIERARQUIA[planoNum]||[]).map(n=>PREV_NOMES[n]||n);
+
   try{
     const{error}=await sb.from('programacao_preventiva').insert({
       garagem_id:gid,prefixo:carro,plano_num:planoNum,plano_nome:planoNome,
       tipo_metrica:tipoMetrica,excesso_km:excessoKm,excesso_dias:excessoDias,
       km_atual:kmAtual,data_prevista:data,turno,cesto_separado:cesto,
-      observacao:obs||null,status:'programado',
+      observacao:[obs,oportunistasNomes.length?'Oportunistas: '+oportunistasNomes.join(', '):'',filhosNomes.length?'Inclui: '+filhosNomes.join(', '):''].filter(Boolean).join(' | ')||null,
+      status:'programado',
       criado_por:S.perfil?.nome,criado_por_id:S.perfil?.id,
     });
     if(error)throw error;
+
     const dataFmt=data.split('-').reverse().join('/');
     const garagem=S.garagens.find(g=>g.id===gid);
-    const msg=`🔩 *PREVENTIVA PROGRAMADA — JTP Transportes*\n📍 ${garagem?.nome||'Porto Velho'}\n\n🚌 *Carro:* ${carro}\n📋 *Plano:* ${planoNum} · ${planoNome}\n📅 *Data:* ${dataFmt}\n⏰ *Turno:* ${turno==='A'?'A (07:30~15:50)':'B (21:30~05:50)'}\n📦 *Cesto de peças:* ${cesto?'✅ Já separado':'⚠️ Pendente separação'}${obs?'\n💬 *Obs:* '+obs:''}${excessoKm>0?'\n⚠️ *Excesso KM:* +'+excessoKm.toLocaleString('pt-BR')+' km':''}\n\n_Programado por: ${S.perfil?.nome||'PCM'}_`;
+    const linhasOport = oportunistasNomes.length
+      ? '\n\n⚡ *Por oportunidade:*\n'+oportunistasNomes.map(n=>`• ${n}`).join('\n')
+      : '';
+    const linhasFilhos = filhosNomes.length
+      ? '\n✅ *Inclui automaticamente:* '+filhosNomes.join(', ')
+      : '';
+    const msg=`🔩 *PREVENTIVA PROGRAMADA — JTP Transportes*\n📍 ${garagem?.nome||'Porto Velho'}\n\n🚌 *Carro:* ${carro}\n📋 *Plano:* ${planoNum} · ${planoNome}\n📅 *Data:* ${dataFmt}\n⏰ *Turno:* ${turno==='A'?'A (07:30~15:50)':'B (21:30~05:50)'}\n📦 *Cesto:* ${cesto?'✅ Já separado':'⚠️ Pendente'}${excessoKm>0?'\n⚠️ *Excesso:* +'+excessoKm.toLocaleString('pt-BR')+' km':''}${linhasFilhos}${linhasOport}${obs?'\n💬 '+obs:''}\n\n_Programado por: ${S.perfil?.nome||'PCM'}_`;
+
     let wppOk=false;
     try{
       const r=await fetch(`https://evolution-api-production-8d56.up.railway.app/message/sendText/jtp-garagem`,{
@@ -5719,19 +5894,22 @@ async function salvarProgramacaoPrev(carro,planoNome,planoNum,tipoMetrica,excess
       });
       wppOk=r.ok;
     }catch(e){console.warn('WPP err:',e);}
+
     if(wppOk){
       await sb.from('programacao_preventiva')
         .update({wpp_enviado:true,wpp_enviado_em:new Date().toISOString()})
         .eq('garagem_id',gid).eq('prefixo',carro).eq('plano_nome',planoNome).eq('data_prevista',data);
     }
     document.getElementById('modal-prog-prev')?.remove();
-    toast(`✅ ${carro} programado para ${dataFmt} T${turno}${wppOk?' · 📲 WPP enviado':''}!`);
+    const resumo = oportunistasNomes.length ? ` + ${oportunistasNomes.length} oportunista(s)` : '';
+    toast(`✅ ${carro} programado para ${dataFmt} T${turno}${resumo}${wppOk?' · 📲 WPP':''}!`);
     renderFerrPrev();
   }catch(e){
     toast('Erro ao salvar: '+e.message,'err');
     if(btn){btn.disabled=false;btn.textContent='📅 Confirmar + Notificar WPP';}
   }
 }
+
 
 // ── TELA DE PROGRAMAÇÕES ─────────────────────────────────────────────────
 async function renderPrevProgramadas(filtroCarro='',filtroPlano=''){
