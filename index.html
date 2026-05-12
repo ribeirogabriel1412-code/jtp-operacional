@@ -4980,10 +4980,15 @@ _Enviado pelo Sistema JTP_`;
     const r=await fetch(`https://evolution-api-production-8d56.up.railway.app/message/sendText/jtp-garagem`,{
       method:'POST',
       headers:{'Content-Type':'application/json','apikey':'4289AC11F437-43AD-96D7-9F27C2735696'},
-      body:JSON.stringify({number:'120363427489152994@g.us',textMessage:{text:msg}}),
+      body:JSON.stringify({
+        number:'120363427489152994@g.us',
+        options:{delay:0},
+        textMessage:{text:msg}
+      }),
     });
+    const resp=await r.json().catch(()=>({}));
     if(r.ok) toast('📲 Situação enviada para o grupo!');
-    else toast('Erro ao enviar WhatsApp','err');
+    else toast('Erro WhatsApp: '+(resp?.message||r.status),'err');
   }catch(e){toast('Erro: '+e.message,'err');}
 }
 
