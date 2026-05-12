@@ -253,7 +253,7 @@ tr:hover td{background:#0F172A80}
       <div class="submenu" id="sub-ferr">
         <button class="sub-btn" onclick="navToSub('ferr-210')">📋 2.10 Soltura de Frota</button>
         <button class="sub-btn" onclick="navToSub('ferr-pcm')">🔧 Painel PCM</button>
-        <button class="sub-btn" onclick="navToSub('ferr-22')">🔧 2.2 Priorização Oficina</button>
+        <button class="sub-btn" onclick="navToSub('ferr-22')">🔧 Painel do Manutentor</button>
         <button class="sub-btn" onclick="navToSub('ferr-211')">🔴 2.11 Carros Indisponíveis</button>
         <button class="sub-btn" onclick="navToSub('ferr-212')">📊 2.12 Indicadores Técnicos</button>
         <button class="sub-btn" onclick="navToSub('ferr-lav')">🧼 3.2 Checklist Lavagem</button>
@@ -667,7 +667,7 @@ const FERRAMENTAS_DEF=[
     valida:   ['lider_patio'],
     visualiza:['lider_operacional','gerente_garagem','diretoria','lider_pcm','assistente_pcm'],
   },
-  {id:'ferr-22',  icon:'🔧', nome:'2.2 Priorização Oficina',
+  {id:'ferr-22',  icon:'🔧', nome:'Painel do Manutentor',
     executa:  ['lider_oficina','lider_pcm','assistente_pcm'],
     valida:   ['lider_pcm'],
     visualiza:['gerente_garagem','diretoria','assistente_pcm'],
@@ -1769,7 +1769,7 @@ function renderFerramentas(){
 function atualizarSubmenuFerramentas(){
   const ferrMap={
     'ferr-210':'📋 2.10 Soltura de Frota',
-    'ferr-22':'🔧 2.2 Priorização Oficina',
+    'ferr-22':'🔧 Painel do Manutentor',
     'ferr-lav':'🧼 3.2 Checklist Lavagem',
     'ferr-ctrl':'✅ Controle Soltura',
   };
@@ -3050,7 +3050,7 @@ async function renderFerr22(aba='ativas'){
   }).join('');
 
   setMain(`
-    ${secTitle('🔧','2.2 — Priorização Oficina',back)}
+    ${secTitle('🔧','Painel do Manutentor',back)}
 
     <!-- Stats rápidas -->
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:16px">
@@ -3356,14 +3356,26 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
       const wrap=document.getElementById('cklib-btns-wrap');
       if(!wrap) return;
       if(!ckl||!ckl.length){
+        // Busca manutentores já registrados na OS
+        const manut=S._ocCorrente?.manutentores||'';
         wrap.innerHTML=`
           <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px">
             <div style="color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">📋 CHECKLIST DE LIBERAÇÃO</div>
+            <!-- Campo de Manutentores -->
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px">
+              <label style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:6px">👷 Manutentores na Operação</label>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input type="number" id="input-manutentores" min="1" max="20" value="${manut||1}" placeholder="Qtd"
+                  style="width:70px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:16px;font-family:'DM Mono',monospace;outline:none;text-align:center">
+                <span style="font-size:12px;color:var(--text3)">mecânico(s) nesta OS</span>
+                <button onclick="salvarManutentores('${id}')" style="margin-left:auto;padding:5px 12px;border-radius:6px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Registrar</button>
+              </div>
+            </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-              <button onclick="verChecklistLib()" style="background:#2563EB18;border:1px solid #2563EB40;color:var(--blue);border-radius:10px;padding:12px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer">
+              <button onclick="salvarManutentoresEAbrirChecklist('${id}')" style="background:#2563EB18;border:1px solid #2563EB40;color:var(--blue);border-radius:10px;padding:12px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer">
                 🔍 Diagnóstico<br><span style="font-size:10px;font-weight:400;color:var(--text3)">Verificar itens</span>
               </button>
-              <button onclick="verChecklistLib()" style="background:#47556918;border:1px solid #47556940;color:var(--text3);border-radius:10px;padding:12px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:not-allowed;opacity:.5">
+              <button style="background:#47556918;border:1px solid #47556940;color:var(--text3);border-radius:10px;padding:12px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:not-allowed;opacity:.5">
                 ✅ Qualificação<br><span style="font-size:10px;font-weight:400">Liberado após V</span>
               </button>
             </div>
@@ -3396,6 +3408,22 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
         </div>`;
     });
   document.getElementById('modal-22-status').style.display='flex';
+}
+
+// ── MANUTENTORES ─────────────────────────────────────────────
+async function salvarManutentores(ocId){
+  const qtd=parseInt(document.getElementById('input-manutentores')?.value||1);
+  if(!qtd||qtd<1){toast('Informe a quantidade','err');return;}
+  await sb.from('ocorrencias_22').update({manutentores:qtd}).eq('id',ocId);
+  toast(`👷 ${qtd} manutentor(es) registrado(s)`);
+}
+
+async function salvarManutentoresEAbrirChecklist(ocId){
+  const qtd=parseInt(document.getElementById('input-manutentores')?.value||1);
+  if(qtd>=1){
+    await sb.from('ocorrencias_22').update({manutentores:qtd}).eq('id',ocId);
+  }
+  verChecklistLib();
 }
 
 // ── CHECKLIST DE LIBERAÇÃO ────────────────────────────────
@@ -4603,8 +4631,9 @@ async function renderFerrPCM(aba='painel'){
     const corrAb=(abertas||[]).filter(o=>o.tipo==='corretiva').length;
     const prevAb=(abertas||[]).filter(o=>o.tipo?.includes('preventiva')).length;
 
-    // Mecânicos únicos
+    // Mecânicos únicos + total manutentores
     const mecSet=new Set([...(abertas||[]),...(fechadas||[])].map(o=>o.mecanico).filter(Boolean));
+    const totalManut=[...(abertas||[]),...(fechadas||[])].reduce((s,o)=>s+(parseInt(o.manutentores)||0),0);
 
     const rowsFech=(fechadas||[]).map(o=>{
       const tempos=o.hora_entrada&&o.hora_liberacao?(new Date(o.hora_liberacao)-new Date(o.hora_entrada))/3600000:null;
@@ -4644,7 +4673,7 @@ async function renderFerrPCM(aba='painel'){
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
           <div class="kpi ok"><div class="kpi-label">OS Fechadas</div><div class="kpi-val" style="color:var(--green)">${(fechadas||[]).length}</div><div class="kpi-meta">${corrFech} corr · ${prevFech} prev</div></div>
           <div class="kpi ${(abertas||[]).length>0?'nok':'ok'}"><div class="kpi-label">Em Aberto</div><div class="kpi-val" style="color:${(abertas||[]).length>0?'var(--red)':'var(--green)'}">${(abertas||[]).length}</div><div class="kpi-meta">${corrAb} corr · ${prevAb} prev</div></div>
-          <div class="kpi neu"><div class="kpi-label">Manutentores</div><div class="kpi-val">${mecSet.size}</div><div class="kpi-meta">${[...mecSet].join(', ').slice(0,30)||'—'}</div></div>
+          <div class="kpi neu"><div class="kpi-label">Manutentores</div><div class="kpi-val">${totalManut||mecSet.size}</div><div class="kpi-meta">${totalManut?'total apontados':([...mecSet].join(', ').slice(0,30)||'—')}</div></div>
           <div class="kpi neu"><div class="kpi-label">Gasto Total</div><div class="kpi-val" style="font-size:14px;color:var(--blue)">R$${totGeral.toFixed(2)}</div><div class="kpi-meta">Real + Previsto</div></div>
         </div>
         <!-- Barra de custos por tipo -->
@@ -4772,6 +4801,7 @@ async function renderFerrPCM(aba='painel'){
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;margin-bottom:10px">
         <div><span style="color:var(--text3)">Mecânico:</span> ${o.mecanico||'<span style="color:var(--text4)">—</span>'}</div>
         <div><span style="color:${venc?'var(--red)':'var(--text3)'}">Previsão:</span> <span style="color:${venc?'var(--red)':'var(--text)'}">${o.hora_previsao?new Date(o.hora_previsao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—'}${venc?' ⚠️':''}</span></div>
+        ${o.manutentores?`<div><span style="color:var(--text3)">👷 Manutentores:</span> <strong>${o.manutentores}</strong></div>`:''}
         ${o.pecas_necessarias?`<div style="grid-column:1/-1;color:var(--text3)">🔩 <strong>Peças:</strong> ${o.pecas_necessarias}</div>`:''}
         ${o.descricao?`<div style="grid-column:1/-1;color:var(--text3)">📝 ${o.descricao}</div>`:''}
       </div>
@@ -6745,7 +6775,7 @@ function renderRelatorios(){
     {cod:'2.7', nome:'Fechamento da Oficina',              resp:'Líder Oficina', freq:'Diário/Turno', icon:'🏭',ativo:false},
     {cod:'2.9', nome:'Relatório de Inventário',            resp:'Almoxarife',   freq:'Diário/Turno',  icon:'🗂️',ativo:false},
     {cod:'2.10',nome:'Soltura de Frota',                   resp:'Líder Pátio',  freq:'Diário',        icon:'🚌',ativo:true, action:"navToSub('ferr-210')",    pdf:"pdfFerr210"},
-    {cod:'2.2', nome:'Priorização Oficina — Carros Parados',resp:'Líder PCM',   freq:'Por ocorrência',icon:'🔧',ativo:true, action:"navToSub('ferr-22')",     pdf:"pdfFerr22"},
+    {cod:'2.2', nome:'Painel do Manutentor',resp:'Líder PCM',   freq:'Por ocorrência',icon:'🔧',ativo:true, action:"navToSub('ferr-22')",     pdf:"pdfFerr22"},
     {cod:'2.11',nome:'Carros Indisponíveis',               resp:'Líder PCM',    freq:'Diário',        icon:'🔴',ativo:false},
     {cod:'2.12',nome:'Indicadores Técnicos',               resp:'PCM/Almox/Op', freq:'Diário',        icon:'📊',ativo:false},
     {cod:'2.14',nome:'Análise de Desvio – 5 Porquês',      resp:'Líderes',      freq:'Diário',        icon:'🔍',ativo:false},
@@ -6955,7 +6985,7 @@ async function pdfFerr26(){
     </table>`, '2.6 Previsibilidade');
 }
 
-// PDF 2.2 — Priorização Oficina
+// PDF Painel do Manutentor
 async function pdfFerr22(){
   const gid=getGid();
   const garagem=S.garagens.find(g=>g.id===gid);
@@ -6986,7 +7016,7 @@ async function pdfFerr22(){
 
   abrirJanelaPDF(`
     <div class="header">
-      <div><div class="logo">JTP Transportes</div><h1>2.2 — Priorização Oficina</h1><div style="font-size:10px;color:#555">${garagem?.nome||'—'} · ${agora.toLocaleDateString('pt-BR',{timeZone:'America/Manaus',weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'})}</div></div>
+      <div><div class="logo">JTP Transportes</div><h1>Painel do Manutentor</h1><div style="font-size:10px;color:#555">${garagem?.nome||'—'} · ${agora.toLocaleDateString('pt-BR',{timeZone:'America/Manaus',weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'})}</div></div>
       <div class="meta">
         <div style="font-size:18px;font-weight:800;color:#dc2626">${(ativas||[]).length}</div><div>OS em aberto</div>
         <div style="margin-top:6px;font-size:18px;font-weight:800;color:#059669">${(historico||[]).length}</div><div>Liberadas hoje</div>
@@ -7001,7 +7031,7 @@ async function pdfFerr22(){
     <table>
       <thead><tr><th>Prefixo</th><th>Tipo</th><th>Status</th><th>Entrada</th><th>Liberação</th><th>Mecânico</th><th>OS Praxio</th></tr></thead>
       <tbody>${(historico||[]).map(o=>mkRow(o,'hist')).join('')||'<tr><td colspan="7" style="text-align:center;color:#999">Nenhuma OS liberada hoje</td></tr>'}</tbody>
-    </table>`, '2.2 Priorização Oficina');
+    </table>`, 'Painel do Manutentor');
 }
 
 
