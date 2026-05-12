@@ -5088,25 +5088,68 @@ async function salvarCustoRapido(ocId, gid, data){
 // ══════════════════════════════════════════════════════════════
 // PAINEL PREVENTIVAS — Upload MAN + Visualização por Plano
 // ══════════════════════════════════════════════════════════════
-let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='todos';
+let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='todos', _prevImportId=null;
 
 async function renderFerrPrev(){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
   const gid=getGid();
 
-  // Carrega do banco se existir
+  // Carrega do banco se não tiver em memória
   if(!_prevDados.length){
     try{
       const{data:imp}=await sb.from('preventiva_import').select('*')
         .eq('garagem_id',gid).order('created_at',{ascending:false}).limit(1);
       if(imp?.length){
-        _prevDados=JSON.parse(imp[0].dados||'[]');
+        // Re-parsear sempre do texto bruto para garantir parser mais recente
+        const raw=imp[0].texto_bruto||'';
+        if(raw){
+          _prevDados=parsearRelatorioMAN(raw);
+        } else {
+          _prevDados=JSON.parse(imp[0].dados||'[]');
+        }
         _prevImportadoEm=imp[0].created_at;
+        _prevImportId=imp[0].id;
       }
     }catch(e){}
   }
 
   if(!_prevDados.length){
+    // Busca histórico de importações para mostrar mesmo sem dados ativos
+    let historicoHtml='';
+    try{
+      const{data:hist}=await sb.from('preventiva_import').select('id,created_at,total_registros,nome_arquivo,semana_ref,importado_por')
+        .eq('garagem_id',gid).order('created_at',{ascending:false}).limit(10);
+      if(hist?.length){
+        const rows=hist.map(h=>{
+          const dt=new Date(h.created_at).toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+          return`<tr style="border-bottom:1px solid var(--border2)">
+            <td style="padding:8px 12px;font-size:12px">${dt}</td>
+            <td style="padding:8px 12px;font-size:12px;color:var(--text3)">${h.nome_arquivo||'—'}</td>
+            <td style="padding:8px 12px;font-size:12px;color:var(--blue);font-weight:700">${h.semana_ref||'—'}</td>
+            <td style="padding:8px 12px;font-size:12px">${h.total_registros||'—'}</td>
+            <td style="padding:8px 12px;font-size:12px;color:var(--text3)">${h.importado_por||'—'}</td>
+            <td style="padding:8px 12px;text-align:center">
+              <button onclick="carregarImportacao('${h.id}')" style="padding:3px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif">Carregar</button>
+            </td>
+          </tr>`;
+        }).join('');
+        historicoHtml=`<div style="margin-top:24px;text-align:left">
+          <div style="font-size:12px;font-weight:700;color:var(--text3);margin-bottom:8px">📋 Histórico de Importações</div>
+          <div class="tbl-wrap"><table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="background:var(--surface2)">
+              <th style="padding:8px 12px;text-align:left;font-size:10px;color:var(--text3)">Importado em</th>
+              <th style="padding:8px 12px;text-align:left;font-size:10px;color:var(--text3)">Arquivo</th>
+              <th style="padding:8px 12px;text-align:left;font-size:10px;color:var(--blue)">Semana Ref.</th>
+              <th style="padding:8px 12px;text-align:left;font-size:10px;color:var(--text3)">Registros</th>
+              <th style="padding:8px 12px;text-align:left;font-size:10px;color:var(--text3)">Por</th>
+              <th style="padding:8px 12px;text-align:center;font-size:10px;color:var(--text3)">Ação</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table></div>
+        </div>`;
+      }
+    }catch(e){}
+
     setMain(`${back}
       <div style="text-align:center;padding:40px 20px">
         <div style="font-size:48px;margin-bottom:16px">🔩</div>
@@ -5123,11 +5166,96 @@ async function renderFerrPrev(){
         </div>
         <input type="file" id="fi-prev" accept=".pdf" style="display:none" onchange="processarPrevPDF(this.files[0])">
         <div id="prev-prog" style="margin-top:16px;color:var(--text3);font-size:13px"></div>
+        ${historicoHtml}
       </div>`);
     return;
   }
 
   renderPrevPainel(back);
+}
+
+async function carregarImportacao(id){
+  const gid=getGid();
+  try{
+    const{data:imp}=await sb.from('preventiva_import').select('*').eq('id',id).single();
+    if(!imp) return;
+    const raw=imp.texto_bruto||'';
+    _prevDados=raw?parsearRelatorioMAN(raw):JSON.parse(imp.dados||'[]');
+    _prevImportadoEm=imp.created_at;
+    _prevImportId=imp.id;
+    _prevGrupoAtivo='todos';
+    renderFerrPrev();
+  }catch(e){ toast('Erro ao carregar: '+e.message,'err'); }
+}
+
+async function excluirImportacao(){
+  if(!_prevImportId){ toast('Nenhuma importação ativa para excluir','err'); return; }
+  if(!confirm('Excluir esta importação? Os dados do painel serão removidos.')) return;
+  const gid=getGid();
+  try{
+    await sb.from('preventiva_import').delete().eq('id',_prevImportId);
+    _prevDados=[]; _prevImportadoEm=''; _prevImportId=null; _prevGrupoAtivo='todos';
+    toast('✅ Importação excluída');
+    renderFerrPrev();
+  }catch(e){ toast('Erro ao excluir: '+e.message,'err'); }
+}
+
+async function verHistoricoImportacoes(){
+  const gid=getGid();
+  const back=`<button class="btn-back" onclick="renderFerrPrev()">← Painel Preventivas</button>`;
+  setMain(`<div class="loading"><div class="spinner"></div> Carregando...</div>`);
+  try{
+    const{data:hist}=await sb.from('preventiva_import').select('*')
+      .eq('garagem_id',gid).order('created_at',{ascending:false}).limit(20);
+    const lista=hist||[];
+
+    const rows=lista.map(h=>{
+      const dt=new Date(h.created_at).toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+      const isAtiva=h.id===_prevImportId;
+      return`<tr style="border-bottom:1px solid var(--border2)${isAtiva?';background:#2563EB08':''}">
+        <td style="padding:10px 12px;font-size:12px">
+          ${isAtiva?'<span style="color:var(--blue);font-weight:700;font-size:10px;background:#2563EB18;border:1px solid #2563EB40;border-radius:4px;padding:1px 6px;margin-right:6px">ATIVA</span>':''}
+          ${dt}
+        </td>
+        <td style="padding:10px 12px;font-size:12px;color:var(--text3)">${h.nome_arquivo||'—'}</td>
+        <td style="padding:10px 12px;font-size:13px;font-weight:700;color:var(--blue)">${h.semana_ref||'—'}</td>
+        <td style="padding:10px 12px;font-size:12px;font-family:'DM Mono',monospace">${(h.total_registros||0).toLocaleString('pt-BR')}</td>
+        <td style="padding:10px 12px;font-size:12px;color:var(--text3)">${h.importado_por||'—'}</td>
+        <td style="padding:10px 12px">
+          <div style="display:flex;gap:6px">
+            <button onclick="carregarImportacao('${h.id}')" style="padding:3px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif">📂 Carregar</button>
+            <button onclick="excluirImportacaoById('${h.id}')" style="padding:3px 10px;border-radius:6px;border:1px solid #EF444440;background:transparent;color:var(--red);font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif">🗑️</button>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+
+    setMain(`${back}
+      <div style="font-size:16px;font-weight:800;margin-bottom:4px">📋 Histórico de Importações MAN</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:16px">Todas as importações da Garagem Porto Velho</div>
+      <div class="tbl-wrap"><table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--surface2)">
+          <th style="padding:10px 12px;text-align:left;font-size:10px;color:var(--text3)">Importado em</th>
+          <th style="padding:10px 12px;text-align:left;font-size:10px;color:var(--text3)">Arquivo</th>
+          <th style="padding:10px 12px;text-align:left;font-size:10px;color:var(--blue)">Semana de Referência</th>
+          <th style="padding:10px 12px;text-align:left;font-size:10px;color:var(--text3)">Registros</th>
+          <th style="padding:10px 12px;text-align:left;font-size:10px;color:var(--text3)">Importado por</th>
+          <th style="padding:10px 12px;text-align:left;font-size:10px;color:var(--text3)">Ações</th>
+        </tr></thead>
+        <tbody>${rows||`<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--text3)">Nenhuma importação encontrada</td></tr>`}</tbody>
+      </table></div>
+    `);
+  }catch(e){ toast('Erro: '+e.message,'err'); }
+}
+
+async function excluirImportacaoById(id){
+  if(!confirm('Excluir esta importação do histórico?')) return;
+  try{
+    await sb.from('preventiva_import').delete().eq('id',id);
+    if(id===_prevImportId){ _prevDados=[]; _prevImportadoEm=''; _prevImportId=null; }
+    toast('✅ Excluída');
+    verHistoricoImportacoes();
+  }catch(e){ toast('Erro: '+e.message,'err'); }
 }
 
 async function processarPrevPDF(file){
@@ -5169,19 +5297,15 @@ async function processarPrevPDF(file){
   if(prog) prog.textContent=`💾 Salvando ${dados.length} registros...`;
   const gid=getGid();
   try{
-    await sb.from('preventiva_import').insert({
-      garagem_id:gid,
-      dados:JSON.stringify(dados),
-      total_registros:dados.length,
-      importado_por:S.perfil?.nome,
-      nome_arquivo:file.name,
-    });
-  }catch(e){ console.warn('Tabela preventiva_import não existe ainda:',e.message); }
+    // Inserção feita em confirmarImportacaoMAN_v2 com semana_ref
+    console.log('Aguardando confirmação da semana de referência...');
+  }catch(e){ console.warn('Salvamento adiado para modal:',e.message); }
 
   _prevDados=dados;
   _prevImportadoEm=new Date().toISOString();
   toast(`✅ ${dados.length} planos importados!`);
-  renderFerrPrev();
+  // Perguntar semana de referência
+  abrirModalSemanaRef(dados, file.name, textoTotal);
 }
 
 function parsearRelatorioMAN(texto){
@@ -5256,6 +5380,91 @@ function parsearRelatorioMAN(texto){
     });
   }
   return dados;
+}
+
+
+// ── MODAL SEMANA DE REFERÊNCIA ────────────────────────────────────────────
+function abrirModalSemanaRef(dados, nomeArquivo, textoBruto){
+  // Calcular próxima semana (segunda a domingo)
+  const hoje = new Date();
+  const diaSem = hoje.getDay(); // 0=dom
+  const diasParaProxSeg = diaSem===0 ? 1 : (8-diaSem);
+  const proxSeg = new Date(hoje.getTime() + diasParaProxSeg*86400000);
+  const proxDom = new Date(proxSeg.getTime() + 6*86400000);
+  const fmt = d => d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
+  const semanaDefault = `${fmt(proxSeg)} a ${fmt(proxDom)}`;
+
+  const html = `
+    <div id="modal-semana-ref" style="position:fixed;inset:0;background:#00000080;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px">
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:440px;box-shadow:0 20px 60px #00000060">
+        <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Importação Concluída</div>
+        <div style="font-size:18px;font-weight:800;margin-bottom:4px">✅ ${dados.length.toLocaleString('pt-BR')} planos importados</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:20px">${nomeArquivo}</div>
+
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px">
+          <div style="font-size:11px;color:var(--text3);font-weight:700;margin-bottom:6px">📅 Semana de Referência das Programações</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:10px">As preventivas programadas a partir desta importação serão para qual semana?</div>
+          <div style="display:flex;gap:8px;margin-bottom:8px">
+            <button onclick="document.getElementById('sr-input').value='${semanaDefault}'" 
+              style="flex:1;padding:8px;border-radius:8px;border:2px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
+              📅 Próxima Semana<br>
+              <span style="font-size:10px;font-weight:400">${semanaDefault}</span>
+            </button>
+          </div>
+          <input type="text" id="sr-input" value="${semanaDefault}" placeholder="Ex: 13/05/2026 a 19/05/2026"
+            style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text1);font-family:'DM Sans',sans-serif;font-size:13px">
+          <div style="font-size:10px;color:var(--text4);margin-top:4px">Pode editar livremente</div>
+        </div>
+
+        <div style="display:flex;gap:10px">
+          <button onclick="confirmarImportacaoMAN('${nomeArquivo.replace(/'/g,"\\'")}',${JSON.stringify(dados).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026').replace(/'/g,"\\'")},'${textoBruto.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,'\\n').replace(/\r/g,'').substring(0,0)}')"
+            style="display:none" id="sr-hidden-btn"></button>
+          <button onclick="document.getElementById('modal-semana-ref').remove();renderFerrPrev()" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
+            Pular
+          </button>
+          <button onclick="confirmarImportacaoMAN_v2()" style="flex:2;padding:10px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
+            💾 Salvar com Semana de Referência
+          </button>
+        </div>
+      </div>
+    </div>`;
+
+  // Guardar dados para o confirm
+  window._prevPendingDados = dados;
+  window._prevPendingArquivo = nomeArquivo;
+  window._prevPendingTexto = textoBruto;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function confirmarImportacaoMAN_v2(){
+  const semana = document.getElementById('sr-input')?.value?.trim() || '';
+  const gid = getGid();
+  const dados = window._prevPendingDados;
+  const nomeArquivo = window._prevPendingArquivo;
+  const textoBruto = window._prevPendingTexto;
+
+  const btn = document.querySelector('#modal-semana-ref button:last-child');
+  if(btn){ btn.disabled=true; btn.textContent='Salvando...'; }
+
+  try{
+    const{data:ins,error}=await sb.from('preventiva_import').insert({
+      garagem_id:gid,
+      dados:JSON.stringify(dados),
+      texto_bruto:textoBruto,
+      total_registros:dados.length,
+      importado_por:S.perfil?.nome,
+      nome_arquivo:nomeArquivo,
+      semana_ref:semana,
+    }).select().single();
+    if(error) throw error;
+    _prevImportId = ins?.id || null;
+    document.getElementById('modal-semana-ref')?.remove();
+    toast(`✅ Importação salva — Semana: ${semana||'não informada'}`);
+    renderFerrPrev();
+  }catch(e){
+    toast('Erro ao salvar: '+e.message,'err');
+    if(btn){ btn.disabled=false; btn.textContent='💾 Salvar com Semana de Referência'; }
+  }
 }
 
 async function renderPrevPainel(back){
@@ -5373,9 +5582,11 @@ async function renderPrevPainel(back){
         <div style="font-size:16px;font-weight:800">🔩 Painel de Preventivas</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">Importado em ${dtImp} · ${garagem?.nome||'—'}</div>
       </div>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button onclick="renderPrevProgramadas()" class="btn-sm" style="background:#2563EB18;border-color:#2563EB40;color:var(--blue)">📅 Programações (${programados})</button>
-        <button onclick="_prevDados=[];_prevGrupoAtivo='todos';renderFerrPrev()" class="btn-sm">🔄 Nova Importação</button>
+        <button onclick="verHistoricoImportacoes()" class="btn-sm" style="background:#8B5CF618;border-color:#8B5CF640;color:#8B5CF6">📋 Histórico</button>
+        <button onclick="excluirImportacao()" class="btn-sm" style="background:#EF444418;border-color:#EF444440;color:var(--red)">🗑️ Excluir</button>
+        <button onclick="_prevDados=[];_prevGrupoAtivo='todos';_prevImportId=null;renderFerrPrev()" class="btn-sm">🔄 Nova Importação</button>
       </div>
     </div>
     <!-- KPIs -->
