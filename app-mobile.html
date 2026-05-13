@@ -2192,6 +2192,10 @@ async function confirmarFechamentoLavagem(pct){
 }
 
 function abrirCardLavPesada(id,prefixo,tipo,lavado,vistoriado){
+  // Guardar id e prefixo globalmente — evita problemas com escape de aspas em onclick
+  window._lavCardId = id;
+  window._lavCardPrefixo = prefixo;
+
   var statusInfo = vistoriado
     ? '<div style="background:#00C48C10;border:1px solid #00C48C30;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--green);font-weight:700">✅ Lavagem vistoriada e aprovada</div>'
     : lavado
@@ -2199,7 +2203,7 @@ function abrirCardLavPesada(id,prefixo,tipo,lavado,vistoriado){
       : '<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--text3)">Tipo: <strong style="color:var(--text)">'+(tipo==='pesada'?'Pesada (chassis)':'Simples')+'</strong></div>';
 
   var btnVistoriar = (!vistoriado)
-    ? '<button onclick="closeSheet(true);abrirVistoriaPesada(\x27'+id+'\x27,\x27'+prefixo+'\x27)" style="padding:13px;border-radius:12px;border:1px solid #00C48C40;background:#00C48C18;color:var(--green);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">'
+    ? '<button onclick="closeSheet(true);abrirVistoriaPesada(window._lavCardId,window._lavCardPrefixo)" style="padding:13px;border-radius:12px;border:1px solid #00C48C40;background:#00C48C18;color:var(--green);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">'
       +(lavado?'✅ Vistoriar agora':'✅ Já foi lavado — Vistoriar')+'</button>'
     : '';
 
@@ -2207,7 +2211,7 @@ function abrirCardLavPesada(id,prefixo,tipo,lavado,vistoriado){
     '<div style="display:flex;flex-direction:column;gap:8px">'
     +statusInfo
     +btnVistoriar
-    +'<button onclick="removerDoPlano(\x27'+id+'\x27)" style="padding:12px;border-radius:12px;border:1px solid #EF444440;background:transparent;color:var(--red);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">🗑️ Remover do plano</button>'
+    +'<button onclick="removerDoPlano(window._lavCardId)" style="padding:12px;border-radius:12px;border:1px solid #EF444440;background:transparent;color:var(--red);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">🗑️ Remover do plano</button>'
     +'<button onclick="closeSheet(true)" style="padding:11px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-family:inherit;cursor:pointer">← Voltar</button>'
     +'</div>');
 }
@@ -2237,7 +2241,7 @@ function rndrVistoriaSh(id,prefixo,vck){
   const pctV=total>0?Math.round(feitos/total*100):0;
 
   const rows=CK_VISTORIA_PESADA.map((it,i)=>{
-    return '<div class="ck-row" onclick="togVistoria(\x27'+id+'\x27,\x27'+prefixo+'\x27,'+i+')">'
+    return '<div class="ck-row" onclick="togVistoria(window._vckId,window._vckPrefixo,'+i+')">'
       +'<div style="width:28px;height:28px;border-radius:8px;border:2px solid '+(vck[i]?'var(--green)':'var(--border)')+';background:'+(vck[i]?'var(--green)':'transparent')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;color:white;font-size:14px">'+(vck[i]?'✓':'')+'</div>'
       +'<div class="ck-txt" style="color:'+(vck[i]?'var(--text)':'var(--text2)')+'">'+it+'</div>'
       +'</div>';
@@ -2273,11 +2277,11 @@ function rndrVistoriaSh(id,prefixo,vck){
     +'<label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:6px">&#128172; Observação (opcional)</label>'
     +'<textarea id="vis-obs" placeholder="Ex: Vidro com mancha, chassis ok..." rows="2" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px;color:var(--text);font-size:13px;font-family:inherit;outline:none;resize:none"></textarea>'
     +'</div>'
-    +'<button id="btn-aprovar-vis" onclick="confirmarVistoriaPesada(\x27'+id+'\x27)" '+(ok?'':'disabled ')
+    +'<button id="btn-aprovar-vis" onclick="confirmarVistoriaPesada(window._vckId)" '+(ok?'':'disabled ')
     +'style="width:100%;margin-top:10px;padding:15px;border-radius:12px;border:none;background:'+(ok?'var(--green)':'var(--surface2)')+';color:'+(ok?'white':'var(--text4)')+';font-size:15px;font-weight:700;font-family:inherit;cursor:'+(ok?'pointer':'not-allowed')+';">'
     +(ok?'&#9989; Aprovar Vistoria':'Marque todos os itens ('+feitos+'/'+total+')')
     +'</button>'
-    +'<button onclick="reprovarVistoriaPesada(\x27'+id+'\x27)" '+(ok?'':'disabled ')
+    +'<button onclick="reprovarVistoriaPesada(window._vckId)" '+(ok?'':'disabled ')
     +'style="width:100%;margin-top:8px;padding:12px;border-radius:12px;border:1px solid #EF444440;background:transparent;color:var(--red);font-size:13px;font-weight:700;font-family:inherit;cursor:'+(ok?'pointer':'not-allowed')+';">'
     +'&#10060; Reprovar — devolver para relavar'
     +'</button>'
