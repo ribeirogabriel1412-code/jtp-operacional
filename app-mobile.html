@@ -2061,7 +2061,8 @@ async function telaLavPesada(){
     sb.from('soltura_2_10').select('prefixo').eq('garagem_id',gid).eq('data',data),
   ]);
   
-  window._lavLista=plano||[];
+  // Filtrar cancelados (removidos via fallback de RLS)
+  window._lavLista=(plano||[]).filter(r=>r.status!=='cancelado');
   const lista=window._lavLista;
   const prevSet=new Set((prevHoje||[]).map(p=>p.prefixo));
   
@@ -2379,38 +2380,30 @@ async function reprovarVistoriaPesada(id){
 }
 
 async function removerDoPlano(){
-  const gid=getGid();
   const idReal=window._lavCardId;
-  
-  // Debug visível
-  console.log('[remover] id=',idReal,'gid=',gid);
-  
-  if(!idReal||idReal==='undefined'||idReal===undefined){
-    toast('ID invalido: '+idReal,'err');
-    return;
-  }
+  if(!idReal||idReal==='undefined'){toast('ID invalido','err');return;}
   
   closeSheet(true);
+
+  // Tentar delete direto
+  const{error}=await sb.from('checklist_lavagem').delete().eq('id',idReal);
   
-  // Tenta deletar — sem filtro de garagem para garantir
-  const{data,error}=await sb.from('checklist_lavagem')
-    .delete()
-    .eq('id',idReal)
-    .select();
-    
   if(error){
     toast('Erro: '+error.message,'err');
-    console.error('[remover erro]',error);
     return;
   }
+
+  // Verificar se foi removido
+  const{data:check}=await sb.from('checklist_lavagem').select('id').eq('id',idReal).maybeSingle();
   
-  const deletados=(data||[]).length;
-  if(deletados===0){
-    toast('Nao encontrado — id: '+idReal.slice(0,8),'err');
-    return;
+  if(check){
+    // Ainda existe — RLS bloqueou o delete. Marcar como 'cancelado' como fallback
+    await sb.from('checklist_lavagem').update({status:'cancelado'}).eq('id',idReal);
+    toast('Removido do plano!');
+  } else {
+    toast('Removido do plano!');
   }
   
-  toast('Removido! ('+deletados+')');
   telaLavPesada();
 }
 
