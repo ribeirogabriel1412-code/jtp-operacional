@@ -838,7 +838,13 @@ async function fecharTurnoAbastecimento(){
     <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px">Observações do Turno</label>
     <textarea id="obs-abast" placeholder="Ocorrências, falta de combustível, veículos não localizados..." rows="3"
       style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-size:13px;font-family:inherit;outline:none;resize:none;margin-bottom:14px"></textarea>
-    <button onclick="confirmarFechamentoAbastecimento()" style="width:100%;padding:15px;border-radius:12px;border:none;background:${pct>=99?'var(--green)':'var(--blue)'};color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">
+    <div style="margin-bottom:12px">
+      <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:6px">📅 Data de referência do turno</label>
+      <input type="date" id="fa-data" value="${hojeStr}"
+        style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid var(--blue);background:var(--surface);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px">
+      <div style="font-size:10px;color:var(--text4);margin-top:4px">Deixe como hoje ou ajuste se estiver arquivando turno anterior</div>
+    </div>
+    <button id="btn-fechar-ab" onclick="confirmarFechamentoAbastecimento()" style="width:100%;padding:15px;border-radius:12px;border:none;background:${pct>=99?'var(--green)':'var(--blue)'};color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">
       💾 Arquivar Turno de Abastecimento
     </button>
   `);
@@ -846,38 +852,44 @@ async function fecharTurnoAbastecimento(){
 
 async function confirmarFechamentoAbastecimento(){
   const gid=getGid();
-  const hojeStr=hoje();
+  // Pega a data do campo editável no sheet
+  const dataGravar=document.getElementById('fa-data')?.value||hoje();
   const obs=document.getElementById('obs-abast')?.value?.trim()||null;
-  const btn=document.querySelector('#shbody button[onclick="confirmarFechamentoAbastecimento()"]');
+
+  // Bloquear botão — busca pelo id
+  const btn=document.getElementById('btn-fechar-ab');
   if(btn){btn.disabled=true;btn.textContent='Salvando...';}
 
-  const{data:abast}=await sb.from('abastecimento_checklist').select('*')
-    .eq('garagem_id',gid).eq('data',hojeStr);
-  const lista=abast||[];
-  const totLitros=lista.reduce((s,a)=>s+(a.litros||0),0);
-  const totArla=lista.filter(a=>a.arla).reduce((s,a)=>s+(a.arla_litros||0),0);
+  try{
+    const{data:abast,error:errBusca}=await sb.from('abastecimento_checklist')
+      .select('*').eq('garagem_id',gid).eq('data',hoje());
+    if(errBusca) throw errBusca;
 
-  const{error}=await sb.from('fechamento_abastecimento').insert({
-    garagem_id:gid,
-    data:hojeStr,
-    total_veiculos:lista.length,
-    total_litros:totLitros,
-    total_arla:totArla||null,
-    total_frota:_abFrotaLista.length||null,
-    pct_frota:_abFrotaLista.length?Math.round((lista.length/_abFrotaLista.length)*100):null,
-    responsavel_nome:S.perfil?.nome||null,
-    responsavel_id:S.perfil?.id||null,
-    observacao:obs,
-    detalhes:JSON.stringify(lista),
-  }).catch(()=>({error:{message:'tabela não existe ainda'}}));
+    const lista=abast||[];
+    const totLitros=lista.reduce((s,a)=>s+(parseFloat(a.litros)||0),0);
+    const totArla=lista.filter(a=>a.arla).reduce((s,a)=>s+(parseFloat(a.arla_litros)||0),0);
 
-  if(error){
-    // Tabela pode não existir — só mostra sucesso mesmo assim
-    console.warn('[fechamento_abastecimento]',error.message);
+    const{error}=await sb.from('fechamento_abastecimento').insert({
+      garagem_id:gid,
+      data:dataGravar,
+      total_veiculos:lista.length,
+      total_litros:totLitros,
+      total_arla:totArla||null,
+      total_frota:_abFrotaLista.length||null,
+      pct_frota:_abFrotaLista.length?Math.round((lista.length/_abFrotaLista.length)*100):null,
+      responsavel_nome:S.perfil?.nome||null,
+      responsavel_id:S.perfil?.id||null,
+      observacao:obs,
+      detalhes:lista,
+    });
+    if(error) throw error;
+
+    closeSheet(true);
+    toast(`✅ Turno arquivado! ${lista.length} veículos · ${totLitros.toLocaleString('pt-BR',{minimumFractionDigits:1})}L`);
+  }catch(e){
+    toast('❌ '+e.message,'err');
+    if(btn){btn.disabled=false;btn.textContent='💾 Arquivar Turno de Abastecimento';}
   }
-
-  closeSheet(true);
-  toast(`✅ Turno arquivado! ${lista.length} veículos · ${totLitros.toLocaleString('pt-BR',{minimumFractionDigits:1})}L`);
 }
 
 
