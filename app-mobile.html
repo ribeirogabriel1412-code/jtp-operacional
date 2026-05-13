@@ -367,9 +367,13 @@ async function telaSoltura(dataFiltro=null){
       }
     }
   });
-  // Fallback abastecimento da tabela separada
+  // Fallback abastecimento: lê tanto da data selecionada quanto do dia anterior
+  // (frentista abastece hoje à noite para a escala de amanhã)
   try{
-    const{data:a}=await sb.from('abastecimento_checklist').select('prefixo,horario').eq('garagem_id',gid).eq('data',_sdata);
+    const dAnterior=new Date(_sdata+'T12:00:00');dAnterior.setDate(dAnterior.getDate()-1);
+    const dAnteriorStr=dAnterior.toISOString().split('T')[0];
+    const{data:a}=await sb.from('abastecimento_checklist').select('prefixo,horario,data')
+      .eq('garagem_id',gid).in('data',[_sdata,dAnteriorStr]);
     if(a){a.forEach(x=>{abSet.add(x.prefixo);if(x.horario&&!abHoraMap.has(x.prefixo))abHoraMap.set(x.prefixo,x.horario);});}
   }catch(e){}
   window._recMap=recSet;
@@ -1218,25 +1222,25 @@ async function telaRecolha(dataFiltro=null){
 
   setMain('<div class="loading"><div class="sp"></div></div>');
 
-  // Plantão: exibe a escala do dia atual (hoje) para fazer o checklist de recolha
-  // Mas grava na soltura D+1 (próximo dia) — o carro volta hoje para sair amanhã
+  // Plantão: exibe a escala D+1 (os carros que vão operar amanhã)
+  // Recolhe hoje à noite e grava flag recolhido na soltura D+1
   const hojeStr=hoje();
-
-  // Escala exibida = HOJE (o plantão trabalha hoje e recebe os carros de hoje)
-  _rcEscalaData=hojeStr;
-
-  // D+1 para gravar nos flags da soltura (o carro vai sair amanhã)
   const amanha=new Date();amanha.setDate(amanha.getDate()+1);
-  const _rcSolturaData=amanha.toISOString().split('T')[0];
-  window._rcSolturaData=_rcSolturaData;
+  const amanhaStr=amanha.toISOString().split('T')[0];
 
-  // Busca escala de referência + recolhas já feitas hoje
+  // Escala exibida = D+1 (a escala de amanhã — são esses carros que o plantão recebe)
+  _rcEscalaData=amanhaStr;
+  // Soltura alvo = D+1 (mesmo que a escala exibida)
+  window._rcSolturaData=amanhaStr;
+
+  // Busca escala D+1
   const{data:escala}=await sb.from('soltura_2_10').select('prefixo,linha,motorista,motorista_fim,horario_programado,horario_fim')
-    .eq('garagem_id',gid).eq('data',_rcEscalaData).order('horario_programado');
+    .eq('garagem_id',gid).eq('data',amanhaStr).order('horario_programado');
   let recolhas=[];
   try{
+    // Recolhas feitas hoje para a escala D+1
     const{data:r}=await sb.from('recolha_checklist').select('*')
-      .eq('garagem_id',gid).eq('data_recolha',_rcEscalaData).order('created_at',{ascending:false});
+      .eq('garagem_id',gid).eq('data_recolha',amanhaStr).order('created_at',{ascending:false});
     if(r) recolhas=r;
   }catch(e){}
   _rcEscalaLista=escala||[];
@@ -1283,8 +1287,8 @@ async function telaRecolha(dataFiltro=null){
     </div>`;
   }).join('');
 
-  const dataExec=new Date(_rcEscalaData+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
-  const dataRef=new Date(_rcEscalaData+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+  const dataExec=new Date(amanhaStr+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+  const dataRef=dataExec;
 
   render(`
     <div style="padding:14px 14px 0">
@@ -1420,7 +1424,7 @@ async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
   const agora=new Date();
   const horarioReal=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   const status=externo==='avaria'||interno==='avaria'?'avaria':'recebido';
-  const dataGravar=_rcEscalaData||hoje();
+  const dataGravar=window._rcSolturaData||_rcEscalaData||hoje();
 
   // Busca veiculo_id
   let veiId=null;
@@ -1434,7 +1438,7 @@ async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
     garagem_id:gid,
     prefixo,
     veiculo_id:veiId,
-    data_recolha:dataGravar,
+    data_recolha:window._rcSolturaData||dataGravar,
     horario_real:horarioReal,
     horario_previsto:horarioRef||null,
     motorista:motoristaRef||null,
