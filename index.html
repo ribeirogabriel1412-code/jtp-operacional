@@ -5720,45 +5720,52 @@ function abrirModalProgramarPrev(carro,planoNome,planoNum,tipoMetrica,excessoKm,
     .map(([k]) => k);
 
   // HTML dos oportunistas
-  const oportunistasHtml = oportunistas.length > 0 ? `
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-        <span style="font-size:14px">⚡</span>
-        <span style="font-size:12px;font-weight:800;color:var(--text2)">Manutenção por Oportunidade</span>
-        <span style="background:#F59E0B18;border:1px solid #F59E0B40;color:var(--amber);border-radius:5px;padding:1px 7px;font-size:10px;font-weight:700">${oportunistas.length} plano${oportunistas.length>1?'s':''} prestes a vencer</span>
-      </div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Estes planos estão dentro de 5% do vencimento — execute junto para evitar retorno ao box:</div>
-      <div style="display:flex;flex-direction:column;gap:6px">
-        ${oportunistas.map(op => {
-          const cor = op.status==='vencido' ? 'var(--red)' : op.status==='critico' ? 'var(--amber)' : '#F97316';
-          const badge = op.excesso >= 0
-            ? `<span style="color:${cor};font-weight:700;font-size:11px;font-family:'DM Mono',monospace">+${op.excesso.toLocaleString('pt-BR')} km vencido</span>`
-            : `<span style="color:${cor};font-weight:700;font-size:11px;font-family:'DM Mono',monospace">faltam ${Math.abs(op.excesso).toLocaleString('pt-BR')} km (${Math.round(Math.abs(op.excesso)/op.intervalo*100)}% do plano)</span>`;
-          return `<div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg);border:1px solid ${cor}30;border-left:3px solid ${cor};border-radius:8px;padding:8px 12px">
-            <div>
-              <span style="font-size:12px;font-weight:700;color:var(--text1)">${op.nome}</span>
-              <span style="font-size:10px;color:var(--text3);margin-left:6px">Plano ${op.num}</span>
-            </div>
-            ${badge}
-          </div>`;
-        }).join('')}
-      </div>
-    </div>` : '';
+  var oportunistasHtml = '';
+  if(oportunistas.length > 0){
+    var opRows = '';
+    oportunistas.forEach(function(op){
+      var cor = op.status==='vencido' ? 'var(--red)' : op.status==='critico' ? 'var(--amber)' : '#F97316';
+      var badge = op.excesso >= 0
+        ? '<span style="color:'+cor+';font-weight:700;font-size:11px">+'+op.excesso.toLocaleString('pt-BR')+' km vencido</span>'
+        : '<span style="color:'+cor+';font-weight:700;font-size:11px">faltam '+Math.abs(op.excesso).toLocaleString('pt-BR')+' km ('+Math.round(Math.abs(op.excesso)/op.intervalo*100)+'% do plano)</span>';
+      opRows += '<div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg);border:1px solid '+cor+'30;border-left:3px solid '+cor+';border-radius:8px;padding:8px 12px;margin-bottom:4px">'
+        + '<div><span style="font-size:12px;font-weight:700;color:var(--text1)">'+op.nome+'</span>'
+        + '<span style="font-size:10px;color:var(--text3);margin-left:6px">Plano '+op.num+'</span></div>'
+        + badge + '</div>';
+    });
+    oportunistasHtml = '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">'
+      + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'
+      + '<span style="font-size:14px">&#9889;</span>'
+      + '<span style="font-size:12px;font-weight:800;color:var(--text2)">Manuteno por Oportunidade</span>'
+      + '<span style="background:#F59E0B18;border:1px solid #F59E0B40;color:var(--amber);border-radius:5px;padding:1px 7px;font-size:10px;font-weight:700">'+oportunistas.length+' plano'+(oportunistas.length>1?'s':'')+' prestes a vencer</span>'
+      + '</div>'
+      + '<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Execute junto para evitar retorno ao box:</div>'
+      + '<div style="display:flex;flex-direction:column;gap:6px">'+opRows+'</div>'
+      + '</div>';
+  }
 
   // HTML dos filhos hierárquicos (executados automaticamente)
-  const filhosHtml = planosFilhos.length > 0 ? `
-    <div style="background:#00C48C08;border:1px solid #00C48C30;border-radius:10px;padding:10px 14px;margin-bottom:14px">
-      <div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:6px">✅ Executados automaticamente com esta preventiva:</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        ${planosFilhos.map(p => `<span style="background:#00C48C18;border:1px solid #00C48C40;color:var(--green);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600">${PREV_NOMES[p.planoNum]||p.planoNome} (${p.excessoKm >= 0 ? '+'+p.excessoKm.toLocaleString('pt-BR')+' km' : p.excessoKm.toLocaleString('pt-BR')+' km'})</span>`).join('')}
-      </div>
-    </div>` : '';
+  var filhosHtml = '';
+  if(planosFilhos.length > 0){
+    var fSpans = planosFilhos.map(function(p){
+      var nm = PREV_NOMES[p.planoNum]||p.planoNome;
+      var km = p.excessoKm >= 0 ? '+'+p.excessoKm.toLocaleString('pt-BR')+' km' : p.excessoKm.toLocaleString('pt-BR')+' km';
+      return '<span style="background:#00C48C18;border:1px solid #00C48C40;color:var(--green);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600">'+nm+' ('+km+')</span>';
+    }).join('');
+    filhosHtml = '<div style="background:#00C48C08;border:1px solid #00C48C30;border-radius:10px;padding:10px 14px;margin-bottom:14px">'
+      + '<div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:6px">&#9989; Executados automaticamente:</div>'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap">'+fSpans+'</div>'
+      + '</div>';
+  }
 
   // Aviso de bloqueio se este plano elimina outros
-  const bloqHtml = (PREV_HIERARQUIA[planoNum]||[]).length > 0 ? `
-    <div style="background:#2563EB08;border:1px solid #2563EB30;border-radius:8px;padding:8px 12px;margin-bottom:14px">
-      <span style="font-size:11px;color:var(--blue)">ℹ️ Esta preventiva inclui os planos: <strong>${(PREV_HIERARQUIA[planoNum]||[]).map(n=>PREV_NOMES[n]||n).join(', ')}</strong> — não escalar separadamente.</span>
-    </div>` : '';
+  var bloqHtml = '';
+  if((PREV_HIERARQUIA[planoNum]||[]).length > 0){
+    var bloqNomes = (PREV_HIERARQUIA[planoNum]||[]).map(function(n){return PREV_NOMES[n]||n;}).join(', ');
+    bloqHtml = '<div style="background:#2563EB08;border:1px solid #2563EB30;border-radius:8px;padding:8px 12px;margin-bottom:14px">'
+      + '<span style="font-size:11px;color:var(--blue)">&#8505;&#65039; Esta preventiva inclui: <strong>'+bloqNomes+'</strong> — n&#227;o escalar separadamente.</span>'
+      + '</div>';
+  }
 
   const html=`
     <div id="modal-prog-prev" style="position:fixed;inset:0;background:#00000088;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;overflow-y:auto">
