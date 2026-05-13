@@ -1,44 +1,64 @@
-// JTP Operacional — Service Worker
-const CACHE = 'jtp-v1';
-const ASSETS = [
+// JTP Operacional — Service Worker v2.2
+// Força limpeza de cache a cada novo deploy
+
+const CACHE_NAME = 'jtp-v2-2';
+const STATIC_ASSETS = [
+  '/',
+  '/index.html',
   '/app-mobile.html',
-  '/manifest.json',
+  '/manifest.json'
 ];
 
-// Instala e faz cache dos arquivos essenciais
-self.addEventListener('install', e => {
-  e.waitUntil(
-    caches.open(CACHE).then(cache => cache.addAll(ASSETS))
-  );
+// Instala e limpa caches antigos
+self.addEventListener('install', event => {
+  // Força ativação imediata sem esperar
   self.skipWaiting();
-});
-
-// Ativa e limpa caches antigos
-self.addEventListener('activate', e => {
-  e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    )
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(cache => {
+      return cache.addAll(STATIC_ASSETS).catch(() => {});
+    })
   );
-  self.clients.claim();
 });
 
-// Estratégia: Network first, fallback para cache
-self.addEventListener('fetch', e => {
-  // Não intercepta chamadas ao Supabase — sempre online
-  if (e.request.url.includes('supabase.co') || 
-      e.request.url.includes('cdn.jsdelivr') ||
-      e.request.url.includes('googleapis.com')) {
+// Ativa e remove caches antigos
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(
+        keys
+          .filter(key => key !== CACHE_NAME)
+          .map(key => {
+            console.log('[SW] Removendo cache antigo:', key);
+            return caches.delete(key);
+          })
+      )
+    ).then(() => self.clients.claim())
+  );
+});
+
+// Estratégia: Network First para HTML, Cache First para assets estáticos
+self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+
+  // Sempre buscar HTML do servidor (nunca do cache)
+  if (url.pathname.endsWith('.html') || url.pathname === '/') {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          // Atualiza o cache com a versão mais recente
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseClone));
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
     return;
   }
-  e.respondWith(
-    fetch(e.request)
-      .then(res => {
-        // Atualiza cache com resposta fresca
-        const clone = res.clone();
-        caches.open(CACHE).then(cache => cache.put(e.request, clone));
-        return res;
-      })
-      .catch(() => caches.match(e.request))
+
+  // Para outros recursos: cache first
+  event.respondWith(
+    caches.match(event.request).then(cached => {
+      return cached || fetch(event.request);
+    })
   );
 });
