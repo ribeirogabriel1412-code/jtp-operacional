@@ -5088,7 +5088,7 @@ async function salvarCustoRapido(ocId, gid, data){
 // ══════════════════════════════════════════════════════════════
 // PAINEL PREVENTIVAS — Upload MAN + Visualização por Plano
 // ══════════════════════════════════════════════════════════════
-let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='todos', _prevImportId=null;
+let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='todos', _prevImportId=null, _prevBuscaPrefixo='';
 
 async function renderFerrPrev(){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
@@ -5471,10 +5471,11 @@ async function renderPrevPainel(back){
   const gid=getGid();
   const garagem=S.garagens.find(g=>g.id===gid);
 
-  // Filtra: apenas itens a ≤1000km do vencimento OU já vencidos (excessoKm >= -1000)
-  // E ordena cada grupo do mais vencido (+) para o menos vencido (-)
-  // ── FILTRAR _prevDados ──────────────────────────────────────────────────
-  const _dadosFiltrados = _prevDados.filter(r => r.excessoKm >= -1000);
+  // Busca por prefixo: se digitado, mostra TODOS os planos daquele carro
+  // Caso contrário: filtra só itens a ≤1000km do vencimento ou já vencidos
+  const _dadosFiltrados = _prevBuscaPrefixo
+    ? _prevDados.filter(r => r.carro.includes(_prevBuscaPrefixo.toUpperCase()))
+    : _prevDados.filter(r => r.excessoKm >= -1000);
 
   // Carrega programações salvas (próximos 7 dias)
   let progMap={};
@@ -5602,14 +5603,31 @@ async function renderPrevPainel(back){
     </div>
     <!-- KPIs -->
     <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px">
-      <div class="kpi neu"><div class="kpi-label">Total Planos</div><div class="kpi-val">${total}</div></div>
+      <div class="kpi ${_prevBuscaPrefixo?'ok':'neu'}" onclick="_prevBuscaPrefixo='';_prevGrupoAtivo='todos';renderPrevPainel(document.querySelector('.btn-back')?.outerHTML||'')" style="cursor:${_prevBuscaPrefixo?'pointer':'default'}">
+        <div class="kpi-label">${_prevBuscaPrefixo?'🔍 '+_prevBuscaPrefixo:'Total Planos'}</div>
+        <div class="kpi-val" style="color:${_prevBuscaPrefixo?'var(--blue)':'inherit'}">${_prevBuscaPrefixo?_dadosFiltrados.length:total}</div>
+      </div>
       <div class="kpi ${pendentes>0?'nok':'ok'}"><div class="kpi-label">Pendentes</div><div class="kpi-val" style="color:${pendentes>0?'var(--amber)':'var(--green)'}">${pendentes}</div></div>
       <div class="kpi ${criticos>0?'nok':'ok'}"><div class="kpi-label">Críticos (+50k)</div><div class="kpi-val" style="color:${criticos>0?'var(--red)':'var(--green)'}">${criticos}</div></div>
       <div class="kpi neu"><div class="kpi-label">Grupos</div><div class="kpi-val">${gruposKeys.length}</div></div>
       <div class="kpi ${programados>0?'ok':'neu'}"><div class="kpi-label">Programados</div><div class="kpi-val" style="color:${programados>0?'var(--blue)':'var(--text3)'}">${programados}</div></div>
     </div>
-    <!-- Filtro -->
-    <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:16px;scrollbar-width:none">${chips}</div>
+    <!-- Busca por prefixo -->
+    <div style="position:relative;margin-bottom:12px">
+      <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;pointer-events:none">🔍</span>
+      <input type="text" id="prev-busca-prefixo"
+        value="${_prevBuscaPrefixo}"
+        placeholder="Buscar prefixo — ex: 02.210 — mostra todos os planos do carro"
+        oninput="
+          _prevBuscaPrefixo=this.value.replace('.','').replace('.','');
+          if(this.value.length===0){_prevBuscaPrefixo='';_prevGrupoAtivo='todos';}
+          renderPrevPainel(document.querySelector('.btn-back')?.outerHTML||'')
+        "
+        style="width:100%;box-sizing:border-box;padding:10px 12px 10px 36px;border-radius:10px;border:1px solid ${_prevBuscaPrefixo?'var(--blue)':'var(--border)'};background:var(--surface);color:var(--text1);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;transition:border .15s">
+      ${_prevBuscaPrefixo?`<button onclick="_prevBuscaPrefixo='';_prevGrupoAtivo='todos';renderPrevPainel(document.querySelector('.btn-back')?.outerHTML||'')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--text3);font-size:16px;cursor:pointer">✕</button>`:''}
+    </div>
+    <!-- Filtro por grupo (oculto quando buscando prefixo específico) -->
+    ${!_prevBuscaPrefixo?`<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:16px;scrollbar-width:none">${chips}</div>`:''}
     <!-- Tabelas -->
     ${tabelaGrupos||'<div class="empty">Nenhum dado para exibir</div>'}
   `);
