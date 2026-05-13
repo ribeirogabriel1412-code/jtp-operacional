@@ -3702,8 +3702,8 @@ async function carregarChecklistLib(ocId, setorFiltro=null){
   const renderItem=(it)=>{
     const nsa=it.nao_se_aplica;
     const rowBg=nsa?'#47556908':it.trocado?'#00C48C08':it.verificado?'#2563EB08':'var(--surface2)';
-    const itemTxt=(it.item||'').replace(/^\[[^\]]+\]\s*/,'').replace(/'/g,'&#39;').replace(/`/g,'&#96;');
-    const obsTxt=(it.observacao_item||'').replace(/'/g,'&#39;').replace(/`/g,'&#96;').replace(/"/g,'&quot;');
+    const itemTxt=(it.item||'').replace(/^\[[^\]]+\]\s*/,'').replace(/'/g,'\x27').replace(/`/g,'\x60');
+    const obsTxt=(it.observacao_item||'').replace(/'/g,'\x27').replace(/`/g,'\x60').replace(/"/g,'\x22');
     const sf=setorFiltro?("'" + setorFiltro + "'"):'null';
     return`<tr style="background:${rowBg};opacity:${nsa?'.5':'1'}">
       <td style="font-size:11px;color:var(--text);padding:6px 8px">${itemTxt}</td>
@@ -8608,7 +8608,7 @@ function handleFileLav(file){
       if(!dados.length){document.getElementById('err-lav').style.display='block';document.getElementById('err-lav').textContent='Nenhuma linha válida';return}
       const lavB=t=>({simples:'💧 Simples',pesada:'🔵 Pesada'}[t]||t);
       const prvw=dados.slice(0,6).map(d=>`<tr><td style="font-family:'DM Mono',monospace;font-weight:600">${d.prefixo}</td><td>${lavB(d.tipo_lavagem)}</td><td style="color:var(--text3);font-size:12px">${d.observacao||'—'}</td></tr>`).join('');
-      document.getElementById('preview-lav').innerHTML=`<div class="tbl-wrap" style="margin-top:16px"><div class="tbl-head"><div style="font-size:13px;font-weight:700">Preview — ${dados.length} veículos</div><button class="btn-success" onclick='confirmarLavagem(${JSON.stringify(dados).replace(/'/g,"&#39;")})'>✅ Importar</button></div><table><thead><tr><th>Prefixo</th><th>Tipo</th><th>Obs.</th></tr></thead><tbody>${prvw}${dados.length>6?`<tr><td colspan="3" style="color:var(--text4);font-size:11px;text-align:center">... e mais ${dados.length-6}</td></tr>`:''}</tbody></table></div>`;
+      document.getElementById('preview-lav').innerHTML=`<div class="tbl-wrap" style="margin-top:16px"><div class="tbl-head"><div style="font-size:13px;font-weight:700">Preview — ${dados.length} veículos</div><button class="btn-success" onclick='confirmarLavagem(${JSON.stringify(dados).replace(/'/g,"\x27")})'>✅ Importar</button></div><table><thead><tr><th>Prefixo</th><th>Tipo</th><th>Obs.</th></tr></thead><tbody>${prvw}${dados.length>6?`<tr><td colspan="3" style="color:var(--text4);font-size:11px;text-align:center">... e mais ${dados.length-6}</td></tr>`:''}</tbody></table></div>`;
     }catch(err){document.getElementById('err-lav').style.display='block';document.getElementById('err-lav').textContent='Erro: '+err.message}
   };reader.readAsArrayBuffer(file);
 }
