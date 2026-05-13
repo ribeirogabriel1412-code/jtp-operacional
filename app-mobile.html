@@ -2381,25 +2381,36 @@ async function reprovarVistoriaPesada(id){
 async function removerDoPlano(){
   const gid=getGid();
   const idReal=window._lavCardId;
+  
+  // Debug visível
+  console.log('[remover] id=',idReal,'gid=',gid);
+  
   if(!idReal||idReal==='undefined'||idReal===undefined){
-    toast('&#10060; ID inválido — reabra o card','err');
+    toast('ID invalido: '+idReal,'err');
     return;
   }
   
   closeSheet(true);
-  toast('Removendo...');
   
-  const{error}=await sb.from('checklist_lavagem')
+  // Tenta deletar — sem filtro de garagem para garantir
+  const{data,error}=await sb.from('checklist_lavagem')
     .delete()
-    .eq('id',idReal);
+    .eq('id',idReal)
+    .select();
     
   if(error){
-    toast('&#10060; '+error.message,'err');
-    console.error('[remover]',idReal,error);
+    toast('Erro: '+error.message,'err');
+    console.error('[remover erro]',error);
     return;
   }
   
-  toast('&#128465; Removido do plano!');
+  const deletados=(data||[]).length;
+  if(deletados===0){
+    toast('Nao encontrado — id: '+idReal.slice(0,8),'err');
+    return;
+  }
+  
+  toast('Removido! ('+deletados+')');
   telaLavPesada();
 }
 
