@@ -1484,9 +1484,25 @@ async function telaAbastecimento(){
   const hojeStrAb=hoje();
 
   // Busca toda a frota da garagem
-  const{data:frota}=await sb.from('frota').select('prefixo,modelo,tipo')
-    .eq('garagem_id',gid).order('prefixo');
-  _abFrotaLista=frota||[];
+  let frotaRaw=[];
+  try{
+    const{data:f1}=await sb.from('frota').select('prefixo,modelo,tipo,status')
+      .eq('garagem_id',gid).order('prefixo');
+    if(f1?.length) frotaRaw=f1;
+  }catch(e){}
+
+  // Fallback: se frota vazia, monta lista a partir da soltura_2_10 (últimos 30 dias)
+  if(!frotaRaw.length){
+    try{
+      const d30=new Date();d30.setDate(d30.getDate()-30);
+      const d30str=d30.toISOString().split('T')[0];
+      const{data:sol}=await sb.from('soltura_2_10').select('prefixo')
+        .eq('garagem_id',gid).gte('data',d30str);
+      const prefixosUnicos=[...new Set((sol||[]).map(s=>s.prefixo))].sort();
+      frotaRaw=prefixosUnicos.map(p=>({prefixo:p,modelo:'',tipo:''}));
+    }catch(e){}
+  }
+  _abFrotaLista=frotaRaw;
 
   // Abastecimentos já feitos hoje (data = hoje)
   let abastMap={};
@@ -1506,7 +1522,7 @@ async function telaAbastecimento(){
     return`<div class="vcard ${ab?'done':''}" onclick="abrirAbastecimento('${e.prefixo}','')">
       <div style="flex:1">
         <div class="prefixo" style="color:${ab?'var(--green)':'var(--text)'}">${e.prefixo}</div>
-        <div class="vcard-sub" style="color:var(--text3)">${e.modelo||e.tipo||'—'}</div>
+        ${(e.modelo||e.tipo)?`<div class="vcard-sub" style="color:var(--text3)">${e.modelo||e.tipo}</div>`:``}
         ${ab?`<div class="vcard-sub" style="color:var(--green)">⛽ ${ab.litros}L${ab.arla_litros?' · ARLA '+ab.arla_litros+'L':''}${ab.km_hodometro?' · 📍'+ab.km_hodometro.toLocaleString()+'km':''}</div>`:''}
       </div>
       <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
@@ -1535,7 +1551,7 @@ async function telaAbastecimento(){
           style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 10px 10px 32px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
       </div>
     </div>
-    <div class="sl">${totFrota} veículo(s)</div>
+    <div class="sl" id="sl-abast">${totFrota} veículo(s) · ${tot} abastecidos hoje</div>
     <div id="cards-abast">${cards}</div>
   `);
   document.getElementById('content').insertAdjacentHTML('beforeend',
