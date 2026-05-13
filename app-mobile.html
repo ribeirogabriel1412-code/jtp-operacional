@@ -556,7 +556,10 @@ function abrirSol(id,prefixo,horario,linha,motorista){
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
       <button onclick="cfmSol(true)" style="padding:15px;border-radius:12px;border:1px solid #00C48C40;background:#00C48C18;color:var(--green);font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">✅ Saiu</button>
       <button onclick="mostrarNaoSaiu()" style="padding:15px;border-radius:12px;border:1px solid #EF444440;background:#EF444418;color:var(--red);font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">❌ Não saiu</button>
-      <button onclick="closeSheet(true);abrirTrocaPrevia('${id}','${prefixo}')" style="padding:13px;border-radius:12px;border:1px solid #8B5CF640;background:#8B5CF618;color:var(--purple);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">🔄 Trocar por Reserva</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button onclick="closeSheet(true);abrirTrocaPrevia('${id}','${prefixo}')" style="padding:12px 8px;border-radius:12px;border:1px solid #8B5CF640;background:#8B5CF618;color:var(--purple);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">🚌 Trocar<br><span style="font-size:10px;font-weight:400">Carro reserva</span></button>
+        <button onclick="abrirTrocaMotorista('${id}','${prefixo}','${motorista?.replace(/'/g,'')}')" style="padding:12px 8px;border-radius:12px;border:1px solid #F59E0B40;background:#F59E0B18;color:var(--amber);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">👤 Trocar<br><span style="font-size:10px;font-weight:400">Motorista</span></button>
+      </div>
       <button onclick="cfmSol(null)" style="padding:11px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-family:inherit;cursor:pointer">↩ Pendente</button>
     </div>
   `);
@@ -615,6 +618,75 @@ async function confirmarTroca(novoPrefixo, prefixoOriginal){
     observacao:`Reserva: ${novoPrefixo} | Original: ${prefixoOriginal}`,
   }).eq('id',_sid);
   closeSheet(true);toast(`🔄 Saiu com reserva ${novoPrefixo}!`);telaSoltura();
+}
+
+async function abrirTrocaMotorista(solId, prefixo, motoristaAtual){
+  // Salva na variável global para usar no confirmar
+  window._trocaMotId=solId;
+  window._trocaMot_prefixo=prefixo;
+
+  openSheet(`👤 Trocar Motorista — ${prefixo}`,`
+    <div style="font-size:12px;color:var(--text3);margin-bottom:12px">
+      Motorista atual: <strong style="color:var(--text)">${motoristaAtual||'—'}</strong>
+    </div>
+    <div style="margin-bottom:12px">
+      <label style="font-size:11px;font-weight:700;color:var(--text3);display:block;margin-bottom:6px">Matrícula ou nome do novo motorista</label>
+      <input id="tm-matricula" type="text" placeholder="Ex: 4740 ou FABIO GONÇALVES..."
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-size:16px;font-family:'DM Mono',monospace;outline:none;text-transform:uppercase;box-sizing:border-box"
+        oninput="this.value=this.value.toUpperCase()">
+    </div>
+    <div style="margin-bottom:14px">
+      <label style="font-size:11px;font-weight:700;color:var(--text3);display:block;margin-bottom:6px">Motivo da troca</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px" id="tm-motivos">
+        <button onclick="selMotivoTroca(this,'Falta')" style="padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">😴 Falta</button>
+        <button onclick="selMotivoTroca(this,'Atraso')" style="padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">⏰ Atraso</button>
+        <button onclick="selMotivoTroca(this,'Acidente')" style="padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">🚨 Acidente</button>
+        <button onclick="selMotivoTroca(this,'Outro')" style="padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">📝 Outro</button>
+      </div>
+      <input type="hidden" id="tm-motivo" value="">
+    </div>
+    <button onclick="confirmarTrocaMotorista('${motoristaAtual?.replace(/'/g,'')}')"
+      style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--amber);color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">
+      👤 Confirmar Troca de Motorista
+    </button>
+    <button onclick="abrirSol('${solId}','${prefixo}','','${motoristaAtual?.replace(/'/g,'')}')"
+      style="width:100%;padding:11px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-family:inherit;cursor:pointer;margin-top:8px">
+      ← Voltar
+    </button>
+  `);
+  window._tmMotivo='';
+}
+
+function selMotivoTroca(btn, motivo){
+  window._tmMotivo=motivo;
+  document.getElementById('tm-motivo').value=motivo;
+  document.querySelectorAll('#tm-motivos button').forEach(b=>{
+    b.style.border='1px solid var(--border)';
+    b.style.background='transparent';
+    b.style.color='var(--text3)';
+  });
+  btn.style.border='2px solid var(--amber)';
+  btn.style.background='#F59E0B18';
+  btn.style.color='var(--amber)';
+}
+
+async function confirmarTrocaMotorista(motoristaAnterior){
+  const solId=window._trocaMotId;
+  const prefixo=window._trocaMot_prefixo;
+  const novoMotorista=document.getElementById('tm-matricula')?.value?.trim();
+  const motivo=document.getElementById('tm-motivo')?.value||'Outro';
+
+  if(!novoMotorista){toast('Informe a matrícula ou nome do motorista','err');return;}
+
+  const obs=`Troca motorista: ${motoristaAnterior||'—'} → ${novoMotorista} (${motivo})`;
+  await sb.from('soltura_2_10').update({
+    motorista: novoMotorista,
+    observacao: obs,
+  }).eq('id',solId);
+
+  closeSheet(true);
+  toast(`👤 Motorista atualizado para ${novoMotorista}!`);
+  telaSoltura();
 }
 
 async function cfmSol(saiu){
@@ -1146,16 +1218,17 @@ async function telaRecolha(dataFiltro=null){
 
   setMain('<div class="loading"><div class="sp"></div></div>');
 
-  // Referência SEMPRE D+1 ou próxima futura — busca 7 dias à frente
+  // Chips D-1 / Hoje / D+1 / D+2 (igual ao Líder Pátio)
   const hojeStr=hoje();
   const datasProxRc=[];
-  for(let i=1;i<=7;i++){const d=new Date();d.setDate(d.getDate()+i);datasProxRc.push(d.toISOString().split('T')[0]);}
+  for(let i=-1;i<=3;i++){const d=new Date();d.setDate(d.getDate()+i);datasProxRc.push(d.toISOString().split('T')[0]);}
   const{data:escalasDisp}=await sb.from('soltura_2_10').select('data').eq('garagem_id',gid).in('data',datasProxRc);
   const datasEscala=[...new Set((escalasDisp||[]).map(r=>r.data))].sort();
 
-  // Reseta se não tem seleção, ou se a seleção atual é hoje ou no passado
-  if(!_rcEscalaData||!datasEscala.includes(_rcEscalaData)||_rcEscalaData<=hojeStr){
-    _rcEscalaData=datasEscala[0]||datasProxRc[0];
+  // Padrão: D+1 (próximo dia com escala) se não houver seleção válida
+  if(!_rcEscalaData||!datasEscala.includes(_rcEscalaData)){
+    const proxFuturo=datasEscala.find(d=>d>hojeStr);
+    _rcEscalaData=proxFuturo||datasEscala[0]||datasProxRc[1];
   }
 
   // Busca escala de referência + recolhas já feitas hoje
@@ -1183,11 +1256,13 @@ async function telaRecolha(dataFiltro=null){
   const pct=totEscala>0?Math.round((tot/totEscala)*100):0;
 
   // Chips de seleção de escala referência
+  const _hojeRc=hoje();
   const chipsEscala=datasEscala.map(d=>{
     const ativo=d===_rcEscalaData;
     const dFmt=new Date(d+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
-    const eHoje=d===hoje();
-    return`<button onclick="mudarEscalaRef('${d}')" style="flex-shrink:0;padding:6px 12px;border-radius:20px;border:1px solid ${ativo?'#8B5CF6':'var(--border)'};background:${ativo?'#8B5CF618':'transparent'};color:${ativo?'#8B5CF6':eHoje?'var(--text)':'var(--text3)'};font-size:11px;font-weight:${ativo?'700':'500'};font-family:inherit;cursor:pointer;white-space:nowrap">${eHoje?'Hoje':''}${eHoje?'':dFmt}</button>`;
+    const diffDias=Math.round((new Date(d+'T12:00:00')-new Date(_hojeRc+'T12:00:00'))/(1000*60*60*24));
+    const label=diffDias===0?'Hoje':diffDias===1?'D+1':diffDias===-1?'D-1':diffDias>1?'D+'+diffDias:'D'+diffDias;
+    return`<button onclick="mudarEscalaRef('${d}')" style="flex-shrink:0;padding:6px 12px;border-radius:20px;border:1px solid ${ativo?'#8B5CF6':'var(--border)'};background:${ativo?'#8B5CF618':'transparent'};color:${ativo?'#8B5CF6':'var(--text3)'};font-size:11px;font-weight:${ativo?'700':'500'};font-family:inherit;cursor:pointer;white-space:nowrap">${label} · ${dFmt}</button>`;
   }).join('');
 
   // Lista de carros da escala — ordenada por horario_fim (último a voltar primeiro)
@@ -1400,16 +1475,17 @@ async function telaAbastecimento(){
   const gid=getGid();
   setMain('<div class="loading"><div class="sp"></div></div>');
 
-  // Referência SEMPRE D+1 — busca só dias futuros
+  // Chips D-1 / Hoje / D+1 / D+2
   const hojeStrAb=hoje();
   const datasProxAb=[];
-  for(let i=1;i<=7;i++){const d=new Date();d.setDate(d.getDate()+i);datasProxAb.push(d.toISOString().split('T')[0]);}
+  for(let i=-1;i<=3;i++){const d=new Date();d.setDate(d.getDate()+i);datasProxAb.push(d.toISOString().split('T')[0]);}
   const{data:escalasDisp}=await sb.from('soltura_2_10').select('data').eq('garagem_id',gid).in('data',datasProxAb);
   const datasEscala=[...new Set((escalasDisp||[]).map(r=>r.data))].sort();
 
-  // Reseta se vazio, inválido ou é hoje/passado
-  if(!_abEscalaData||!datasEscala.includes(_abEscalaData)||_abEscalaData<=hojeStrAb){
-    _abEscalaData=datasEscala[0]||datasProxAb[0];
+  // Padrão: D+1 se não houver seleção válida
+  if(!_abEscalaData||!datasEscala.includes(_abEscalaData)){
+    const proxFuturoAb=datasEscala.find(d=>d>hojeStrAb);
+    _abEscalaData=proxFuturoAb||datasEscala[0]||datasProxAb[1];
   }
 
   const{data:escala}=await sb.from('soltura_2_10').select('prefixo,linha,motorista,horario_programado')
@@ -1442,11 +1518,13 @@ async function telaAbastecimento(){
   }).join('');
 
   const dataRef=new Date(_abEscalaData+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+  const _hojeAb=hoje();
   const chipsAb=datasEscala.map(d=>{
     const ativo=d===_abEscalaData;
     const dFmt=new Date(d+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
-    const eHoje=d===hoje();
-    return`<button onclick="_abEscalaData='${d}';telaAbastecimento()" style="flex-shrink:0;padding:6px 12px;border-radius:20px;border:1px solid ${ativo?'var(--blue)':'var(--border)'};background:${ativo?'#2563EB18':'transparent'};color:${ativo?'var(--blue)':eHoje?'var(--text)':'var(--text3)'};font-size:11px;font-weight:${ativo?'700':'500'};font-family:inherit;cursor:pointer;white-space:nowrap">${eHoje?'Hoje · ':''}${dFmt}</button>`;
+    const diffDiasAb=Math.round((new Date(d+'T12:00:00')-new Date(_hojeAb+'T12:00:00'))/(1000*60*60*24));
+    const labelAb=diffDiasAb===0?'Hoje':diffDiasAb===1?'D+1':diffDiasAb===-1?'D-1':diffDiasAb>1?'D+'+diffDiasAb:'D'+diffDiasAb;
+    return`<button onclick="_abEscalaData='${d}';telaAbastecimento()" style="flex-shrink:0;padding:6px 12px;border-radius:20px;border:1px solid ${ativo?'var(--blue)':'var(--border)'};background:${ativo?'#2563EB18':'transparent'};color:${ativo?'var(--blue)':'var(--text3)'};font-size:11px;font-weight:${ativo?'700':'500'};font-family:inherit;cursor:pointer;white-space:nowrap">${labelAb} · ${dFmt}</button>`;
   }).join('');
 
   render(`
