@@ -5847,49 +5847,44 @@ function selDataPrev(ds){
 }
 
 function gerarCalendarioPrev(datasel){
-  const hoje=new Date().toISOString().slice(0,10);
-  const sel=datasel||window._ppDataSel||hoje;
-  const meses=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  const semNomes=['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
-
-  // Início: segunda-feira da semana atual
-  const base=new Date(hoje+'T12:00:00');
-  const dsem=base.getDay();
-  const inicio=new Date(base);
+  var hoje=new Date().toISOString().slice(0,10);
+  var sel=datasel||window._ppDataSel||hoje;
+  var meses=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  var semNomes=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
+  var base=new Date(hoje+'T12:00:00');
+  var dsem=base.getDay();
+  var inicio=new Date(base);
   inicio.setDate(base.getDate()-(dsem===0?6:dsem-1));
-
-  // Gera 28 dias (4 semanas)
-  let linhas='';
-  let linha='';
-  for(let i=0;i<28;i++){
-    const d=new Date(inicio);
+  var linhas='';
+  for(var i=0;i<28;i++){
+    var d=new Date(inicio);
     d.setDate(inicio.getDate()+i);
-    const ds=d.toISOString().split('T')[0];
-    const passado=ds<hoje;
-    const ehHoje=ds===hoje;
-    const selecionado=ds===sel;
-    const cor=selecionado?'var(--blue)':ehHoje?'var(--green)':'var(--text2)';
-    const bg=selecionado?'#2563EB18':ehHoje?'#00C48C10':'transparent';
-    const bord=selecionado?'2px solid var(--blue)':ehHoje?'2px solid #00C48C50':'1px solid var(--border2)';
-    const op=passado&&!selecionado?'0.35':'1';
-    const click=passado?'':('onclick="selDataPrev(\'' + ds + '\')"');
-    linha+='<div '+click+' style="text-align:center;padding:5px 2px;border-radius:8px;border:'+bord+';background:'+bg+';cursor:'+(passado?'default':'pointer')+';opacity:'+op+'">'
-      +'<div style="font-size:13px;font-weight:'+(selecionado||ehHoje?'800':'400')+';color:'+cor+'">'+d.getDate()+'</div>'
-      +'<div style="font-size:8px;color:var(--text4)">'+meses[d.getMonth()]+'</div>'
-      +'</div>';
-    if((i+1)%7===0){linhas+=linha;linha='';}
+    var ds=d.toISOString().split('T')[0];
+    var passado=ds<hoje;
+    var ehHoje=ds===hoje;
+    var selecionado=ds===sel;
+    var cor=selecionado?'#2563EB':ehHoje?'#00C48C':'#94A3B8';
+    var bg=selecionado?'#DBEAFE':ehHoje?'#D1FAE5':'transparent';
+    var bord=selecionado?'2px solid #2563EB':ehHoje?'2px solid #00C48C':'1px solid #334155';
+    var op=passado&&!selecionado?'0.35':'1';
+    var fw=selecionado||ehHoje?'800':'400';
+    var onclick=passado?'':'onclick="selDataPrev(''+ds+'')"';
+    linhas+='<div '+onclick+' style="text-align:center;padding:5px 2px;border-radius:8px;border:'+bord+';background:'+bg+';cursor:'+(passado?'default':'pointer')+';opacity:'+op+'">';
+    linhas+='<div style="font-size:13px;font-weight:'+fw+';color:'+cor+'">'+d.getDate()+'</div>';
+    linhas+='<div style="font-size:8px;color:#64748B">'+meses[d.getMonth()]+'</div>';
+    linhas+='</div>';
   }
-
-  const cabecalho=semNomes.map(n=>`<div style="font-size:9px;font-weight:700;color:var(--text4);text-align:center;padding:3px 0">${n}</div>`).join('');
-  const selFmt=sel.split('-').reverse().join('/');
-
-  return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px">
-    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:3px">${cabecalho}</div>
-    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">${linhas}</div>
-    <div style="margin-top:8px;text-align:center;font-size:11px;color:var(--text3)">
-      Selecionado: <strong style="color:var(--blue)">${selFmt}</strong>
-    </div>
-  </div>`;
+  var cab='';
+  for(var j=0;j<semNomes.length;j++){
+    cab+='<div style="font-size:9px;font-weight:700;color:#64748B;text-align:center;padding:3px 0">'+semNomes[j]+'</div>';
+  }
+  var selFmt=sel.split('-').reverse().join('/');
+  var html='<div style="background:#1E293B;border:1px solid #334155;border-radius:12px;padding:12px">';
+  html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:3px">'+cab+'</div>';
+  html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">'+linhas+'</div>';
+  html+='<div style="margin-top:8px;text-align:center;font-size:11px;color:#94A3B8">Selecionado: <strong style="color:#2563EB">'+selFmt+'</strong></div>';
+  html+='</div>';
+  return html;
 }
 
 function selTurnoPrev(t){
