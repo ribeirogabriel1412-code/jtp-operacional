@@ -349,16 +349,52 @@ async function reprPat(){await sb.from('checklist_lavagem').update({validado_pat
 let _sid='',_sdata=hoje(),_sLista=[],_sDatas=[],_sloFiltro='';
 
 function selFiltroSoltura(tipo){
-  // Ciclo: nenhum → filtrar OK → filtrar pendente → nenhum
-  if(_sloFiltro===tipo) _sloFiltro='no'+tipo;
-  else if(_sloFiltro==='no'+tipo) _sloFiltro='';
-  else _sloFiltro=tipo;
+  // Ciclo: nenhum → pendentes → OK → nenhum
+  // Primeiro toque mostra PENDENTES (não recolhidos / não abastecidos)
+  if(_sloFiltro==='no'+tipo) _sloFiltro=tipo;         // norec → rec
+  else if(_sloFiltro===tipo) _sloFiltro='';            // rec → ''
+  else _sloFiltro='no'+tipo;                           // '' → norec
+
   // Limpar busca de texto
   const bs=document.getElementById('busca-sol');
   if(bs) bs.value='';
+
+  // Atualizar visual dos painéis SEM re-renderizar a tela toda
+  _atualizarPaineisFiltro();
+
+  // Aplicar filtro nos cards já renderizados
   filtrarSoltura('');
-  // Re-renderizar painéis para refletir estado do filtro
-  telaSoltura(_sdata);
+}
+
+function _atualizarPaineisFiltro(){
+  const pr=document.getElementById('painel-rec');
+  const pa=document.getElementById('painel-ab');
+  const nRec=window._recMap?.size||0;
+  const nAb=window._abMap?.size||0;
+  const tot=_sLista?.length||0;
+
+  if(pr){
+    const ativo=_sloFiltro==='rec';
+    const ativoNeg=_sloFiltro==='norec';
+    pr.style.background=ativo?'#00C48C18':ativoNeg?'#EF444418':'#EF444412';
+    pr.style.border='2px solid '+(ativo?'#00C48C60':ativoNeg?'#EF444460':nRec>0?'#00C48C40':'#EF444430');
+    const label=pr.querySelector('div:last-child');
+    if(label){
+      label.textContent=ativo?'✅ mostrando recolhidos':ativoNeg?'❌ mostrando pendentes':'toque para filtrar';
+      label.style.color=ativo?'var(--green)':ativoNeg?'var(--red)':'var(--text4)';
+    }
+  }
+  if(pa){
+    const ativo=_sloFiltro==='ab';
+    const ativoNeg=_sloFiltro==='noab';
+    pa.style.background=ativo?'#00C48C18':ativoNeg?'#EF444418':'#EF444412';
+    pa.style.border='2px solid '+(ativo?'#00C48C60':ativoNeg?'#EF444460':nAb>0?'#00C48C40':'#EF444430');
+    const label=pa.querySelector('div:last-child');
+    if(label){
+      label.textContent=ativo?'✅ mostrando abastecidos':ativoNeg?'❌ mostrando pendentes':'toque para filtrar';
+      label.style.color=ativo?'var(--green)':ativoNeg?'var(--red)':'var(--text4)';
+    }
+  }
 }
 
 async function telaSoltura(dataFiltro=null){
@@ -577,10 +613,10 @@ function filtrarSoltura(busca){
   });
   const filtrada=busca
     ?ordenada.filter(r=>r.prefixo?.includes(busca.toUpperCase())||r.horario_programado?.includes(busca)||r.motorista?.toLowerCase().includes(busca.toLowerCase()))
-    :_sloFiltro==='rec'?ordenada.filter(r=>window._recMap?.has(r.prefixo))
-    :_sloFiltro==='norec'?ordenada.filter(r=>!window._recMap?.has(r.prefixo))
-    :_sloFiltro==='ab'?ordenada.filter(r=>window._abMap?.has(r.prefixo))
-    :_sloFiltro==='noab'?ordenada.filter(r=>!window._abMap?.has(r.prefixo))
+    :_sloFiltro==='rec'   ?ordenada.filter(r=> window._recMap?.has(r.prefixo))
+    :_sloFiltro==='norec' ?ordenada.filter(r=>!window._recMap?.has(r.prefixo))
+    :_sloFiltro==='ab'    ?ordenada.filter(r=> window._abMap?.has(r.prefixo))
+    :_sloFiltro==='noab'  ?ordenada.filter(r=>!window._abMap?.has(r.prefixo))
     :ordenada;
 
   const TIPO_C={simples:'#3B82F6',pesada:'#10B981'};
@@ -2330,7 +2366,9 @@ async function reprovarVistoriaPesada(id){
 }
 
 async function removerDoPlano(id){
-  await sb.from('checklist_lavagem').delete().eq('id',id);
+  if(!id){toast('Erro: ID inválido','err');return;}
+  const{error}=await sb.from('checklist_lavagem').delete().eq('id',id);
+  if(error){toast('Erro ao remover: '+error.message,'err');console.error(error);return;}
   closeSheet(true);
   toast('🗑️ Removido do plano');
   telaLavPesada();
