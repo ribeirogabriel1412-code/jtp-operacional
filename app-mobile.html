@@ -2370,11 +2370,28 @@ async function reprovarVistoriaPesada(id){
 }
 
 async function removerDoPlano(id){
-  if(!id){toast('Erro: ID inválido','err');return;}
-  const{error}=await sb.from('checklist_lavagem').delete().eq('id',id);
-  if(error){toast('Erro ao remover: '+error.message,'err');console.error(error);return;}
+  const gid=getGid();
+  const idReal=id||window._lavCardId;
+  if(!idReal||idReal==='undefined'){toast('❌ Erro: ID inválido','err');return;}
+  
+  const btn=document.querySelector('#shbody button');
+  if(btn){btn.textContent='Removendo...';btn.disabled=true;}
+  
+  // Deletar por id + garagem_id para garantir
+  const{error,count}=await sb.from('checklist_lavagem')
+    .delete({count:'exact'})
+    .eq('id',idReal)
+    .eq('garagem_id',gid);
+    
+  if(error){
+    toast('❌ '+error.message,'err');
+    console.error('[remover]',error);
+    if(btn){btn.textContent='🗑️ Remover do plano';btn.disabled=false;}
+    return;
+  }
+  
   closeSheet(true);
-  toast('🗑️ Removido do plano');
+  toast('🗑️ Removido do plano'+(count!==null?' ('+count+')':''));
   telaLavPesada();
 }
 
@@ -2412,7 +2429,8 @@ async function abrirMontarPlano(){
       const diasSem=ultD?Math.round((new Date()-new Date(ultD+'T12:00:00'))/(86400000)):999;
       const emPrev=prevSet.has(v.prefixo);
       const urgente=diasSem>=6;
-      return '<div onclick="togSel(\x27'+v.prefixo+'\x27)" data-prefixo="'+v.prefixo+'" style="display:flex;align-items:center;gap:10px;padding:11px 12px;background:'+(sel?'#2563EB18':'var(--surface2)')+';border:1px solid '+(sel?'#2563EB60':urgente?'#F59E0B30':'var(--border)')+';border-radius:10px;margin-bottom:6px;cursor:pointer;transition:all .15s">'
+      var tipoStr=emPrev?'preventiva':'pesada';
+      return '<div onclick="togSel(\x27'+v.prefixo+'\x27)" data-prefixo="'+v.prefixo+'" data-tipo="'+tipoStr+'" style="display:flex;align-items:center;gap:10px;padding:11px 12px;background:'+(sel?'#2563EB18':'var(--surface2)')+';border:1px solid '+(sel?'#2563EB60':urgente?'#F59E0B30':'var(--border)')+';border-radius:10px;margin-bottom:6px;cursor:pointer;transition:all .15s">'
         +'<div style="width:24px;height:24px;border-radius:6px;border:2px solid '+(sel?'var(--blue)':'var(--border)')+';background:'+(sel?'var(--blue)':'transparent')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;color:white;font-size:12px">'+(sel?'✓':'')+'</div>'
         +'<div style="flex:1">'
         +'<div style="display:flex;align-items:center;gap:6px">'
@@ -2438,16 +2456,19 @@ async function abrirMontarPlano(){
   window._renderListaPlano=renderLista;
   
   openSheet('🚿 Montar Plano do Dia',
-    '<div style="font-size:12px;color:var(--text3);margin-bottom:8px">Selecione os carros para lavar hoje (sugestão: mais antigos primeiro)</div>'
+    '<div style="display:flex;gap:6px;margin-bottom:10px">'
+    +'<button id="fp-todos" onclick="setFiltroPlano(\x27todos\x27)" style="flex:1;padding:8px;border-radius:10px;border:2px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">Todos</button>'
+    +'<button id="fp-prev" onclick="setFiltroPlano(\x27preventiva\x27)" style="flex:1;padding:8px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">🟣 Preventiva</button>'
+    +'<button id="fp-pes" onclick="setFiltroPlano(\x27pesada\x27)" style="flex:1;padding:8px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">🔶 Pesada</button>'
+    +'</div>'
     +'<div style="position:relative;margin-bottom:8px">'
     +'<span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:14px">🔍</span>'
-    +'<input type="text" placeholder="Buscar prefixo..." oninput="filtrarPlano(this.value)" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 10px 10px 32px;color:var(--text);font-size:14px;font-family:\x27DM Mono\x27,monospace;outline:none;text-transform:uppercase" oninput="this.value=this.value.toUpperCase();filtrarPlano(this.value)">'
+    +'<input type="text" id="busca-plano" placeholder="Buscar prefixo..." oninput="this.value=this.value.toUpperCase();filtrarPlano(this.value)" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 10px 10px 32px;color:var(--text);font-size:14px;font-family:\'DM Mono\',monospace;outline:none;text-transform:uppercase">'
     +'</div>'
-    +'<div id="lista-plano" style="max-height:52vh;overflow-y:auto;margin-bottom:10px"></div>'
-    +'<button id="btn-conf-plano" onclick="confirmarPlano()" disabled style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;opacity:0.5">✅ Adicionar ao plano</button>'
+    +'<div id="lista-plano" style="max-height:46vh;overflow-y:auto;margin-bottom:10px"></div>'
+    +'<button id="btn-conf-plano" onclick="confirmarPlano()" disabled style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;opacity:0.5">&#9989; Adicionar 0 carros ao plano</button>'
   );
-  
-  window._planoDisponiveis=disponiveis;
+  window._filtroPlano='todos';window._planoDisponiveis=disponiveis;
   renderLista();
 }
 
@@ -2457,9 +2478,31 @@ function togSel(prefixo){
   window._renderListaPlano&&window._renderListaPlano();
 }
 
+function setFiltroPlano(tipo){
+  window._filtroPlano=tipo;
+  // Atualizar visual dos botões
+  ['todos','prev','pes'].forEach(id=>{
+    const btn=document.getElementById('fp-'+id);
+    if(!btn)return;
+    const ativo=(id==='todos'&&tipo==='todos')||(id==='prev'&&tipo==='preventiva')||(id==='pes'&&tipo==='pesada');
+    btn.style.border=ativo?'2px solid var(--blue)':'1px solid var(--border)';
+    btn.style.background=ativo?'#2563EB18':'transparent';
+    btn.style.color=ativo?'var(--blue)':'var(--text3)';
+  });
+  // Limpar busca
+  const bs=document.getElementById('busca-plano');
+  if(bs) bs.value='';
+  filtrarPlano('');
+}
+
 function filtrarPlano(busca){
+  const filtro=window._filtroPlano||'todos';
   document.querySelectorAll('#lista-plano [data-prefixo]').forEach(el=>{
-    el.style.display=!busca||el.dataset.prefixo.includes(busca.toUpperCase())?'flex':'none';
+    const prefixo=el.dataset.prefixo||'';
+    const tipo=el.dataset.tipo||'';
+    const matchBusca=!busca||prefixo.includes(busca.toUpperCase());
+    const matchTipo=filtro==='todos'||tipo===filtro;
+    el.style.display=matchBusca&&matchTipo?'flex':'none';
   });
 }
 
