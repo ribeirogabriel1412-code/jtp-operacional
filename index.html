@@ -1,7 +1,20 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8"><!-- JTP v2.1 -->
+<meta charset="UTF-8"><!-- JTP v2.2 -->
+<script>
+// Limpar Service Workers e caches antigos
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.getRegistrations().then(function(registrations){
+    registrations.forEach(function(r){ r.unregister(); });
+  });
+}
+if('caches' in window){
+  caches.keys().then(function(names){
+    names.forEach(function(name){ caches.delete(name); });
+  });
+}
+</script>
 <!-- v2.1.0 -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>JTP — Sistema Operacional de Garagem</title>
