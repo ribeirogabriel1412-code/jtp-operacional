@@ -5872,11 +5872,11 @@ function gerarCalendarioPrev(datasel){
     const bg=selecionado?'#2563EB18':ehHoje?'#00C48C10':'transparent';
     const bord=selecionado?'2px solid var(--blue)':ehHoje?'2px solid #00C48C50':'1px solid var(--border2)';
     const op=passado&&!selecionado?'0.35':'1';
-    const click=passado?'':'onclick="selDataPrev(''+ds+'')"';
-    linha+=`<div ${click} style="text-align:center;padding:5px 2px;border-radius:8px;border:${bord};background:${bg};cursor:${passado?'default':'pointer'};opacity:${op}">
-      <div style="font-size:13px;font-weight:${selecionado||ehHoje?'800':'400'};color:${cor}">${d.getDate()}</div>
-      <div style="font-size:8px;color:var(--text4)">${meses[d.getMonth()]}</div>
-    </div>`;
+    const click=passado?'':('onclick="selDataPrev(\'' + ds + '\')"');
+    linha+='<div '+click+' style="text-align:center;padding:5px 2px;border-radius:8px;border:'+bord+';background:'+bg+';cursor:'+(passado?'default':'pointer')+';opacity:'+op+'">'
+      +'<div style="font-size:13px;font-weight:'+(selecionado||ehHoje?'800':'400')+';color:'+cor+'">'+d.getDate()+'</div>'
+      +'<div style="font-size:8px;color:var(--text4)">'+meses[d.getMonth()]+'</div>'
+      +'</div>';
     if((i+1)%7===0){linhas+=linha;linha='';}
   }
 
