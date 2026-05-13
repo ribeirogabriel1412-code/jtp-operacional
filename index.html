@@ -5868,7 +5868,7 @@ function gerarCalendarioPrev(datasel){
     var bord=selecionado?'2px solid #2563EB':ehHoje?'2px solid #00C48C':'1px solid #334155';
     var op=passado&&!selecionado?'0.35':'1';
     var fw=selecionado||ehHoje?'800':'400';
-    var onclick=passado?'':'onclick="selDataPrev(''+ds+'')"';
+    var onclick=passado?'':'onclick="selDataPrev(\u0027'+ds+'\u0027)"';
     linhas+='<div '+onclick+' style="text-align:center;padding:5px 2px;border-radius:8px;border:'+bord+';background:'+bg+';cursor:'+(passado?'default':'pointer')+';opacity:'+op+'">';
     linhas+='<div style="font-size:13px;font-weight:'+fw+';color:'+cor+'">'+d.getDate()+'</div>';
     linhas+='<div style="font-size:8px;color:#64748B">'+meses[d.getMonth()]+'</div>';
