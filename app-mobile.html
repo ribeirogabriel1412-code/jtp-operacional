@@ -1222,25 +1222,40 @@ async function telaRecolha(dataFiltro=null){
 
   setMain('<div class="loading"><div class="sp"></div></div>');
 
-  // Plantão: exibe a escala D+1 (os carros que vão operar amanhã)
-  // Recolhe hoje à noite e grava flag recolhido na soltura D+1
+  // Plantão: exibe a próxima escala disponível (D+1 ou a mais próxima futura)
+  // Grava flag recolhido na soltura da data selecionada
   const hojeStr=hoje();
-  const amanha=new Date();amanha.setDate(amanha.getDate()+1);
-  const amanhaStr=amanha.toISOString().split('T')[0];
 
-  // Escala exibida = D+1 (a escala de amanhã — são esses carros que o plantão recebe)
-  _rcEscalaData=amanhaStr;
-  // Soltura alvo = D+1 (mesmo que a escala exibida)
-  window._rcSolturaData=amanhaStr;
+  // Busca datas com escala disponíveis (hoje + próximos 7 dias)
+  const datasAlvoRc=[];
+  for(let i=0;i<=7;i++){const d=new Date();d.setDate(d.getDate()+i);datasAlvoRc.push(d.toISOString().split('T')[0]);}
+  const{data:escalasDispRc}=await sb.from('soltura_2_10').select('data')
+    .eq('garagem_id',gid).in('data',datasAlvoRc);
+  const datasComEscalaRc=[...new Set((escalasDispRc||[]).map(r=>r.data))].sort();
 
-  // Busca escala D+1
+  // Seleciona D+1 por padrão, ou a próxima disponível
+  if(!_rcEscalaData||!datasComEscalaRc.includes(_rcEscalaData)){
+    const proxFutRc=datasComEscalaRc.find(d=>d>hojeStr)||datasComEscalaRc[0]||datasAlvoRc[1];
+    _rcEscalaData=proxFutRc;
+  }
+  window._rcSolturaData=_rcEscalaData;
+
+  // Chips de navegação para o plantão
+  const _chipsRc=datasComEscalaRc.map(d=>{
+    const ativo=d===_rcEscalaData;
+    const dFmt=new Date(d+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+    const diff=Math.round((new Date(d+'T12:00:00')-new Date(hojeStr+'T12:00:00'))/(86400000));
+    const lbl=diff===0?'Hoje':diff===1?'D+1':diff>1?'D+'+diff:'D'+diff;
+    return`<button onclick="_rcEscalaData='${d}';window._rcSolturaData='${d}';telaRecolha()" style="flex-shrink:0;padding:6px 12px;border-radius:20px;border:1px solid ${ativo?'#8B5CF6':'var(--border)'};background:${ativo?'#8B5CF618':'transparent'};color:${ativo?'#8B5CF6':'var(--text3)'};font-size:11px;font-weight:${ativo?'700':'500'};font-family:inherit;cursor:pointer;white-space:nowrap">${lbl} · ${dFmt}</button>`;
+  }).join('');
+
+  // Busca escala da data selecionada
   const{data:escala}=await sb.from('soltura_2_10').select('prefixo,linha,motorista,motorista_fim,horario_programado,horario_fim')
-    .eq('garagem_id',gid).eq('data',amanhaStr).order('horario_programado');
+    .eq('garagem_id',gid).eq('data',_rcEscalaData).order('horario_programado');
   let recolhas=[];
   try{
-    // Recolhas feitas hoje para a escala D+1
     const{data:r}=await sb.from('recolha_checklist').select('*')
-      .eq('garagem_id',gid).eq('data_recolha',amanhaStr).order('created_at',{ascending:false});
+      .eq('garagem_id',gid).eq('data_recolha',_rcEscalaData).order('created_at',{ascending:false});
     if(r) recolhas=r;
   }catch(e){}
   _rcEscalaLista=escala||[];
@@ -1259,8 +1274,7 @@ async function telaRecolha(dataFiltro=null){
   const pct=totEscala>0?Math.round((tot/totEscala)*100):0;
 
   // Chips de seleção de escala referência
-  // Sem chips — Plantão sempre vê a escala de hoje
-  const chipsEscala='';
+  const chipsEscala=_chipsRc||'';
 
   // Lista de carros da escala — ordenada por horario_fim (último a voltar primeiro)
   const escalaSorted=[..._rcEscalaLista].sort((a,b)=>{
@@ -1287,7 +1301,7 @@ async function telaRecolha(dataFiltro=null){
     </div>`;
   }).join('');
 
-  const dataExec=new Date(amanhaStr+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+  const dataExec=new Date(_rcEscalaData+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
   const dataRef=dataExec;
 
   render(`
@@ -1310,7 +1324,7 @@ async function telaRecolha(dataFiltro=null){
         </div>
         <div style="text-align:center">
           <div style="font-size:9px;color:#8B5CF6;font-weight:700;text-transform:uppercase">Soltura</div>
-          <div style="font-size:12px;font-weight:800;color:#8B5CF6">${new Date(_rcSolturaData+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'})}</div>
+          <div style="font-size:12px;font-weight:800;color:#8B5CF6">${new Date((_rcSolturaData||_rcEscalaData)+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'})}</div>
         </div>
       </div>
       <!-- Progresso -->
