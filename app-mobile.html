@@ -2241,7 +2241,6 @@ async function confirmarPlano(){
     data:_lpData,
     tipo_lavagem:prevSet.has(prefixo)?'pesada':'pesada', // todos pesada no plano do lider
     status:'pendente',
-    criado_por:S.perfil?.nome,
     turno:S.turno||'dia',
   }));
   
