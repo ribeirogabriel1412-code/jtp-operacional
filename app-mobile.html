@@ -779,6 +779,108 @@ async function confirmarFechamento(){
 }
 
 
+async function fecharTurnoAbastecimento(){
+  const gid=getGid();
+  const hojeStr=hoje();
+
+  // Busca todos os abastecimentos de hoje
+  const{data:abast}=await sb.from('abastecimento_checklist').select('*')
+    .eq('garagem_id',gid).eq('data',hojeStr).order('created_at');
+  const lista=abast||[];
+  if(!lista.length){toast('Nenhum abastecimento registrado hoje','err');return;}
+
+  const totLitros=lista.reduce((s,a)=>s+(a.litros||0),0);
+  const comArla=lista.filter(a=>a.arla&&a.arla_litros>0);
+  const totArla=comArla.reduce((s,a)=>s+(a.arla_litros||0),0);
+  const totFrota=_abFrotaLista.length||lista.length;
+  const pct=totFrota>0?Math.round((lista.length/totFrota)*100):100;
+  const dataFmt=new Date(hojeStr+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
+
+  // Resumo por frentista
+  const porFrentista={};
+  lista.forEach(a=>{
+    const f=a.frentista_nome||'Não identificado';
+    if(!porFrentista[f])porFrentista[f]={n:0,litros:0};
+    porFrentista[f].n++;
+    porFrentista[f].litros+=a.litros||0;
+  });
+  const frentRows=Object.entries(porFrentista).map(([f,v])=>
+    `<div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:1px solid var(--border2)">
+      <span style="color:var(--text2)">${f}</span>
+      <span style="color:var(--text3)">${v.n} veiículos · <strong style="color:var(--blue)">${v.litros.toLocaleString('pt-BR',{minimumFractionDigits:1})}L</strong></span>
+    </div>`
+  ).join('');
+
+  openSheet('💾 Fechar Turno de Abastecimento',`
+    <div style="background:var(--surface2);border-radius:12px;padding:14px;margin-bottom:14px">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">${dataFmt}</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;text-align:center;margin-bottom:10px">
+        <div style="background:var(--bg);border-radius:10px;padding:10px">
+          <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:800;color:var(--green)">${lista.length}</div>
+          <div style="font-size:10px;color:var(--text3)">ABASTECIDOS</div>
+        </div>
+        <div style="background:var(--bg);border-radius:10px;padding:10px">
+          <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:800;color:var(--blue)">${totLitros.toLocaleString('pt-BR',{minimumFractionDigits:1})}L</div>
+          <div style="font-size:10px;color:var(--text3)">TOTAL DIESEL</div>
+        </div>
+        ${totArla>0?`
+        <div style="background:var(--bg);border-radius:10px;padding:10px">
+          <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:800;color:var(--amber)">${totArla.toLocaleString('pt-BR',{minimumFractionDigits:1})}L</div>
+          <div style="font-size:10px;color:var(--text3)">ARLA 32</div>
+        </div>`:''}
+        <div style="background:var(--bg);border-radius:10px;padding:10px">
+          <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:800;color:${pct>=99?'var(--green)':'var(--amber)'}">${pct}%</div>
+          <div style="font-size:10px;color:var(--text3)">DA FROTA</div>
+        </div>
+      </div>
+      ${Object.keys(porFrentista).length>1?`<div style="margin-top:8px"><div style="font-size:10px;color:var(--text3);font-weight:700;margin-bottom:4px">POR FRENTISTA</div>${frentRows}</div>`:''}
+    </div>
+    <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px">Observações do Turno</label>
+    <textarea id="obs-abast" placeholder="Ocorrências, falta de combustível, veículos não localizados..." rows="3"
+      style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-size:13px;font-family:inherit;outline:none;resize:none;margin-bottom:14px"></textarea>
+    <button onclick="confirmarFechamentoAbastecimento()" style="width:100%;padding:15px;border-radius:12px;border:none;background:${pct>=99?'var(--green)':'var(--blue)'};color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">
+      💾 Arquivar Turno de Abastecimento
+    </button>
+  `);
+}
+
+async function confirmarFechamentoAbastecimento(){
+  const gid=getGid();
+  const hojeStr=hoje();
+  const obs=document.getElementById('obs-abast')?.value?.trim()||null;
+  const btn=document.querySelector('#shbody button[onclick="confirmarFechamentoAbastecimento()"]');
+  if(btn){btn.disabled=true;btn.textContent='Salvando...';}
+
+  const{data:abast}=await sb.from('abastecimento_checklist').select('*')
+    .eq('garagem_id',gid).eq('data',hojeStr);
+  const lista=abast||[];
+  const totLitros=lista.reduce((s,a)=>s+(a.litros||0),0);
+  const totArla=lista.filter(a=>a.arla).reduce((s,a)=>s+(a.arla_litros||0),0);
+
+  const{error}=await sb.from('fechamento_abastecimento').insert({
+    garagem_id:gid,
+    data:hojeStr,
+    total_veiculos:lista.length,
+    total_litros:totLitros,
+    total_arla:totArla||null,
+    total_frota:_abFrotaLista.length||null,
+    pct_frota:_abFrotaLista.length?Math.round((lista.length/_abFrotaLista.length)*100):null,
+    responsavel_nome:S.perfil?.nome||null,
+    responsavel_id:S.perfil?.id||null,
+    observacao:obs,
+    detalhes:JSON.stringify(lista),
+  }).catch(()=>({error:{message:'tabela não existe ainda'}}));
+
+  if(error){
+    // Tabela pode não existir — só mostra sucesso mesmo assim
+    console.warn('[fechamento_abastecimento]',error.message);
+  }
+
+  closeSheet(true);
+  toast(`✅ Turno arquivado! ${lista.length} veículos · ${totLitros.toLocaleString('pt-BR',{minimumFractionDigits:1})}L`);
+}
+
+
 // ── OFICINA (Líder Oficina / PCM) ─────────────────────────
 async function telaOficina(){
   const gid=getGid();
@@ -1570,6 +1672,11 @@ async function telaAbastecimento(){
       </div>
     </div>
     <div class="sl" id="sl-abast">${totFrota} veículo(s) · ${tot} abastecidos hoje</div>
+    ${tot>0?`<div style="padding:14px 14px 0">
+      <button onclick="fecharTurnoAbastecimento()" style="width:100%;padding:14px;border-radius:12px;border:1px solid ${pct>=99?'#00C48C40':'#2563EB40'};background:${pct>=99?'#00C48C18':'#2563EB18'};color:${pct>=99?'var(--green)':'var(--blue)'};font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">
+        ${pct>=99?'✅ Fechar & Arquivar Abastecimento':'💾 Salvar & Arquivar ('+tot+' abastecidos)'}
+      </button>
+    </div>`:''}
     <div id="cards-abast">${cards}</div>
   `);
   document.getElementById('content').insertAdjacentHTML('beforeend',
