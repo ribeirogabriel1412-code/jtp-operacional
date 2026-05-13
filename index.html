@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
+<meta charset="UTF-8"><!-- JTP v2.1 -->
 <!-- v2.1.0 -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>JTP — Sistema Operacional de Garagem</title>
@@ -3704,7 +3704,7 @@ async function carregarChecklistLib(ocId, setorFiltro=null){
     const rowBg=nsa?'#47556908':it.trocado?'#00C48C08':it.verificado?'#2563EB08':'var(--surface2)';
     const itemTxt=(it.item||'').replace(/^\[[^\]]+\]\s*/,'').replace(/'/g,'&#39;').replace(/`/g,'&#96;');
     const obsTxt=(it.observacao_item||'').replace(/'/g,'&#39;').replace(/`/g,'&#96;').replace(/"/g,'&quot;');
-    const sf=setorFiltro?`'${setorFiltro}'`:'null';
+    const sf=setorFiltro?("'" + setorFiltro + "'"):'null';
     return`<tr style="background:${rowBg};opacity:${nsa?'.5':'1'}">
       <td style="font-size:11px;color:var(--text);padding:6px 8px">${itemTxt}</td>
       <td style="text-align:center;padding:4px"><button onclick="toggleVT('${it.id}','v','${ocId}',${sf})" ${!podePreencher?'disabled':''} title="Verificado (V)" style="width:32px;height:28px;border-radius:6px;border:1px solid ${it.verificado?'#2563EB':'var(--border)'};background:${it.verificado?'#2563EB18':'transparent'};cursor:${podePreencher?'pointer':'default'};font-size:13px;transition:all .15s">${it.verificado?'✓':'V'}</button></td>
@@ -5392,7 +5392,7 @@ function abrirModalSemanaRef(dados, nomeArquivo, textoBruto){
   const proxSeg = new Date(hoje.getTime() + diasParaProxSeg*86400000);
   const proxDom = new Date(proxSeg.getTime() + 6*86400000);
   const fmt = d => d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
-  const semanaDefault = `${fmt(proxSeg)} a ${fmt(proxDom)}`;
+  const semanaDefault = fmt(proxSeg) + ' a ' + fmt(proxDom);
 
   const html = `
     <div id="modal-semana-ref" style="position:fixed;inset:0;background:#00000080;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px">
@@ -5417,8 +5417,7 @@ function abrirModalSemanaRef(dados, nomeArquivo, textoBruto){
         </div>
 
         <div style="display:flex;gap:10px">
-          <button onclick="confirmarImportacaoMAN('${nomeArquivo.replace(/'/g,"\\'")}',${JSON.stringify(dados).replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026').replace(/'/g,"\\'")},'${textoBruto.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,'\\n').replace(/\r/g,'').substring(0,0)}')"
-            style="display:none" id="sr-hidden-btn"></button>
+
           <button onclick="document.getElementById('modal-semana-ref').remove();renderFerrPrev()" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">
             Pular
           </button>
