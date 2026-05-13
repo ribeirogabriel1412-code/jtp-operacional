@@ -346,11 +346,24 @@ async function aprPat(){await sb.from('checklist_lavagem').update({validado_pati
 async function reprPat(){await sb.from('checklist_lavagem').update({validado_patio:false,status:'pendente'}).eq('id',_pid);toast('↩ Devolvido');telaPatio()}
 
 // ── SOLTURA (Líder Pátio) ─────────────────────────────────
-let _sid='',_sdata=hoje(),_sLista=[],_sDatas=[];
+let _sid='',_sdata=hoje(),_sLista=[],_sDatas=[],_sloFiltro='';
+
+function selFiltroSoltura(tipo){
+  // Ciclo: nenhum → filtrar OK → filtrar pendente → nenhum
+  if(_sloFiltro===tipo) _sloFiltro='no'+tipo;
+  else if(_sloFiltro==='no'+tipo) _sloFiltro='';
+  else _sloFiltro=tipo;
+  // Limpar busca de texto
+  const bs=document.getElementById('busca-sol');
+  if(bs) bs.value='';
+  filtrarSoltura('');
+  // Re-renderizar painéis para refletir estado do filtro
+  telaSoltura(_sdata);
+}
 
 async function telaSoltura(dataFiltro=null){
   const gid=getGid();
-  if(dataFiltro) _sdata=dataFiltro;
+  if(dataFiltro){_sdata=dataFiltro;_sloFiltro='';}
   else if(!_sdata) _sdata=hoje();
 
   // Busca datas disponíveis na escala (últimos 3 dias + próximos 3)
@@ -424,9 +437,16 @@ async function telaSoltura(dataFiltro=null){
 }
 
 function renderSoltura(lista, busca, datasComEscala=[]){
+  // Ordenar: pendentes primeiro, depois não saiu, depois saiu (vai para o final)
+  const ordenada=[...lista].sort((a,b)=>{
+    const pa=a.saiu===true?2:a.saiu===false?1:0;
+    const pb=b.saiu===true?2:b.saiu===false?1:0;
+    if(pa!==pb) return pa-pb;
+    return (a.horario_programado||'').localeCompare(b.horario_programado||'');
+  });
   const filtrada=busca
-    ?lista.filter(r=>r.prefixo?.includes(busca.toUpperCase())||r.horario_programado?.includes(busca)||r.motorista?.toLowerCase().includes(busca.toLowerCase()))
-    :lista;
+    ?ordenada.filter(r=>r.prefixo?.includes(busca.toUpperCase())||r.horario_programado?.includes(busca)||r.motorista?.toLowerCase().includes(busca.toLowerCase()))
+    :ordenada;
 
   if(!lista.length){
     render(`<div class="empty"><div class="empty-ic">📋</div><div style="font-weight:700;font-size:16px;margin-bottom:8px">Sem escala</div><div style="font-size:13px">Nenhuma escala para ${_sdata}</div></div>`);
@@ -507,15 +527,17 @@ function renderSoltura(lista, busca, datasComEscala=[]){
       <div style="display:flex;gap:12px;margin-top:6px;font-size:11px;color:var(--text3)">
         <span>✅ ${saiu}</span><span>❌ ${nao}</span><span>○ ${pend}</span><span style="margin-left:auto">${lista.length} veíc.</span>
       </div>
-      <!-- Painel Recolha / Abastecimento -->
+      <!-- Painel Recolha / Abastecimento — clicável como filtro -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
-        <div style="background:#EF444412;border:1px solid ${window._recMap?.size>0?'#00C48C40':'#EF444430'};border-radius:10px;padding:10px;text-align:center;transition:all .3s" id="painel-rec">
-          <div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:4px">🔑 Recolhidos</div>
+        <div onclick="selFiltroSoltura('rec')" id="painel-rec" style="background:${_sloFiltro==='rec'?'#00C48C18':_sloFiltro==='norec'?'#EF444418':'#EF444412'};border:2px solid ${_sloFiltro==='rec'?'#00C48C60':_sloFiltro==='norec'?'#EF444460':window._recMap?.size>0?'#00C48C40':'#EF444430'};border-radius:10px;padding:10px;text-align:center;cursor:pointer;transition:all .2s">
+          <div style="font-size:10px;font-weight:700;color:var(--text3);margin-bottom:4px">🔑 Recolhidos</div>
           <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:800;color:${(window._recMap?.size||0)===lista.length&&lista.length>0?'var(--green)':'var(--red)'}"><span id="cnt-rec">${window._recMap?.size||0}</span><span style="font-size:13px;color:var(--text3)">/${lista.length}</span></div>
+          <div style="font-size:9px;margin-top:3px;color:${_sloFiltro==='rec'?'var(--green)':_sloFiltro==='norec'?'var(--red)':'var(--text4)'}">${_sloFiltro==='rec'?'✅ mostrando OK':_sloFiltro==='norec'?'❌ mostrando pendentes':'toque para filtrar'}</div>
         </div>
-        <div style="background:#EF444412;border:1px solid ${window._abMap?.size>0?'#00C48C40':'#EF444430'};border-radius:10px;padding:10px;text-align:center;transition:all .3s" id="painel-ab">
-          <div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:4px">⛽ Abastecidos</div>
+        <div onclick="selFiltroSoltura('ab')" id="painel-ab" style="background:${_sloFiltro==='ab'?'#00C48C18':_sloFiltro==='noab'?'#EF444418':'#EF444412'};border:2px solid ${_sloFiltro==='ab'?'#00C48C60':_sloFiltro==='noab'?'#EF444460':window._abMap?.size>0?'#00C48C40':'#EF444430'};border-radius:10px;padding:10px;text-align:center;cursor:pointer;transition:all .2s">
+          <div style="font-size:10px;font-weight:700;color:var(--text3);margin-bottom:4px">⛽ Abastecidos</div>
           <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:800;color:${(window._abMap?.size||0)===lista.length&&lista.length>0?'var(--green)':'var(--red)'}"><span id="cnt-ab">${window._abMap?.size||0}</span><span style="font-size:13px;color:var(--text3)">/${lista.length}</span></div>
+          <div style="font-size:9px;margin-top:3px;color:${_sloFiltro==='ab'?'var(--green)':_sloFiltro==='noab'?'var(--red)':'var(--text4)'}">${_sloFiltro==='ab'?'✅ mostrando OK':_sloFiltro==='noab'?'❌ mostrando pendentes':'toque para filtrar'}</div>
         </div>
       </div>
       <!-- Busca -->
@@ -546,9 +568,20 @@ function navData(dir){
 // Busca sem re-renderizar tudo — só atualiza os cards
 function filtrarSoltura(busca){
   const lista=_sLista||[];
+  // Pendentes primeiro, validados no final
+  const ordenada=[...lista].sort((a,b)=>{
+    const pa=a.saiu===true?2:a.saiu===false?1:0;
+    const pb=b.saiu===true?2:b.saiu===false?1:0;
+    if(pa!==pb) return pa-pb;
+    return (a.horario_programado||'').localeCompare(b.horario_programado||'');
+  });
   const filtrada=busca
-    ?lista.filter(r=>r.prefixo?.includes(busca.toUpperCase())||r.horario_programado?.includes(busca)||r.motorista?.toLowerCase().includes(busca.toLowerCase()))
-    :lista;
+    ?ordenada.filter(r=>r.prefixo?.includes(busca.toUpperCase())||r.horario_programado?.includes(busca)||r.motorista?.toLowerCase().includes(busca.toLowerCase()))
+    :_sloFiltro==='rec'?ordenada.filter(r=>window._recMap?.has(r.prefixo))
+    :_sloFiltro==='norec'?ordenada.filter(r=>!window._recMap?.has(r.prefixo))
+    :_sloFiltro==='ab'?ordenada.filter(r=>window._abMap?.has(r.prefixo))
+    :_sloFiltro==='noab'?ordenada.filter(r=>!window._abMap?.has(r.prefixo))
+    :ordenada;
 
   const TIPO_C={simples:'#3B82F6',pesada:'#10B981'};
   const cards=filtrada.map(r=>{
@@ -2123,26 +2156,22 @@ async function confirmarFechamentoLavagem(pct){
 }
 
 function abrirCardLavPesada(id,prefixo,tipo,lavado,vistoriado){
-  if(vistoriado){
-    openSheet('✅ '+prefixo+' — Concluído',
-      '<div style="text-align:center;padding:20px 0">'
-      +'<div style="font-size:48px">✅</div>'
-      +'<div style="font-size:16px;font-weight:700;margin:12px 0">Lavagem vistoriada!</div>'
-      +'<button onclick="closeSheet(true)" style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 20px;color:var(--text3);font-size:13px;font-family:inherit;cursor:pointer">Fechar</button>'
-      +'</div>');
-    return;
-  }
-  if(lavado){
-    // Líder pode vistoriar
-    abrirVistoriaPesada(id,prefixo);
-    return;
-  }
-  // Ainda não lavado — opções
+  var statusInfo = vistoriado
+    ? '<div style="background:#00C48C10;border:1px solid #00C48C30;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--green);font-weight:700">✅ Lavagem vistoriada e aprovada</div>'
+    : lavado
+      ? '<div style="background:#2563EB10;border:1px solid #2563EB30;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--blue);font-weight:700">🚿 Lavado — aguardando vistoria</div>'
+      : '<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--text3)">Tipo: <strong style="color:var(--text)">'+(tipo==='pesada'?'Pesada (chassis)':'Simples')+'</strong></div>';
+
+  var btnVistoriar = (!vistoriado)
+    ? '<button onclick="closeSheet(true);abrirVistoriaPesada(\x27'+id+'\x27,\x27'+prefixo+'\x27)" style="padding:13px;border-radius:12px;border:1px solid #00C48C40;background:#00C48C18;color:var(--green);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">'
+      +(lavado?'✅ Vistoriar agora':'✅ Já foi lavado — Vistoriar')+'</button>'
+    : '';
+
   openSheet('🚿 '+prefixo,
-    '<div style="display:flex;flex-direction:column;gap:10px">'
-    +'<div style="background:var(--surface2);border-radius:10px;padding:12px;font-size:12px;color:var(--text3)">Tipo: <strong>'+( tipo==='pesada'?'Pesada (chassis)':'Simples')+'</strong></div>'
-    +'<button onclick="closeSheet(true);abrirVistoriaPesada(\x27'+id+'\x27,\x27'+prefixo+'\x27)" style="padding:13px;border-radius:12px;border:1px solid #00C48C40;background:#00C48C18;color:var(--green);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">✅ Já foi lavado — Vistoriar</button>'
-    +'<button onclick="removerDoPlano(\x27'+id+'\x27)" style="padding:13px;border-radius:12px;border:1px solid #EF444440;background:#EF444418;color:var(--red);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">🗑️ Remover do plano</button>'
+    '<div style="display:flex;flex-direction:column;gap:8px">'
+    +statusInfo
+    +btnVistoriar
+    +'<button onclick="removerDoPlano(\x27'+id+'\x27)" style="padding:12px;border-radius:12px;border:1px solid #EF444440;background:transparent;color:var(--red);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">🗑️ Remover do plano</button>'
     +'<button onclick="closeSheet(true)" style="padding:11px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-family:inherit;cursor:pointer">← Voltar</button>'
     +'</div>');
 }
