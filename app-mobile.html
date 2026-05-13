@@ -884,8 +884,14 @@ async function confirmarFechamentoAbastecimento(){
     });
     if(error) throw error;
 
+    // Limpa todos os registros de hoje após arquivar
+    const{error:errDel}=await sb.from('abastecimento_checklist')
+      .delete().eq('garagem_id',gid).eq('data',hoje());
+    if(errDel) console.warn('[limpar abastecimento]',errDel.message);
+
     closeSheet(true);
-    toast(`✅ Turno arquivado! ${lista.length} veículos · ${totLitros.toLocaleString('pt-BR',{minimumFractionDigits:1})}L`);
+    toast(`✅ Arquivado e limpo! ${lista.length} veículos · ${totLitros.toLocaleString('pt-BR',{minimumFractionDigits:1})}L`);
+    telaAbastecimento();
   }catch(e){
     toast('❌ '+e.message,'err');
     if(btn){btn.disabled=false;btn.textContent='💾 Arquivar Turno de Abastecimento';}
