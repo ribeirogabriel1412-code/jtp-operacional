@@ -1618,64 +1618,81 @@ function selArla(val,btn){
 }
 
 async function salvarAbastecimento(){
-  const prefixo=document.getElementById('ab-prefixo')?.value?.trim().toUpperCase();
-  const litros=parseFloat(document.getElementById('ab-litros')?.value||0)||null;
-  const km=parseInt(document.getElementById('ab-km')?.value||0)||null;
-  const arla=document.getElementById('ab-arla')?.value==='sim';
-  const arlaLitros=arla?parseFloat(document.getElementById('ab-arla-litros')?.value||0)||null:null;
+  // Coleta campos
+  const prefixo=(document.getElementById('ab-prefixo')?.value||'').trim().toUpperCase();
+  const litrosRaw=document.getElementById('ab-litros')?.value||'';
+  const kmRaw=document.getElementById('ab-km')?.value||'';
+  const arlaVal=document.getElementById('ab-arla')?.value||'nao';
+  const arlaLitrosRaw=document.getElementById('ab-arla-litros')?.value||'';
+
+  const litros=litrosRaw?parseFloat(litrosRaw):null;
+  const km=kmRaw?parseInt(kmRaw):null;
+  const arla=arlaVal==='sim';
+  const arlaLitros=arla&&arlaLitrosRaw?parseFloat(arlaLitrosRaw):null;
+
   const gid=getGid();
 
-  if(!prefixo){toast('Informe o prefixo','err');return;}
-  if(!litros){toast('Informe os litros','err');return;}
+  // Validações com feedback claro
+  if(!gid){toast('❌ Erro: garagem não identificada','err');return;}
+  if(!prefixo){toast('❌ Informe o prefixo do veículo','err');return;}
+  if(!litros||litros<=0){toast('❌ Informe os litros abastecidos','err');return;}
+
+  // Bloquear duplo clique
+  const btn=document.querySelector('#shbody button:last-child');
+  if(btn){btn.disabled=true;btn.textContent='Salvando...';}
 
   const agora=new Date();
   const horario=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-  const dataGravar=_abEscalaData||hoje();
+  const dataGravar=hoje();
 
-  // Busca veiculo_id
+  // Busca veiculo_id (não bloqueia se não achar)
   let veiId=null;
   try{
-    const{data:vei}=await sb.from('frota').select('id').eq('garagem_id',gid).eq('prefixo',prefixo).single();
+    const{data:vei}=await sb.from('frota').select('id')
+      .eq('garagem_id',gid).eq('prefixo',prefixo).maybeSingle();
     veiId=vei?.id||null;
   }catch(e){}
 
   // Insere na tabela
-  const{data:inserido,error}=await sb.from('abastecimento_checklist').insert({
+  const{error}=await sb.from('abastecimento_checklist').insert({
     garagem_id:gid,
     prefixo,
     veiculo_id:veiId,
     data:dataGravar,
     litros,
     arla,
-    arla_litros:arlaLitros||null,
-    km_hodometro:km||null,
+    arla_litros:arlaLitros,
+    km_hodometro:km,
     frentista_nome:S.perfil?.nome||null,
     frentista_id:S.perfil?.id||null,
     horario,
   });
 
   if(error){
-    toast('Erro ao salvar: '+error.message,'err');
-    console.error('abastecimento error:',error);
+    toast('❌ '+error.message,'err');
+    console.error('[abastecimento]',error);
+    if(btn){btn.disabled=false;btn.textContent='⛽ Confirmar Abastecimento';}
     return;
   }
 
-  // Marca abastecido na soltura D+1 (próximo dia com escala para este prefixo)
+  // Tenta marcar flag na soltura D+1 (não bloqueia se falhar)
   try{
-    const amanhAb=new Date();amanhAb.setDate(amanhAb.getDate()+1);
-    const amanhaStr=amanhAb.toISOString().split('T')[0];
-    // Busca próxima soltura deste carro (amanhã ou em até 7 dias)
     const datasAlvo=[];
-    for(let i=1;i<=7;i++){const d=new Date();d.setDate(d.getDate()+i);datasAlvo.push(d.toISOString().split('T')[0]);}
+    for(let i=1;i<=7;i++){
+      const d=new Date();d.setDate(d.getDate()+i);
+      datasAlvo.push(d.toISOString().split('T')[0]);
+    }
     const{data:proxSoltura}=await sb.from('soltura_2_10').select('data')
-      .eq('garagem_id',gid).eq('prefixo',prefixo).in('data',datasAlvo).order('data').limit(1);
-    const dataSoltura=proxSoltura?.[0]?.data||amanhaStr;
-    await sb.from('soltura_2_10').update({
-      abastecido:true,
-      abastecido_em:agora.toISOString(),
-      abastecido_por:S.perfil?.nome,
-    }).eq('garagem_id',gid).eq('prefixo',prefixo).eq('data',dataSoltura);
-  }catch(e){console.warn('soltura update err:',e);}
+      .eq('garagem_id',gid).eq('prefixo',prefixo).in('data',datasAlvo)
+      .order('data').limit(1);
+    if(proxSoltura?.[0]?.data){
+      await sb.from('soltura_2_10').update({
+        abastecido:true,
+        abastecido_em:agora.toISOString(),
+        abastecido_por:S.perfil?.nome,
+      }).eq('garagem_id',gid).eq('prefixo',prefixo).eq('data',proxSoltura[0].data);
+    }
+  }catch(e){console.warn('[soltura flag]',e);}
 
   closeSheet(true);
   toast(`✅ ${prefixo} — ${litros}L${arla&&arlaLitros?' + ARLA '+arlaLitros+'L':''}${km?' · '+km.toLocaleString()+'km':''}`);
