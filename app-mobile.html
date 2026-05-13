@@ -2055,10 +2055,71 @@ async function telaLavPesada(){
     +'</div>'
     +(total?'<div class="sl">'+total+' veículo(s) no plano</div>'+cards
       :'<div class="empty"><div class="empty-ic">🚿</div><div style="font-weight:700;font-size:16px;margin-bottom:8px">Sem plano hoje</div><div style="font-size:13px">Use o + para montar o plano do dia.</div></div>')
+    +(vistoriados>0?'<div style="padding:14px">'
+      +'<button onclick="fecharTurnoLavagem()" style="width:100%;padding:14px;border-radius:12px;border:1px solid '+(vistoriados===total?'#00C48C40':'#F59E0B40')+';background:'+(vistoriados===total?'#00C48C18':'#F59E0B18')+';color:'+(vistoriados===total?'var(--green)':'var(--amber)')+';font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">'
+      +(vistoriados===total?'✅ Fechar Turno de Lavagem':'⚠️ Fechar Turno ('+vistoriados+'/'+total+' vistoriados)')
+      +'</button></div>':'')
   );
   
   document.getElementById('content').insertAdjacentHTML('beforeend',
     '<button class="fab" onclick="abrirMontarPlano()">＋</button>');
+}
+
+async function fecharTurnoLavagem(){
+  const gid=getGid();
+  const{data:plano}=await sb.from('checklist_lavagem').select('*')
+    .eq('garagem_id',gid).eq('data',_lpData).order('prefixo');
+  const lista=plano||[];
+  const lavados=lista.filter(l=>l.status==='executado').length;
+  const vistoriados=lista.filter(l=>l.validado_patio).length;
+  const pct=lista.length>0?Math.round(vistoriados/lista.length*100):0;
+  const dataFmt=new Date(_lpData+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'});
+
+  openSheet('📋 Fechar Turno de Lavagem',
+    '<div style="background:var(--surface2);border-radius:12px;padding:14px;margin-bottom:14px">'+
+    '<div style="font-size:12px;color:var(--text3);margin-bottom:10px">'+dataFmt+'</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center">'+
+    '<div><div style="font-family:\'DM Mono\',monospace;font-size:22px;font-weight:700;color:var(--blue)">'+lista.length+'</div><div style="font-size:10px;color:var(--text3)">PLANEJADOS</div></div>'+
+    '<div><div style="font-family:\'DM Mono\',monospace;font-size:22px;font-weight:700;color:var(--green)">'+lavados+'</div><div style="font-size:10px;color:var(--text3)">LAVADOS</div></div>'+
+    '<div><div style="font-family:\'DM Mono\',monospace;font-size:22px;font-weight:700;color:'+( vistoriados===lista.length&&lista.length>0?'var(--green)':'var(--amber)')+'>'+ vistoriados+'</div><div style="font-size:10px;color:var(--text3)">VISTORIADOS</div></div>'+
+    '</div>'+
+    '<div style="margin-top:10px;text-align:center;font-family:\'DM Mono\',monospace;font-size:24px;font-weight:800;color:'+( pct>=100?'var(--green)':'var(--amber)')+'">'+pct+'%</div>'+
+    '</div>'+
+    '<label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px">Observações do Turno</label>'+
+    '<textarea id="obs-lav-turno" placeholder="Ocorrências, pendências, observações..." rows="3" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-size:13px;font-family:inherit;outline:none;resize:none;margin-bottom:14px"></textarea>'+
+    '<button onclick="confirmarFechamentoLavagem()'+','+pct+')" style="width:100%;padding:15px;border-radius:12px;border:none;background:'+( pct>=100?'var(--green)':'var(--amber)')+';color:'+( pct>=100?'white':'#000')+';font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">'+
+    ( pct>=100?'✅ Confirmar Fechamento':'⚠️ Fechar com Pendências')+'</button>'
+  );
+}
+
+async function confirmarFechamentoLavagem(pct){
+  const gid=getGid();
+  const obs=document.getElementById('obs-lav-turno')?.value?.trim()||null;
+  const{data:plano}=await sb.from('checklist_lavagem').select('*')
+    .eq('garagem_id',gid).eq('data',_lpData);
+  const lista=plano||[];
+  const lavados=lista.filter(l=>l.status==='executado').length;
+  const vistoriados=lista.filter(l=>l.validado_patio).length;
+
+  // Gravar fechamento
+  try{
+    await sb.from('fechamento_lavagem').insert({
+      garagem_id:gid,
+      data:_lpData,
+      turno:S.turno||'dia',
+      total_planejados:lista.length,
+      total_lavados:lavados,
+      total_vistoriados:vistoriados,
+      pct_vistoriados:lista.length>0?Math.round(vistoriados/lista.length*100):0,
+      responsavel_nome:S.perfil?.nome||null,
+      responsavel_id:S.perfil?.id||null,
+      observacao:obs,
+    });
+  }catch(e){console.warn('fechamento_lavagem:',e.message);}
+
+  closeSheet(true);
+  toast('✅ Turno de lavagem fechado! '+vistoriados+'/'+lista.length+' vistoriados');
+  telaLavPesada();
 }
 
 function abrirCardLavPesada(id,prefixo,tipo,lavado,vistoriado){
@@ -2086,28 +2147,77 @@ function abrirCardLavPesada(id,prefixo,tipo,lavado,vistoriado){
     +'</div>');
 }
 
-function abrirVistoriaPesada(id, prefixo){
+async function abrirVistoriaPesada(id, prefixo){
+  const gid=getGid();
   let vck={};
   CK_VISTORIA_PESADA.forEach((_,i)=>vck[i]=false);
+
+  // Buscar histórico de vistorias anteriores deste carro
+  let historico=[];
+  try{
+    const{data:hist}=await sb.from('vistoria_lavagem').select('*')
+      .eq('garagem_id',gid).eq('prefixo',prefixo)
+      .order('created_at',{ascending:false}).limit(5);
+    historico=hist||[];
+  }catch(e){}
+
+  window._vckHistorico=historico;
   rndrVistoriaSh(id,prefixo,vck);
 }
 
 function rndrVistoriaSh(id,prefixo,vck){
   const ok=Object.values(vck).every(v=>v);
+  const feitos=Object.values(vck).filter(v=>v).length;
+  const total=CK_VISTORIA_PESADA.length;
+  const pctV=total>0?Math.round(feitos/total*100):0;
+
   const rows=CK_VISTORIA_PESADA.map((it,i)=>{
     return '<div class="ck-row" onclick="togVistoria(\x27'+id+'\x27,\x27'+prefixo+'\x27,'+i+')">'
       +'<div style="width:28px;height:28px;border-radius:8px;border:2px solid '+(vck[i]?'var(--green)':'var(--border)')+';background:'+(vck[i]?'var(--green)':'transparent')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;color:white;font-size:14px">'+(vck[i]?'✓':'')+'</div>'
       +'<div class="ck-txt" style="color:'+(vck[i]?'var(--text)':'var(--text2)')+'">'+it+'</div>'
       +'</div>';
   }).join('');
-  
-  openSheet('✅ Vistoria Pesada — '+prefixo,
-    rows
-    +'<button onclick="confirmarVistoriaPesada(\x27'+id+'\x27)" '+(ok?'':'disabled ')
+
+  // Histórico de vistorias anteriores
+  const hist=window._vckHistorico||[];
+  const histHtml=hist.length
+    ?'<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px">'
+      +'<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">&#128203; Últimas vistorias</div>'
+      +hist.map(h=>{
+        const dt=new Date(h.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
+        const aprov=h.reprovado_itens===0;
+        return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--surface2);border-radius:8px;margin-bottom:4px">'
+          +'<span style="font-size:16px">'+(aprov?'&#9989;':'&#9888;')+'</span>'
+          +'<div style="flex:1"><div style="font-size:12px;font-weight:700;color:var(--text2)">'+dt+'</div>'
+          +'<div style="font-size:10px;color:var(--text3)">'+(h.vistoriado_por||'—')+' · '+h.itens_ok+'/'+h.itens_total+'</div></div>'
+          +(h.obs?'<div style="font-size:10px;color:var(--amber);max-width:100px;text-align:right;word-break:break-word">'+h.obs+'</div>':'')
+          +'</div>';
+      }).join('')
+      +'</div>'
+    :'';
+
+  openSheet('&#9989; Vistoria — '+prefixo+' ('+feitos+'/'+total+')',
+    '<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;align-items:center;gap:10px">'
+    +'<div style="flex:1;background:var(--border);border-radius:99px;height:8px;overflow:hidden">'
+    +'<div style="height:100%;width:'+pctV+'%;background:'+(ok?'var(--green)':'var(--blue)')+';border-radius:99px;transition:width .2s"></div>'
+    +'</div>'
+    +'<span style="font-size:12px;font-weight:700;color:'+(ok?'var(--green)':'var(--text3)')+'">'+feitos+'/'+total+'</span>'
+    +'</div>'
+    +rows
+    +'<div style="margin-top:12px">'
+    +'<label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:6px">&#128172; Observação (opcional)</label>'
+    +'<textarea id="vis-obs" placeholder="Ex: Vidro com mancha, chassis ok..." rows="2" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px;color:var(--text);font-size:13px;font-family:inherit;outline:none;resize:none"></textarea>'
+    +'</div>'
+    +'<button id="btn-aprovar-vis" onclick="confirmarVistoriaPesada(\x27'+id+'\x27)" '+(ok?'':'disabled ')
     +'style="width:100%;margin-top:10px;padding:15px;border-radius:12px;border:none;background:'+(ok?'var(--green)':'var(--surface2)')+';color:'+(ok?'white':'var(--text4)')+';font-size:15px;font-weight:700;font-family:inherit;cursor:'+(ok?'pointer':'not-allowed')+';">'
-    +(ok?'✅ Aprovar Vistoria':'Marque todos os itens')
+    +(ok?'&#9989; Aprovar Vistoria':'Marque todos os itens ('+feitos+'/'+total+')')
     +'</button>'
-    +'<button onclick="closeSheet(true)" style="width:100%;margin-top:8px;padding:11px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-family:inherit;cursor:pointer">← Voltar</button>'
+    +'<button onclick="reprovarVistoriaPesada(\x27'+id+'\x27)" '+(ok?'':'disabled ')
+    +'style="width:100%;margin-top:8px;padding:12px;border-radius:12px;border:1px solid #EF444440;background:transparent;color:var(--red);font-size:13px;font-weight:700;font-family:inherit;cursor:'+(ok?'pointer':'not-allowed')+';">'
+    +'&#10060; Reprovar — devolver para relavar'
+    +'</button>'
+    +'<button onclick="closeSheet(true)" style="width:100%;margin-top:8px;padding:11px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-family:inherit;cursor:pointer">&#8592; Voltar</button>'
+    +histHtml
   );
   window._vck=vck;
   window._vckId=id;
@@ -2120,14 +2230,73 @@ function togVistoria(id,prefixo,i){
 }
 
 async function confirmarVistoriaPesada(id){
+  const gid=getGid();
+  const obs=document.getElementById('vis-obs')?.value?.trim()||null;
+  const btn=document.querySelector('#shbody button:first-of-type');
+  if(btn){btn.disabled=true;btn.textContent='Salvando...';}
+
+  // 1. Atualizar checklist_lavagem
   await sb.from('checklist_lavagem').update({
     validado_patio:true,
     validado_por:S.perfil?.nome,
     validado_em:new Date().toISOString(),
     status:'executado',
   }).eq('id',id);
+
+  // 2. Gravar histórico de vistoria
+  try{
+    const itens_ok=CK_VISTORIA_PESADA.filter((_,i)=>window._vck[i]).length;
+    await sb.from('vistoria_lavagem').insert({
+      garagem_id:gid,
+      checklist_id:id,
+      prefixo:window._vckPrefixo,
+      data:_lpData||hoje(),
+      itens_total:CK_VISTORIA_PESADA.length,
+      itens_ok,
+      reprovado_itens:0,
+      aprovado:true,
+      obs:obs||null,
+      vistoriado_por:S.perfil?.nome,
+      vistoriado_por_id:S.perfil?.id,
+    });
+  }catch(e){console.warn('vistoria_lavagem:',e.message);}
+
   closeSheet(true);
-  toast('✅ Vistoria pesada aprovada!');
+  toast('✅ Vistoria aprovada!'+(obs?' · obs salva':''));
+  telaLavPesada();
+}
+
+async function reprovarVistoriaPesada(id){
+  const gid=getGid();
+  const obs=document.getElementById('vis-obs')?.value?.trim()||'Reprovado — relavar';
+
+  // Devolver para pendente
+  await sb.from('checklist_lavagem').update({
+    status:'pendente',
+    validado_patio:false,
+    validado_por:null,
+    validado_em:null,
+  }).eq('id',id);
+
+  // Gravar reprovação no histórico
+  try{
+    await sb.from('vistoria_lavagem').insert({
+      garagem_id:gid,
+      checklist_id:id,
+      prefixo:window._vckPrefixo,
+      data:_lpData||hoje(),
+      itens_total:CK_VISTORIA_PESADA.length,
+      itens_ok:CK_VISTORIA_PESADA.filter((_,i)=>window._vck[i]).length,
+      reprovado_itens:CK_VISTORIA_PESADA.filter((_,i)=>!window._vck[i]).length,
+      aprovado:false,
+      obs,
+      vistoriado_por:S.perfil?.nome,
+      vistoriado_por_id:S.perfil?.id,
+    });
+  }catch(e){console.warn('vistoria_lavagem:',e.message);}
+
+  closeSheet(true);
+  toast('⚠️ Reprovado — carro voltou para lavar');
   telaLavPesada();
 }
 
