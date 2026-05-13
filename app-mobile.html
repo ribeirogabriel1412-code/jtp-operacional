@@ -885,9 +885,13 @@ async function confirmarFechamentoAbastecimento(){
     if(error) throw error;
 
     // Limpa todos os registros de hoje após arquivar
-    const{error:errDel}=await sb.from('abastecimento_checklist')
-      .delete().eq('garagem_id',gid).eq('data',hoje());
-    if(errDel) console.warn('[limpar abastecimento]',errDel.message);
+    // Deleta pelos IDs exatos que foram arquivados — mais seguro que filtro de data
+    const ids=lista.map(a=>a.id).filter(Boolean);
+    if(ids.length){
+      const{error:errDel}=await sb.from('abastecimento_checklist')
+        .delete().in('id',ids);
+      if(errDel) throw new Error('Arquivado mas erro ao limpar: '+errDel.message);
+    }
 
     closeSheet(true);
     toast(`✅ Arquivado e limpo! ${lista.length} veículos · ${totLitros.toLocaleString('pt-BR',{minimumFractionDigits:1})}L`);
