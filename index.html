@@ -5491,7 +5491,7 @@ async function renderPrevPainel(back){
   // Caso contrário: filtra só itens a ≤1000km do vencimento ou já vencidos
   const _dadosFiltrados = _prevBuscaPrefixo
     ? _prevDados.filter(r => r.carro.includes(_prevBuscaPrefixo.toUpperCase()))
-    : _prevDados.filter(r => r.excessoKm >= -2000);
+    : _prevDados.filter(r => r.excessoKm >= -5000);
 
   // Carrega programações salvas (próximos 7 dias)
   let progMap={};
@@ -5731,23 +5731,21 @@ function gerarEscalaAutomatica(dados, semanaRef) {
   // ── Candidatos ordenados: mais vencido → mais próximo ─────────────
   const sorted = (arr) => [...arr].sort((a,b) => b.excessoKm - a.excessoKm);
 
-  // Garantias: top 5 (1/dia × 5 dias)
-  const garantias = sorted(dados.filter(r => isGarantia(r.carro) && isPesada(r.planoNum) && r.excessoKm >= -2000))
-    .filter((r,_,a) => a.findIndex(x=>x.carro===r.carro)===a.indexOf(r)) // 1 por carro
-    .slice(0, 5);
+  // Garantias: todos os carros em garantia com plano vencido ou próximo
+  // Sem limite — 1 por carro, ordenado mais vencido primeiro
+  const garantias = sorted(dados.filter(r => isGarantia(r.carro) && isPesada(r.planoNum)))
+    .filter((r,_,a) => a.findIndex(x=>x.carro===r.carro)===a.indexOf(r));
 
-  // Pesadas não-garantia: top 10
-  const pesadasNormais = sorted(dados.filter(r => isPesada(r.planoNum) && !isGarantia(r.carro) && r.excessoKm >= -2000))
-    .filter((r,_,a) => a.findIndex(x=>x.carro===r.carro)===a.indexOf(r))
-    .slice(0, 10);
+  // Pesadas: todos os carros com pesada (exceto garantia), sem corte de km
+  const pesadasNormais = sorted(dados.filter(r => isPesada(r.planoNum) && !isGarantia(r.carro)))
+    .filter((r,_,a) => a.findIndex(x=>x.carro===r.carro)===a.indexOf(r));
 
-  // Leves: top 30
-  const leves = sorted(dados.filter(r => isLeve(r.planoNum) && r.excessoKm >= -2000))
-    .filter((r,_,a) => a.findIndex(x=>x.carro===r.carro)===a.indexOf(r))
-    .slice(0, 30);
+  // Leves: todos, sem corte de km
+  const leves = sorted(dados.filter(r => isLeve(r.planoNum)))
+    .filter((r,_,a) => a.findIndex(x=>x.carro===r.carro)===a.indexOf(r));
 
-  // Avulsos: sem limite, janela -500 km
-  const avulsos = sorted(dados.filter(r => isAvulso(r.planoNum) && r.excessoKm >= -500));
+  // Avulsos: todos vencidos ou próximos (-1000 km)
+  const avulsos = sorted(dados.filter(r => isAvulso(r.planoNum) && r.excessoKm >= -1000));
 
   // ── PASSO 1: GARANTIAS — 1/dia, seg-sex ───────────────────────────
   let rrG = 0;
@@ -5959,7 +5957,7 @@ function renderTelaEscala(back, diasSemana, sabValetamento) {
       </div>`).join('')}
     </div>`;
 
-    return `<div style="background:var(--surface);border:1px solid ${e.confirmado&&!e.jaExiste?cor+'50':'var(--border2)'};border-left:3px solid ${cor};border-radius:8px;padding:7px 8px;margin-bottom:4px;opacity:${e.jaExiste?'0.45':'1'}">
+    return `<div style="background:var(--surface);border:1px solid ${e.confirmado&&!e.jaExiste?cor+'50':'var(--border2)'};border-left:3px solid ${cor};border-radius:8px;padding:9px 10px;margin-bottom:6px;opacity:${e.jaExiste?'0.45':'1'}">
       <div style="display:flex;align-items:center;gap:4px;cursor:pointer" onclick="toggleEscalaItem(${e.id})">
         <span style="flex-shrink:0">${check}</span>
         <span style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:${cor}">${e.carro}</span>
@@ -6002,7 +6000,7 @@ function renderTelaEscala(back, diasSemana, sabValetamento) {
       <div style="font-size:9px;font-weight:700;color:var(--amber);text-transform:uppercase;margin-bottom:4px;padding-top:8px;border-top:1px solid var(--border2)">⚡ Avulsos (${bucket.avulso.length})</div>
       ${bucket.avulso.map(e=>cardLinha(e,'avulso')).join('')}` : '';
 
-    return `<div style="flex:1;min-width:160px">
+    return `<div style="flex:1;min-width:200px">
       <div style="text-align:center;padding:6px 4px;background:${c.isSab?'#06B6D418':'var(--surface2)'};border-radius:8px;margin-bottom:8px;border:1px solid ${c.isSab?'#06B6D430':'var(--border2)'}">
         <div style="font-size:11px;font-weight:800;text-transform:capitalize;color:${c.isSab?'#06B6D4':'var(--text)'}">${nomeDia}</div>
         <div style="font-size:10px;color:var(--text3)">${dtFmt} · ${totalCol} item${totalCol!==1?'s':''}</div>
@@ -6049,7 +6047,7 @@ function renderTelaEscala(back, diasSemana, sabValetamento) {
     </div>
     ${overflowHtml}
     <!-- Grade por dia -->
-    <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:12px;align-items:flex-start">
+    <div style="display:flex;gap:14px;overflow-x:auto;padding-bottom:16px;align-items:flex-start">
       ${colsHtml}
     </div>
     <div style="height:40px"></div>
@@ -6167,57 +6165,64 @@ async function confirmarEscalaAutomatica() {
   const selecionados = (window._escalaRascunho||[]).filter(e => e.confirmado && !e.jaExiste && e.data && !e.tipo.includes('overflow'));
   if (!selecionados.length) { toast('Nenhum item selecionado','err'); return; }
 
-  const btn = document.querySelector('button[onclick*="confirmarEscalaAutomatica"]');
-  if (btn) { btn.disabled=true; btn.textContent='Salvando...'; }
+  const btn = document.querySelector('[onclick*="confirmarEscalaAutomatica"]');
+  if (btn) { btn.disabled=true; btn.textContent=`Salvando 0/${selecionados.length}...`; }
 
   let ok=0, erros=0, erroMsg='';
-  for (const e of selecionados) {
-    const obsPartes = [
-      e.incluileve ? 'Inclui Preventiva Leve' : '',
-      e.incluiPesada ? 'Inclui Preventiva Pesada' : '',
-      e.oportunistasNomes?.length ? 'Oportunistas: '+e.oportunistasNomes.join(', ') : '',
-      e.tipo==='valetamento' ? `Valetamento para ${e.refData?.split('-').reverse().join('/')||''}` : '',
-      e.motivo,
-    ].filter(Boolean).join(' | ');
+  try {
+    for (const e of selecionados) {
+      const obs = [
+        e.incluileve?'Inclui Leve':'',
+        e.incluiPesada?'Inclui Pesada':'',
+        e.oportunistasNomes?.length?'Oport: '+e.oportunistasNomes.join(', '):'',
+        e.motivo,
+      ].filter(Boolean).join(' | ');
 
-    const payload = {
-      garagem_id: gid, prefixo: e.carro,
-      plano_num: e.planoNum, plano_nome: e.planoNome,
-      tipo_metrica: 'KM', excesso_km: e.excessoKm||0, km_atual: 0,
-      data_prevista: e.data,
-      turno: e.turno === 'VAL' ? 'A' : e.turno,
-      cesto_separado: !!e.cesto,
-      observacao: obsPartes||null,
-      status: e.tipo==='valetamento' ? 'programado' : 'programado',
-      criado_por: S.perfil?.nome||null,
-      criado_por_id: S.perfil?.id||null,
-    };
-
-    const { error } = await sb.from('programacao_preventiva').insert(payload);
-    if (error) {
-      console.error('[escala insert]', e.carro, e.planoNum, JSON.stringify(payload), error);
-      if (erros === 0) erroMsg = error.message;
-      erros++;
-    } else ok++;
+      const {error} = await sb.from('programacao_preventiva').insert({
+        garagem_id:gid, prefixo:e.carro,
+        plano_num:e.planoNum, plano_nome:e.planoNome,
+        tipo_metrica:'KM', excesso_km:e.excessoKm||0, km_atual:0,
+        data_prevista:e.data,
+        turno:(e.turno==='VAL'||e.turno==='A')?'A':'B',
+        cesto_separado:!!e.cesto,
+        observacao:obs||null,
+        status:'programado',
+        criado_por:S.perfil?.nome||null,
+        criado_por_id:S.perfil?.id||null,
+      });
+      if (error) {
+        console.error('[escala]',e.carro,e.planoNum,error.message);
+        if (!erroMsg) erroMsg=`${e.carro}/${e.planoNum}: ${error.message}`;
+        erros++;
+      } else {
+        ok++;
+        const b=document.querySelector('[onclick*="confirmarEscalaAutomatica"]');
+        if(b) b.textContent=`Salvando ${ok+erros}/${selecionados.length}...`;
+      }
+    }
+  } finally {
+    const b=document.querySelector('[onclick*="confirmarEscalaAutomatica"]');
+    if(b){b.disabled=false;b.textContent='📅 Confirmar';}
   }
 
   try {
-    const garagem = S.garagens?.find(g=>g.id===gid);
-    const linhas = selecionados.filter(e=>e.tipo!=='valetamento').slice(0,15).map(e=>
-      `${e.tipo==='garantia'?'🔒':'🔩'} *${e.carro}* — ${e.planoNome.split(' ').slice(0,3).join(' ')} · ${e.data?.split('-').reverse().join('/')} T${e.turno}`
-    ).join('\n');
-    const msg = `🗓️ *ESCALA PREVENTIVA — JTP*\n📍 ${garagem?.nome||'Porto Velho'} · Gerada automaticamente\n\n✅ ${ok} programadas · ❌ ${erros} erros\n\n${linhas}${selecionados.length>15?`\n_...e mais ${selecionados.length-15} itens_`:''}\n\n_Gerado por: ${S.perfil?.nome||'PCM'}_`;
+    const garagem=S.garagens?.find(g=>g.id===gid);
+    const linhas=selecionados.filter(e=>e.tipo!=='valetamento').slice(0,15)
+      .map(e=>`${e.tipo==='garantia'?'🔒':'🔩'} *${e.carro}* — ${e.planoNome.split(' ').slice(0,2).join(' ')} · ${e.data?.split('-').reverse().join('/')} T${e.turno}`)
+      .join('\n');
+    const msg=`🗓️ *ESCALA PREVENTIVA — JTP*\n📍 ${garagem?.nome||'Porto Velho'}\n\n✅ ${ok} confirmadas · ❌ ${erros} erros\n\n${linhas}${selecionados.length>15?`\n_...+${selecionados.length-15} itens_`:''}\n\n_${S.perfil?.nome||'PCM'}_`;
     await fetch('https://evolution-api-production-8d56.up.railway.app/message/sendText/jtp-garagem',{
       method:'POST',headers:{'Content-Type':'application/json','apikey':'4289AC11F437-43AD-96D7-9F27C2735696'},
       body:JSON.stringify({number:'120363427489152994@g.us',options:{delay:0},textMessage:{text:msg}}),
     });
-  } catch(e) { console.warn('WPP:',e); }
+  } catch(e){console.warn('WPP:',e);}
 
-  if (erros > 0) toast(`⚠️ ${erros} erro(s): ${erroMsg}`, 'err');
-  toast(`✅ ${ok} programações confirmadas${erros?' · ⚠️ '+erros+' erros':''}!`);
-  window._escalaRascunho = null;
+  if (erros>0) toast(`⚠️ ${erros} erro(s): ${erroMsg}`,'err');
+  if (ok>0) toast(`✅ ${ok} programações salvas!`);
+  window._escalaRascunho=null;
   renderPrevProgramadas();
 }
+
 
 
 
