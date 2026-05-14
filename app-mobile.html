@@ -304,7 +304,16 @@ function rndrLavSh(p,tipo,itens){
     <button onclick="naoLav('${_lid}');closeSheet(true)" style="width:100%;margin-top:8px;padding:12px;border-radius:12px;border:1px solid #EF444440;background:transparent;color:var(--red);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">❌ Não Realizado</button>`);
 }
 function togLavCk(i,p,t,itens){_lck[i]=!_lck[i];rndrLavSh(p,t,itens)}
-async function concLav(){await sb.from('checklist_lavagem').update({status:'executado',hora_executado:new Date().toISOString(),executado_por:S.perfil?.nome}).eq('id',_lid);closeSheet(true);toast('✅ Lavagem registrada!');telaLavagem()}
+async function concLav(){
+  if(!_lid){toast('❌ ID não encontrado, reabra o card','err');return;}
+  const{error}=await sb.from('checklist_lavagem').update({
+    status:'executado',
+    hora_executado:new Date().toISOString(),
+    executado_por:S.perfil?.nome
+  }).eq('id',_lid);
+  if(error){toast('❌ Erro ao salvar: '+error.message,'err');console.error('[concLav]',error);return;}
+  closeSheet(true);toast('✅ Lavagem registrada!');telaLavagem();
+}
 async function naoLav(id){await sb.from('checklist_lavagem').update({status:'nao_realizado'}).eq('id',id);toast('❌ Registrado');telaLavagem()}
 async function desfLav(id){await sb.from('checklist_lavagem').update({status:'pendente',hora_executado:null,executado_por:null}).eq('id',id);toast('↩ Pendente');telaLavagem()}
 
@@ -955,7 +964,7 @@ async function confirmarFechamentoAbastecimento(){
 
   try{
     const{data:abast,error:errBusca}=await sb.from('abastecimento_checklist')
-      .select('*').eq('garagem_id',gid).eq('data',hoje());
+      .select('*').eq('garagem_id',gid).eq('data',dataGravar);
     if(errBusca) throw errBusca;
 
     const lista=abast||[];
@@ -1655,21 +1664,23 @@ async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
   const agora=new Date();
   const horarioReal=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   const status=externo==='avaria'||interno==='avaria'?'avaria':'recebido';
-  const dataGravar=window._rcSolturaData||_rcEscalaData||hoje();
+  // Usa sempre _rcEscalaData como referência — data da escala que está sendo visualizada
+  // Isso garante consistência quando vários plantonistas usam o app ao mesmo tempo
+  const dataGravar=_rcEscalaData||hoje();
 
   // Busca veiculo_id
   let veiId=null;
   try{
-    const{data:vei}=await sb.from('frota').select('id').eq('garagem_id',gid).eq('prefixo',prefixo).single();
+    const{data:vei}=await sb.from('frota').select('id').eq('garagem_id',gid).eq('prefixo',prefixo).maybeSingle();
     veiId=vei?.id||null;
   }catch(e){}
 
-  // Insere na recolha_checklist — igual ao abastecimento
+  // Insere na recolha_checklist
   const{error}=await sb.from('recolha_checklist').insert({
     garagem_id:gid,
     prefixo,
     veiculo_id:veiId,
-    data_recolha:window._rcSolturaData||dataGravar,
+    data_recolha:dataGravar,
     horario_real:horarioReal,
     horario_previsto:horarioRef||null,
     motorista:motoristaRef||null,
@@ -1690,15 +1701,14 @@ async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
     await sb.from('frota').update({status:'disponivel'}).eq('id',veiId);
   }
 
-  // Marca recolhido na soltura D+1 (próximo dia — carro recebido hoje vai sair amanhã)
-  const _solturaAlvo=window._rcSolturaData||_rcEscalaData;
-  if(_solturaAlvo&&status==='recebido'){
+  // Marca recolhido na soltura_2_10 da data da escala selecionada
+  if(dataGravar&&status==='recebido'){
     await sb.from('soltura_2_10').update({
       recolhido:true,
       recolhido_em:agora.toISOString(),
       recolhido_por:S.perfil?.nome,
       km_recolha:km||null,
-    }).eq('garagem_id',gid).eq('prefixo',prefixo).eq('data',_solturaAlvo);
+    }).eq('garagem_id',gid).eq('prefixo',prefixo).eq('data',dataGravar);
   }
 
   closeSheet(true);
@@ -1739,12 +1749,15 @@ async function telaAbastecimento(){
   }
   _abFrotaLista=frotaRaw;
 
-  // Abastecimentos já feitos hoje (data = hoje)
+  // Abastecimentos já feitos: busca hoje E ontem (turno noturno cruza a meia-noite)
   let abastMap={};
   try{
+    const ontem=new Date();ontem.setDate(ontem.getDate()-1);
+    const ontemStr=ontem.toISOString().split('T')[0];
     const{data:abast}=await sb.from('abastecimento_checklist').select('*')
-      .eq('garagem_id',gid).eq('data',hojeStrAb).order('created_at',{ascending:false});
-    if(abast) abast.forEach(a=>{abastMap[a.prefixo]=a;});
+      .eq('garagem_id',gid).in('data',[hojeStrAb,ontemStr]).order('created_at',{ascending:false});
+    // abastMap: último por prefixo (mais recente prevalece)
+    if(abast) abast.forEach(a=>{if(!abastMap[a.prefixo])abastMap[a.prefixo]=a;});
   }catch(e){}
 
   const tot=Object.keys(abastMap).length;
@@ -1787,11 +1800,12 @@ async function telaAbastecimento(){
       </div>
     </div>
     <div class="sl" id="sl-abast">${totFrota} veículo(s) · ${tot} abastecidos hoje</div>
-    ${tot>0?`<div style="padding:14px 14px 0">
+    ${tot>0&&['lider_patio','supervisor','lider_oficina','coordenador'].includes(cargo())?`<div style="padding:14px 14px 0">
       <button onclick="fecharTurnoAbastecimento()" style="width:100%;padding:14px;border-radius:12px;border:1px solid ${pct>=99?'#00C48C40':'#2563EB40'};background:${pct>=99?'#00C48C18':'#2563EB18'};color:${pct>=99?'var(--green)':'var(--blue)'};font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">
         ${pct>=99?'✅ Fechar & Arquivar Abastecimento':'💾 Salvar & Arquivar ('+tot+' abastecidos)'}
       </button>
     </div>`:''}
+    ${tot>0&&!['lider_patio','supervisor','lider_oficina','coordenador'].includes(cargo())?`<div style="padding:0 14px"><div style="font-size:11px;color:var(--text3);background:var(--surface2);border-radius:8px;padding:8px 10px;text-align:center">⏳ Arquivamento pelo Líder de Pátio</div></div>`:''}
     <div id="cards-abast">${cards}</div>
   `);
   document.getElementById('content').insertAdjacentHTML('beforeend',
@@ -1915,13 +1929,14 @@ async function salvarAbastecimento(){
     return;
   }
 
-  // Tenta marcar flag na soltura D+1 (não bloqueia se falhar)
+  // Tenta marcar flag abastecido na soltura_2_10 —
+  // Turno noturno: abastecimento do dia 14 abastece carros que saem no dia 15.
+  // Buscamos a escala MAIS PRÓXIMA: hoje ou amanhã (janela de 2 dias).
   try{
-    const datasAlvo=[];
-    for(let i=1;i<=7;i++){
-      const d=new Date();d.setDate(d.getDate()+i);
-      datasAlvo.push(d.toISOString().split('T')[0]);
-    }
+    const d0=hoje(); // hoje
+    const d1=new Date();d1.setDate(d1.getDate()+1);
+    const d1str=d1.toISOString().split('T')[0]; // amanhã
+    const datasAlvo=[d0,d1str];
     const{data:proxSoltura}=await sb.from('soltura_2_10').select('data')
       .eq('garagem_id',gid).eq('prefixo',prefixo).in('data',datasAlvo)
       .order('data').limit(1);
@@ -1932,7 +1947,7 @@ async function salvarAbastecimento(){
         abastecido_por:S.perfil?.nome,
       }).eq('garagem_id',gid).eq('prefixo',prefixo).eq('data',proxSoltura[0].data);
     }
-  }catch(e){console.warn('[soltura flag]',e);}
+  }catch(e){console.warn('[soltura flag abastecido]',e);}
 
   closeSheet(true);
   toast(`✅ ${prefixo} — ${litros}L${arla&&arlaLitros?' + ARLA '+arlaLitros+'L':''}${km?' · '+km.toLocaleString()+'km':''}`);
@@ -2159,7 +2174,7 @@ async function fecharTurnoLavagem(){
     '</div>'+
     '<label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px">Observações do Turno</label>'+
     '<textarea id="obs-lav-turno" placeholder="Ocorrências, pendências, observações..." rows="3" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-size:13px;font-family:inherit;outline:none;resize:none;margin-bottom:14px"></textarea>'+
-    '<button onclick="confirmarFechamentoLavagem()'+','+pct+')" style="width:100%;padding:15px;border-radius:12px;border:none;background:'+( pct>=100?'var(--green)':'var(--amber)')+';color:'+( pct>=100?'white':'#000')+';font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">'+
+    '<button onclick="confirmarFechamentoLavagem()" style="width:100%;padding:15px;border-radius:12px;border:none;background:'+( pct>=100?'var(--green)':'var(--amber)')+';color:'+( pct>=100?'white':'#000')+';font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">'+
     ( pct>=100?'✅ Confirmar Fechamento':'⚠️ Fechar com Pendências')+'</button>'
   );
 }
@@ -2552,7 +2567,8 @@ async function confirmarPlano(){
     turno:S.turno||'dia',
   }));
   
-  const{error}=await sb.from('checklist_lavagem').insert(rows);
+  // upsert: se já existir registro para o mesmo (garagem_id, prefixo, data), não duplica
+  const{error}=await sb.from('checklist_lavagem').upsert(rows,{onConflict:'garagem_id,prefixo,data',ignoreDuplicates:true});
   if(error){toast('Erro: '+error.message,'err');if(btn){btn.disabled=false;btn.textContent='Tentar novamente';}return;}
   
   closeSheet(true);
