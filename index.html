@@ -5892,7 +5892,13 @@ async function renderAutoEscala() {
   const { escala, diasSemana, sabValetamento } = gerarEscalaAutomatica(_prevDados, _prevImportadoEm ? null : null);
 
   // Estado de confirmação (começa tudo selecionado)
-  window._escalaRascunho = escala.map((e, i) => ({ ...e, id: i, confirmado: e.tipo !== 'pesada_overflow' && e.tipo !== 'leve_overflow', jaExiste: jaSet.has(e.carro+'::'+e.planoNum+'::'+(e.data||'')) }));
+  window._escalaRascunho = escala.map((e, i) => ({
+    ...e,
+    id: i,
+    // Confirmado = tem data E não é overflow E não já existe
+    confirmado: !!e.data && !e.tipo.includes('overflow') && !jaSet.has(e.carro+'::'+e.planoNum+'::'+(e.data||'')),
+    jaExiste: jaSet.has(e.carro+'::'+e.planoNum+'::'+(e.data||'')),
+  }));
 
   renderTelaEscala(back, diasSemana, sabValetamento);
 }
