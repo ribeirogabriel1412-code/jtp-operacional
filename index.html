@@ -5931,14 +5931,15 @@ function renderTelaEscala(back, diasSemana, sabValetamento) {
 
   // ── Agrupar itens por coluna ────────────────────────────────────────────
   const porCol = {};
-  colunas.forEach(c => { porCol[c.ds] = { pesada:[], leve:[], val:[], avulso:[] }; });
-  porCol['overflow'] = { pesada:[], leve:[], val:[], avulso:[] };
+  colunas.forEach(c => { porCol[c.ds] = { val:[], garantia:[], pesada:[], leve:[], avulso:[] }; });
+  porCol['overflow'] = { val:[], garantia:[], pesada:[], leve:[], avulso:[] };
 
   rascunho.forEach(e => {
     const key = e.tipo.includes('overflow') ? 'overflow' : (e.data || 'overflow');
     const bucket = porCol[key];
     if (!bucket) return;
     if (e.tipo === 'valetamento') bucket.val.push(e);
+    else if (e.tipo === 'garantia') bucket.garantia.push(e);
     else if (e.tipo === 'avulso') bucket.avulso.push(e);
     else if (e.incluileve || isPesada(e.planoNum)) bucket.pesada.push(e);
     else bucket.leve.push(e);
@@ -5946,42 +5947,46 @@ function renderTelaEscala(back, diasSemana, sabValetamento) {
 
   // ── Helper: card de linha ───────────────────────────────────────────────
   function cardLinha(e, secao) {
-    const cor = e.tipo==='garantia'?'#8B5CF6': e.tipo==='valetamento'?'#06B6D4': isPesada(e.planoNum)?'var(--blue)':'var(--green)';
+    const cor = e.tipo==='garantia'?'#8B5CF6': e.tipo==='valetamento'?'#06B6D4': isPesada(e.planoNum)?'#3B82F6':'#22C55E';
     const check = e.confirmado&&!e.jaExiste ? '✅' : e.jaExiste ? '🔵' : '⬜';
-    const leveTag = e.incluileve ? `<span style="background:#00C48C18;color:var(--green);border:1px solid #00C48C40;border-radius:3px;padding:0 4px;font-size:9px;font-weight:700">+LEVE</span>` : '';
-    const pesadaTag = e.incluiPesada ? `<span style="background:#2563EB18;color:var(--blue);border:1px solid #2563EB40;border-radius:3px;padding:0 4px;font-size:9px;font-weight:700">+PES.</span>` : '';
-    const garantiaTag = e.tipo==='garantia' ? `<span style="background:#8B5CF618;color:#8B5CF6;border:1px solid #8B5CF640;border-radius:3px;padding:0 4px;font-size:9px;font-weight:700">GARAN.</span>` : '';
-    const turnoTag = `<span style="color:var(--text4);font-size:9px">${e.turno==='A'?'☀️':'🌙'}</span>`;
-    // Todos os planos do carro (para expandir)
-    const todosPlanosCarro = (_prevDados||[]).filter(p=>p.carro===e.carro&&p.excessoKm>=-2000);
-    const expandId = `exp-${e.id}`;
-    const expandBtn = todosPlanosCarro.length > 0
-      ? `<button onclick="event.stopPropagation();toggleExpandEscala(${e.id})" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:0 5px;font-size:10px;color:var(--text3);cursor:pointer;font-family:'DM Sans',sans-serif;height:18px">+</button>`
+
+    const tags = [
+      e.incluileve  ? `<span style="background:#00C48C18;color:#22C55E;border:1px solid #22C55E40;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">+LEVE</span>` : '',
+      e.incluiPesada? `<span style="background:#3B82F618;color:#3B82F6;border:1px solid #3B82F640;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">+PES</span>` : '',
+      e.tipo==='garantia'?`<span style="background:#8B5CF618;color:#8B5CF6;border:1px solid #8B5CF640;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">GARAN</span>`:'',
+    ].filter(Boolean).join('');
+
+    const opNomes = (e.oportunistasNomes||[]).slice(0,4);
+    const opStr = opNomes.length
+      ? `<div style="font-size:10px;color:#F59E0B;margin-top:4px;line-height:1.4">⚡ ${opNomes.map(n=>n.split(' ').slice(0,3).join(' ')).join(' · ')}${(e.oportunistasNomes||[]).length>4?` +${e.oportunistasNomes.length-4}`:''}</div>`
       : '';
-    // Oportunistas
-    const opNomes = (e.oportunistasNomes||[]).slice(0,3);
-    const opStr = opNomes.length ? `<div style="font-size:9px;color:var(--amber);margin-top:2px">⚡ ${opNomes.map(n=>n.split(' ').slice(0,2).join(' ')).join(' · ')}${(e.oportunistasNomes||[]).length>3?' +'+(e.oportunistasNomes.length-3):''}</div>` : '';
-    // Expand panel
-    const expandHtml = `<div id="${expandId}" style="display:none;background:var(--surface2);border-radius:6px;padding:6px 8px;margin-top:4px;font-size:10px">
-      <div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:4px">TODOS OS PLANOS — ${e.carro}</div>
-      ${todosPlanosCarro.map(p=>`<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--border2)">
-        <span style="color:${p.excessoKm>=0?'var(--red)':'var(--text2)'}">${PREV_NOMES[p.planoNum]||p.planoNome}</span>
-        <span style="font-family:'DM Mono',monospace;color:${p.excessoKm>=0?'var(--red)':'var(--green)'};font-weight:700">${p.excessoKm>=0?'+':''}{${p.excessoKm.toLocaleString('pt-BR')}}</span>
+
+    const expandId = `exp-${e.id}`;
+    const todosPlanos = (_prevDados||[]).filter(p=>p.carro===e.carro&&p.excessoKm>=-5000);
+    const expandHtml = `<div id="${expandId}" style="display:none;margin-top:6px;background:var(--surface2);border-radius:6px;padding:8px">
+      <div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:6px;text-transform:uppercase">Todos os planos — ${e.carro}</div>
+      ${todosPlanos.map(p=>`<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border2)">
+        <span style="font-size:11px;color:${p.excessoKm>=0?'#EF4444':'var(--text2)'}">${PREV_NOMES[p.planoNum]||p.planoNome}</span>
+        <span style="font-size:11px;font-family:'DM Mono',monospace;font-weight:700;color:${p.excessoKm>=0?'#EF4444':'#22C55E'}">${p.excessoKm>=0?'+':''}${p.excessoKm.toLocaleString('pt-BR')}</span>
       </div>`).join('')}
     </div>`;
 
-    return `<div style="background:var(--surface);border:1px solid ${e.confirmado&&!e.jaExiste?cor+'50':'var(--border2)'};border-left:3px solid ${cor};border-radius:8px;padding:9px 10px;margin-bottom:6px;opacity:${e.jaExiste?'0.45':'1'}">
-      <div style="display:flex;align-items:center;gap:4px;cursor:pointer" onclick="toggleEscalaItem(${e.id})">
-        <span style="flex-shrink:0">${check}</span>
-        <span style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:${cor}">${e.carro}</span>
-        <span style="font-size:9px;font-weight:700;color:var(--text2);white-space:nowrap">${e.planoNome.split(' ').slice(0,2).join(' ')}</span>
-        ${leveTag}${pesadaTag}${garantiaTag}${turnoTag}
-        <span style="margin-left:auto;display:flex;gap:3px">
-          ${expandBtn}
-          ${!e.jaExiste?`<button onclick="event.stopPropagation();removerItemEscala(${e.id})" style="background:transparent;border:1px solid #EF444430;border-radius:4px;padding:0 5px;font-size:10px;color:var(--red);cursor:pointer;height:18px">✕</button>`:''}
-        </span>
+    return `<div style="background:var(--surface);border:1.5px solid ${e.confirmado&&!e.jaExiste?cor+'60':'var(--border2)'};border-left:4px solid ${cor};border-radius:10px;padding:10px 12px;margin-bottom:8px;opacity:${e.jaExiste?'0.4':'1'}">
+      <div style="display:flex;align-items:flex-start;gap:6px">
+        <span onclick="toggleEscalaItem(${e.id})" style="cursor:pointer;flex-shrink:0;font-size:16px;margin-top:1px">${check}</span>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;cursor:pointer" onclick="toggleEscalaItem(${e.id})">
+            <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:800;color:${cor}">${e.carro}</span>
+            <span style="font-size:11px;font-weight:600;color:var(--text2)">${e.planoNome.split(' - ')[0]}</span>
+            ${tags}
+          </div>
+          ${opStr}
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0;margin-top:1px">
+          ${todosPlanos.length?`<button onclick="event.stopPropagation();toggleExpandEscala(${e.id})" style="background:transparent;border:1px solid var(--border);border-radius:5px;padding:2px 7px;font-size:11px;color:var(--text3);cursor:pointer;font-family:inherit">+</button>`:''}
+          ${!e.jaExiste?`<button onclick="event.stopPropagation();removerItemEscala(${e.id})" style="background:transparent;border:1px solid #EF444440;border-radius:5px;padding:2px 7px;font-size:11px;color:#EF4444;cursor:pointer">✕</button>`:''}
+        </div>
       </div>
-      ${opStr}
       ${expandHtml}
     </div>`;
   }
@@ -5991,35 +5996,29 @@ function renderTelaEscala(back, diasSemana, sabValetamento) {
     const bucket = porCol[c.ds];
     const dtFmt = c.data.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
     const nomeDia = c.isSab ? 'Sábado' : c.data.toLocaleDateString('pt-BR',{weekday:'long'});
-    const totalCol = (bucket.pesada?.length||0)+(bucket.leve?.length||0)+(bucket.val?.length||0)+(bucket.avulso?.length||0);
-    
-    // Valetamento (sábado)
-    const valHtml = bucket.val.length ? `
-      <div style="font-size:9px;font-weight:700;color:#06B6D4;text-transform:uppercase;margin-bottom:4px;padding-top:2px">📦 Valetamento (${bucket.val.length})</div>
-      ${bucket.val.map(e=>cardLinha(e,'val')).join('')}` : '';
+    const totalCol = (bucket.pesada?.length||0)+(bucket.leve?.length||0)+(bucket.val?.length||0)+(bucket.avulso?.length||0)+(bucket.garantia?.length||0);
 
-    // Pesadas
-    const pesHtml = bucket.pesada.length ? `
-      <div style="font-size:9px;font-weight:700;color:var(--blue);text-transform:uppercase;margin-bottom:4px;${bucket.val.length?'padding-top:8px;border-top:1px solid var(--border2)':''}">🔩 Pesada (${bucket.pesada.length})</div>
-      ${bucket.pesada.map(e=>cardLinha(e,'pesada')).join('')}` : '';
+    const secao = (titulo, cor, icone, itens, borda) => !itens.length ? '' : `
+      <div style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:6px;padding:5px 8px;background:${cor}10;border-radius:7px;margin-bottom:8px;border-left:3px solid ${cor}">
+          <span style="font-size:11px">${icone}</span>
+          <span style="font-size:11px;font-weight:800;color:${cor};text-transform:uppercase;letter-spacing:.5px">${titulo}</span>
+          <span style="font-size:11px;color:var(--text3);margin-left:auto">${itens.length}</span>
+        </div>
+        ${itens.map(e=>cardLinha(e,titulo)).join('')}
+      </div>`;
 
-    // Leves
-    const levHtml = bucket.leve.length ? `
-      <div style="font-size:9px;font-weight:700;color:var(--green);text-transform:uppercase;margin-bottom:4px;padding-top:8px;border-top:1px solid var(--border2)">🔧 Leve (${bucket.leve.length})</div>
-      ${bucket.leve.map(e=>cardLinha(e,'leve')).join('')}` : '';
-
-    // Avulsos
-    const avuHtml = bucket.avulso.length ? `
-      <div style="font-size:9px;font-weight:700;color:var(--amber);text-transform:uppercase;margin-bottom:4px;padding-top:8px;border-top:1px solid var(--border2)">⚡ Avulsos (${bucket.avulso.length})</div>
-      ${bucket.avulso.map(e=>cardLinha(e,'avulso')).join('')}` : '';
-
-    return `<div style="flex:1;min-width:200px">
-      <div style="text-align:center;padding:6px 4px;background:${c.isSab?'#06B6D418':'var(--surface2)'};border-radius:8px;margin-bottom:8px;border:1px solid ${c.isSab?'#06B6D430':'var(--border2)'}">
-        <div style="font-size:11px;font-weight:800;text-transform:capitalize;color:${c.isSab?'#06B6D4':'var(--text)'}">${nomeDia}</div>
-        <div style="font-size:10px;color:var(--text3)">${dtFmt} · ${totalCol} item${totalCol!==1?'s':''}</div>
+    return `<div style="flex:0 0 260px;width:260px">
+      <div style="text-align:center;padding:10px 8px;background:${c.isSab?'#06B6D415':'var(--surface2)'};border-radius:10px;margin-bottom:12px;border:1px solid ${c.isSab?'#06B6D440':'var(--border)'}">
+        <div style="font-size:13px;font-weight:800;text-transform:capitalize;color:${c.isSab?'#06B6D4':'var(--text)'}">${nomeDia}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">${dtFmt} · ${totalCol} item${totalCol!==1?'s':''}</div>
       </div>
-      ${valHtml}${pesHtml}${levHtml}${avuHtml}
-      ${!totalCol?'<div style="text-align:center;padding:16px 8px;color:var(--text4);font-size:11px">—</div>':''}
+      ${secao('Valetamento','#06B6D4','📦',bucket.val||'')}
+      ${secao('Garantia','#8B5CF6','🔒',bucket.garantia||[])}
+      ${secao('Pesada','#3B82F6','🔩',bucket.pesada||[])}
+      ${secao('Leve','#22C55E','🔧',bucket.leve||[])}
+      ${secao('Avulsos','#F59E0B','⚡',bucket.avulso||[])}
+      ${!totalCol?'<div style="text-align:center;padding:24px 8px;color:var(--text4);font-size:12px">Sem itens</div>':''}
     </div>`;
   }).join('');
 
