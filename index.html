@@ -5777,41 +5777,77 @@ function gerarEscalaAutomatica(dados, semanaRef) {
     }
   });
 
-  // ── PASSO 3: Alocar Pesadas não-garantia (distribuir seg-sex) ─────────
+  // ── PASSO 3: Alocar Pesadas não-garantia — ROUND-ROBIN por dia ──────────
+  // Turno noite: 6/dia → distribui ciclicamente seg→ter→qua→qui→sex→seg...
+  // Turno dia: 2/dia → mesma lógica
+  // Ordenação: mais vencido primeiro (por excesso km DESC)
   const pesadasNormais = candidatosPesada.filter(r =>
     !isGarantia(r.carro) && !carrosEscalonados.has(r.carro + r.planoNum)
   );
+
+  // Índice round-robin por turno — avança ao alocar
+  let rrNoite = 0; // próximo dia no ciclo noite
+  let rrDia   = 0; // próximo dia no ciclo dia
+
   pesadasNormais.forEach(r => {
     if (carrosEscalonados.has(r.carro + r.planoNum)) return;
-    // Tentar turno noite primeiro (capacidade 6), depois dia (capacidade 2)
+
+    // Tentar noite primeiro (maior capacidade = 6), depois dia (2)
     let alocado = false;
-    for (const turno of ['noite','dia']) {
-      const capKey = turno === 'noite' ? 'noite' : 'dia';
-      const cap = turno === 'noite' ? ESCALA_CONFIG.noite.pesada : ESCALA_CONFIG.dia.pesada;
-      for (const d of diasSemana) {
-        const ds = toDateStr(d);
-        if (slots[ds][capKey].length < cap) {
-          const ops = calcularOportunistas(porCarro[r.carro] || [], r);
-          escala.push({
-            carro: r.carro, planoNum: r.planoNum, planoNome: r.planoNome,
-            data: ds, turno: turno === 'noite' ? 'B' : 'A', cesto: false,
-            tipo: 'pesada', excessoKm: r.excessoKm,
-            oportunistas: ops.map(o => o.num),
-            oportunistasNomes: ops.map(o => o.nome),
-            incluileve: true,
-            motivo: `Pesada · +${r.excessoKm.toLocaleString('pt-BR')} km`,
-          });
-          slots[ds][capKey].push(r.carro);
-          carrosEscalonados.add(r.carro + r.planoNum);
-          const leve = (porCarro[r.carro] || []).find(p => isLeve(p.planoNum));
-          if (leve) carrosEscalonados.add(r.carro + leve.planoNum);
-          alocado = true;
-          break;
-        }
+
+    // ── Turno Noite: round-robin circular ────────────────────────────────
+    for (let tentativa = 0; tentativa < diasSemana.length; tentativa++) {
+      const idx = (rrNoite + tentativa) % diasSemana.length;
+      const ds = toDateStr(diasSemana[idx]);
+      if (slots[ds].noite.length < ESCALA_CONFIG.noite.pesada) {
+        const ops = calcularOportunistas(porCarro[r.carro] || [], r);
+        escala.push({
+          carro: r.carro, planoNum: r.planoNum, planoNome: r.planoNome,
+          data: ds, turno: 'B', cesto: false,
+          tipo: 'pesada', excessoKm: r.excessoKm,
+          oportunistas: ops.map(o => o.num),
+          oportunistasNomes: ops.map(o => o.nome),
+          incluileve: true,
+          motivo: `Pesada · +${r.excessoKm.toLocaleString('pt-BR')} km`,
+        });
+        slots[ds].noite.push(r.carro);
+        carrosEscalonados.add(r.carro + r.planoNum);
+        const leve = (porCarro[r.carro] || []).find(p => isLeve(p.planoNum));
+        if (leve) carrosEscalonados.add(r.carro + leve.planoNum);
+        // Avança o ponteiro para o próximo dia no próximo round
+        rrNoite = (idx + 1) % diasSemana.length;
+        alocado = true;
+        break;
       }
-      if (alocado) break;
     }
-    // Se não coube nesta semana, ainda inclui mas sinaliza overflow
+    if (alocado) return;
+
+    // ── Turno Dia: round-robin circular (se noite cheia) ─────────────────
+    for (let tentativa = 0; tentativa < diasSemana.length; tentativa++) {
+      const idx = (rrDia + tentativa) % diasSemana.length;
+      const ds = toDateStr(diasSemana[idx]);
+      if (slots[ds].dia.length < ESCALA_CONFIG.dia.pesada) {
+        const ops = calcularOportunistas(porCarro[r.carro] || [], r);
+        escala.push({
+          carro: r.carro, planoNum: r.planoNum, planoNome: r.planoNome,
+          data: ds, turno: 'A', cesto: false,
+          tipo: 'pesada', excessoKm: r.excessoKm,
+          oportunistas: ops.map(o => o.num),
+          oportunistasNomes: ops.map(o => o.nome),
+          incluileve: true,
+          motivo: `Pesada (extra turno dia) · +${r.excessoKm.toLocaleString('pt-BR')} km`,
+        });
+        slots[ds].dia.push(r.carro);
+        carrosEscalonados.add(r.carro + r.planoNum);
+        const leve = (porCarro[r.carro] || []).find(p => isLeve(p.planoNum));
+        if (leve) carrosEscalonados.add(r.carro + leve.planoNum);
+        rrDia = (idx + 1) % diasSemana.length;
+        alocado = true;
+        break;
+      }
+    }
+
+    // Overflow: não coube em nenhum turno/dia
     if (!alocado) {
       const ops = calcularOportunistas(porCarro[r.carro] || [], r);
       escala.push({
@@ -5827,29 +5863,30 @@ function gerarEscalaAutomatica(dados, semanaRef) {
     }
   });
 
-  // ── PASSO 4: Leves sozinhas (sem pesada na semana) ────────────────────
-  // Apenas carros que NÃO têm pesada alocada nesta semana
+  // ── PASSO 4: Leves sozinhas — ROUND-ROBIN turno noite ──────────────────
+  // Apenas carros sem pesada alocada nesta semana
+  // Leve usa a mesma capacidade do turno noite (slot compartilhado com pesadas)
+  let rrLeve = 0;
   candidatosLeve.forEach(r => {
-    if (carrosEscalonados.has(r.carro + r.planoNum)) return; // já incluída junto com pesada
-    // Verificar se carro tem pesada alocada
+    if (carrosEscalonados.has(r.carro + r.planoNum)) return;
     const temPesada = escala.some(e => e.carro === r.carro && isPesada(e.planoNum));
     if (temPesada) { carrosEscalonados.add(r.carro + r.planoNum); return; }
-    // Alocar leve sozinha no turno noite (menor impacto)
+
     let alocado = false;
-    for (const d of diasSemana) {
-      const ds = toDateStr(d);
-      if (slots[ds].noite.length < ESCALA_CONFIG.noite.pesada) { // usa vaga noite
+    for (let tentativa = 0; tentativa < diasSemana.length; tentativa++) {
+      const idx = (rrLeve + tentativa) % diasSemana.length;
+      const ds = toDateStr(diasSemana[idx]);
+      if (slots[ds].noite.length < ESCALA_CONFIG.noite.pesada) {
         escala.push({
           carro: r.carro, planoNum: r.planoNum, planoNome: r.planoNome,
           data: ds, turno: 'B', cesto: false,
           tipo: 'leve', excessoKm: r.excessoKm,
-          oportunistas: [],
-          oportunistasNomes: [],
-          incluileve: false,
+          oportunistas: [], oportunistasNomes: [], incluileve: false,
           motivo: `Leve · +${r.excessoKm.toLocaleString('pt-BR')} km`,
         });
         slots[ds].noite.push(r.carro + '_leve');
         carrosEscalonados.add(r.carro + r.planoNum);
+        rrLeve = (idx + 1) % diasSemana.length;
         alocado = true;
         break;
       }
@@ -6236,9 +6273,12 @@ async function confirmarEscalaAutomatica() {
       observacao: obsPartes||null,
       status: e.tipo==='valetamento' ? 'valetamento' : 'programado',
       criado_por: S.perfil?.nome, criado_por_id: S.perfil?.id,
-      auto_gerado: true,
     });
-    if (error) { console.error(e.carro, error.message); erros++; } else ok++;
+    if (error) {
+      console.error('[escala insert]', e.carro, e.planoNum, error.message);
+      if (erros === 0) toast('⚠️ Erro: '+error.message,'err'); // mostra o 1º erro
+      erros++;
+    } else ok++;
   }
 
   try {
