@@ -245,10 +245,17 @@ async function telaHome(){
     </div>
     <div class="card">
       <div style="font-size:12px;color:var(--text3)">${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'})} · ${agora.toLocaleDateString('pt-BR',{weekday:'long',timeZone:'America/Manaus'})}</div>
+    <div class="card">
+      <div style="font-size:12px;color:var(--text3)">${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'})} · ${agora.toLocaleDateString('pt-BR',{weekday:'long',timeZone:'America/Manaus'})}</div>
       <div style="margin-top:10px;display:flex;gap:8px">
         <button onclick="S.turno='dia';telaHome()" style="flex:1;padding:8px;border-radius:8px;border:1px solid ${S.turno==='dia'?'var(--blue)':'var(--border)'};background:${S.turno==='dia'?'#2563EB18':'transparent'};color:${S.turno==='dia'?'var(--blue)':'var(--text3)'};font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">☀️ Dia</button>
         <button onclick="S.turno='noite';telaHome()" style="flex:1;padding:8px;border-radius:8px;border:1px solid ${S.turno==='noite'?'var(--blue)':'var(--border)'};background:${S.turno==='noite'?'#2563EB18':'transparent'};color:${S.turno==='noite'?'var(--blue)':'var(--text3)'};font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">🌙 Noite</button>
       </div>
+    </div>
+    <div style="padding:0 14px 14px">
+      <button onclick="abrirRelatorioManual()" style="width:100%;padding:13px;border-radius:12px;border:1px solid #2563EB40;background:#2563EB10;color:var(--blue);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+        📄 Relatório Recolha & Abastecimento
+      </button>
     </div>`);
 }
 
@@ -2066,7 +2073,8 @@ async function buscarEscalaRecolha(prefixo){
 // LAVAGEM PESADA (Líder Pátio)
 // Fluxo: Líder monta plano → Lavador confirma → Líder vistoria
 // ══════════════════════════════════════════════════════════
-let _lpData=hoje();
+let _lpData=(()=>{try{return sessionStorage.getItem('jtp_lpData')||hoje();}catch(e){return hoje();}})();
+function setLpData(d){_lpData=d;try{sessionStorage.setItem('jtp_lpData',d);}catch(e){}}
 
 async function telaLavPesada(){
   const gid=getGid();
@@ -2248,23 +2256,16 @@ async function confirmarFechamentoLavagem(){
   }
 
   // PASSO 3 — Deletar checklist_lavagem do dia
-  const ids=lista.map(l=>l.id).filter(Boolean);
+  // PASSO 3 — Marcar como arquivado (delete bloqueado por RLS — filtrado nas queries)
   if(ids.length){
-    const{error:errDel}=await sb.from('checklist_lavagem').delete().in('id',ids);
-    if(errDel){
-      // Fallback: marcar como arquivado (RLS pode estar bloqueando delete)
-      const{error:errArq}=await sb.from('checklist_lavagem')
-        .update({status:'arquivado'}).eq('garagem_id',gid).eq('data',_lpData);
-      if(errArq){
-        console.warn('arquivado fallback também falhou:',errArq.message);
-      }
-    }
+    await sb.from('checklist_lavagem')
+      .update({status:'arquivado'}).eq('garagem_id',gid).eq('data',_lpData.split('T')[0]||_lpData);
   }
 
   // Avança a data para amanhã — tela mostra plano vazio (próximo turno)
   const amanha=new Date(_lpData+'T12:00:00');
   amanha.setDate(amanha.getDate()+1);
-  _lpData=amanha.toISOString().split('T')[0];
+  setLpData(amanha.toISOString().split('T')[0]);
 
   closeSheet(true);
   toast('✅ Fechado! '+lavados+'/'+lista.length+' lavados · '+prefixosLavados.length+' frota atualizada');
@@ -2646,20 +2647,156 @@ async function confirmarPlano(){
 
 
 // ══════════════════════════════════════════════════════════
-// RELATÓRIO DE FECHAMENTO — Recolha + Abastecimento
+// RELATÓRIO MANUAL — Seletor de data com janela de turno
+// ══════════════════════════════════════════════════════════
+function abrirRelatorioManual(){
+  // Sugestão: ontem como data de referência (turno noturno mais comum)
+  const ontem=new Date();ontem.setDate(ontem.getDate()-1);
+  const ontemStr=ontem.toISOString().split('T')[0];
+  const hojeStr=hoje();
+
+  openSheet('📄 Gerar Relatório',`
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="background:var(--surface2);border-radius:10px;padding:12px;font-size:12px;color:var(--text3)">
+        Selecione o <strong style="color:var(--text)">dia de referência do turno</strong>.<br>
+        O sistema buscará:<br>
+        • Abastecimentos das <strong style="color:var(--blue)">19h do dia anterior</strong> até as <strong style="color:var(--blue)">08h do dia selecionado</strong><br>
+        • Recolhas com <strong style="color:var(--blue)">data_recolha = dia selecionado</strong>
+      </div>
+
+      <div>
+        <label class="fl">Dia de referência (escala que saiu)</label>
+        <input type="date" id="rel-data" value="${hojeStr}"
+          style="width:100%;box-sizing:border-box;padding:11px 12px;border-radius:10px;border:1px solid var(--blue);background:var(--surface);color:var(--text);font-family:'DM Sans',sans-serif;font-size:15px">
+      </div>
+
+      <div>
+        <label class="fl">Turno</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="rel-turno-btns">
+          <button onclick="selRelTurno('noite',this)" id="rel-btn-noite"
+            style="padding:11px;border-radius:10px;border:2px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">🌙 Noite<br><span style="font-size:10px;font-weight:400">19h→08h</span></button>
+          <button onclick="selRelTurno('dia',this)" id="rel-btn-dia"
+            style="padding:11px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">☀️ Dia<br><span style="font-size:10px;font-weight:400">07h→17h</span></button>
+        </div>
+        <input type="hidden" id="rel-turno" value="noite">
+      </div>
+
+      <div id="rel-janela-info" style="background:var(--surface2);border-radius:8px;padding:8px 12px;font-size:11px;color:var(--text3)">
+        🕐 Janela: <strong id="rel-janela-txt" style="color:var(--text)"></strong>
+      </div>
+
+      <button onclick="confirmarRelatorioManual()" style="padding:15px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">
+        📄 Gerar Relatório
+      </button>
+    </div>
+  `);
+
+  // Inicializar janela com turno noite selecionado
+  atualizarJanelaRel();
+  document.getElementById('rel-data').addEventListener('change',atualizarJanelaRel);
+}
+
+function selRelTurno(turno,btn){
+  document.getElementById('rel-turno').value=turno;
+  ['dia','noite'].forEach(t=>{
+    const b=document.getElementById('rel-btn-'+t);
+    if(!b)return;
+    const ativo=t===turno;
+    b.style.border=ativo?'2px solid var(--blue)':'1px solid var(--border)';
+    b.style.background=ativo?'#2563EB18':'transparent';
+    b.style.color=ativo?'var(--blue)':'var(--text3)';
+  });
+  atualizarJanelaRel();
+}
+
+function atualizarJanelaRel(){
+  const data=document.getElementById('rel-data')?.value;
+  const turno=document.getElementById('rel-turno')?.value||'noite';
+  const txt=document.getElementById('rel-janela-txt');
+  if(!data||!txt)return;
+
+  if(turno==='noite'){
+    // 19h do dia anterior até 08h do dia selecionado
+    const ant=new Date(data+'T12:00:00');ant.setDate(ant.getDate()-1);
+    const antStr=ant.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+    const dataFmt=new Date(data+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+    txt.textContent=antStr+' às 19:00 → '+dataFmt+' às 08:00';
+  }else{
+    const dataFmt=new Date(data+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+    txt.textContent=dataFmt+' às 07:00 → '+dataFmt+' às 17:00';
+  }
+}
+
+async function confirmarRelatorioManual(){
+  const data=document.getElementById('rel-data')?.value;
+  const turno=document.getElementById('rel-turno')?.value||'noite';
+  if(!data){toast('Selecione a data','err');return;}
+
+  const btn=document.querySelector('#shbody button:last-child');
+  if(btn){btn.disabled=true;btn.textContent='Buscando...';}
+
+  const gid=getGid();
+
+  // Calcular janela de timestamps
+  let tsInicio,tsFim;
+  if(turno==='noite'){
+    // 19h do dia anterior até 08h do dia selecionado
+    const ant=new Date(data+'T19:00:00');ant.setDate(ant.getDate()-1);
+    tsInicio=ant.toISOString();
+    tsFim=new Date(data+'T08:00:00').toISOString();
+  }else{
+    tsInicio=new Date(data+'T07:00:00').toISOString();
+    tsFim=new Date(data+'T17:00:00').toISOString();
+  }
+
+  // Buscar abastecimentos na janela (por created_at)
+  const{data:abast}=await sb.from('abastecimento_checklist').select('*')
+    .eq('garagem_id',gid)
+    .gte('created_at',tsInicio).lte('created_at',tsFim)
+    .order('prefixo');
+
+  // Buscar também do fechamento_abastecimento arquivado (caso já tenha sido fechado)
+  let listaAbast=abast||[];
+  if(!listaAbast.length){
+    // Fallback: busca por data diretamente (se já arquivado)
+    const{data:fech}=await sb.from('fechamento_abastecimento').select('detalhes')
+      .eq('garagem_id',gid).eq('data',data).order('created_at',{ascending:false}).limit(1);
+    if(fech?.[0]?.detalhes) listaAbast=fech[0].detalhes;
+  }
+
+  // Buscar recolhas da data selecionada
+  const{data:recolhas}=await sb.from('recolha_checklist').select('*')
+    .eq('garagem_id',gid).eq('data_recolha',data).order('prefixo');
+
+  closeSheet(true);
+
+  if(!listaAbast.length&&!recolhas?.length){
+    toast('Nenhum dado encontrado para esse período','err');
+    return;
+  }
+
+  toast(`📄 Gerando: ${listaAbast.length} abast. · ${(recolhas||[]).length} recolhas`);
+  await gerarRelatorioFechamento(gid, data, listaAbast, recolhas||[], turno);
+}
+
+
 // Gerado e enviado via WhatsApp ao fechar o turno de abastecimento
 // ══════════════════════════════════════════════════════════
-async function gerarRelatorioFechamento(gid, data, listaAbast){
+async function gerarRelatorioFechamento(gid, data, listaAbast, recolhasExternas, turnoRef){
   try{
-    // 1. Buscar dados de recolha da mesma data
-    const{data:recolhas}=await sb.from('recolha_checklist').select('*')
-      .eq('garagem_id',gid).eq('data_recolha',data).order('prefixo');
+    // 1. Buscar dados de recolha (usa externas se fornecidas, senão busca da data)
+    let recolhas=recolhasExternas;
+    if(!recolhas){
+      const{data:r}=await sb.from('recolha_checklist').select('*')
+        .eq('garagem_id',gid).eq('data_recolha',data).order('prefixo');
+      recolhas=r||[];
+    }
 
     // 2. Buscar nome da garagem
     const garagem=S.garagens?.find(g=>g.id===gid);
     const garaGemNome=garagem?.nome||'Porto Velho';
     const dataFmt=data.split('-').reverse().join('/');
-    const turnoNome=S.turno==='dia'?'☀️ Dia':'🌙 Noite';
+    const turnoNome=(turnoRef||S.turno)==='dia'?'☀️ Dia':'🌙 Noite';
 
     // 3. Montar mapa por prefixo
     const recMap={};
