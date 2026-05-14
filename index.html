@@ -5607,6 +5607,7 @@ async function renderPrevPainel(back){
         <div style="font-size:11px;color:var(--text3);margin-top:2px">Importado em ${dtImp} · ${garagem?.nome||'—'}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="renderAutoEscala()" class="btn-sm" style="background:#8B5CF618;border-color:#8B5CF640;color:#8B5CF6">🤖 Escala Automática</button>
         <button onclick="renderPrevProgramadas()" class="btn-sm" style="background:#2563EB18;border-color:#2563EB40;color:var(--blue)">📅 Programações (${programados})</button>
         <button onclick="verHistoricoImportacoes()" class="btn-sm" style="background:#8B5CF618;border-color:#8B5CF640;color:#8B5CF6">📋 Histórico</button>
         <button onclick="excluirImportacao()" class="btn-sm" style="background:#EF444418;border-color:#EF444440;color:var(--red)">🗑️ Excluir</button>
@@ -5643,6 +5644,465 @@ async function renderPrevPainel(back){
     <!-- Tabelas -->
     ${tabelaGrupos||'<div class="empty">Nenhum dado para exibir</div>'}
   `);
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// MOTOR DE AUTO-ESCALONAMENTO DE PREVENTIVAS
+// ══════════════════════════════════════════════════════════════════════════
+
+// Configurações de capacidade
+const ESCALA_CONFIG = {
+  dia:   { pesada: 2, leve: 0 },  // Turno Dia: 2 pesadas, leve inclusa na pesada
+  noite: { pesada: 6, leve: 0 },  // Turno Noite: 6 pesadas
+};
+
+// Faixas de garantia por prefixo
+// Grupo A: 02.240–02.284 → planos 20/40/60k
+// Grupo B: 02.245–02.301 → planos 30/60/96k
+function getTipoGarantia(carro) {
+  const num = parseInt(carro.replace('.','').replace('02',''));
+  if (num >= 240 && num <= 284) return 'A'; // 20/40/60k
+  if (num >= 245 && num <= 301) return 'B'; // 30/60/96k
+  return null;
+}
+function isGarantia(carro) { return getTipoGarantia(carro) !== null; }
+function isPesada(planoNum) { return ['002','003','029'].includes(planoNum); }
+function isLeve(planoNum)   { return planoNum === '001'; }
+function isAvulso(planoNum) { return !isPesada(planoNum) && !isLeve(planoNum) && !PREV_IGNORAR.has(planoNum); }
+
+// Próximos N dias úteis (seg-sex) a partir de hoje
+function proximosDiasUteis(n, incluiSabado=false) {
+  const dias = [];
+  const d = new Date();
+  d.setHours(12,0,0,0);
+  d.setDate(d.getDate() + 1); // começa amanhã
+  while (dias.length < n) {
+    const dow = d.getDay(); // 0=dom,6=sab
+    if (dow >= 1 && dow <= 5) dias.push(new Date(d));
+    if (incluiSabado && dow === 6) dias.push(new Date(d));
+    d.setDate(d.getDate() + 1);
+  }
+  return dias;
+}
+
+function toDateStr(d) { return d.toISOString().slice(0,10); }
+
+// ── GERADOR PRINCIPAL ────────────────────────────────────────────────────
+function gerarEscalaAutomatica(dados, semanaRef) {
+  // Calcular datas da semana de referência (seg a sex + sábado seguinte)
+  let seg, sab;
+  if (semanaRef) {
+    // Parsear "DD/MM/YYYY a DD/MM/YYYY"
+    const m = semanaRef.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (m) {
+      seg = new Date(`${m[3]}-${m[2]}-${m[1]}T12:00:00`);
+    }
+  }
+  if (!seg) {
+    // Default: próxima segunda
+    const hoje = new Date(); hoje.setHours(12,0,0,0);
+    const dow = hoje.getDay();
+    const diasParaSeg = dow === 0 ? 1 : (8 - dow) % 7 || 7;
+    seg = new Date(hoje); seg.setDate(hoje.getDate() + diasParaSeg);
+  }
+  // Dias úteis da semana (seg a sex)
+  const diasSemana = [];
+  for (let i = 0; i < 5; i++) {
+    const d = new Date(seg); d.setDate(seg.getDate() + i);
+    diasSemana.push(d);
+  }
+  // Sábado da semana ANTERIOR para valetamento
+  const sabValetamento = new Date(seg); sabValetamento.setDate(seg.getDate() - 1); // sábado antes da semana
+
+  // Capacidade por dia e turno
+  // slots[dateStr] = { dia: [], noite: [] }
+  const slots = {};
+  diasSemana.forEach(d => {
+    slots[toDateStr(d)] = { dia: [], noite: [] };
+  });
+
+  // Mapa de dados: por carro
+  const porCarro = {};
+  dados.forEach(r => {
+    if (!porCarro[r.carro]) porCarro[r.carro] = [];
+    porCarro[r.carro].push(r);
+  });
+
+  const escala = []; // Array de { carro, planoNum, planoNome, data, turno, cesto, tipo, oportunistas, motivo }
+
+  // ── PASSO 1: Separar candidatos ─────────────────────────────────────────
+  // Apenas planos vencidos ou dentro de 1000km do vencimento
+  const candidatosPesada = dados.filter(r =>
+    (isPesada(r.planoNum) || (isGarantia(r.carro) && isPesada(r.planoNum))) &&
+    r.excessoKm >= -1000
+  ).sort((a,b) => b.excessoKm - a.excessoKm); // mais vencido primeiro
+
+  const candidatosLeve = dados.filter(r =>
+    isLeve(r.planoNum) && r.excessoKm >= -1000
+  ).sort((a,b) => b.excessoKm - a.excessoKm);
+
+  const candidatosAvulso = dados.filter(r =>
+    isAvulso(r.planoNum) && r.excessoKm >= -500
+  ).sort((a,b) => b.excessoKm - a.excessoKm);
+
+  // Controle: carro já escalonado nesta semana
+  const carrosEscalonados = new Set(); // carro → Set de planos já alocados
+
+  // ── PASSO 2: Alocar Garantias (1 por dia, seg-sex) ────────────────────
+  const garantias = candidatosPesada.filter(r => isGarantia(r.carro));
+  garantias.forEach(r => {
+    if (carrosEscalonados.has(r.carro + r.planoNum)) return;
+    // Encontrar dia livre com vaga no turno dia
+    for (const d of diasSemana) {
+      const ds = toDateStr(d);
+      if (slots[ds].dia.length < ESCALA_CONFIG.dia.pesada) {
+        const ops = calcularOportunistas(porCarro[r.carro] || [], r);
+        escala.push({
+          carro: r.carro, planoNum: r.planoNum, planoNome: r.planoNome,
+          data: ds, turno: 'A', cesto: false,
+          tipo: 'garantia', excessoKm: r.excessoKm,
+          oportunistas: ops.map(o => o.num),
+          oportunistasNomes: ops.map(o => o.nome),
+          incluileve: true, // pesada sempre inclui leve
+          motivo: `Garantia Grupo ${getTipoGarantia(r.carro)} · +${r.excessoKm.toLocaleString('pt-BR')} km`,
+        });
+        slots[ds].dia.push(r.carro);
+        carrosEscalonados.add(r.carro + r.planoNum);
+        // Se carro também tem leve vencida, marca como incluída (não alocar separado)
+        const leve = (porCarro[r.carro] || []).find(p => isLeve(p.planoNum));
+        if (leve) carrosEscalonados.add(r.carro + leve.planoNum);
+        break;
+      }
+    }
+  });
+
+  // ── PASSO 3: Alocar Pesadas não-garantia (distribuir seg-sex) ─────────
+  const pesadasNormais = candidatosPesada.filter(r =>
+    !isGarantia(r.carro) && !carrosEscalonados.has(r.carro + r.planoNum)
+  );
+  pesadasNormais.forEach(r => {
+    if (carrosEscalonados.has(r.carro + r.planoNum)) return;
+    // Tentar turno noite primeiro (capacidade 6), depois dia (capacidade 2)
+    let alocado = false;
+    for (const turno of ['noite','dia']) {
+      const capKey = turno === 'noite' ? 'noite' : 'dia';
+      const cap = turno === 'noite' ? ESCALA_CONFIG.noite.pesada : ESCALA_CONFIG.dia.pesada;
+      for (const d of diasSemana) {
+        const ds = toDateStr(d);
+        if (slots[ds][capKey].length < cap) {
+          const ops = calcularOportunistas(porCarro[r.carro] || [], r);
+          escala.push({
+            carro: r.carro, planoNum: r.planoNum, planoNome: r.planoNome,
+            data: ds, turno: turno === 'noite' ? 'B' : 'A', cesto: false,
+            tipo: 'pesada', excessoKm: r.excessoKm,
+            oportunistas: ops.map(o => o.num),
+            oportunistasNomes: ops.map(o => o.nome),
+            incluileve: true,
+            motivo: `Pesada · +${r.excessoKm.toLocaleString('pt-BR')} km`,
+          });
+          slots[ds][capKey].push(r.carro);
+          carrosEscalonados.add(r.carro + r.planoNum);
+          const leve = (porCarro[r.carro] || []).find(p => isLeve(p.planoNum));
+          if (leve) carrosEscalonados.add(r.carro + leve.planoNum);
+          alocado = true;
+          break;
+        }
+      }
+      if (alocado) break;
+    }
+    // Se não coube nesta semana, ainda inclui mas sinaliza overflow
+    if (!alocado) {
+      const ops = calcularOportunistas(porCarro[r.carro] || [], r);
+      escala.push({
+        carro: r.carro, planoNum: r.planoNum, planoNome: r.planoNome,
+        data: null, turno: 'B', cesto: false,
+        tipo: 'pesada_overflow', excessoKm: r.excessoKm,
+        oportunistas: ops.map(o => o.num),
+        oportunistasNomes: ops.map(o => o.nome),
+        incluileve: true,
+        motivo: `⚠️ Sem vaga esta semana · +${r.excessoKm.toLocaleString('pt-BR')} km`,
+      });
+      carrosEscalonados.add(r.carro + r.planoNum);
+    }
+  });
+
+  // ── PASSO 4: Leves sozinhas (sem pesada na semana) ────────────────────
+  // Apenas carros que NÃO têm pesada alocada nesta semana
+  candidatosLeve.forEach(r => {
+    if (carrosEscalonados.has(r.carro + r.planoNum)) return; // já incluída junto com pesada
+    // Verificar se carro tem pesada alocada
+    const temPesada = escala.some(e => e.carro === r.carro && isPesada(e.planoNum));
+    if (temPesada) { carrosEscalonados.add(r.carro + r.planoNum); return; }
+    // Alocar leve sozinha no turno noite (menor impacto)
+    let alocado = false;
+    for (const d of diasSemana) {
+      const ds = toDateStr(d);
+      if (slots[ds].noite.length < ESCALA_CONFIG.noite.pesada) { // usa vaga noite
+        escala.push({
+          carro: r.carro, planoNum: r.planoNum, planoNome: r.planoNome,
+          data: ds, turno: 'B', cesto: false,
+          tipo: 'leve', excessoKm: r.excessoKm,
+          oportunistas: [],
+          oportunistasNomes: [],
+          incluileve: false,
+          motivo: `Leve · +${r.excessoKm.toLocaleString('pt-BR')} km`,
+        });
+        slots[ds].noite.push(r.carro + '_leve');
+        carrosEscalonados.add(r.carro + r.planoNum);
+        alocado = true;
+        break;
+      }
+    }
+    if (!alocado) {
+      escala.push({
+        carro: r.carro, planoNum: r.planoNum, planoNome: r.planoNome,
+        data: null, turno: 'B', cesto: false,
+        tipo: 'leve_overflow', excessoKm: r.excessoKm,
+        oportunistas: [], oportunistasNomes: [], incluileve: false,
+        motivo: `⚠️ Sem vaga · Leve +${r.excessoKm.toLocaleString('pt-BR')} km`,
+      });
+    }
+  });
+
+  // ── PASSO 5: Avulsos (calibração, rodízio, etc.) ────────────────────
+  // Distribuir proporcionalmente nos 5 dias
+  // Agrupar por dia: até 2 avulsos por dia (sugestão)
+  const avulsosPorDia = {};
+  diasSemana.forEach(d => { avulsosPorDia[toDateStr(d)] = 0; });
+  candidatosAvulso.forEach(r => {
+    if (carrosEscalonados.has(r.carro + r.planoNum)) return;
+    // Se carro já tem algo escalado nessa semana, sugerir junto
+    const jaEscaladoCarro = escala.find(e => e.carro === r.carro && e.data);
+    if (jaEscaladoCarro) {
+      // Adicionar como oportunista na entrada já existente
+      if (!jaEscaladoCarro.oportunistas.includes(r.planoNum)) {
+        jaEscaladoCarro.oportunistas.push(r.planoNum);
+        jaEscaladoCarro.oportunistasNomes.push(PREV_NOMES[r.planoNum] || r.planoNome);
+      }
+      carrosEscalonados.add(r.carro + r.planoNum);
+      return;
+    }
+    // Senão, distribuir no dia com menos avulsos
+    const dMenor = diasSemana.reduce((best, d) =>
+      avulsosPorDia[toDateStr(d)] < avulsosPorDia[toDateStr(best)] ? d : best
+    );
+    const ds = toDateStr(dMenor);
+    escala.push({
+      carro: r.carro, planoNum: r.planoNum, planoNome: r.planoNome,
+      data: ds, turno: 'B', cesto: false,
+      tipo: 'avulso', excessoKm: r.excessoKm,
+      oportunistas: [], oportunistasNomes: [], incluileve: false,
+      motivo: `Avulso · ${PREV_NOMES[r.planoNum]||r.planoNome}`,
+    });
+    avulsosPorDia[ds]++;
+    carrosEscalonados.add(r.carro + r.planoNum);
+  });
+
+  // ── PASSO 6: Valetamento (sábado anterior = cesto para pesadas da semana) ──
+  const pesadasDaSemana = escala.filter(e => isPesada(e.planoNum) && e.data);
+  if (pesadasDaSemana.length > 0) {
+    const sabStr = toDateStr(sabValetamento);
+    pesadasDaSemana.forEach(e => {
+      escala.push({
+        carro: e.carro, planoNum: e.planoNum, planoNome: e.planoNome,
+        data: sabStr, turno: 'VAL', cesto: true,
+        tipo: 'valetamento', excessoKm: e.excessoKm,
+        oportunistas: [], oportunistasNomes: [], incluileve: false,
+        motivo: `📦 Valetamento para preventiva de ${e.data.split('-').reverse().join('/')}`,
+        refData: e.data,
+      });
+    });
+  }
+
+  return { escala, diasSemana, sabValetamento, slots };
+}
+
+// ── RENDER DA TELA DE AUTO-ESCALA ────────────────────────────────────────
+async function renderAutoEscala() {
+  const gid = getGid();
+  const back = `<button class="btn-back" onclick="renderFerrPrev()">← Painel Preventivas</button>`;
+  setMain(`<div class="loading"><div class="spinner"></div> Gerando escala automática...</div>`);
+
+  if (!_prevDados.length) { toast('Importe o relatório MAN primeiro','err'); renderFerrPrev(); return; }
+
+  // Buscar programações já existentes para não duplicar
+  const { data: jaExiste } = await sb.from('programacao_preventiva').select('prefixo,plano_num,data_prevista')
+    .eq('garagem_id', gid).in('status',['programado','em_execucao'])
+    .gte('data_prevista', new Date().toISOString().slice(0,10));
+  const jaSet = new Set((jaExiste||[]).map(p => p.prefixo+'::'+p.plano_num+'::'+p.data_prevista));
+
+  const { escala, diasSemana, sabValetamento } = gerarEscalaAutomatica(_prevDados, _prevImportadoEm ? null : null);
+
+  // Estado de confirmação (começa tudo selecionado)
+  window._escalaRascunho = escala.map((e, i) => ({ ...e, id: i, confirmado: e.tipo !== 'pesada_overflow' && e.tipo !== 'leve_overflow', jaExiste: jaSet.has(e.carro+'::'+e.planoNum+'::'+(e.data||'')) }));
+
+  renderTelaEscala(back, diasSemana, sabValetamento);
+}
+
+function renderTelaEscala(back, diasSemana, sabValetamento) {
+  const rascunho = window._escalaRascunho || [];
+  const confirmados = rascunho.filter(e => e.confirmado && !e.jaExiste);
+  const total = rascunho.length;
+  const overflow = rascunho.filter(e => e.tipo.includes('overflow'));
+
+  // Agrupar por data
+  const porData = {};
+  // Sábado
+  const sabStr = toDateStr(sabValetamento);
+  porData[sabStr] = { label: `📦 Sábado ${sabValetamento.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})} — Valetamento`, items: [], isSab: true };
+  diasSemana.forEach(d => {
+    const ds = toDateStr(d);
+    const nomeDia = d.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'});
+    porData[ds] = { label: nomeDia, items: [], isSab: false };
+  });
+  porData['overflow'] = { label: '⚠️ Sem vaga esta semana', items: [], isSab: false };
+
+  rascunho.forEach(e => {
+    const key = e.tipo.includes('overflow') ? 'overflow' : (e.data || 'overflow');
+    if (porData[key]) porData[key].items.push(e);
+  });
+
+  const corTipo = { garantia:'#8B5CF6', pesada:'var(--blue)', leve:'var(--green)', avulso:'var(--amber)', valetamento:'#06B6D4', pesada_overflow:'var(--red)', leve_overflow:'var(--red)' };
+
+  const blocosDia = Object.entries(porData).map(([ds, bloco]) => {
+    if (!bloco.items.length) return '';
+    const dia_cards = bloco.items.map(e => {
+      const cor = corTipo[e.tipo] || 'var(--text3)';
+      const jaStr = e.jaExiste ? '<span style="background:#EF444418;color:var(--red);border:1px solid #EF444440;border-radius:4px;padding:1px 5px;font-size:9px;font-weight:700">JÁ EXISTE</span>' : '';
+      const opStr = e.oportunistasNomes?.length ? `<div style="margin-top:4px;font-size:10px;color:var(--amber)">⚡ ${e.oportunistasNomes.slice(0,3).join(' · ')}${e.oportunistasNomes.length>3?' +'+( e.oportunistasNomes.length-3):''}</div>` : '';
+      const leveStr = e.incluileve ? '<span style="background:#00C48C18;color:var(--green);border:1px solid #00C48C40;border-radius:4px;padding:1px 5px;font-size:9px;font-weight:700;margin-left:4px">+ LEVE</span>' : '';
+      const check = e.confirmado && !e.jaExiste ? '✅' : e.jaExiste ? '🔵' : '⬜';
+      return `<div onclick="toggleEscalaItem(${e.id})" style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--surface);border:1px solid ${e.confirmado&&!e.jaExiste?cor+'40':'var(--border2)'};border-left:3px solid ${cor};border-radius:10px;margin-bottom:6px;cursor:${e.jaExiste?'default':'pointer'};opacity:${e.jaExiste?'0.5':'1'}">
+        <span style="font-size:16px;flex-shrink:0;margin-top:1px">${check}</span>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:${cor}">${e.carro}</span>
+            <span style="font-size:11px;font-weight:600;color:var(--text2)">${e.planoNome}</span>
+            ${leveStr}${jaStr}
+            <span style="font-size:10px;color:var(--text3);margin-left:auto">T${e.turno}</span>
+          </div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px">${e.motivo}</div>
+          ${opStr}
+        </div>
+      </div>`;
+    }).join('');
+
+    const diaFmt = bloco.isSab ? '' : '';
+    return `<div style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:800;color:var(--text2);text-transform:capitalize;padding:6px 10px;background:var(--surface2);border-radius:8px;margin-bottom:8px;border-left:3px solid var(--blue)">
+        ${bloco.label} <span style="font-weight:400;color:var(--text3);margin-left:6px">${bloco.items.length} item(ns)</span>
+      </div>
+      ${dia_cards}
+    </div>`;
+  }).join('');
+
+  const gid = getGid();
+  setMain(`${back}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-size:16px;font-weight:800">📅 Escala Automática de Preventivas</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">${confirmados.length} de ${total - rascunho.filter(e=>e.jaExiste).length} itens selecionados para confirmar</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="toggleTodosEscala(true)" class="btn-sm">✅ Selecionar Todos</button>
+        <button onclick="toggleTodosEscala(false)" class="btn-sm">⬜ Desmarcar Todos</button>
+        <button onclick="confirmarEscalaAutomatica()" style="padding:8px 18px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
+          📅 Confirmar ${confirmados.length} Programações
+        </button>
+      </div>
+    </div>
+    <!-- KPIs -->
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px">
+      <div class="kpi neu"><div class="kpi-label">Total</div><div class="kpi-val">${total}</div></div>
+      <div class="kpi ok"><div class="kpi-label">Selecionados</div><div class="kpi-val" style="color:var(--blue)">${confirmados.length}</div></div>
+      <div class="kpi ${overflow.length?'nok':'ok'}"><div class="kpi-label">Sem vaga</div><div class="kpi-val" style="color:${overflow.length?'var(--red)':'var(--green)'}">${overflow.length}</div></div>
+      <div class="kpi neu"><div class="kpi-label">Valetamento</div><div class="kpi-val" style="color:#06B6D4">${rascunho.filter(e=>e.tipo==='valetamento').length}</div></div>
+      <div class="kpi ${rascunho.filter(e=>e.jaExiste).length?'nok':'ok'}"><div class="kpi-label">Já Exist.</div><div class="kpi-val" style="color:var(--text3)">${rascunho.filter(e=>e.jaExiste).length}</div></div>
+    </div>
+    ${overflow.length ? `<div style="background:#EF444410;border:1px solid #EF444430;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--red)">⚠️ ${overflow.length} preventiva(s) não couberam nesta semana. Deslize para baixo para ver — considere redistribuir manualmente.</div>` : ''}
+    ${blocosDia}
+    <div style="height:60px"></div>
+  `);
+}
+
+function toggleEscalaItem(id) {
+  const item = (window._escalaRascunho||[]).find(e => e.id === id);
+  if (!item || item.jaExiste) return;
+  item.confirmado = !item.confirmado;
+  // Re-render sem recalcular
+  const back = `<button class="btn-back" onclick="renderFerrPrev()">← Painel Preventivas</button>`;
+  // Reconstruir diasSemana do rascunho
+  const datas = [...new Set((window._escalaRascunho||[]).filter(e=>e.data&&!e.tipo.includes('overflow')&&e.tipo!=='valetamento').map(e=>e.data))].sort();
+  const diasSemana = datas.filter(d => { const dow=new Date(d+'T12:00:00').getDay(); return dow>=1&&dow<=5; }).map(d=>new Date(d+'T12:00:00'));
+  const sabStr = (window._escalaRascunho||[]).find(e=>e.tipo==='valetamento')?.data;
+  const sabValetamento = sabStr ? new Date(sabStr+'T12:00:00') : new Date();
+  renderTelaEscala(back, diasSemana, sabValetamento);
+}
+
+function toggleTodosEscala(val) {
+  (window._escalaRascunho||[]).forEach(e => { if (!e.jaExiste) e.confirmado = val; });
+  const back = `<button class="btn-back" onclick="renderFerrPrev()">← Painel Preventivas</button>`;
+  const datas = [...new Set((window._escalaRascunho||[]).filter(e=>e.data&&!e.tipo.includes('overflow')&&e.tipo!=='valetamento').map(e=>e.data))].sort();
+  const diasSemana = datas.filter(d => { const dow=new Date(d+'T12:00:00').getDay(); return dow>=1&&dow<=5; }).map(d=>new Date(d+'T12:00:00'));
+  const sabStr = (window._escalaRascunho||[]).find(e=>e.tipo==='valetamento')?.data;
+  const sabValetamento = sabStr ? new Date(sabStr+'T12:00:00') : new Date();
+  renderTelaEscala(back, diasSemana, sabValetamento);
+}
+
+async function confirmarEscalaAutomatica() {
+  const gid = getGid();
+  const selecionados = (window._escalaRascunho||[]).filter(e => e.confirmado && !e.jaExiste && e.data);
+  if (!selecionados.length) { toast('Nenhum item selecionado','err'); return; }
+
+  const btn = document.querySelector('button[onclick*="confirmarEscalaAutomatica"]');
+  if (btn) { btn.disabled=true; btn.textContent='Salvando...'; }
+
+  let ok=0, erros=0;
+  for (const e of selecionados) {
+    const obsPartes = [
+      e.incluileve ? 'Inclui Preventiva Leve' : '',
+      e.oportunistasNomes?.length ? 'Oportunistas: '+e.oportunistasNomes.join(', ') : '',
+      e.tipo==='valetamento' ? `Valetamento para ${e.refData?.split('-').reverse().join('/')||''}` : '',
+      e.motivo,
+    ].filter(Boolean).join(' | ');
+
+    const { error } = await sb.from('programacao_preventiva').insert({
+      garagem_id: gid,
+      prefixo: e.carro,
+      plano_num: e.planoNum,
+      plano_nome: e.planoNome,
+      tipo_metrica: 'KM',
+      excesso_km: e.excessoKm || 0,
+      km_atual: 0,
+      data_prevista: e.data,
+      turno: e.turno === 'VAL' ? 'A' : e.turno,
+      cesto_separado: e.cesto,
+      observacao: obsPartes || null,
+      status: e.tipo === 'valetamento' ? 'valetamento' : 'programado',
+      criado_por: S.perfil?.nome,
+      criado_por_id: S.perfil?.id,
+      auto_gerado: true,
+    });
+    if (error) { console.error(e.carro, error.message); erros++; } else ok++;
+  }
+
+  // Notificação WPP com resumo
+  try {
+    const garagem = S.garagens?.find(g=>g.id===gid);
+    const linhas = selecionados.filter(e=>e.tipo!=='valetamento').slice(0,15).map(e =>
+      `${e.tipo==='garantia'?'🔒':'🔩'} *${e.carro}* — ${e.planoNome.split(' ').slice(0,3).join(' ')} · ${e.data?.split('-').reverse().join('/')} T${e.turno}`
+    ).join('\n');
+    const msg = `🗓️ *ESCALA PREVENTIVA — JTP*\n📍 ${garagem?.nome||'Porto Velho'} · Gerada automaticamente\n\n✅ ${ok} programadas · ❌ ${erros} erros\n\n${linhas}${selecionados.length>15?`\n_...e mais ${selecionados.length-15} itens_`:''}\n\n_Gerado por: ${S.perfil?.nome||'PCM'}_`;
+    await fetch('https://evolution-api-production-8d56.up.railway.app/message/sendText/jtp-garagem',{
+      method:'POST',headers:{'Content-Type':'application/json','apikey':'4289AC11F437-43AD-96D7-9F27C2735696'},
+      body:JSON.stringify({number:'120363427489152994@g.us',options:{delay:0},textMessage:{text:msg}}),
+    });
+  } catch(e) { console.warn('WPP escala:',e); }
+
+  toast(`✅ ${ok} programações confirmadas${erros?' · ⚠️ '+erros+' erros':''}!`);
+  window._escalaRascunho = null;
+  renderPrevProgramadas();
 }
 
 // ── MODAL DE PROGRAMAÇÃO ─────────────────────────────────────────────────
