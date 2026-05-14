@@ -6016,13 +6016,16 @@ function renderTelaEscala(back, diasSemana, sabValetamento) {
 
   // ── Overflow ────────────────────────────────────────────────────────────
   const ovBucket = porCol['overflow'];
-  const ovItens = [...(ovBucket.pesada||[]),...(ovBucket.leve||[]),...(ovBucket.avulso||[])];
+  const ovItens = [...(ovBucket.pesada||[]),...(ovBucket.leve||[]),...(ovBucket.avulso||[]),...(ovBucket.garantia||[])];
+  // Overflow fica colapsado — só mostra banner com contagem, expande ao clicar
   const overflowHtml = ovItens.length ? `
-    <div style="margin-bottom:16px">
-      <div style="font-size:12px;font-weight:800;color:var(--red);padding:6px 10px;background:#EF444410;border-radius:8px;margin-bottom:8px;border:1px solid #EF444430">
-        ⚠️ Sem vaga esta semana — ${ovItens.length} preventiva(s) excedentes
+    <div style="margin-bottom:12px">
+      <div onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'flex':'none';this.querySelector('.ov-arrow').textContent=this.nextElementSibling.style.display==='none'?'▼':'▲'"
+        style="display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:700;color:var(--red);padding:7px 12px;background:#EF444408;border-radius:8px;border:1px solid #EF444425;cursor:pointer;user-select:none">
+        <span>⚠️ ${ovItens.length} preventiva(s) sem vaga esta semana — serão escaladas nas próximas semanas</span>
+        <span class="ov-arrow" style="font-size:11px;margin-left:8px">▼</span>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px">
+      <div style="display:none;flex-wrap:wrap;gap:5px;margin-top:6px;padding:8px;background:#EF444405;border-radius:8px;border:1px solid #EF444420">
         ${ovItens.map(e=>cardLinha(e,'overflow')).join('')}
       </div>
     </div>` : '';
@@ -6042,7 +6045,7 @@ function renderTelaEscala(back, diasSemana, sabValetamento) {
       </div>
     </div>
     <!-- KPIs -->
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px">
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px">
       <div class="kpi neu"><div class="kpi-label">Total</div><div class="kpi-val">${rascunho.length}</div></div>
       <div class="kpi ok"><div class="kpi-label">Selecionados</div><div class="kpi-val" style="color:var(--blue)">${confirmados.length}</div></div>
       <div class="kpi ${overflow.length?'nok':'ok'}"><div class="kpi-label">Sem vaga</div><div class="kpi-val" style="color:${overflow.length?'var(--red)':'var(--green)'}">${overflow.length}</div></div>
