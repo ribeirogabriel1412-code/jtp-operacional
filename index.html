@@ -5862,15 +5862,42 @@ function gerarEscalaAutomatica(dados, semanaRef) {
       motivo:`Avulso · ${PREV_NOMES[r.planoNum]||r.planoNome} · +${r.excessoKm.toLocaleString('pt-BR')} km` });
   });
 
-  // ── PASSO 5: VALETAMENTO — sábado anterior, 1 por pesada/garantia ──
+  // ── PASSO 5: VALETAMENTO — sábado anterior ─────────────────────────────
+  // Lógica: valetar os carros que entrarão na PRÓXIMA semana (pesadas 11→21 da fila)
+  // Pegamos todos os candidatos a pesada ordenados, excluindo os já alocados esta semana
+  const carrosEscaladosEstaSemana = new Set(
+    escala.filter(e => isPesada(e.planoNum) || e.tipo==='garantia').map(e => e.carro)
+  );
+
+  // Fila completa de pesadas ordenada por mais vencido
+  const filaCompletaPesada = [
+    // Garantias primeiro
+    ...sorted(dados.filter(r => isGarantia(r.carro) && isPesada(r.planoNum)))
+      .filter((r,_,a) => a.findIndex(x=>x.carro===r.carro)===a.indexOf(r)),
+    // Pesadas normais
+    ...sorted(dados.filter(r => isPesada(r.planoNum) && !isGarantia(r.carro)))
+      .filter((r,_,a) => a.findIndex(x=>x.carro===r.carro)===a.indexOf(r)),
+  ];
+
+  // Pegar os próximos 10 que NÃO entraram esta semana = proxima semana (posições 11→21)
+  const proxSemanaValet = filaCompletaPesada
+    .filter(r => !carrosEscaladosEstaSemana.has(r.carro))
+    .slice(0, 10); // até 10 valetamentos
+
   const sabStr = toDateStr(sabValetamento);
-  escala.filter(e => (isPesada(e.planoNum)||e.tipo==='garantia') && e.data && !e.tipo.includes('overflow'))
-    .forEach(e => {
-      escala.push({ carro:e.carro, planoNum:e.planoNum, planoNome:e.planoNome,
-        data:sabStr, turno:'VAL', cesto:true, tipo:'valetamento',
-        excessoKm:e.excessoKm, oportunistas:[], oportunistasNomes:[], incluileve:false,
-        motivo:`📦 Valetamento → ${e.data.split('-').reverse().join('/')}`, refData:e.data });
+  proxSemanaValet.forEach(r => {
+    // Buscar leve do mesmo carro para já incluir no valetamento
+    const leveCarro = (porCarro[r.carro]||[]).find(p => isLeve(p.planoNum));
+    const inclLeve = leveCarro ? ' +LEVE' : '';
+    escala.push({
+      carro: r.carro, planoNum: r.planoNum, planoNome: r.planoNome,
+      data: sabStr, turno: 'VAL', cesto: true, tipo: 'valetamento',
+      excessoKm: r.excessoKm, oportunistas: [], oportunistasNomes: [],
+      incluileve: !!leveCarro, incluiPesada: false,
+      motivo: `📦 Valetamento próxima semana${inclLeve} · +${r.excessoKm.toLocaleString('pt-BR')} km`,
+      refData: null,
     });
+  });
 
   return { escala, diasSemana, sabValetamento, slots };
 }
