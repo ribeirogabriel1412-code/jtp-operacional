@@ -5767,7 +5767,8 @@ function gerarEscalaAutomatica(dados, semanaRef) {
     slots[ds].garantia++;
     rrG = (idx + 1) % diasSemana.length;
 
-    // Verificar se carro tem pesada ou leve para incluir junto
+    // Verificar se carro tem pesada ou leve para incluir junto no mesmo card
+    // Não consome slots de pesada nem leve — são independentes
     const pesadaCarro = (porCarro[r.carro]||[]).find(p => p.planoNum==='002' && !marcado(r.carro,'002'));
     const leveCarro   = (porCarro[r.carro]||[]).find(p => isLeve(p.planoNum) && !marcado(r.carro,p.planoNum));
     const ops = calcularOportunistas(porCarro[r.carro]||[], r).filter(o=>!['001','002'].includes(o.num));
@@ -5779,6 +5780,7 @@ function gerarEscalaAutomatica(dados, semanaRef) {
       incluileve:true, incluiPesada:!!pesadaCarro,
       motivo:`Garantia Grupo ${getTipoGarantia(r.carro)}${incl.length?' · +'+incl.join('+'):''}` });
 
+    // Marcar pesada e leve do carro como já incluídas (não aparecem como slot separado)
     if (pesadaCarro) marcar(r.carro, '002');
     if (leveCarro)   marcar(r.carro, leveCarro.planoNum);
   });
@@ -5809,6 +5811,7 @@ function gerarEscalaAutomatica(dados, semanaRef) {
       incluileve:true, incluiPesada:false,
       motivo:`Pesada · +${r.excessoKm.toLocaleString('pt-BR')} km` });
 
+    // Leve inclusa no card da pesada — não consome slot de leve, vaga fica para outro carro
     if (leveCarro) marcar(r.carro, leveCarro.planoNum);
   });
 
