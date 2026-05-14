@@ -206,7 +206,7 @@ async function doLogout(){await sb.auth.signOut();location.reload()}
 const TELA_INICIO={lavador:'lavagem',lider_patio:'patio',lider_oficina:'oficina',lider_pcm:'oficina',assistente_pcm:'oficina',manobrista:'patio_man',frentista:'abastecimento',plantao:'recolha'};
 const NAV={
   lavador:[{id:'lavagem',ic:'🚿',lb:'Lavagem'},{id:'home',ic:'🏠',lb:'Início'}],
-  lider_patio:[{id:'patio',ic:'✅',lb:'Validar'},{id:'soltura',ic:'📋',lb:'Soltura'},{id:'patio_man',ic:'🚗',lb:'Pátio'},{id:'lav_pesada',ic:'🚿',lb:'Lavagem'},{id:'home',ic:'🏠',lb:'Início'}],
+  lider_patio:[{id:'patio',ic:'✅',lb:'Validar'},{id:'soltura',ic:'📋',lb:'Soltura'},{id:'abastecimento',ic:'⛽',lb:'Abastec.'},{id:'lav_pesada',ic:'🚿',lb:'Lavagem'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_operacional:[{id:'patio_man',ic:'🚗',lb:'Pátio'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_oficina:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_pcm:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'prev26',ic:'💰',lb:'2.6'},{id:'home',ic:'🏠',lb:'Início'}],
@@ -2179,16 +2179,22 @@ async function fecharTurnoLavagem(){
   );
 }
 
-async function confirmarFechamentoLavagem(pct){
+async function confirmarFechamentoLavagem(){
   const gid=getGid();
   const obs=document.getElementById('obs-lav-turno')?.value?.trim()||null;
+
+  // Bloquear botão
+  const btn=document.querySelector('#shbody button:last-child');
+  if(btn){btn.disabled=true;btn.textContent='Fechando...';}
+
   const{data:plano}=await sb.from('checklist_lavagem').select('*')
     .eq('garagem_id',gid).eq('data',_lpData);
   const lista=plano||[];
   const lavados=lista.filter(l=>l.status==='executado').length;
   const vistoriados=lista.filter(l=>l.validado_patio).length;
+  const pct=lista.length>0?Math.round(vistoriados/lista.length*100):0;
 
-  // Gravar fechamento
+  // 1. Gravar fechamento (snapshot do turno)
   try{
     await sb.from('fechamento_lavagem').insert({
       garagem_id:gid,
@@ -2197,15 +2203,49 @@ async function confirmarFechamentoLavagem(pct){
       total_planejados:lista.length,
       total_lavados:lavados,
       total_vistoriados:vistoriados,
-      pct_vistoriados:lista.length>0?Math.round(vistoriados/lista.length*100):0,
+      pct_vistoriados:pct,
       responsavel_nome:S.perfil?.nome||null,
       responsavel_id:S.perfil?.id||null,
       observacao:obs,
+      detalhes:lista,
     });
-  }catch(e){console.warn('fechamento_lavagem:',e.message);}
+  }catch(e){console.warn('fechamento_lavagem insert:',e.message);}
+
+  // 2. Atualizar data da última lavagem na tabela frota
+  // Apenas carros que foram efetivamente lavados (status=executado)
+  const prefixosLavados=[...new Set(lista.filter(l=>l.status==='executado').map(l=>l.prefixo))];
+  if(prefixosLavados.length){
+    try{
+      // Busca os IDs dos veículos para fazer o update em lote
+      const{data:veiculos}=await sb.from('frota').select('id,prefixo')
+        .eq('garagem_id',gid).in('prefixo',prefixosLavados);
+      if(veiculos?.length){
+        // Atualiza cada veículo com a data da última lavagem
+        await Promise.all(veiculos.map(v=>
+          sb.from('frota').update({ultima_lavagem:_lpData}).eq('id',v.id)
+        ));
+      }
+    }catch(e){console.warn('frota ultima_lavagem:',e.message);}
+
+
+  }
+
+  // 3. Zerar checklist_lavagem do dia (deletar todos os registros do dia)
+  const ids=lista.map(l=>l.id).filter(Boolean);
+  if(ids.length){
+    try{
+      const{error:errDel}=await sb.from('checklist_lavagem').delete().in('id',ids);
+      if(errDel){
+        // Se delete falhar por RLS, marcar como arquivado
+        await sb.from('checklist_lavagem').update({status:'arquivado'})
+          .eq('garagem_id',gid).eq('data',_lpData);
+        console.warn('checklist_lavagem delete bloqueado por RLS — marcado como arquivado');
+      }
+    }catch(e){console.warn('checklist_lavagem delete:',e.message);}
+  }
 
   closeSheet(true);
-  toast('✅ Turno de lavagem fechado! '+vistoriados+'/'+lista.length+' vistoriados');
+  toast('✅ Turno fechado! '+lavados+' lavados · '+prefixosLavados.length+' carros atualizados');
   telaLavPesada();
 }
 
@@ -2425,18 +2465,24 @@ async function removerDoPlano(){
 async function abrirMontarPlano(){
   const gid=getGid();
   // Frota completa
-  const{data:frota}=await sb.from('frota').select('prefixo,modelo').eq('garagem_id',gid).order('prefixo');
+  const{data:frota}=await sb.from('frota').select('prefixo,modelo,ultima_lavagem').eq('garagem_id',gid).order('prefixo');
   // Já no plano hoje
   const{data:jaNoPlano}=await sb.from('checklist_lavagem').select('prefixo').eq('garagem_id',gid).eq('data',_lpData);
   const jaSet=new Set((jaNoPlano||[]).map(p=>p.prefixo));
   // Preventivas do dia
   const{data:prevHoje}=await sb.from('soltura_2_10').select('prefixo').eq('garagem_id',gid).eq('data',_lpData);
   const prevSet=new Set((prevHoje||[]).map(p=>p.prefixo));
-  // Última lavagem pesada de cada carro
-  const{data:ultLav}=await sb.from('checklist_lavagem').select('prefixo,data').eq('garagem_id',gid)
-    .eq('tipo_lavagem','pesada').order('data',{ascending:false}).limit(500);
+
+  // Mapa de última lavagem: prioridade frota.ultima_lavagem, fallback checklist_lavagem histórico
   const ultMap={};
-  (ultLav||[]).forEach(l=>{if(!ultMap[l.prefixo])ultMap[l.prefixo]=l.data;});
+  // 1. Da tabela frota (mais confiável após fechamento do turno)
+  (frota||[]).forEach(v=>{if(v.ultima_lavagem)ultMap[v.prefixo]=v.ultima_lavagem;});
+  // 2. Complementar com checklist_lavagem histórico para carros sem registro na frota
+  try{
+    const{data:ultLav}=await sb.from('checklist_lavagem').select('prefixo,data').eq('garagem_id',gid)
+      .eq('tipo_lavagem','pesada').order('data',{ascending:false}).limit(500);
+    (ultLav||[]).forEach(l=>{if(!ultMap[l.prefixo])ultMap[l.prefixo]=l.data;});
+  }catch(e){}
 
   const disponiveis=(frota||[]).filter(v=>!jaSet.has(v.prefixo));
   
