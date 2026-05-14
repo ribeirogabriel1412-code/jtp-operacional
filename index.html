@@ -5321,6 +5321,10 @@ async function processarPrevPDF(file){
   abrirModalSemanaRef(dados, file.name, textoTotal);
 }
 
+// Carros baixados/inativos — excluídos da importação e da escala automática
+// Adicione aqui prefixos de carros que saíram da frota
+const CARROS_INATIVOS = new Set(['02.040']);
+
 function parsearRelatorioMAN(texto){
   // Parser corrigido — lê colunas na ordem exata do Praxio MAN:
   // Carro | Linha | NNN (KM) NOME | Data | KmUltExec | QtdExec | KmAtual | ProxExec | KmPercorrido | ExcessoKm | ExcessoDias | [Pendente] [Emitido]
@@ -5389,6 +5393,8 @@ function parsearRelatorioMAN(texto){
     // Excluir Regulagem de Válvulas (038) e Preditiva (023/031) da importação
     const EXCLUIR_PLANOS = new Set(['038','023','031','040']);
     if (EXCLUIR_PLANOS.has(planoNum)) continue;
+    // Excluir carros inativos/baixados da frota
+    if (CARROS_INATIVOS.has(carro)) continue;
 
     dados.push({
       carro, planoNum, planoNome, tipoMetrica,
@@ -5704,8 +5710,12 @@ function gerarEscalaAutomatica(dados, semanaRef) {
   });
 
   // ── Mapa por carro ─────────────────────────────────────────────────
+  // Filtrar carros inativos dos dados do motor
+  const dadosFiltrados = dados.filter(r => !CARROS_INATIVOS.has(r.carro));
   const porCarro = {};
-  dados.forEach(r => { if (!porCarro[r.carro]) porCarro[r.carro] = []; porCarro[r.carro].push(r); });
+  dadosFiltrados.forEach(r => { if (!porCarro[r.carro]) porCarro[r.carro] = []; porCarro[r.carro].push(r); });
+  // Reaplica dados filtrados para os passos seguintes
+  dados = dadosFiltrados;
 
   const escala = [];
   const alocados = new Set(); // "carro::planoNum"
@@ -5863,26 +5873,31 @@ function gerarEscalaAutomatica(dados, semanaRef) {
   });
 
   // ── PASSO 5: VALETAMENTO — sábado anterior ─────────────────────────────
-  // Lógica: valetar os carros que entrarão na PRÓXIMA semana (pesadas 11→21 da fila)
-  // Pegamos todos os candidatos a pesada ordenados, excluindo os já alocados esta semana
-  const carrosEscaladosEstaSemana = new Set(
-    escala.filter(e => isPesada(e.planoNum) || e.tipo==='garantia').map(e => e.carro)
+  // Lógica: valetar os carros que entrarão na PRÓXIMA semana
+  // = próximos 10 da fila de pesadas que NÃO estão escalados esta semana
+
+  // Coletar carros que já entraram como garantia ou pesada NESTA semana
+  // Usar o Set "alocados" que foi preenchido durante os passos 1-4
+  const carrosComPesadaNaSemana = new Set(
+    [...alocados]
+      .filter(key => {
+        const [carro, planoNum] = key.split('::');
+        return isPesada(planoNum) || planoNum === '003' || planoNum === '029';
+      })
+      .map(key => key.split('::')[0])
   );
 
-  // Fila completa de pesadas ordenada por mais vencido
-  const filaCompletaPesada = [
-    // Garantias primeiro
-    ...sorted(dados.filter(r => isGarantia(r.carro) && isPesada(r.planoNum)))
-      .filter((r,_,a) => a.findIndex(x=>x.carro===r.carro)===a.indexOf(r)),
-    // Pesadas normais
-    ...sorted(dados.filter(r => isPesada(r.planoNum) && !isGarantia(r.carro)))
-      .filter((r,_,a) => a.findIndex(x=>x.carro===r.carro)===a.indexOf(r)),
-  ];
+  // Fila completa de todas as pesadas/garantias, ordenada por mais vencido
+  // Garantias na frente (prioridade), depois pesadas normais
+  const filaCompletaPesada = dedup([
+    ...sorted(dados.filter(r => isGarantia(r.carro) && isPesada(r.planoNum))),
+    ...sorted(dados.filter(r => isPesada(r.planoNum) && !isGarantia(r.carro))),
+  ]);
 
-  // Pegar os próximos 10 que NÃO entraram esta semana = proxima semana (posições 11→21)
+  // Próximos 10 que NÃO foram escalados esta semana
   const proxSemanaValet = filaCompletaPesada
-    .filter(r => !carrosEscaladosEstaSemana.has(r.carro))
-    .slice(0, 10); // até 10 valetamentos
+    .filter(r => !carrosComPesadaNaSemana.has(r.carro))
+    .slice(0, 10);
 
   const sabStr = toDateStr(sabValetamento);
   proxSemanaValet.forEach(r => {
