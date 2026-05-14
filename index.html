@@ -6648,159 +6648,207 @@ let _progCalMes=null; // mês exibido no calendário de programações
 
 async function renderPrevProgramadas(filtroCarro='',filtroPlano=''){
   const gid=getGid();
+  const perfil=S.perfil?.cargo||'';
+  const isPCM=['lider_pcm','supervisor','coordenador','admin'].includes(perfil);
+  const isOper=['lider_operacao','lider_patio','supervisor','coordenador','admin'].includes(perfil);
   const back=`<button class="btn-back" onclick="renderFerrPrev()">← Painel Preventivas</button>`;
   setMain(`<div class="loading"><div class="spinner"></div> Carregando...</div>`);
+  window._escalaRascunho=null;
 
-  // Limpar rascunho ao entrar nas programações — tela livre para próxima execução
-  window._escalaRascunho = null;
-
+  // Carregar programações ativas
   let q=sb.from('programacao_preventiva').select('*').eq('garagem_id',gid)
-    .in('status',['programado','em_execucao']).order('data_prevista',{ascending:true}).limit(500);
+    .in('status',['programado','em_execucao','valetamento']).order('data_prevista').limit(500);
   if(filtroCarro) q=q.eq('prefixo',filtroCarro);
   const{data:progs}=await q;
   const lista=progs||[];
 
   const hoje=new Date().toISOString().slice(0,10);
-  const em60=new Date(Date.now()+60*86400000).toISOString().slice(0,10);
 
-  // Cruzamento com escala (horário de recolha)
+  // Cruzamento escala de soltura
   let escalasMap={};
   try{
-    const{data:sol}=await sb.from('soltura_2_10').select('prefixo,data,linha,horario_fim,horario_programado')
-      .eq('garagem_id',gid).gte('data',hoje).lte('data',em60);
-    (sol||[]).forEach(s=>{ escalasMap[s.prefixo+'::'+s.data]=s; });
+    const em30=new Date(Date.now()+30*86400000).toISOString().slice(0,10);
+    const{data:sol}=await sb.from('soltura_2_10').select('prefixo,data,linha,horario_fim')
+      .eq('garagem_id',gid).gte('data',hoje).lte('data',em30);
+    (sol||[]).forEach(s=>{escalasMap[s.prefixo+'::'+s.data]=s;});
   }catch(e){}
 
-  // Agrupar por data
+  // Separar semana atual e futuras
+  // Próxima segunda
+  const d=new Date(); d.setHours(12,0,0,0);
+  const dow=d.getDay();
+  const diasParaSeg=dow===0?1:(8-dow)%7||7;
+  const proxSeg=new Date(d); proxSeg.setDate(d.getDate()+(dow===1?0:diasParaSeg));
+  if(dow!==1) proxSeg.setDate(d.getDate()-(dow===0?6:dow-1)); // começar na seg atual
+  const proxSegStr=proxSeg.toISOString().slice(0,10);
+  const proxSexStr=new Date(proxSeg.getTime()+4*86400000).toISOString().slice(0,10);
+  const proxSabStr=new Date(proxSeg.getTime()-86400000).toISOString().slice(0,10); // sab anterior
+
+  // Filtrar só a semana em exibição (sab + seg-sex)
+  const listaSemana=lista.filter(p=>p.data_prevista>=proxSabStr&&p.data_prevista<=proxSexStr);
+  const listaFutura=lista.filter(p=>p.data_prevista>proxSexStr);
+
+  // Agrupar por data (semana)
   const porData={};
-  lista.forEach(p=>{ if(!porData[p.data_prevista]) porData[p.data_prevista]=[]; porData[p.data_prevista].push(p); });
-  const datas=Object.keys(porData).sort();
-  const programados=lista.length;
-  const atrasados=lista.filter(p=>p.data_prevista<hoje).length;
+  listaSemana.forEach(p=>{if(!porData[p.data_prevista])porData[p.data_prevista]=[];porData[p.data_prevista].push(p);});
 
-  // ── Mês do calendário ──────────────────────────────────────
-  if(!_progCalMes){
-    const primData=datas.find(d=>d>=hoje)||hoje;
-    _progCalMes=primData.slice(0,7);
-  }
-  const [anoC,mesC]=_progCalMes.split('-').map(Number);
-  const meses=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-  const mesAnt=new Date(anoC,mesC-2,1);
-  const mesProx=new Date(anoC,mesC,1);
-  const mesAntStr=mesAnt.getFullYear()+'-'+(mesAnt.getMonth()+1).toString().padStart(2,'0');
-  const mesProxStr=mesProx.getFullYear()+'-'+(mesProx.getMonth()+1).toString().padStart(2,'0');
-
-  const primeiroDia=new Date(anoC,mesC-1,1);
-  const inicioCal=new Date(primeiroDia);
-  const dsem=primeiroDia.getDay();
-  inicioCal.setDate(primeiroDia.getDate()-(dsem===0?6:dsem-1));
-
-  const celulas=Array.from({length:42},(_,i)=>{const d=new Date(inicioCal);d.setDate(inicioCal.getDate()+i);return d;});
-
-  const cabCal=['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'].map(d=>
-    `<div style="font-size:10px;font-weight:700;color:var(--text4);text-align:center;padding:4px 0">${d}</div>`
-  ).join('');
-
-  // Cor por tipo de plano
+  // ── Helper: cor por tipo ──────────────────────────────────
   function corProg(p){
-    if(p.status==='valetamento'||p.cesto_separado) return '#06B6D4';
+    if(p.cesto_separado||p.status==='valetamento') return '#06B6D4';
     if(['003','029'].includes(p.plano_num)) return '#8B5CF6';
     if(p.plano_num==='002') return '#3B82F6';
     if(p.plano_num==='001') return '#22C55E';
     return '#F59E0B';
   }
 
-  const celCal=celulas.map(d=>{
-    const ds=d.toISOString().split('T')[0];
-    const doMes=d.getMonth()+1===mesC;
-    const ehHoje=ds===hoje;
-    const passado=ds<hoje;
-    const pd=porData[ds]||[];
+  // ── Helper: card de preventiva programada ────────────────
+  function cardProg(p, ds){
+    const cor=corProg(p);
+    const esc=escalasMap[p.prefixo+'::'+ds];
+    const realizado=p.status==='em_execucao'||p.status==='concluido';
 
-    // Agrupar por tipo para mini-view
+    const tags=[
+      p.cesto_separado?`<span style="background:#06B6D418;color:#06B6D4;border:1px solid #06B6D440;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">📦</span>`:'',
+      ['003','029'].includes(p.plano_num)?`<span style="background:#8B5CF618;color:#8B5CF6;border:1px solid #8B5CF640;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">GARAN</span>`:'',
+      p.inclui_leve_obs?`<span style="background:#22C55E18;color:#22C55E;border:1px solid #22C55E40;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">+LEVE</span>`:'',
+      p.turno?`<span style="background:${cor}18;color:${cor};border:1px solid ${cor}40;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">T${p.turno}</span>`:'',
+    ].filter(Boolean).join('');
+
+    const escTag=esc?`<div style="font-size:10px;color:var(--text4);margin-top:3px">🚌 ${esc.linha||'—'} · Recolha ${esc.horario_fim||'—'}</div>`:'';
+    const opStr=p.observacao?`<div style="font-size:10px;color:var(--text4);margin-top:3px;line-height:1.4">⚡ ${p.observacao.replace('Inclui Preventiva Leve | ','').replace('Inclui Preventiva Pesada | ','').split('|')[0].trim()}</div>`:'';
+
+    // Check de realizado — só PCM pode marcar
+    const checkBtn=isPCM?`<button onclick="marcarPreventiva('${p.id}','${realizado?'programado':'em_execucao'}')"
+      style="flex-shrink:0;background:${realizado?'#22C55E':'transparent'};border:2px solid ${realizado?'#22C55E':'var(--border)'};border-radius:6px;width:28px;height:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px">
+      ${realizado?'✅':'⬜'}
+    </button>`:'<span style="flex-shrink:0;font-size:16px">${realizado?'✅':'⬜'}</span>';
+
+    return`<div style="background:var(--surface);border:1.5px solid ${realizado?'#22C55E50':cor+'40'};border-left:4px solid ${realizado?'#22C55E':cor};border-radius:10px;padding:10px 12px;margin-bottom:8px;opacity:${realizado?'0.7':'1'}">
+      <div style="display:flex;align-items:flex-start;gap:8px">
+        ${checkBtn}
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+            <span style="font-family:'DM Mono',monospace;font-size:14px;font-weight:800;color:${realizado?'#22C55E':cor}">${p.prefixo}</span>
+            <span style="font-size:11px;font-weight:600;color:var(--text2)">${p.plano_nome.split(' - ')[0]}</span>
+            ${tags}
+          </div>
+          ${escTag}${opStr}
+        </div>
+        ${isPCM?`<button onclick="cancelarProgPrev('${p.id}')" style="flex-shrink:0;background:transparent;border:1px solid #EF444430;border-radius:6px;padding:2px 7px;font-size:11px;color:#EF4444;cursor:pointer">✕</button>`:''}
+      </div>
+    </div>`;
+  }
+
+  // ── Montar colunas da semana ──────────────────────────────
+  const diasCols=[
+    {ds:proxSabStr,nome:'Sábado',isSab:true},
+    ...Array.from({length:5},(_,i)=>{
+      const dd=new Date(proxSeg); dd.setDate(proxSeg.getDate()+i);
+      return{ds:dd.toISOString().slice(0,10),nome:dd.toLocaleDateString('pt-BR',{weekday:'long'}),isSab:false};
+    })
+  ];
+
+  function secao(titulo,cor,icone,itens,ds){
+    if(!itens.length) return '';
+    return`<div style="margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:6px;padding:5px 8px;background:${cor}10;border-radius:7px;margin-bottom:8px;border-left:3px solid ${cor}">
+        <span>${icone}</span>
+        <span style="font-size:11px;font-weight:800;color:${cor};text-transform:uppercase">${titulo}</span>
+        <span style="font-size:11px;color:var(--text3);margin-left:auto">${itens.length}</span>
+      </div>
+      ${itens.map(p=>cardProg(p,ds)).join('')}
+    </div>`;
+  }
+
+  const colsHtml=diasCols.map(c=>{
+    const pd=porData[c.ds]||[];
     const val=pd.filter(p=>p.cesto_separado||p.status==='valetamento');
-    const gar=pd.filter(p=>['003','029'].includes(p.plano_num)&&!p.cesto_separado);
-    const pes=pd.filter(p=>p.plano_num==='002'&&!p.cesto_separado);
-    const lev=pd.filter(p=>p.plano_num==='001'&&!p.cesto_separado);
-    const out=pd.filter(p=>!['001','002','003','029'].includes(p.plano_num)&&!p.cesto_separado);
+    const gar=pd.filter(p=>['003','029'].includes(p.plano_num)&&!p.cesto_separado&&p.status!=='valetamento');
+    const pes=pd.filter(p=>p.plano_num==='002'&&!p.cesto_separado&&p.status!=='valetamento');
+    const lev=pd.filter(p=>p.plano_num==='001'&&!p.cesto_separado&&p.status!=='valetamento');
+    const avl=pd.filter(p=>!['001','002','003','029'].includes(p.plano_num)&&!p.cesto_separado&&p.status!=='valetamento');
+    const dtFmt=new Date(c.ds+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+    const total=pd.length;
+    const realiz=pd.filter(p=>p.status==='em_execucao'||p.status==='concluido').length;
+    const pct=total?Math.round(realiz/total*100):0;
 
-    const pill=(cor,label,n)=>n?`<div style="display:flex;align-items:center;gap:3px;background:${cor}18;border:1px solid ${cor}40;border-radius:4px;padding:2px 5px;margin-top:2px">
-      <span style="width:6px;height:6px;border-radius:50%;background:${cor};flex-shrink:0"></span>
-      <span style="font-size:9px;font-weight:700;color:${cor};white-space:nowrap">${label} (${n})</span>
-    </div>`:'';
-
-    return`<div onclick="${pd.length?`_progCalDiaSel='${ds}';_renderProgDia('${ds}')`:''}"
-      style="min-height:90px;border-radius:8px;padding:5px;cursor:${pd.length?'pointer':'default'};
-      border:${ehHoje?'2px solid #3B82F6':pd.length?'1px solid #8B5CF630':'1px solid transparent'};
-      background:${ehHoje?'#3B82F608':pd.length?'#8B5CF605':'transparent'};
-      opacity:${(!doMes&&!pd.length)||passado&&!pd.length?'0.25':'1'}">
-      <div style="font-size:11px;font-weight:${ehHoje||pd.length?'800':'400'};color:${ehHoje?'#3B82F6':doMes?'var(--text)':'var(--text4)'};text-align:right;margin-bottom:2px">${d.getDate()}</div>
-      ${pill('#06B6D4','📦 Valet',val.length)}
-      ${pill('#8B5CF6','🔒 Garan',gar.length)}
-      ${pill('#3B82F6','🔩 Pes',pes.length)}
-      ${pill('#22C55E','🔧 Leve',lev.length)}
-      ${pill('#F59E0B','⚡',out.length)}
+    return`<div style="flex:0 0 260px;width:260px">
+      <div style="text-align:center;padding:10px 8px;background:${c.isSab?'#06B6D415':'var(--surface2)'};border-radius:10px;margin-bottom:12px;border:1px solid ${c.isSab?'#06B6D440':'var(--border)'}">
+        <div style="font-size:13px;font-weight:800;text-transform:capitalize;color:${c.isSab?'#06B6D4':'var(--text)'}">${c.nome}</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:2px">${dtFmt} · ${total} item${total!==1?'s':''}</div>
+        ${total?`<div style="margin-top:6px;background:var(--border);border-radius:99px;height:4px;overflow:hidden"><div style="height:100%;width:${pct}%;background:#22C55E;border-radius:99px;transition:width .3s"></div></div>`:''}
+        ${total?`<div style="font-size:9px;color:${pct===100?'#22C55E':'var(--text3)'};margin-top:3px">${realiz}/${total} realizados</div>`:''}
+      </div>
+      ${secao('Valetamento','#06B6D4','📦',val,c.ds)}
+      ${secao('Garantia','#8B5CF6','🔒',gar,c.ds)}
+      ${secao('Pesada','#3B82F6','🔩',pes,c.ds)}
+      ${secao('Leve','#22C55E','🔧',lev,c.ds)}
+      ${secao('Avulsos','#F59E0B','⚡',avl,c.ds)}
+      ${!total?'<div style="text-align:center;padding:24px 8px;color:var(--text4);font-size:12px;border:1px dashed var(--border2);border-radius:10px">Sem itens</div>':''}
     </div>`;
   }).join('');
+
+  // ── KPIs ─────────────────────────────────────────────────
+  const total=lista.length;
+  const realizados=lista.filter(p=>p.status==='em_execucao'||p.status==='concluido').length;
+  const atrasados=lista.filter(p=>p.data_prevista<hoje&&p.status==='programado').length;
+  const semana=listaSemana.length;
 
   setMain(`${back}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-size:16px;font-weight:800">📅 Programações de Preventivas</div>
-        <div style="font-size:11px;color:var(--text3)">${filtroCarro?'Carro: '+filtroCarro:'Todas as programações confirmadas'}</div>
+        <div style="font-size:16px;font-weight:800">📋 Programações de Preventivas</div>
+        <div style="font-size:11px;color:var(--text3)">${filtroCarro?'Carro: '+filtroCarro:'Semana de '+new Date(proxSabStr+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' a '+new Date(proxSexStr+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</div>
       </div>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${filtroCarro?`<button onclick="renderPrevProgramadas()" class="btn-sm">✕ Limpar filtro</button>`:''}
-        <button onclick="renderAutoEscala()" class="btn-sm" style="background:#8B5CF618;border-color:#8B5CF640;color:#8B5CF6">🤖 Nova Escala</button>
+        ${isPCM?`<button onclick="renderAutoEscala()" class="btn-sm" style="background:#8B5CF618;border-color:#8B5CF640;color:#8B5CF6">🤖 Nova Escala</button>`:''}
       </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
-      <div class="kpi ${programados?'ok':'neu'}"><div class="kpi-label">Programados</div><div class="kpi-val" style="color:var(--blue)">${programados}</div></div>
-      <div class="kpi neu"><div class="kpi-label">Dias com prev.</div><div class="kpi-val">${datas.length}</div></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+      <div class="kpi neu"><div class="kpi-label">Total programado</div><div class="kpi-val" style="color:var(--blue)">${total}</div></div>
+      <div class="kpi neu"><div class="kpi-label">Esta semana</div><div class="kpi-val">${semana}</div></div>
+      <div class="kpi ${realizados?'ok':'neu'}"><div class="kpi-label">Realizados</div><div class="kpi-val" style="color:#22C55E">${realizados}</div></div>
       <div class="kpi ${atrasados?'nok':'ok'}"><div class="kpi-label">Atrasados</div><div class="kpi-val" style="color:${atrasados?'var(--red)':'var(--green)'}">${atrasados}</div></div>
     </div>
 
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-        <button onclick="_progCalMes='${mesAntStr}';renderPrevProgramadas('${filtroCarro}','${filtroPlano}')"
-          style="padding:6px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">← Anterior</button>
-        <span style="font-size:15px;font-weight:800">${meses[mesC-1]} ${anoC}</span>
-        <button onclick="_progCalMes='${mesProxStr}';renderPrevProgramadas('${filtroCarro}','${filtroPlano}')"
-          style="padding:6px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">Próximo →</button>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:6px">${cabCal}</div>
-      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">${celCal}</div>
-      <div style="display:flex;gap:12px;margin-top:12px;font-size:10px;flex-wrap:wrap">
-        <span style="color:#06B6D4">📦 Valetamento</span>
-        <span style="color:#8B5CF6">🔒 Garantia</span>
-        <span style="color:#3B82F6">🔩 Pesada</span>
-        <span style="color:#22C55E">🔧 Leve</span>
-        <span style="color:#F59E0B">⚡ Avulso</span>
-        <span style="color:var(--text4);margin-left:auto">Clique no dia para detalhar</span>
-      </div>
+    <!-- Grade da semana -->
+    <div style="display:flex;gap:14px;overflow-x:auto;padding-bottom:16px;align-items:flex-start">
+      ${colsHtml}
     </div>
 
-    <div id="prog-dia-detalhe"></div>
+    <!-- Próximas semanas (resumo) -->
+    ${listaFutura.length?`<div style="margin-top:8px">
+      <div style="font-size:12px;font-weight:700;color:var(--text3);margin-bottom:8px">📅 Próximas semanas — ${listaFutura.length} programadas</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${[...new Set(listaFutura.map(p=>p.data_prevista))].sort().map(ds=>{
+          const pd2=listaFutura.filter(p=>p.data_prevista===ds);
+          const dtf=new Date(ds+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+          return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer"
+            onclick="_progCalDiaSel='${ds}';_renderProgDiaSemana('${ds}')">
+            <div style="font-size:11px;font-weight:700;color:var(--text);text-transform:capitalize">${dtf}</div>
+            <div style="font-size:10px;color:var(--text3)">${pd2.length} itens</div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div id="prog-dia-detalhe" style="margin-top:12px"></div>
+    </div>`:''}
+    <div style="height:40px"></div>
   `);
-
-  // Abre automaticamente o próximo dia com programação
-  const proxDia=datas.find(d=>d>=hoje)||datas[0];
-  if(proxDia) setTimeout(()=>_renderProgDia(proxDia),80);
-
-  // Guardar dados para uso pelo _renderProgDia sem refetch
-  window._progListaCache={lista,escalasMap,porData};
 }
 
-function _renderProgDia(ds){
-  const detalhe=document.getElementById('prog-dia-detalhe');
-  if(!detalhe) return;
-  const hoje=new Date().toISOString().slice(0,10);
-  const cache=window._progListaCache||{};
-  const pd=(cache.porData||{})[ds]||[];
-  if(!pd.length){detalhe.innerHTML='';return;}
-  const escalasMap=cache.escalasMap||{};
+// Guardar lista para uso pelo detalhe sem refetch
+window._progListaCache={};
 
+async function _renderProgDiaSemana(ds){
+  const gid=getGid();
+  const detalhe=document.getElementById('prog-dia-detalhe');
+  if(!detalhe)return;
+  const{data:pd}=await sb.from('programacao_preventiva').select('*')
+    .eq('garagem_id',gid).eq('data_prevista',ds).order('prefixo');
+  if(!pd?.length){detalhe.innerHTML='';return;}
+  const dataFmt=new Date(ds+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
   function corP(p){
     if(p.cesto_separado) return '#06B6D4';
     if(['003','029'].includes(p.plano_num)) return '#8B5CF6';
@@ -6808,55 +6856,25 @@ function _renderProgDia(ds){
     if(p.plano_num==='001') return '#22C55E';
     return '#F59E0B';
   }
+  const rows=pd.map(p=>`<div style="background:var(--surface);border:1.5px solid ${corP(p)}40;border-left:4px solid ${corP(p)};border-radius:10px;padding:10px 12px;margin-bottom:6px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:800;color:${corP(p)}">${p.prefixo}</span>
+      <span style="font-size:11px;color:var(--text2)">${p.plano_nome.split(' - ')[0]}</span>
+      <span style="background:${corP(p)}18;color:${corP(p)};border:1px solid ${corP(p)}40;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700;margin-left:auto">T${p.turno}</span>
+    </div>
+    ${p.observacao?`<div style="font-size:10px;color:var(--text4);margin-top:3px">💬 ${p.observacao.split('|')[0].trim()}</div>`:''}
+  </div>`).join('');
+  detalhe.innerHTML=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px">
+    <div style="font-size:13px;font-weight:800;margin-bottom:12px;text-transform:capitalize">${dataFmt} · ${pd.length} preventiva${pd.length>1?'s':''}</div>
+    ${rows}
+  </div>`;
+}
 
-  const dataFmt=new Date(ds+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
-  const atrasado=(p)=>p.status==='programado'&&ds<hoje;
-
-  const rows=pd.map(p=>{
-    const cor=corP(p);
-    const esc=escalasMap[p.prefixo+'::'+ds];
-    const tags=[
-      p.cesto_separado?`<span style="background:#06B6D418;color:#06B6D4;border:1px solid #06B6D440;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700">📦 Cesto</span>`:'',
-      ['003','029'].includes(p.plano_num)?`<span style="background:#8B5CF618;color:#8B5CF6;border:1px solid #8B5CF640;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700">GARAN</span>`:'',
-      p.turno?`<span style="background:${cor}18;color:${cor};border:1px solid ${cor}40;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700">T${p.turno}</span>`:'',
-      atrasado(p)?`<span style="background:#EF444418;color:#EF4444;border:1px solid #EF444440;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700">⚠️ Atrasado</span>`:'',
-      esc?`<span style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:10px;color:var(--text3)">🚌 ${esc.linha||'—'}</span>`:'',
-    ].filter(Boolean).join('');
-
-    return`<div style="background:var(--surface);border:1.5px solid ${atrasado(p)?'#EF444430':cor+'40'};border-left:4px solid ${cor};border-radius:10px;padding:12px 14px;margin-bottom:8px">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
-        <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px">
-            <span style="font-family:'DM Mono',monospace;font-size:15px;font-weight:800;color:${cor}">${p.prefixo}</span>
-            <span style="font-size:12px;font-weight:600;color:var(--text2)">${p.plano_num} · ${p.plano_nome}</span>
-          </div>
-          <div style="display:flex;gap:5px;flex-wrap:wrap">${tags}</div>
-          ${p.observacao?`<div style="font-size:10px;color:var(--text4);margin-top:5px;line-height:1.4">💬 ${p.observacao}</div>`:''}
-        </div>
-        <button onclick="cancelarProgPrev('${p.id}')"
-          style="padding:4px 10px;border-radius:7px;border:1px solid #EF444430;background:transparent;color:#EF4444;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;flex-shrink:0">❌</button>
-      </div>
-    </div>`;
-  }).join('');
-
-  // Separar por tipo para o cabeçalho
-  const val=pd.filter(p=>p.cesto_separado).length;
-  const gar=pd.filter(p=>['003','029'].includes(p.plano_num)&&!p.cesto_separado).length;
-  const pes=pd.filter(p=>p.plano_num==='002'&&!p.cesto_separado).length;
-  const lev=pd.filter(p=>p.plano_num==='001'&&!p.cesto_separado).length;
-  const avul=pd.filter(p=>!['001','002','003','029'].includes(p.plano_num)&&!p.cesto_separado).length;
-  const resumo=[val?`📦 ${val}`:'',gar?`🔒 ${gar}`:'',pes?`🔩 ${pes}`:'',lev?`🔧 ${lev}`:'',avul?`⚡ ${avul}`:''].filter(Boolean).join(' · ');
-
-  detalhe.innerHTML=`
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div>
-          <div style="font-size:13px;font-weight:800;color:var(--text);text-transform:capitalize">${dataFmt}</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">${pd.length} preventiva${pd.length>1?'s':''} · ${resumo}</div>
-        </div>
-      </div>
-      ${rows}
-    </div>`;
+async function marcarPreventiva(id, novoStatus){
+  const{error}=await sb.from('programacao_preventiva').update({status:novoStatus,updated_at:new Date().toISOString()}).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast(novoStatus==='em_execucao'?'✅ Marcado como realizado':'↩️ Desmarcado');
+  renderPrevProgramadas();
 }
 
 async function cancelarProgPrev(id){
@@ -6864,7 +6882,6 @@ async function cancelarProgPrev(id){
   const{error}=await sb.from('programacao_preventiva').update({status:'cancelado',updated_at:new Date().toISOString()}).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
   toast('Programação cancelada');
-  _progCalMes=null;
   renderPrevProgramadas();
 }
 
