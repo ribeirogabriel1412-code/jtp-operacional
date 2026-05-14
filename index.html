@@ -6651,16 +6651,19 @@ async function renderPrevProgramadas(filtroCarro='',filtroPlano=''){
   const back=`<button class="btn-back" onclick="renderFerrPrev()">← Painel Preventivas</button>`;
   setMain(`<div class="loading"><div class="spinner"></div> Carregando...</div>`);
 
-  // Carrega todas as programações ativas
+  // Limpar rascunho ao entrar nas programações — tela livre para próxima execução
+  window._escalaRascunho = null;
+
   let q=sb.from('programacao_preventiva').select('*').eq('garagem_id',gid)
-    .in('status',['programado','em_execucao']).order('data_prevista',{ascending:true}).limit(200);
+    .in('status',['programado','em_execucao']).order('data_prevista',{ascending:true}).limit(500);
   if(filtroCarro) q=q.eq('prefixo',filtroCarro);
   const{data:progs}=await q;
   const lista=progs||[];
 
-  // Carrega escala dos próximos 60 dias para cruzamento
   const hoje=new Date().toISOString().slice(0,10);
   const em60=new Date(Date.now()+60*86400000).toISOString().slice(0,10);
+
+  // Cruzamento com escala (horário de recolha)
   let escalasMap={};
   try{
     const{data:sol}=await sb.from('soltura_2_10').select('prefixo,data,linha,horario_fim,horario_programado')
@@ -6668,193 +6671,189 @@ async function renderPrevProgramadas(filtroCarro='',filtroPlano=''){
     (sol||[]).forEach(s=>{ escalasMap[s.prefixo+'::'+s.data]=s; });
   }catch(e){}
 
-  // Agrupa por data
+  // Agrupar por data
   const porData={};
-  lista.forEach(p=>{
-    if(!porData[p.data_prevista]) porData[p.data_prevista]=[];
-    porData[p.data_prevista].push(p);
-  });
-
+  lista.forEach(p=>{ if(!porData[p.data_prevista]) porData[p.data_prevista]=[]; porData[p.data_prevista].push(p); });
   const datas=Object.keys(porData).sort();
-  const atrasados=lista.filter(p=>p.data_prevista<hoje).length;
   const programados=lista.length;
+  const atrasados=lista.filter(p=>p.data_prevista<hoje).length;
 
-  // ── CALENDÁRIO ────────────────────────────────────────────
-  // Mês base: mês atual ou o primeiro mês com programações
+  // ── Mês do calendário ──────────────────────────────────────
   if(!_progCalMes){
-    const primData=datas[0]||hoje;
-    _progCalMes=primData.slice(0,7); // 'YYYY-MM'
+    const primData=datas.find(d=>d>=hoje)||hoje;
+    _progCalMes=primData.slice(0,7);
   }
   const [anoC,mesC]=_progCalMes.split('-').map(Number);
-  const meses=['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
-               'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-  const mesAnterior=new Date(anoC,mesC-2,1);
-  const mesProximo=new Date(anoC,mesC,1);
-  const mesAntStr=mesAnterior.getFullYear()+'-'+(mesAnterior.getMonth()+1).toString().padStart(2,'0');
-  const mesProxStr=mesProximo.getFullYear()+'-'+(mesProximo.getMonth()+1).toString().padStart(2,'0');
+  const meses=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const mesAnt=new Date(anoC,mesC-2,1);
+  const mesProx=new Date(anoC,mesC,1);
+  const mesAntStr=mesAnt.getFullYear()+'-'+(mesAnt.getMonth()+1).toString().padStart(2,'0');
+  const mesProxStr=mesProx.getFullYear()+'-'+(mesProx.getMonth()+1).toString().padStart(2,'0');
 
-  // Primeiro dia do mês e dia da semana
   const primeiroDia=new Date(anoC,mesC-1,1);
-  const ultimoDia=new Date(anoC,mesC,0);
   const inicioCal=new Date(primeiroDia);
   const dsem=primeiroDia.getDay();
   inicioCal.setDate(primeiroDia.getDate()-(dsem===0?6:dsem-1));
 
-  // Gerar células do calendário (6 semanas)
-  const celulas=[];
-  for(let i=0;i<42;i++){
-    const d=new Date(inicioCal);
-    d.setDate(inicioCal.getDate()+i);
-    celulas.push(d);
-  }
+  const celulas=Array.from({length:42},(_,i)=>{const d=new Date(inicioCal);d.setDate(inicioCal.getDate()+i);return d;});
 
   const cabCal=['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'].map(d=>
-    `<div style="font-size:10px;font-weight:700;color:var(--text4);text-align:center;padding:4px">${d}</div>`
+    `<div style="font-size:10px;font-weight:700;color:var(--text4);text-align:center;padding:4px 0">${d}</div>`
   ).join('');
+
+  // Cor por tipo de plano
+  function corProg(p){
+    if(p.status==='valetamento'||p.cesto_separado) return '#06B6D4';
+    if(['003','029'].includes(p.plano_num)) return '#8B5CF6';
+    if(p.plano_num==='002') return '#3B82F6';
+    if(p.plano_num==='001') return '#22C55E';
+    return '#F59E0B';
+  }
 
   const celCal=celulas.map(d=>{
     const ds=d.toISOString().split('T')[0];
     const doMes=d.getMonth()+1===mesC;
     const ehHoje=ds===hoje;
     const passado=ds<hoje;
-    const progs_dia=porData[ds]||[];
-    const temProg=progs_dia.length>0;
+    const pd=porData[ds]||[];
 
-    const bgCell=ehHoje?'#2563EB08':temProg?'#8B5CF608':'transparent';
-    const bordCell=ehHoje?'2px solid var(--blue)':temProg?'1px solid #8B5CF640':'1px solid transparent';
-    const opCell=(!doMes||passado)&&!temProg?'0.3':'1';
+    // Agrupar por tipo para mini-view
+    const val=pd.filter(p=>p.cesto_separado||p.status==='valetamento');
+    const gar=pd.filter(p=>['003','029'].includes(p.plano_num)&&!p.cesto_separado);
+    const pes=pd.filter(p=>p.plano_num==='002'&&!p.cesto_separado);
+    const lev=pd.filter(p=>p.plano_num==='001'&&!p.cesto_separado);
+    const out=pd.filter(p=>!['001','002','003','029'].includes(p.plano_num)&&!p.cesto_separado);
 
-    // Mini-cards das preventivas do dia
-    const miniCards=progs_dia.slice(0,3).map(p=>{
-      const escala=escalasMap[p.prefixo+'::'+ds];
-      const turCor=p.turno==='A'?'#F59E0B':'#8B5CF6';
-      const horRecolha=escala?.horario_fim||'—';
-      return`<div style="background:${turCor}18;border-left:2px solid ${turCor};border-radius:3px;padding:2px 4px;margin-top:2px;font-size:9px;line-height:1.3">
-        <span style="font-family:'DM Mono',monospace;font-weight:700;color:${turCor}">${p.prefixo}</span>
-        <span style="color:var(--text4)"> T${p.turno}</span>
-        ${escala?`<span style="color:var(--text4)"> · ${escala.linha||''} ${horRecolha!='—'?horRecolha:''}</span>`:''}
-      </div>`;
-    }).join('');
-    const mais=progs_dia.length>3?`<div style="font-size:9px;color:var(--text4);margin-top:1px">+${progs_dia.length-3} mais</div>`:'';
+    const pill=(cor,label,n)=>n?`<div style="display:flex;align-items:center;gap:3px;background:${cor}18;border:1px solid ${cor}40;border-radius:4px;padding:2px 5px;margin-top:2px">
+      <span style="width:6px;height:6px;border-radius:50%;background:${cor};flex-shrink:0"></span>
+      <span style="font-size:9px;font-weight:700;color:${cor};white-space:nowrap">${label} (${n})</span>
+    </div>`:'';
 
-    return`<div style="min-height:80px;border-radius:8px;border:${bordCell};background:${bgCell};padding:4px;opacity:${opCell};cursor:${temProg?'pointer':'default'}" ${temProg?`onclick="_progCalDiaSel='${ds}';_renderProgDia('${ds}',this)"`:''}>
-      <div style="font-size:12px;font-weight:${ehHoje||temProg?'800':'400'};color:${ehHoje?'var(--blue)':doMes?'var(--text2)':'var(--text4)'};text-align:right;margin-bottom:2px">${d.getDate()}</div>
-      ${miniCards}${mais}
+    return`<div onclick="${pd.length?`_progCalDiaSel='${ds}';_renderProgDia('${ds}')`:''}"
+      style="min-height:90px;border-radius:8px;padding:5px;cursor:${pd.length?'pointer':'default'};
+      border:${ehHoje?'2px solid #3B82F6':pd.length?'1px solid #8B5CF630':'1px solid transparent'};
+      background:${ehHoje?'#3B82F608':pd.length?'#8B5CF605':'transparent'};
+      opacity:${(!doMes&&!pd.length)||passado&&!pd.length?'0.25':'1'}">
+      <div style="font-size:11px;font-weight:${ehHoje||pd.length?'800':'400'};color:${ehHoje?'#3B82F6':doMes?'var(--text)':'var(--text4)'};text-align:right;margin-bottom:2px">${d.getDate()}</div>
+      ${pill('#06B6D4','📦 Valet',val.length)}
+      ${pill('#8B5CF6','🔒 Garan',gar.length)}
+      ${pill('#3B82F6','🔩 Pes',pes.length)}
+      ${pill('#22C55E','🔧 Leve',lev.length)}
+      ${pill('#F59E0B','⚡',out.length)}
     </div>`;
   }).join('');
 
-  // ── LISTA DETALHADA (ao clicar num dia) ───────────────────
-  // Renderizada por _renderProgDia()
-
-  const kpiAtras=`<div class="kpi ${atrasados>0?'nok':'ok'}"><div class="kpi-label">Atrasados</div><div class="kpi-val" style="color:${atrasados>0?'var(--red)':'var(--green)'}">${atrasados}</div></div>`;
-
   setMain(`${back}
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-size:16px;font-weight:800">📅 Calendário de Preventivas</div>
-        <div style="font-size:11px;color:var(--text3)">${filtroCarro?'Filtrado: '+filtroCarro:'Todas as programações'}</div>
+        <div style="font-size:16px;font-weight:800">📅 Programações de Preventivas</div>
+        <div style="font-size:11px;color:var(--text3)">${filtroCarro?'Carro: '+filtroCarro:'Todas as programações confirmadas'}</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        ${filtroCarro?`<button onclick="renderPrevProgramadas()" class="btn-sm">✕ Limpar filtro</button>`:''}
+        <button onclick="renderAutoEscala()" class="btn-sm" style="background:#8B5CF618;border-color:#8B5CF640;color:#8B5CF6">🤖 Nova Escala</button>
       </div>
     </div>
 
-    <!-- KPIs -->
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
-      <div class="kpi neu"><div class="kpi-label">Programados</div><div class="kpi-val" style="color:var(--blue)">${programados}</div></div>
+      <div class="kpi ${programados?'ok':'neu'}"><div class="kpi-label">Programados</div><div class="kpi-val" style="color:var(--blue)">${programados}</div></div>
       <div class="kpi neu"><div class="kpi-label">Dias com prev.</div><div class="kpi-val">${datas.length}</div></div>
-      ${kpiAtras}
+      <div class="kpi ${atrasados?'nok':'ok'}"><div class="kpi-label">Atrasados</div><div class="kpi-val" style="color:${atrasados?'var(--red)':'var(--green)'}">${atrasados}</div></div>
     </div>
 
-    <!-- Calendário -->
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px">
-      <!-- Navegação mês -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
         <button onclick="_progCalMes='${mesAntStr}';renderPrevProgramadas('${filtroCarro}','${filtroPlano}')"
-          style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">← Anterior</button>
+          style="padding:6px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">← Anterior</button>
         <span style="font-size:15px;font-weight:800">${meses[mesC-1]} ${anoC}</span>
         <button onclick="_progCalMes='${mesProxStr}';renderPrevProgramadas('${filtroCarro}','${filtroPlano}')"
-          style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">Próximo →</button>
+          style="padding:6px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">Próximo →</button>
       </div>
-      <!-- Grid dias da semana -->
-      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:4px">${cabCal}</div>
-      <!-- Grid dias -->
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:6px">${cabCal}</div>
       <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">${celCal}</div>
-      <!-- Legenda -->
-      <div style="display:flex;gap:16px;margin-top:12px;font-size:10px;color:var(--text3)">
-        <span>🟡 Turno A</span><span>🟣 Turno B</span><span style="color:var(--blue)">● Hoje</span>
-        <span style="color:var(--text4)">Clique no dia para detalhar</span>
+      <div style="display:flex;gap:12px;margin-top:12px;font-size:10px;flex-wrap:wrap">
+        <span style="color:#06B6D4">📦 Valetamento</span>
+        <span style="color:#8B5CF6">🔒 Garantia</span>
+        <span style="color:#3B82F6">🔩 Pesada</span>
+        <span style="color:#22C55E">🔧 Leve</span>
+        <span style="color:#F59E0B">⚡ Avulso</span>
+        <span style="color:var(--text4);margin-left:auto">Clique no dia para detalhar</span>
       </div>
     </div>
 
-    <!-- Detalhe do dia selecionado (preenchido por _renderProgDia) -->
     <div id="prog-dia-detalhe"></div>
   `);
 
-  // Abre automaticamente o primeiro dia com programação
-  if(datas.length>0){
-    const primDia=datas.find(d=>d>=hoje)||datas[0];
-    if(primDia) setTimeout(()=>_renderProgDiaById(primDia,lista,escalasMap),50);
-  }
+  // Abre automaticamente o próximo dia com programação
+  const proxDia=datas.find(d=>d>=hoje)||datas[0];
+  if(proxDia) setTimeout(()=>_renderProgDia(proxDia),80);
+
+  // Guardar dados para uso pelo _renderProgDia sem refetch
+  window._progListaCache={lista,escalasMap,porData};
 }
 
-function _renderProgDia(ds, elClicado){
-  // Recarrega o detalhe sem refazer o calendário
-  const gid=getGid();
-  const hoje=new Date().toISOString().slice(0,10);
-  // Busca lista atual do porData via DOM query
-  _renderProgDiaById(ds,null,null);
-}
-
-async function _renderProgDiaById(ds,listaPre,escalasMapPre){
-  const gid=getGid();
-  const hoje=new Date().toISOString().slice(0,10);
+function _renderProgDia(ds){
   const detalhe=document.getElementById('prog-dia-detalhe');
   if(!detalhe) return;
+  const hoje=new Date().toISOString().slice(0,10);
+  const cache=window._progListaCache||{};
+  const pd=(cache.porData||{})[ds]||[];
+  if(!pd.length){detalhe.innerHTML='';return;}
+  const escalasMap=cache.escalasMap||{};
 
-  let lista=listaPre;
-  let escalasMap=escalasMapPre;
-
-  if(!lista){
-    const{data:p}=await sb.from('programacao_preventiva').select('*')
-      .eq('garagem_id',gid).eq('data_prevista',ds).order('prefixo');
-    lista=p||[];
-  }
-  const progsDia=(lista||[]).filter(p=>p.data_prevista===ds);
-  if(!progsDia.length){detalhe.innerHTML='';return;}
-
-  if(!escalasMap){
-    escalasMap={};
-    try{
-      const{data:sol}=await sb.from('soltura_2_10').select('prefixo,data,linha,horario_fim,horario_programado')
-        .eq('garagem_id',gid).eq('data',ds);
-      (sol||[]).forEach(s=>{ escalasMap[s.prefixo+'::'+s.data]=s; });
-    }catch(e){}
+  function corP(p){
+    if(p.cesto_separado) return '#06B6D4';
+    if(['003','029'].includes(p.plano_num)) return '#8B5CF6';
+    if(p.plano_num==='002') return '#3B82F6';
+    if(p.plano_num==='001') return '#22C55E';
+    return '#F59E0B';
   }
 
   const dataFmt=new Date(ds+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
-  const rows=progsDia.map(p=>{
-    const escala=escalasMap[p.prefixo+'::'+ds];
-    const turCor=p.turno==='A'?'#F59E0B':'#8B5CF6';
-    const atrasado=p.status==='programado'&&ds<hoje;
-    return`<div style="display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;border:1px solid ${atrasado?'#EF444430':'var(--border2)'};background:${atrasado?'#EF444408':'var(--surface)'};margin-bottom:6px">
-      <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:800;color:var(--blue)">${p.prefixo}</div>
-      <div>
-        <div style="font-size:12px;font-weight:700;color:var(--text2)">${p.plano_num} · ${p.plano_nome}</div>
-        <div style="display:flex;gap:8px;margin-top:3px;flex-wrap:wrap">
-          <span style="background:${turCor}20;border:1px solid ${turCor}40;color:${turCor};border-radius:5px;padding:1px 7px;font-size:10px;font-weight:700">T${p.turno}</span>
-          ${p.cesto_separado?'<span style="background:#00C48C18;border:1px solid #00C48C40;color:var(--green);border-radius:5px;padding:1px 7px;font-size:10px;font-weight:700">📦 Cesto OK</span>':'<span style="background:#F59E0B18;border:1px solid #F59E0B40;color:var(--amber);border-radius:5px;padding:1px 7px;font-size:10px;font-weight:700">⚠️ Cesto</span>'}
-          ${atrasado?'<span style="background:#EF444418;color:var(--red);border-radius:5px;padding:1px 7px;font-size:10px;font-weight:700">⚠️ Atrasado</span>':''}
-          ${escala?`<span style="background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:1px 7px;font-size:10px;color:var(--text3)">🚌 ${escala.linha||'—'} · Recolha ${escala.horario_fim||escala.horario_programado||'—'}</span>`:'<span style="background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:1px 7px;font-size:10px;color:var(--text4)">Escala não importada</span>'}
+  const atrasado=(p)=>p.status==='programado'&&ds<hoje;
+
+  const rows=pd.map(p=>{
+    const cor=corP(p);
+    const esc=escalasMap[p.prefixo+'::'+ds];
+    const tags=[
+      p.cesto_separado?`<span style="background:#06B6D418;color:#06B6D4;border:1px solid #06B6D440;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700">📦 Cesto</span>`:'',
+      ['003','029'].includes(p.plano_num)?`<span style="background:#8B5CF618;color:#8B5CF6;border:1px solid #8B5CF640;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700">GARAN</span>`:'',
+      p.turno?`<span style="background:${cor}18;color:${cor};border:1px solid ${cor}40;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700">T${p.turno}</span>`:'',
+      atrasado(p)?`<span style="background:#EF444418;color:#EF4444;border:1px solid #EF444440;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700">⚠️ Atrasado</span>`:'',
+      esc?`<span style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:10px;color:var(--text3)">🚌 ${esc.linha||'—'}</span>`:'',
+    ].filter(Boolean).join('');
+
+    return`<div style="background:var(--surface);border:1.5px solid ${atrasado(p)?'#EF444430':cor+'40'};border-left:4px solid ${cor};border-radius:10px;padding:12px 14px;margin-bottom:8px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px">
+            <span style="font-family:'DM Mono',monospace;font-size:15px;font-weight:800;color:${cor}">${p.prefixo}</span>
+            <span style="font-size:12px;font-weight:600;color:var(--text2)">${p.plano_num} · ${p.plano_nome}</span>
+          </div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap">${tags}</div>
+          ${p.observacao?`<div style="font-size:10px;color:var(--text4);margin-top:5px;line-height:1.4">💬 ${p.observacao}</div>`:''}
         </div>
-        ${p.observacao?`<div style="font-size:10px;color:var(--text4);margin-top:3px">💬 ${p.observacao}</div>`:''}
+        <button onclick="cancelarProgPrev('${p.id}')"
+          style="padding:4px 10px;border-radius:7px;border:1px solid #EF444430;background:transparent;color:#EF4444;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;flex-shrink:0">❌</button>
       </div>
-      <button onclick="cancelarProgPrev('${p.id}')"
-        style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text4);font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">❌</button>
     </div>`;
   }).join('');
 
+  // Separar por tipo para o cabeçalho
+  const val=pd.filter(p=>p.cesto_separado).length;
+  const gar=pd.filter(p=>['003','029'].includes(p.plano_num)&&!p.cesto_separado).length;
+  const pes=pd.filter(p=>p.plano_num==='002'&&!p.cesto_separado).length;
+  const lev=pd.filter(p=>p.plano_num==='001'&&!p.cesto_separado).length;
+  const avul=pd.filter(p=>!['001','002','003','029'].includes(p.plano_num)&&!p.cesto_separado).length;
+  const resumo=[val?`📦 ${val}`:'',gar?`🔒 ${gar}`:'',pes?`🔩 ${pes}`:'',lev?`🔧 ${lev}`:'',avul?`⚡ ${avul}`:''].filter(Boolean).join(' · ');
+
   detalhe.innerHTML=`
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px">
-      <div style="font-size:13px;font-weight:800;margin-bottom:10px;color:var(--text2)">
-        📋 ${dataFmt} — ${progsDia.length} preventiva${progsDia.length>1?'s':''}
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div>
+          <div style="font-size:13px;font-weight:800;color:var(--text);text-transform:capitalize">${dataFmt}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${pd.length} preventiva${pd.length>1?'s':''} · ${resumo}</div>
+        </div>
       </div>
       ${rows}
     </div>`;
@@ -6865,10 +6864,9 @@ async function cancelarProgPrev(id){
   const{error}=await sb.from('programacao_preventiva').update({status:'cancelado',updated_at:new Date().toISOString()}).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
   toast('Programação cancelada');
+  _progCalMes=null;
   renderPrevProgramadas();
 }
-
-
 
 async function renderFerr211(){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
