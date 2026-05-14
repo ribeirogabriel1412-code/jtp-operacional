@@ -2659,9 +2659,9 @@ function abrirRelatorioManual(){
     <div style="display:flex;flex-direction:column;gap:14px">
       <div style="background:var(--surface2);border-radius:10px;padding:12px;font-size:12px;color:var(--text3)">
         Selecione o <strong style="color:var(--text)">dia de referência do turno</strong>.<br>
-        O sistema buscará:<br>
-        • Abastecimentos das <strong style="color:var(--blue)">19h do dia anterior</strong> até as <strong style="color:var(--blue)">08h do dia selecionado</strong><br>
-        • Recolhas com <strong style="color:var(--blue)">data_recolha = dia selecionado</strong>
+        O sistema buscará na mesma janela de horário:<br>
+        • ⛽ Abastecimentos registrados no período<br>
+        • 🔑 Recolhas registradas no período
       </div>
 
       <div>
@@ -2764,9 +2764,11 @@ async function confirmarRelatorioManual(){
     if(fech?.[0]?.detalhes) listaAbast=fech[0].detalhes;
   }
 
-  // Buscar recolhas da data selecionada
+  // Buscar recolhas na mesma janela de horário do abastecimento (created_at)
   const{data:recolhas}=await sb.from('recolha_checklist').select('*')
-    .eq('garagem_id',gid).eq('data_recolha',data).order('prefixo');
+    .eq('garagem_id',gid)
+    .gte('created_at',tsInicio).lte('created_at',tsFim)
+    .order('prefixo');
 
   closeSheet(true);
 
@@ -2784,12 +2786,23 @@ async function confirmarRelatorioManual(){
 // ══════════════════════════════════════════════════════════
 async function gerarRelatorioFechamento(gid, data, listaAbast, recolhasExternas, turnoRef){
   try{
-    // 1. Buscar dados de recolha (usa externas se fornecidas, senão busca da data)
+    // 1. Buscar dados de recolha (usa externas se fornecidas, senão busca pela janela ou data)
     let recolhas=recolhasExternas;
     if(!recolhas){
+      // Janela noturna padrão: 19h do dia anterior até 08h da data
+      const ant=new Date(data+'T19:00:00');ant.setDate(ant.getDate()-1);
+      const tsIni=ant.toISOString();
+      const tsFi=new Date(data+'T08:00:00').toISOString();
       const{data:r}=await sb.from('recolha_checklist').select('*')
-        .eq('garagem_id',gid).eq('data_recolha',data).order('prefixo');
-      recolhas=r||[];
+        .eq('garagem_id',gid)
+        .gte('created_at',tsIni).lte('created_at',tsFi)
+        .order('prefixo');
+      // Fallback: se não achar por horário, busca pela data
+      if(r?.length){recolhas=r;}else{
+        const{data:r2}=await sb.from('recolha_checklist').select('*')
+          .eq('garagem_id',gid).eq('data_recolha',data).order('prefixo');
+        recolhas=r2||[];
+      }
     }
 
     // 2. Buscar nome da garagem
