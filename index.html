@@ -6787,19 +6787,27 @@ async function renderPrevProgramadas(filtroCarro='',filtroPlano=''){
     const realiz=pd.filter(p=>p.status==='em_execucao'||p.status==='concluido').length;
     const pct=total?Math.round(realiz/total*100):0;
 
+    const pctCor   = pct===100 ? '#22C55E' : 'var(--text3)';
+    const colBg    = c.isSab ? '#06B6D415' : 'var(--surface2)';
+    const colBord  = c.isSab ? '#06B6D440' : 'var(--border)';
+    const colCor   = c.isSab ? '#06B6D4'   : 'var(--text)';
+    const barraHtml  = total ? `<div style="margin-top:6px;background:var(--border);border-radius:99px;height:4px;overflow:hidden"><div style="height:100%;width:${pct}%;background:#22C55E;border-radius:99px;transition:width .3s"></div></div>` : '';
+    const realizHtml = total ? `<div style="font-size:9px;color:${pctCor};margin-top:3px">${realiz}/${total} realizados</div>` : '';
+    const semItens   = !total ? '<div style="text-align:center;padding:24px 8px;color:var(--text4);font-size:12px;border:1px dashed var(--border2);border-radius:10px">Sem itens</div>' : '';
+
     return`<div style="flex:0 0 260px;width:260px">
-      <div style="text-align:center;padding:10px 8px;background:${c.isSab?'#06B6D415':'var(--surface2)'};border-radius:10px;margin-bottom:12px;border:1px solid ${c.isSab?'#06B6D440':'var(--border)'}">
-        <div style="font-size:13px;font-weight:800;text-transform:capitalize;color:${c.isSab?'#06B6D4':'var(--text)'}">${c.nome}</div>
+      <div style="text-align:center;padding:10px 8px;background:${colBg};border-radius:10px;margin-bottom:12px;border:1px solid ${colBord}">
+        <div style="font-size:13px;font-weight:800;text-transform:capitalize;color:${colCor}">${c.nome}</div>
         <div style="font-size:10px;color:var(--text3);margin-top:2px">${dtFmt} · ${total} item${total!==1?'s':''}</div>
-        ${total?`<div style="margin-top:6px;background:var(--border);border-radius:99px;height:4px;overflow:hidden"><div style="height:100%;width:${pct}%;background:#22C55E;border-radius:99px;transition:width .3s"></div></div>`:''}
-        ${total?`<div style="font-size:9px;color:${pct===100?'#22C55E':'var(--text3)'};margin-top:3px">${realiz}/${total} realizados</div>`:''}
+        ${barraHtml}
+        ${realizHtml}
       </div>
       ${secao('Valetamento','#06B6D4','📦',val,c.ds)}
       ${secao('Garantia','#8B5CF6','🔒',gar,c.ds)}
       ${secao('Pesada','#3B82F6','🔩',pes,c.ds)}
       ${secao('Leve','#22C55E','🔧',lev,c.ds)}
       ${secao('Avulsos','#F59E0B','⚡',avl,c.ds)}
-      ${!total?'<div style="text-align:center;padding:24px 8px;color:var(--text4);font-size:12px;border:1px dashed var(--border2);border-radius:10px">Sem itens</div>':''}
+      ${semItens}
     </div>`;
   }).join('');
 
@@ -6816,8 +6824,8 @@ async function renderPrevProgramadas(filtroCarro='',filtroPlano=''){
         <div style="font-size:11px;color:var(--text3)">${filtroCarro?'Carro: '+filtroCarro:'Semana de '+new Date(proxSabStr+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' a '+new Date(proxSexStr+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${filtroCarro?`<button onclick="renderPrevProgramadas()" class="btn-sm">✕ Limpar filtro</button>`:''}
-        ${isPCM?`<button onclick="renderAutoEscala()" class="btn-sm" style="background:#8B5CF618;border-color:#8B5CF640;color:#8B5CF6">🤖 Nova Escala</button>`:''}
+        ${filtroCarro ? '<button onclick="renderPrevProgramadas()" class="btn-sm">✕ Limpar filtro</button>' : ''}
+        ${isPCM ? '<button onclick="renderAutoEscala()" class="btn-sm" style="background:#8B5CF618;border-color:#8B5CF640;color:#8B5CF6">🤖 Nova Escala</button>' : ''}
       </div>
     </div>
 
@@ -6877,7 +6885,7 @@ async function _renderProgDiaSemana(ds){
       <span style="font-size:11px;color:var(--text2)">${p.plano_nome.split(' - ')[0]}</span>
       <span style="background:${corP(p)}18;color:${corP(p)};border:1px solid ${corP(p)}40;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700;margin-left:auto">T${p.turno}</span>
     </div>
-    ${p.observacao?`<div style="font-size:10px;color:var(--text4);margin-top:3px">💬 ${p.observacao.split('|')[0].trim()}</div>`:''}
+    ${p.observacao ? '<div style="font-size:10px;color:var(--text4);margin-top:3px">💬 '+p.observacao.split('|')[0].trim()+'</div>' : ''}
   </div>`).join('');
   detalhe.innerHTML=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px">
     <div style="font-size:13px;font-weight:800;margin-bottom:12px;text-transform:capitalize">${dataFmt} · ${pd.length} preventiva${pd.length>1?'s':''}</div>
