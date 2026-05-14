@@ -2650,48 +2650,62 @@ async function confirmarPlano(){
 
 
 
-// ── Helper: Gerar PDF via Blob URL + nova aba ─────────────────────────
-// Funciona no Android Chrome sem popup bloqueado
-// O título da aba vira o nome sugerido no "Salvar como PDF"
-function downloadPDF(html, nomeArquivo){
-  const nomePDF = nomeArquivo.replace('.html','.pdf');
+// ── Helper: Gerar e compartilhar PDF ──────────────────────────────────
+// Estratégia: Web Share API (compartilha arquivo real) → fallback download
+async function downloadPDF(html, nomeArquivo){
+  const nomePDF = nomeArquivo.replace('.html','').replace('.pdf','')+'.pdf';
 
-  // Injeta título + script de print automático no HTML
+  // HTML final com título e print automático
   const htmlFinal = html
-    .replace('<title>','<title_orig>')  // evitar conflito se já tiver title
     .replace('<head>',
       '<head>'
       +'<title>'+nomePDF+'</title>'
-      +'<meta name="viewport" content="width=device-width">'
+      +'<meta name="viewport" content="width=device-width,initial-scale=1">'
     )
     .replace('</body>',
       '<script>'
       +'window.addEventListener("load",function(){'
-      +'  document.title="'+nomePDF+'";'
       +'  setTimeout(function(){window.print();},800);'
       +'});'
       +'<\/script>'
       +'</body>'
     );
 
-  // Cria Blob e abre em nova aba — Android não bloqueia Blob URLs
   const blob = new Blob([htmlFinal], {type:'text/html;charset=utf-8'});
-  const url  = URL.createObjectURL(blob);
-  const aba  = window.open(url,'_blank');
 
+  // Tentar Web Share API (Android Chrome — compartilha como arquivo real)
+  if(navigator.share && navigator.canShare){
+    try{
+      const file = new File([blob], nomePDF.replace('.pdf','.html'), {type:'text/html'});
+      if(navigator.canShare({files:[file]})){
+        await navigator.share({
+          title: nomePDF,
+          files: [file],
+        });
+        toast('✅ Relatório compartilhado!');
+        return;
+      }
+    }catch(e){
+      if(e.name!=='AbortError') console.warn('[share]',e.message);
+      else return; // usuário cancelou — não faz nada
+    }
+  }
+
+  // Fallback: abre nova aba com o relatório (Blob URL — só funciona no browser atual)
+  const url = URL.createObjectURL(blob);
+  const aba = window.open(url,'_blank');
   if(aba){
-    // Libera memória após 30s
-    setTimeout(()=>URL.revokeObjectURL(url), 30000);
-    toast('📄 Relatório aberto — use "Imprimir" > "Salvar como PDF"');
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+    toast('📄 Aberto! Use "⋮ Menu > Imprimir > Salvar como PDF"');
   } else {
-    // Fallback: download direto do arquivo HTML
+    // Último fallback: download do arquivo HTML
     const a = document.createElement('a');
     a.href = url;
-    a.download = nomePDF;
+    a.download = nomePDF.replace('.pdf','.html');
     document.body.appendChild(a);
     a.click();
-    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 2000);
-    toast('📥 Arquivo baixado — abra e imprima como PDF');
+    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },3000);
+    toast('📥 Arquivo baixado!');
   }
 }
 
