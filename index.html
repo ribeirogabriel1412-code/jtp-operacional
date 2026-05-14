@@ -5846,7 +5846,7 @@ function abrirModalProgramarPrev(carro,planoNome,planoNum,tipoMetrica,excessoKm,
         <!-- Botões -->
         <div style="display:flex;gap:10px;margin-top:20px">
           <button onclick="document.getElementById('modal-prog-prev').remove()" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">Cancelar</button>
-          <button id="pp-btn-salvar" onclick="salvarProgramacaoPrev('${carro}','${planoNome.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}','${planoNum}','${tipoMetrica}',${excessoKm},${excessoDias},${kmAtual},${JSON.stringify(oportunistas.map(o=>o.num))})" style="flex:2;padding:10px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
+          <button id="pp-btn-salvar" onclick="salvarProgramacaoPrevModal()" style="flex:2;padding:10px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
             📅 Confirmar${oportunistas.length>0?' + '+oportunistas.length+' oportunista'+(oportunistas.length>1?'s':''):''} + WPP
           </button>
         </div>
@@ -5855,6 +5855,8 @@ function abrirModalProgramarPrev(carro,planoNome,planoNum,tipoMetrica,excessoKm,
 
   document.body.insertAdjacentHTML('beforeend',html);
   window._ppTurno='A'; window._ppCesto=false; window._ppDataSel=amanha; document.getElementById('pp-data').value=amanha;
+  // Guardar parâmetros em objeto global — evita quebra por aspas/chars especiais no onclick
+  window._ppParams={carro,planoNome,planoNum,tipoMetrica,excessoKm,excessoDias,kmAtual,oportunistasNums:oportunistas.map(o=>o.num)};
 }
 
 function selDataPrev(ds){
@@ -5930,6 +5932,15 @@ function selCestoPrev(v){
     n.style.border='2px solid var(--amber)';n.style.background='#F59E0B18';n.style.color='var(--amber)';
     s.style.border='1px solid var(--border)';s.style.background='transparent';s.style.color='var(--text3)';
   }
+}
+
+
+// Wrapper sem parâmetros inline — lê do objeto global _ppParams
+// Resolve bug de aspas/chars especiais quebrando o onclick HTML
+function salvarProgramacaoPrevModal(){
+  const p=window._ppParams;
+  if(!p){toast('Erro: parâmetros não encontrados. Feche e reabra o modal.','err');return;}
+  salvarProgramacaoPrev(p.carro,p.planoNome,p.planoNum,p.tipoMetrica,p.excessoKm,p.excessoDias,p.kmAtual,p.oportunistasNums);
 }
 
 async function salvarProgramacaoPrev(carro,planoNome,planoNum,tipoMetrica,excessoKm,excessoDias,kmAtual,planosOportunistasNums){
