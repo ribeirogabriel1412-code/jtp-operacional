@@ -2218,7 +2218,6 @@ async function confirmarFechamentoLavagem(){
     responsavel_nome:S.perfil?.nome||null,
     responsavel_id:S.perfil?.id||null,
     observacao:obs,
-    detalhes:lista,
   });
   if(errFech){
     toast('❌ Erro ao gravar fechamento: '+errFech.message,'err');
