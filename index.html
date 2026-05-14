@@ -5386,6 +5386,10 @@ function parsearRelatorioMAN(texto){
     const pendente=t.includes('Sim');
     const emitido=t.split('Sim').length-1>=2;
 
+    // Excluir Regulagem de Válvulas (038) e Preditiva (023/031) da importação
+    const EXCLUIR_PLANOS = new Set(['038','023','031','040']);
+    if (EXCLUIR_PLANOS.has(planoNum)) continue;
+
     dados.push({
       carro, planoNum, planoNome, tipoMetrica,
       ultimaExec, kmAtual, proximaExec,
@@ -5487,7 +5491,7 @@ async function renderPrevPainel(back){
   // Caso contrário: filtra só itens a ≤1000km do vencimento ou já vencidos
   const _dadosFiltrados = _prevBuscaPrefixo
     ? _prevDados.filter(r => r.carro.includes(_prevBuscaPrefixo.toUpperCase()))
-    : _prevDados.filter(r => r.excessoKm >= -1000);
+    : _prevDados.filter(r => r.excessoKm >= -2000);
 
   // Carrega programações salvas (próximos 7 dias)
   let progMap={};
@@ -5732,46 +5736,79 @@ function gerarEscalaAutomatica(dados, semanaRef) {
   const escala = []; // Array de { carro, planoNum, planoNome, data, turno, cesto, tipo, oportunistas, motivo }
 
   // ── PASSO 1: Separar candidatos ─────────────────────────────────────────
-  // Apenas planos vencidos ou dentro de 1000km do vencimento
-  const candidatosPesada = dados.filter(r =>
-    (isPesada(r.planoNum) || (isGarantia(r.carro) && isPesada(r.planoNum))) &&
-    r.excessoKm >= -1000
-  ).sort((a,b) => b.excessoKm - a.excessoKm); // mais vencido primeiro
-
-  const candidatosLeve = dados.filter(r =>
-    isLeve(r.planoNum) && r.excessoKm >= -1000
+  // PESADAS: top 10 (vencidos + mais próximos a vencer), janela -2.000 km
+  // Ordenação: mais vencido → menos vencido → mais próximo
+  const candidatosPesadaTodos = dados.filter(r =>
+    isPesada(r.planoNum) && r.excessoKm >= -2000
   ).sort((a,b) => b.excessoKm - a.excessoKm);
+  // Deduplicar por carro (1 pesada por carro — a mais crítica já vem primeiro)
+  const carrosComPesada = new Set();
+  const candidatosPesada = candidatosPesadaTodos.filter(r => {
+    if (carrosComPesada.has(r.carro)) return false;
+    carrosComPesada.add(r.carro);
+    return true;
+  }).slice(0, 10); // limite: 10 pesadas por semana
+
+  // LEVES: top 30 (vencidos + mais próximos), janela -2.000 km
+  // Carros que já têm pesada na lista → leve será incluída na pesada (não conta como slot separado)
+  const candidatosLeveTodos = dados.filter(r =>
+    isLeve(r.planoNum) && r.excessoKm >= -2000
+  ).sort((a,b) => b.excessoKm - a.excessoKm);
+  const carrosComLeve = new Set();
+  const candidatosLeve = candidatosLeveTodos.filter(r => {
+    if (carrosComLeve.has(r.carro)) return false;
+    carrosComLeve.add(r.carro);
+    return true;
+  }).slice(0, 30); // limite: 30 leves por semana
 
   const candidatosAvulso = dados.filter(r =>
     isAvulso(r.planoNum) && r.excessoKm >= -500
   ).sort((a,b) => b.excessoKm - a.excessoKm);
 
   // Controle: carro já escalonado nesta semana
-  const carrosEscalonados = new Set(); // carro → Set de planos já alocados
+  const carrosEscalonados = new Set();
 
-  // ── PASSO 2: Alocar Garantias (1 por dia, seg-sex) ────────────────────
+  // ── PASSO 2: Garantias — 1 por dia, Turno A (manhã), seg-sex ───────────
+  // Regra: garantia puxa automaticamente Pesada + Leve do mesmo carro no mesmo slot
+  // Se o carro tiver pesada normal vencida, já consolida no card da garantia
+  let rrGarantia = 0;
   const garantias = candidatosPesada.filter(r => isGarantia(r.carro));
   garantias.forEach(r => {
     if (carrosEscalonados.has(r.carro + r.planoNum)) return;
-    // Encontrar dia livre com vaga no turno dia
-    for (const d of diasSemana) {
-      const ds = toDateStr(d);
+
+    for (let tentativa = 0; tentativa < diasSemana.length; tentativa++) {
+      const idx = (rrGarantia + tentativa) % diasSemana.length;
+      const ds = toDateStr(diasSemana[idx]);
       if (slots[ds].dia.length < ESCALA_CONFIG.dia.pesada) {
-        const ops = calcularOportunistas(porCarro[r.carro] || [], r);
+        // Buscar pesada normal do mesmo carro (se existir separada)
+        const pesadaNormal = (porCarro[r.carro]||[]).find(p => p.planoNum==='002' && p.excessoKm>=-2000);
+        // Buscar leve do mesmo carro
+        const leveNormal = (porCarro[r.carro]||[]).find(p => isLeve(p.planoNum));
+        // Oportunistas = outros planos além da garantia/pesada/leve
+        const ops = calcularOportunistas(porCarro[r.carro] || [], r).filter(o => !['001','002'].includes(o.num));
+
+        // Montar lista de planos incluídos neste card
+        const planosInclusos = [];
+        if (pesadaNormal) planosInclusos.push('Preventiva Pesada');
+        if (leveNormal) planosInclusos.push('Preventiva Leve');
+
         escala.push({
           carro: r.carro, planoNum: r.planoNum, planoNome: r.planoNome,
           data: ds, turno: 'A', cesto: false,
           tipo: 'garantia', excessoKm: r.excessoKm,
           oportunistas: ops.map(o => o.num),
           oportunistasNomes: ops.map(o => o.nome),
-          incluileve: true, // pesada sempre inclui leve
-          motivo: `Garantia Grupo ${getTipoGarantia(r.carro)} · +${r.excessoKm.toLocaleString('pt-BR')} km`,
+          incluileve: true,
+          incluiPesada: !!pesadaNormal,
+          planosInclusos,
+          motivo: `Garantia Grupo ${getTipoGarantia(r.carro)} · +${r.excessoKm.toLocaleString('pt-BR')} km${planosInclusos.length?' · Inclui: '+planosInclusos.join(' + '):''}`,
         });
         slots[ds].dia.push(r.carro);
         carrosEscalonados.add(r.carro + r.planoNum);
-        // Se carro também tem leve vencida, marca como incluída (não alocar separado)
-        const leve = (porCarro[r.carro] || []).find(p => isLeve(p.planoNum));
-        if (leve) carrosEscalonados.add(r.carro + leve.planoNum);
+        // Marcar pesada e leve do mesmo carro como já alocadas
+        if (pesadaNormal) carrosEscalonados.add(r.carro + pesadaNormal.planoNum);
+        if (leveNormal) carrosEscalonados.add(r.carro + leveNormal.planoNum);
+        rrGarantia = (idx + 1) % diasSemana.length;
         break;
       }
     }
@@ -6023,6 +6060,7 @@ function renderTelaEscala(back, diasSemana, sabValetamento) {
     const cor = e.tipo==='garantia'?'#8B5CF6': e.tipo==='valetamento'?'#06B6D4': isPesada(e.planoNum)?'var(--blue)':'var(--green)';
     const check = e.confirmado&&!e.jaExiste ? '✅' : e.jaExiste ? '🔵' : '⬜';
     const leveTag = e.incluileve ? `<span style="background:#00C48C18;color:var(--green);border:1px solid #00C48C40;border-radius:3px;padding:0 4px;font-size:9px;font-weight:700">+LEVE</span>` : '';
+    const pesadaTag = e.incluiPesada ? `<span style="background:#2563EB18;color:var(--blue);border:1px solid #2563EB40;border-radius:3px;padding:0 4px;font-size:9px;font-weight:700">+PES.</span>` : '';
     const garantiaTag = e.tipo==='garantia' ? `<span style="background:#8B5CF618;color:#8B5CF6;border:1px solid #8B5CF640;border-radius:3px;padding:0 4px;font-size:9px;font-weight:700">GARAN.</span>` : '';
     const turnoTag = `<span style="color:var(--text4);font-size:9px">${e.turno==='A'?'☀️':'🌙'}</span>`;
     // Todos os planos do carro (para expandir)
@@ -6048,7 +6086,7 @@ function renderTelaEscala(back, diasSemana, sabValetamento) {
         <span style="flex-shrink:0">${check}</span>
         <span style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:${cor}">${e.carro}</span>
         <span style="font-size:9px;font-weight:700;color:var(--text2);white-space:nowrap">${e.planoNome.split(' ').slice(0,2).join(' ')}</span>
-        ${leveTag}${garantiaTag}${turnoTag}
+        ${leveTag}${pesadaTag}${garantiaTag}${turnoTag}
         <span style="margin-left:auto;display:flex;gap:3px">
           ${expandBtn}
           ${!e.jaExiste?`<button onclick="event.stopPropagation();removerItemEscala(${e.id})" style="background:transparent;border:1px solid #EF444430;border-radius:4px;padding:0 5px;font-size:10px;color:var(--red);cursor:pointer;height:18px">✕</button>`:''}
@@ -6170,8 +6208,8 @@ function removerItemEscala(id) {
   const substitutos = (_prevDados||[])
     .filter(p => {
       if (jaNoRascunho.has(p.carro+'::'+p.planoNum)) return false;
-      if (tipo === 'pesada') return isPesada(p.planoNum) && p.excessoKm >= -1000;
-      if (tipo === 'leve') return isLeve(p.planoNum) && p.excessoKm >= -1000;
+      if (tipo === 'pesada') return isPesada(p.planoNum) && p.excessoKm >= -2000;
+      if (tipo === 'leve') return isLeve(p.planoNum) && p.excessoKm >= -2000;
       return isAvulso(p.planoNum) && p.excessoKm >= -500;
     })
     .sort((a,b) => b.excessoKm - a.excessoKm)
@@ -6313,7 +6351,7 @@ const PREV_HIERARQUIA = {
 };
 
 // Planos ignorados no oportunismo (lavagem, preditiva, etc.)
-const PREV_IGNORAR = new Set(['023','031','040']);
+const PREV_IGNORAR = new Set(['023','031','040','038']); // 038=Regulagem Válvulas excluída
 
 // Nomes legíveis para cada plano
 const PREV_NOMES = {
