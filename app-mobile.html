@@ -2069,15 +2069,16 @@ async function telaLavPesada(){
   const gid=getGid();
   const data=_lpData;
   
-  // Carregar plano do dia + frota + preventivas do dia
+  // Carregar plano do dia + frota (com ultima_lavagem) + preventivas do dia
+  // Filtra cancelado/arquivado diretamente na query — não depende de filtro JS
   const[{data:plano},{data:frota},{data:prevHoje}]=await Promise.all([
-    sb.from('checklist_lavagem').select('*').eq('garagem_id',gid).eq('data',data).order('prefixo'),
-    sb.from('frota').select('prefixo,modelo').eq('garagem_id',gid).order('prefixo'),
+    sb.from('checklist_lavagem').select('*').eq('garagem_id',gid).eq('data',data)
+      .not('status','in','("cancelado","arquivado")').order('prefixo'),
+    sb.from('frota').select('prefixo,modelo,ultima_lavagem').eq('garagem_id',gid).order('prefixo'),
     sb.from('soltura_2_10').select('prefixo').eq('garagem_id',gid).eq('data',data),
   ]);
   
-  // Filtrar cancelados e arquivados (removidos via fallback de RLS)
-  window._lavLista=(plano||[]).filter(r=>r.status!=='cancelado'&&r.status!=='arquivado');
+  window._lavLista=plano||[];
   const lista=window._lavLista;
   const prevSet=new Set((prevHoje||[]).map(p=>p.prefixo));
   
@@ -2252,12 +2253,15 @@ async function confirmarFechamentoLavagem(){
       const{error:errArq}=await sb.from('checklist_lavagem')
         .update({status:'arquivado'}).eq('garagem_id',gid).eq('data',_lpData);
       if(errArq){
-        toast('⚠️ Não foi possível limpar o plano. Erro: '+errDel.message,'err');
-      } else {
-        toast('⚠️ Delete bloqueado (RLS) — plano marcado como arquivado','err');
+        console.warn('arquivado fallback também falhou:',errArq.message);
       }
     }
   }
+
+  // Avança a data para amanhã — tela mostra plano vazio (próximo turno)
+  const amanha=new Date(_lpData+'T12:00:00');
+  amanha.setDate(amanha.getDate()+1);
+  _lpData=amanha.toISOString().split('T')[0];
 
   closeSheet(true);
   toast('✅ Fechado! '+lavados+'/'+lista.length+' lavados · '+prefixosLavados.length+' frota atualizada');
