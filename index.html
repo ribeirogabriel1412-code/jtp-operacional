@@ -6707,51 +6707,51 @@ async function renderPrevProgramadas(filtroCarro='',filtroPlano=''){
     const esc=escalasMap[p.prefixo+'::'+ds];
     const realizado=p.status==='em_execucao'||p.status==='concluido';
 
-    const tags=[
-      p.cesto_separado?`<span style="background:#06B6D418;color:#06B6D4;border:1px solid #06B6D440;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">📦</span>`:'',
-      ['003','029'].includes(p.plano_num)?`<span style="background:#8B5CF618;color:#8B5CF6;border:1px solid #8B5CF640;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">GARAN</span>`:'',
-      p.inclui_leve_obs?`<span style="background:#22C55E18;color:#22C55E;border:1px solid #22C55E40;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">+LEVE</span>`:'',
-      p.turno?`<span style="background:${cor}18;color:${cor};border:1px solid ${cor}40;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">T${p.turno}</span>`:'',
-    ].filter(Boolean).join('');
+    // Tags inline — sem template aninhado
+    const tagCesto   = p.cesto_separado ? '<span style="background:#06B6D418;color:#06B6D4;border:1px solid #06B6D440;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">📦</span>' : '';
+    const tagGaran   = ['003','029'].includes(p.plano_num) ? '<span style="background:#8B5CF618;color:#8B5CF6;border:1px solid #8B5CF640;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">GARAN</span>' : '';
+    const tagLeve    = p.inclui_leve_obs ? '<span style="background:#22C55E18;color:#22C55E;border:1px solid #22C55E40;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">+LEVE</span>' : '';
+    const tagTurno   = p.turno ? '<span style="background:'+cor+'18;color:'+cor+';border:1px solid '+cor+'40;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">T'+p.turno+'</span>' : '';
+    const tags = tagCesto+tagGaran+tagLeve+tagTurno;
 
-    const escTag=esc?`<div style="font-size:10px;color:var(--text4);margin-top:3px">🚌 ${esc.linha||'—'} · Recolha ${esc.horario_fim||'—'}</div>`:'';
-    const opStr=p.observacao?`<div style="font-size:10px;color:var(--text4);margin-top:3px;line-height:1.4">⚡ ${p.observacao.replace('Inclui Preventiva Leve | ','').replace('Inclui Preventiva Pesada | ','').split('|')[0].trim()}</div>`:'';
+    const escTag = esc ? '<div style="font-size:10px;color:var(--text4);margin-top:3px">🚌 '+(esc.linha||'—')+' · Recolha '+(esc.horario_fim||'—')+'</div>' : '';
+    const obsLimpa = p.observacao ? p.observacao.replace('Inclui Preventiva Leve | ','').replace('Inclui Preventiva Pesada | ','').split('|')[0].trim() : '';
+    const opStr  = obsLimpa ? '<div style="font-size:10px;color:var(--text4);margin-top:3px;line-height:1.4">⚡ '+obsLimpa+'</div>' : '';
 
-    // Check de realizado — só PCM pode marcar
+    // Check realizado
     const novoStatus = realizado ? 'programado' : 'em_execucao';
     const checkBg    = realizado ? '#22C55E' : 'transparent';
     const checkBord  = realizado ? '#22C55E' : 'var(--border)';
     const checkIcon  = realizado ? '✅' : '⬜';
     const checkBtn = isPCM
-      ? `<button onclick="marcarPreventiva('${p.id}','${novoStatus}')" style="flex-shrink:0;background:${checkBg};border:2px solid ${checkBord};border-radius:6px;width:28px;height:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px">${checkIcon}</button>`
-      : `<span style="flex-shrink:0;font-size:16px">${checkIcon}</span>`;
+      ? '<button onclick="marcarPreventiva(\''+p.id+'\',\''+novoStatus+'\')" style="flex-shrink:0;background:'+checkBg+';border:2px solid '+checkBord+';border-radius:6px;width:28px;height:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px">'+checkIcon+'</button>'
+      : '<span style="flex-shrink:0;font-size:16px">'+checkIcon+'</span>';
 
-    const cardBord   = realizado ? '#22C55E50' : cor+'40';
-    const cardLeft   = realizado ? '#22C55E' : cor;
-    const cardOp     = realizado ? '0.7' : '1';
-    const prefCor    = realizado ? '#22C55E' : cor;
-
-    return`<div style="background:var(--surface);border:1.5px solid ${cardBord};border-left:4px solid ${cardLeft};border-radius:10px;padding:10px 12px;margin-bottom:8px;opacity:${cardOp}">
-      <div style="display:flex;align-items:flex-start;gap:8px">
-        ${checkBtn}
+    // Cancelar
     const cancelBtn = isPCM
-      ? `<button onclick="cancelarProgPrev('${p.id}')" style="flex-shrink:0;background:transparent;border:1px solid #EF444430;border-radius:6px;padding:2px 7px;font-size:11px;color:#EF4444;cursor:pointer">✕</button>`
+      ? '<button onclick="cancelarProgPrev(\''+p.id+'\')" style="flex-shrink:0;background:transparent;border:1px solid #EF444430;border-radius:6px;padding:2px 7px;font-size:11px;color:#EF4444;cursor:pointer">✕</button>'
       : '';
 
-    return`<div style="background:var(--surface);border:1.5px solid ${cardBord};border-left:4px solid ${cardLeft};border-radius:10px;padding:10px 12px;margin-bottom:8px;opacity:${cardOp}">
-      <div style="display:flex;align-items:flex-start;gap:8px">
-        ${checkBtn}
-        <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
-            <span style="font-family:'DM Mono',monospace;font-size:14px;font-weight:800;color:${prefCor}">${p.prefixo}</span>
-            <span style="font-size:11px;font-weight:600;color:var(--text2)">${p.plano_nome.split(' - ')[0]}</span>
-            ${tags}
-          </div>
-          ${escTag}${opStr}
-        </div>
-        ${cancelBtn}
-      </div>
-    </div>`;
+    // Cores do card
+    const cardBord = realizado ? '#22C55E50' : cor+'40';
+    const cardLeft = realizado ? '#22C55E' : cor;
+    const cardOp   = realizado ? '0.7' : '1';
+    const prefCor  = realizado ? '#22C55E' : cor;
+
+    return '<div style="background:var(--surface);border:1.5px solid '+cardBord+';border-left:4px solid '+cardLeft+';border-radius:10px;padding:10px 12px;margin-bottom:8px;opacity:'+cardOp+'">'
+      +'<div style="display:flex;align-items:flex-start;gap:8px">'
+        +checkBtn
+        +'<div style="flex:1;min-width:0">'
+          +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">'
+            +'<span style="font-family:\'DM Mono\',monospace;font-size:14px;font-weight:800;color:'+prefCor+'">'+p.prefixo+'</span>'
+            +'<span style="font-size:11px;font-weight:600;color:var(--text2)">'+p.plano_nome.split(' - ')[0]+'</span>'
+            +tags
+          +'</div>'
+          +escTag+opStr
+        +'</div>'
+        +cancelBtn
+      +'</div>'
+    +'</div>';
   }
 
   // ── Montar colunas da semana ──────────────────────────────
