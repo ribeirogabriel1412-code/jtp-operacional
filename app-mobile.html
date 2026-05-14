@@ -996,7 +996,10 @@ async function confirmarFechamentoAbastecimento(){
     }
 
     closeSheet(true);
-    toast(`✅ Arquivado e limpo! ${lista.length} veículos · ${totLitros.toLocaleString('pt-BR',{minimumFractionDigits:1})}L`);
+    toast(`✅ Arquivado! ${lista.length} veículos · ${totLitros.toLocaleString('pt-BR',{minimumFractionDigits:1})}L — Gerando relatório...`);
+
+    // Gerar e enviar relatório de fechamento (recolha + abastecimento)
+    await gerarRelatorioFechamento(gid, dataGravar, lista);
     telaAbastecimento();
   }catch(e){
     toast('❌ '+e.message,'err');
@@ -2642,7 +2645,210 @@ async function confirmarPlano(){
 }
 
 
-// ── MAPA DE TELAS ──────────────────────────────────────────
+// ══════════════════════════════════════════════════════════
+// RELATÓRIO DE FECHAMENTO — Recolha + Abastecimento
+// Gerado e enviado via WhatsApp ao fechar o turno de abastecimento
+// ══════════════════════════════════════════════════════════
+async function gerarRelatorioFechamento(gid, data, listaAbast){
+  try{
+    // 1. Buscar dados de recolha da mesma data
+    const{data:recolhas}=await sb.from('recolha_checklist').select('*')
+      .eq('garagem_id',gid).eq('data_recolha',data).order('prefixo');
+
+    // 2. Buscar nome da garagem
+    const garagem=S.garagens?.find(g=>g.id===gid);
+    const garaGemNome=garagem?.nome||'Porto Velho';
+    const dataFmt=data.split('-').reverse().join('/');
+    const turnoNome=S.turno==='dia'?'☀️ Dia':'🌙 Noite';
+
+    // 3. Montar mapa por prefixo
+    const recMap={};
+    (recolhas||[]).forEach(r=>{recMap[r.prefixo]=r;});
+    const abastMap={};
+    (listaAbast||[]).forEach(a=>{abastMap[a.prefixo]=a;});
+
+    // 4. União de todos os prefixos (recolhidos + abastecidos)
+    const todosPrefix=[...new Set([
+      ...Object.keys(recMap),
+      ...Object.keys(abastMap),
+    ])].sort();
+
+    // 5. Totalizadores
+    const totLitros=listaAbast.reduce((s,a)=>s+(parseFloat(a.litros)||0),0);
+    const totArla=listaAbast.filter(a=>a.arla).reduce((s,a)=>s+(parseFloat(a.arla_litros)||0),0);
+    const totAvarias=(recolhas||[]).filter(r=>r.status==='avaria').length;
+    const totRecolhidos=(recolhas||[]).length;
+    const totAbast=listaAbast.length;
+
+    // ── MENSAGEM WHATSAPP (texto) ──────────────────────────
+    const linhasTab=todosPrefix.map(p=>{
+      const r=recMap[p];
+      const a=abastMap[p];
+      const kmRec=r?.km_hodometro?r.km_hodometro.toLocaleString('pt-BR'):'—';
+      const kmAb=a?.km_hodometro?a.km_hodometro.toLocaleString('pt-BR'):'—';
+      const diff=(r?.km_hodometro&&a?.km_hodometro)?
+        (a.km_hodometro-r.km_hodometro).toLocaleString('pt-BR'):'—';
+      const av=r?.status==='avaria'?'⚠️':'✅';
+      const litros=a?a.litros.toLocaleString('pt-BR',{minimumFractionDigits:1})+'L':'—';
+      const arla=(a?.arla&&a?.arla_litros)?a.arla_litros.toLocaleString('pt-BR',{minimumFractionDigits:1})+'L':'—';
+      return`${av} *${p}* | KM rec: ${kmRec} | KM ab: ${kmAb} | Δ: ${diff} | ${litros}${arla!=='—'?' ARLA:'+arla:''}`;
+    }).join('\n');
+
+    const msgWpp=
+`⛽ *FECHAMENTO ABASTECIMENTO — JTP*
+📍 ${garaGemNome} · ${dataFmt} · ${turnoNome}
+
+📊 *Resumo:*
+• Recolhidos: ${totRecolhidos} veículos
+• Abastecidos: ${totAbast} veículos
+• Total Diesel: ${totLitros.toLocaleString('pt-BR',{minimumFractionDigits:1})} L${totArla>0?'\n• Total ARLA: '+totArla.toLocaleString('pt-BR',{minimumFractionDigits:1})+' L':''}${totAvarias>0?'\n⚠️ Avarias na recolha: '+totAvarias:''}
+
+📋 *Detalhamento por prefixo:*
+${linhasTab}
+
+_Responsável: ${S.perfil?.nome||'Líder de Pátio'}_`;
+
+    // Envio via Evolution API
+    const EVOL_URL='https://evolution-api-production-8d56.up.railway.app/message/sendText/jtp-garagem';
+    const EVOL_KEY='4289AC11F437-43AD-96D7-9F27C2735696';
+    const WPP_GROUP='120363427489152994@g.us';
+
+    let wppOk=false;
+    try{
+      const r=await fetch(EVOL_URL,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','apikey':EVOL_KEY},
+        body:JSON.stringify({number:WPP_GROUP,options:{delay:0},textMessage:{text:msgWpp}}),
+      });
+      wppOk=r.ok;
+    }catch(e){console.warn('[wpp fechamento]',e);}
+
+    // ── GERAR PDF ──────────────────────────────────────────
+    await gerarPDFFechamento(gid, garaGemNome, data, dataFmt, turnoNome, todosPrefix, recMap, abastMap, totLitros, totArla, totAvarias, wppOk);
+
+  }catch(e){
+    console.error('[gerarRelatorioFechamento]',e);
+    toast('⚠️ Relatório não gerado: '+e.message,'err');
+  }
+}
+
+async function gerarPDFFechamento(gid, garaGemNome, data, dataFmt, turnoNome, prefixos, recMap, abastMap, totLitros, totArla, totAvarias, wppOk){
+  const B='border:1px solid #333;';
+  const BH='border:1px solid #333;background:#555;color:#fff;font-weight:900;';
+  const totAbast=Object.keys(abastMap).length;
+  const totRec=Object.keys(recMap).length;
+
+  const dataRows=prefixos.map(p=>{
+    const r=recMap[p];
+    const a=abastMap[p];
+    const kmRec=r?.km_hodometro?r.km_hodometro.toLocaleString('pt-BR'):'—';
+    const kmAb=a?.km_hodometro?a.km_hodometro.toLocaleString('pt-BR'):'—';
+    const diff=(r?.km_hodometro&&a?.km_hodometro)?(a.km_hodometro-r.km_hodometro).toLocaleString('pt-BR'):'—';
+    const avCor=r?.status==='avaria'?'background:#fee2e2':'';
+    const obs=[r?.observacao,a&&'⛽'].filter(Boolean).join(' ');
+    const litros=a?a.litros.toLocaleString('pt-BR',{minimumFractionDigits:1}):' — ';
+    const arla=(a?.arla&&a?.arla_litros)?a.arla_litros.toLocaleString('pt-BR',{minimumFractionDigits:1}):' — ';
+    const avTxt=r?.status==='avaria'?'⚠️ SIM':'—';
+    return`<tr style="${avCor}">
+      <td style="${B}padding:2px 5px;font-family:monospace;font-weight:700;font-size:10px">${p}</td>
+      <td style="${B}padding:2px 5px;text-align:center;font-size:10px">${kmRec}</td>
+      <td style="${B}padding:2px 5px;text-align:center;font-size:10px">${kmAb}</td>
+      <td style="${B}padding:2px 5px;text-align:center;font-size:10px;font-weight:${diff!=='—'&&parseInt(diff.replace(/\./g,''))>200?'900':'400'}">${diff}</td>
+      <td style="${B}padding:2px 5px;text-align:center;font-size:10px;color:${r?.status==='avaria'?'#b91c1c':'#166534'}">${avTxt}</td>
+      <td style="${B}padding:2px 5px;text-align:center;font-family:monospace;font-size:10px;font-weight:700">${litros}</td>
+      <td style="${B}padding:2px 5px;text-align:center;font-family:monospace;font-size:10px">${arla}</td>
+      <td style="${B}padding:2px 5px;font-size:9px;color:#555">${obs||''}</td>
+    </tr>`;
+  }).join('');
+
+  const html=`<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+  body{font-family:Arial,sans-serif;font-size:10px;color:#000;margin:0;padding:10px}
+  @media print{body{padding:0}@page{margin:10mm;size:A4 landscape}}
+  table{border-collapse:collapse;width:100%}
+  th,td{font-size:10px}
+</style></head><body>
+  <!-- CABEÇALHO -->
+  <div style="text-align:center;border:2.5px solid #000;padding:6px;margin-bottom:5px;background:#fff">
+    <div style="font-size:13px;font-weight:900;letter-spacing:1px">GRUPO JTP  │  OPERAÇÃO GARAGEM  │  Fechamento Recolha & Abastecimento</div>
+  </div>
+
+  <!-- INFO -->
+  <table style="margin-bottom:4px">
+    <tr>
+      <td style="${B}padding:3px 6px"><strong>Processo:</strong> Fechamento de Turno</td>
+      <td style="${B}padding:3px 6px"><strong>Turno:</strong> ${turnoNome}</td>
+      <td style="${B}padding:3px 6px"><strong>Data:</strong> ${dataFmt}</td>
+      <td style="${B}padding:3px 6px"><strong>Garagem:</strong> ${garaGemNome}</td>
+    </tr>
+    <tr>
+      <td style="${B}padding:3px 6px"><strong>Responsável:</strong> ${S.perfil?.nome||'—'}</td>
+      <td style="${B}padding:3px 6px"><strong>Recolhidos:</strong> ${totRec}</td>
+      <td style="${B}padding:3px 6px"><strong>Abastecidos:</strong> ${totAbast}</td>
+      <td style="${B}padding:3px 6px"><strong>Avarias:</strong> ${totAvarias||0}</td>
+    </tr>
+  </table>
+
+  <!-- TOTAIS -->
+  <div style="font-weight:900;background:#555;color:#fff;border:1.5px solid #111;padding:3px 8px;margin-bottom:2px">■ TOTAIS DO TURNO</div>
+  <table style="margin-bottom:6px">
+    <tr>
+      <td style="${B}padding:4px 8px;background:#f0fdf4"><strong>Total Diesel:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900">${totLitros.toLocaleString('pt-BR',{minimumFractionDigits:1})} L</span></td>
+      ${totArla>0?`<td style="${B}padding:4px 8px;background:#fefce8"><strong>Total ARLA 32:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900">${totArla.toLocaleString('pt-BR',{minimumFractionDigits:1})} L</span></td>`:'<td style="'+B+'padding:4px 8px;color:#999">ARLA: não utilizado</td>'}
+      <td style="${B}padding:4px 8px;background:#f0f9ff"><strong>Veículos no relatório:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900">${prefixos.length}</span></td>
+      ${totAvarias>0?`<td style="${B}padding:4px 8px;background:#fef2f2"><strong>⚠️ Avarias recolha:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900;color:#b91c1c">${totAvarias}</span></td>`:'<td style="'+B+'padding:4px 8px;background:#f0fdf4;color:#166534">✅ Sem avarias</td>'}
+    </tr>
+  </table>
+
+  <!-- TABELA PRINCIPAL -->
+  <div style="font-weight:900;background:#555;color:#fff;border:1.5px solid #111;padding:3px 8px;margin-bottom:2px">■ DETALHAMENTO POR PREFIXO</div>
+  <table>
+    <thead>
+      <tr>
+        <th style="${BH}padding:3px;width:55px">PREFIXO</th>
+        <th style="${BH}padding:3px;text-align:center;width:65px">KM<br>RECOLHA</th>
+        <th style="${BH}padding:3px;text-align:center;width:65px">KM<br>ABAST.</th>
+        <th style="${BH}padding:3px;text-align:center;width:50px">DIFER.<br>KM</th>
+        <th style="${BH}padding:3px;text-align:center;width:50px">AVARIA<br>RECOLHA</th>
+        <th style="${BH}padding:3px;text-align:center;width:60px">DIESEL<br>(L)</th>
+        <th style="${BH}padding:3px;text-align:center;width:55px">ARLA 32<br>(L)</th>
+        <th style="${BH}padding:3px;text-align:left">OBSERVAÇÕES</th>
+      </tr>
+    </thead>
+    <tbody>${dataRows}</tbody>
+    <tfoot>
+      <tr>
+        <td style="${B}padding:3px 5px;font-weight:900;background:#ddd" colspan="5">TOTAL</td>
+        <td style="${B}padding:3px 5px;font-family:monospace;font-weight:900;background:#ddd;text-align:center">${totLitros.toLocaleString('pt-BR',{minimumFractionDigits:1})}</td>
+        <td style="${B}padding:3px 5px;font-family:monospace;font-weight:900;background:#ddd;text-align:center">${totArla>0?totArla.toLocaleString('pt-BR',{minimumFractionDigits:1}):'—'}</td>
+        <td style="${B}padding:3px 5px;background:#ddd"></td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div style="margin-top:10px;display:flex;justify-content:space-between;font-size:9px;color:#666">
+    <span>Gerado em: ${new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'})}</span>
+    <span>${wppOk?'📲 Enviado via WhatsApp':'⚠️ WhatsApp não enviado'}</span>
+    <span>JTP Transportes · Operação Garagem</span>
+  </div>
+</body></html>`;
+
+  // Abrir PDF em nova aba para impressão
+  const w=window.open('','_blank','width=900,height=700');
+  if(w){
+    w.document.write(html);
+    w.document.close();
+    w.onload=()=>{
+      setTimeout(()=>{w.print();},400);
+    };
+    toast(wppOk?'✅ Relatório gerado · 📲 WPP enviado!':'✅ Relatório aberto · ⚠️ WPP falhou');
+  }else{
+    toast('⚠️ Popup bloqueado — permita popups para gerar o PDF','err');
+  }
+}
+
+
 const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,prev26:telaPrev26,patio_man:telaPatioMan,recolha:telaRecolha,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada};
 
 // ── INIT ───────────────────────────────────────────────────
