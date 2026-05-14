@@ -5940,89 +5940,166 @@ async function renderAutoEscala() {
   renderTelaEscala(back, diasSemana, sabValetamento);
 }
 
+function _recarregarEscala() {
+  const back = `<button class="btn-back" onclick="renderFerrPrev()">← Painel Preventivas</button>`;
+  const datas = [...new Set((window._escalaRascunho||[]).filter(e=>e.data&&!e.tipo.includes('overflow')&&e.tipo!=='valetamento').map(e=>e.data))].sort();
+  const diasSemana = datas.filter(d => { const dow=new Date(d+'T12:00:00').getDay(); return dow>=1&&dow<=5; }).map(d=>new Date(d+'T12:00:00'));
+  const sabStr = (window._escalaRascunho||[]).find(e=>e.tipo==='valetamento')?.data;
+  const sabValetamento = sabStr ? new Date(sabStr+'T12:00:00') : new Date();
+  renderTelaEscala(back, diasSemana, sabValetamento);
+}
+
+// ── RENDER PRINCIPAL — Layout Tabela por Dia ─────────────────────────────
 function renderTelaEscala(back, diasSemana, sabValetamento) {
   const rascunho = window._escalaRascunho || [];
-  const confirmados = rascunho.filter(e => e.confirmado && !e.jaExiste);
-  const total = rascunho.length;
+  const confirmados = rascunho.filter(e => e.confirmado && !e.jaExiste && e.data && !e.tipo.includes('overflow'));
   const overflow = rascunho.filter(e => e.tipo.includes('overflow'));
-
-  // Agrupar por data
-  const porData = {};
-  // Sábado
   const sabStr = toDateStr(sabValetamento);
-  porData[sabStr] = { label: `📦 Sábado ${sabValetamento.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})} — Valetamento`, items: [], isSab: true };
-  diasSemana.forEach(d => {
-    const ds = toDateStr(d);
-    const nomeDia = d.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'});
-    porData[ds] = { label: nomeDia, items: [], isSab: false };
-  });
-  porData['overflow'] = { label: '⚠️ Sem vaga esta semana', items: [], isSab: false };
+
+  // ── Montar colunas: Sábado + Seg a Sex ─────────────────────────────────
+  const colunas = [
+    { ds: sabStr, label: 'Sábado', data: sabValetamento, isSab: true },
+    ...diasSemana.map(d => ({
+      ds: toDateStr(d), label: d.toLocaleDateString('pt-BR',{weekday:'short'}).replace('.',''), 
+      labelFull: d.toLocaleDateString('pt-BR',{weekday:'long'}),
+      data: d, isSab: false
+    }))
+  ];
+
+  // ── Agrupar itens por coluna ────────────────────────────────────────────
+  const porCol = {};
+  colunas.forEach(c => { porCol[c.ds] = { pesada:[], leve:[], val:[], avulso:[] }; });
+  porCol['overflow'] = { pesada:[], leve:[], val:[], avulso:[] };
 
   rascunho.forEach(e => {
     const key = e.tipo.includes('overflow') ? 'overflow' : (e.data || 'overflow');
-    if (porData[key]) porData[key].items.push(e);
+    const bucket = porCol[key];
+    if (!bucket) return;
+    if (e.tipo === 'valetamento') bucket.val.push(e);
+    else if (e.tipo === 'avulso') bucket.avulso.push(e);
+    else if (e.incluileve || isPesada(e.planoNum)) bucket.pesada.push(e);
+    else bucket.leve.push(e);
   });
 
-  const corTipo = { garantia:'#8B5CF6', pesada:'var(--blue)', leve:'var(--green)', avulso:'var(--amber)', valetamento:'#06B6D4', pesada_overflow:'var(--red)', leve_overflow:'var(--red)' };
+  // ── Helper: card de linha ───────────────────────────────────────────────
+  function cardLinha(e, secao) {
+    const cor = e.tipo==='garantia'?'#8B5CF6': e.tipo==='valetamento'?'#06B6D4': isPesada(e.planoNum)?'var(--blue)':'var(--green)';
+    const check = e.confirmado&&!e.jaExiste ? '✅' : e.jaExiste ? '🔵' : '⬜';
+    const leveTag = e.incluileve ? `<span style="background:#00C48C18;color:var(--green);border:1px solid #00C48C40;border-radius:3px;padding:0 4px;font-size:9px;font-weight:700">+LEVE</span>` : '';
+    const garantiaTag = e.tipo==='garantia' ? `<span style="background:#8B5CF618;color:#8B5CF6;border:1px solid #8B5CF640;border-radius:3px;padding:0 4px;font-size:9px;font-weight:700">GARAN.</span>` : '';
+    const turnoTag = `<span style="color:var(--text4);font-size:9px">${e.turno==='A'?'☀️':'🌙'}</span>`;
+    // Todos os planos do carro (para expandir)
+    const todosPlanosCarro = (_prevDados||[]).filter(p=>p.carro===e.carro&&p.excessoKm>=-2000);
+    const expandId = `exp-${e.id}`;
+    const expandBtn = todosPlanosCarro.length > 0
+      ? `<button onclick="event.stopPropagation();toggleExpandEscala(${e.id})" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:0 5px;font-size:10px;color:var(--text3);cursor:pointer;font-family:'DM Sans',sans-serif;height:18px">+</button>`
+      : '';
+    // Oportunistas
+    const opNomes = (e.oportunistasNomes||[]).slice(0,3);
+    const opStr = opNomes.length ? `<div style="font-size:9px;color:var(--amber);margin-top:2px">⚡ ${opNomes.map(n=>n.split(' ').slice(0,2).join(' ')).join(' · ')}${(e.oportunistasNomes||[]).length>3?' +'+(e.oportunistasNomes.length-3):''}</div>` : '';
+    // Expand panel
+    const expandHtml = `<div id="${expandId}" style="display:none;background:var(--surface2);border-radius:6px;padding:6px 8px;margin-top:4px;font-size:10px">
+      <div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:4px">TODOS OS PLANOS — ${e.carro}</div>
+      ${todosPlanosCarro.map(p=>`<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--border2)">
+        <span style="color:${p.excessoKm>=0?'var(--red)':'var(--text2)'}">${PREV_NOMES[p.planoNum]||p.planoNome}</span>
+        <span style="font-family:'DM Mono',monospace;color:${p.excessoKm>=0?'var(--red)':'var(--green)'};font-weight:700">${p.excessoKm>=0?'+':''}{${p.excessoKm.toLocaleString('pt-BR')}}</span>
+      </div>`).join('')}
+    </div>`;
 
-  const blocosDia = Object.entries(porData).map(([ds, bloco]) => {
-    if (!bloco.items.length) return '';
-    const dia_cards = bloco.items.map(e => {
-      const cor = corTipo[e.tipo] || 'var(--text3)';
-      const jaStr = e.jaExiste ? '<span style="background:#EF444418;color:var(--red);border:1px solid #EF444440;border-radius:4px;padding:1px 5px;font-size:9px;font-weight:700">JÁ EXISTE</span>' : '';
-      const opStr = e.oportunistasNomes?.length ? `<div style="margin-top:4px;font-size:10px;color:var(--amber)">⚡ ${e.oportunistasNomes.slice(0,3).join(' · ')}${e.oportunistasNomes.length>3?' +'+( e.oportunistasNomes.length-3):''}</div>` : '';
-      const leveStr = e.incluileve ? '<span style="background:#00C48C18;color:var(--green);border:1px solid #00C48C40;border-radius:4px;padding:1px 5px;font-size:9px;font-weight:700;margin-left:4px">+ LEVE</span>' : '';
-      const check = e.confirmado && !e.jaExiste ? '✅' : e.jaExiste ? '🔵' : '⬜';
-      return `<div onclick="toggleEscalaItem(${e.id})" style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--surface);border:1px solid ${e.confirmado&&!e.jaExiste?cor+'40':'var(--border2)'};border-left:3px solid ${cor};border-radius:10px;margin-bottom:6px;cursor:${e.jaExiste?'default':'pointer'};opacity:${e.jaExiste?'0.5':'1'}">
-        <span style="font-size:16px;flex-shrink:0;margin-top:1px">${check}</span>
-        <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-            <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:${cor}">${e.carro}</span>
-            <span style="font-size:11px;font-weight:600;color:var(--text2)">${e.planoNome}</span>
-            ${leveStr}${jaStr}
-            <span style="font-size:10px;color:var(--text3);margin-left:auto">T${e.turno}</span>
-          </div>
-          <div style="font-size:10px;color:var(--text3);margin-top:2px">${e.motivo}</div>
-          ${opStr}
-        </div>
-      </div>`;
-    }).join('');
-
-    const diaFmt = bloco.isSab ? '' : '';
-    return `<div style="margin-bottom:20px">
-      <div style="font-size:12px;font-weight:800;color:var(--text2);text-transform:capitalize;padding:6px 10px;background:var(--surface2);border-radius:8px;margin-bottom:8px;border-left:3px solid var(--blue)">
-        ${bloco.label} <span style="font-weight:400;color:var(--text3);margin-left:6px">${bloco.items.length} item(ns)</span>
+    return `<div style="background:var(--surface);border:1px solid ${e.confirmado&&!e.jaExiste?cor+'50':'var(--border2)'};border-left:3px solid ${cor};border-radius:8px;padding:7px 8px;margin-bottom:4px;opacity:${e.jaExiste?'0.45':'1'}">
+      <div style="display:flex;align-items:center;gap:4px;cursor:pointer" onclick="toggleEscalaItem(${e.id})">
+        <span style="flex-shrink:0">${check}</span>
+        <span style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:${cor}">${e.carro}</span>
+        <span style="font-size:9px;font-weight:700;color:var(--text2);white-space:nowrap">${e.planoNome.split(' ').slice(0,2).join(' ')}</span>
+        ${leveTag}${garantiaTag}${turnoTag}
+        <span style="margin-left:auto;display:flex;gap:3px">
+          ${expandBtn}
+          ${!e.jaExiste?`<button onclick="event.stopPropagation();removerItemEscala(${e.id})" style="background:transparent;border:1px solid #EF444430;border-radius:4px;padding:0 5px;font-size:10px;color:var(--red);cursor:pointer;height:18px">✕</button>`:''}
+        </span>
       </div>
-      ${dia_cards}
+      ${opStr}
+      ${expandHtml}
+    </div>`;
+  }
+
+  // ── Montar colunas HTML ─────────────────────────────────────────────────
+  const colsHtml = colunas.map(c => {
+    const bucket = porCol[c.ds];
+    const dtFmt = c.data.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+    const nomeDia = c.isSab ? 'Sábado' : c.data.toLocaleDateString('pt-BR',{weekday:'long'});
+    const totalCol = (bucket.pesada?.length||0)+(bucket.leve?.length||0)+(bucket.val?.length||0)+(bucket.avulso?.length||0);
+    
+    // Valetamento (sábado)
+    const valHtml = bucket.val.length ? `
+      <div style="font-size:9px;font-weight:700;color:#06B6D4;text-transform:uppercase;margin-bottom:4px;padding-top:2px">📦 Valetamento (${bucket.val.length})</div>
+      ${bucket.val.map(e=>cardLinha(e,'val')).join('')}` : '';
+
+    // Pesadas
+    const pesHtml = bucket.pesada.length ? `
+      <div style="font-size:9px;font-weight:700;color:var(--blue);text-transform:uppercase;margin-bottom:4px;${bucket.val.length?'padding-top:8px;border-top:1px solid var(--border2)':''}">🔩 Pesada (${bucket.pesada.length})</div>
+      ${bucket.pesada.map(e=>cardLinha(e,'pesada')).join('')}` : '';
+
+    // Leves
+    const levHtml = bucket.leve.length ? `
+      <div style="font-size:9px;font-weight:700;color:var(--green);text-transform:uppercase;margin-bottom:4px;padding-top:8px;border-top:1px solid var(--border2)">🔧 Leve (${bucket.leve.length})</div>
+      ${bucket.leve.map(e=>cardLinha(e,'leve')).join('')}` : '';
+
+    // Avulsos
+    const avuHtml = bucket.avulso.length ? `
+      <div style="font-size:9px;font-weight:700;color:var(--amber);text-transform:uppercase;margin-bottom:4px;padding-top:8px;border-top:1px solid var(--border2)">⚡ Avulsos (${bucket.avulso.length})</div>
+      ${bucket.avulso.map(e=>cardLinha(e,'avulso')).join('')}` : '';
+
+    return `<div style="flex:1;min-width:160px">
+      <div style="text-align:center;padding:6px 4px;background:${c.isSab?'#06B6D418':'var(--surface2)'};border-radius:8px;margin-bottom:8px;border:1px solid ${c.isSab?'#06B6D430':'var(--border2)'}">
+        <div style="font-size:11px;font-weight:800;text-transform:capitalize;color:${c.isSab?'#06B6D4':'var(--text)'}">${nomeDia}</div>
+        <div style="font-size:10px;color:var(--text3)">${dtFmt} · ${totalCol} item${totalCol!==1?'s':''}</div>
+      </div>
+      ${valHtml}${pesHtml}${levHtml}${avuHtml}
+      ${!totalCol?'<div style="text-align:center;padding:16px 8px;color:var(--text4);font-size:11px">—</div>':''}
     </div>`;
   }).join('');
 
-  const gid = getGid();
+  // ── Overflow ────────────────────────────────────────────────────────────
+  const ovBucket = porCol['overflow'];
+  const ovItens = [...(ovBucket.pesada||[]),...(ovBucket.leve||[]),...(ovBucket.avulso||[])];
+  const overflowHtml = ovItens.length ? `
+    <div style="margin-bottom:16px">
+      <div style="font-size:12px;font-weight:800;color:var(--red);padding:6px 10px;background:#EF444410;border-radius:8px;margin-bottom:8px;border:1px solid #EF444430">
+        ⚠️ Sem vaga esta semana — ${ovItens.length} preventiva(s) excedentes
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${ovItens.map(e=>cardLinha(e,'overflow')).join('')}
+      </div>
+    </div>` : '';
+
   setMain(`${back}
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-size:16px;font-weight:800">📅 Escala Automática de Preventivas</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">${confirmados.length} de ${total - rascunho.filter(e=>e.jaExiste).length} itens selecionados para confirmar</div>
+        <div style="font-size:15px;font-weight:800">📅 Escala Automática de Preventivas</div>
+        <div style="font-size:11px;color:var(--text3)">${confirmados.length} confirmados · ${overflow.length} sem vaga</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button onclick="toggleTodosEscala(true)" class="btn-sm">✅ Selecionar Todos</button>
-        <button onclick="toggleTodosEscala(false)" class="btn-sm">⬜ Desmarcar Todos</button>
-        <button onclick="confirmarEscalaAutomatica()" style="padding:8px 18px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
-          📅 Confirmar ${confirmados.length} Programações
+        <button onclick="toggleTodosEscala(true)" class="btn-sm">✅ Todos</button>
+        <button onclick="toggleTodosEscala(false)" class="btn-sm">⬜ Nenhum</button>
+        <button onclick="confirmarEscalaAutomatica()" style="padding:8px 16px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
+          📅 Confirmar ${confirmados.length}
         </button>
       </div>
     </div>
     <!-- KPIs -->
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px">
-      <div class="kpi neu"><div class="kpi-label">Total</div><div class="kpi-val">${total}</div></div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px">
+      <div class="kpi neu"><div class="kpi-label">Total</div><div class="kpi-val">${rascunho.length}</div></div>
       <div class="kpi ok"><div class="kpi-label">Selecionados</div><div class="kpi-val" style="color:var(--blue)">${confirmados.length}</div></div>
       <div class="kpi ${overflow.length?'nok':'ok'}"><div class="kpi-label">Sem vaga</div><div class="kpi-val" style="color:${overflow.length?'var(--red)':'var(--green)'}">${overflow.length}</div></div>
       <div class="kpi neu"><div class="kpi-label">Valetamento</div><div class="kpi-val" style="color:#06B6D4">${rascunho.filter(e=>e.tipo==='valetamento').length}</div></div>
-      <div class="kpi ${rascunho.filter(e=>e.jaExiste).length?'nok':'ok'}"><div class="kpi-label">Já Exist.</div><div class="kpi-val" style="color:var(--text3)">${rascunho.filter(e=>e.jaExiste).length}</div></div>
+      <div class="kpi neu"><div class="kpi-label">Já Progr.</div><div class="kpi-val" style="color:var(--text3)">${rascunho.filter(e=>e.jaExiste).length}</div></div>
     </div>
-    ${overflow.length ? `<div style="background:#EF444410;border:1px solid #EF444430;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--red)">⚠️ ${overflow.length} preventiva(s) não couberam nesta semana. Deslize para baixo para ver — considere redistribuir manualmente.</div>` : ''}
-    ${blocosDia}
-    <div style="height:60px"></div>
+    ${overflowHtml}
+    <!-- Grade por dia -->
+    <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:12px;align-items:flex-start">
+      ${colsHtml}
+    </div>
+    <div style="height:40px"></div>
   `);
 }
 
@@ -6030,29 +6107,111 @@ function toggleEscalaItem(id) {
   const item = (window._escalaRascunho||[]).find(e => e.id === id);
   if (!item || item.jaExiste) return;
   item.confirmado = !item.confirmado;
-  // Re-render sem recalcular
-  const back = `<button class="btn-back" onclick="renderFerrPrev()">← Painel Preventivas</button>`;
-  // Reconstruir diasSemana do rascunho
-  const datas = [...new Set((window._escalaRascunho||[]).filter(e=>e.data&&!e.tipo.includes('overflow')&&e.tipo!=='valetamento').map(e=>e.data))].sort();
-  const diasSemana = datas.filter(d => { const dow=new Date(d+'T12:00:00').getDay(); return dow>=1&&dow<=5; }).map(d=>new Date(d+'T12:00:00'));
-  const sabStr = (window._escalaRascunho||[]).find(e=>e.tipo==='valetamento')?.data;
-  const sabValetamento = sabStr ? new Date(sabStr+'T12:00:00') : new Date();
-  renderTelaEscala(back, diasSemana, sabValetamento);
+  _recarregarEscala();
 }
 
 function toggleTodosEscala(val) {
   (window._escalaRascunho||[]).forEach(e => { if (!e.jaExiste) e.confirmado = val; });
-  const back = `<button class="btn-back" onclick="renderFerrPrev()">← Painel Preventivas</button>`;
-  const datas = [...new Set((window._escalaRascunho||[]).filter(e=>e.data&&!e.tipo.includes('overflow')&&e.tipo!=='valetamento').map(e=>e.data))].sort();
-  const diasSemana = datas.filter(d => { const dow=new Date(d+'T12:00:00').getDay(); return dow>=1&&dow<=5; }).map(d=>new Date(d+'T12:00:00'));
-  const sabStr = (window._escalaRascunho||[]).find(e=>e.tipo==='valetamento')?.data;
-  const sabValetamento = sabStr ? new Date(sabStr+'T12:00:00') : new Date();
-  renderTelaEscala(back, diasSemana, sabValetamento);
+  _recarregarEscala();
+}
+
+function toggleExpandEscala(id) {
+  const el = document.getElementById('exp-'+id);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function removerItemEscala(id) {
+  const rascunho = window._escalaRascunho || [];
+  const item = rascunho.find(e => e.id === id);
+  if (!item) return;
+
+  // Buscar fila de substitutos: planos pendentes que NÃO estão no rascunho
+  const jaNoRascunho = new Set(rascunho.map(e => e.carro+'::'+e.planoNum));
+  const tipo = item.incluileve||isPesada(item.planoNum) ? 'pesada' : isLeve(item.planoNum) ? 'leve' : 'avulso';
+  
+  const substitutos = (_prevDados||[])
+    .filter(p => {
+      if (jaNoRascunho.has(p.carro+'::'+p.planoNum)) return false;
+      if (tipo === 'pesada') return isPesada(p.planoNum) && p.excessoKm >= -1000;
+      if (tipo === 'leve') return isLeve(p.planoNum) && p.excessoKm >= -1000;
+      return isAvulso(p.planoNum) && p.excessoKm >= -500;
+    })
+    .sort((a,b) => b.excessoKm - a.excessoKm)
+    .slice(0, 12);
+
+  const html = `
+    <div style="font-size:13px;font-weight:700;margin-bottom:10px">
+      Remover <span style="font-family:'DM Mono',monospace;color:var(--red)">${item.carro}</span> — escolher substituto
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
+      Vaga: ${item.data?.split('-').reverse().join('/')} · T${item.turno} · ${item.planoNome}
+    </div>
+    <div style="max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:5px">
+      ${substitutos.length ? substitutos.map(p => {
+        const cor = p.excessoKm>0?'var(--red)':p.excessoKm>-500?'var(--amber)':'var(--green)';
+        return `<div onclick="substituirItemEscala(${id},'${p.carro}','${p.planoNum}','${p.planoNome.replace(/'/g,'\\u0027')}')" 
+          style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--surface);border:1px solid var(--border2);border-radius:8px;cursor:pointer"
+          onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border2)'">
+          <div>
+            <span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--blue)">${p.carro}</span>
+            <span style="font-size:11px;color:var(--text2);margin-left:6px">${PREV_NOMES[p.planoNum]||p.planoNome}</span>
+          </div>
+          <span style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:${cor}">${p.excessoKm>=0?'+':''}${p.excessoKm.toLocaleString('pt-BR')} km</span>
+        </div>`;
+      }).join('') : '<div style="text-align:center;padding:20px;color:var(--text3)">Nenhum substituto disponível</div>'}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button onclick="closeModal?closeModal():document.querySelector('[id^=modal]')?.remove()" 
+        style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">Cancelar</button>
+      <button onclick="confirmarRemocaoEscala(${id})" 
+        style="flex:1;padding:10px;border-radius:8px;border:1px solid #EF444440;background:#EF444410;color:var(--red);font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">Remover sem substituir</button>
+    </div>`;
+
+  // Abrir modal inline
+  const modal = document.createElement('div');
+  modal.id = 'modal-substituto';
+  modal.style.cssText = 'position:fixed;inset:0;background:#00000088;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML = `<div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:20px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px #00000060">${html}</div>`;
+  modal.onclick = e => { if(e.target===modal) modal.remove(); };
+  document.body.appendChild(modal);
+}
+
+function confirmarRemocaoEscala(id) {
+  window._escalaRascunho = (window._escalaRascunho||[]).filter(e => e.id !== id);
+  document.getElementById('modal-substituto')?.remove();
+  _recarregarEscala();
+}
+
+function substituirItemEscala(idRemover, novoCarro, novoPlanoNum, novoPlanoNome) {
+  const rascunho = window._escalaRascunho || [];
+  const item = rascunho.find(e => e.id === idRemover);
+  if (!item) return;
+
+  const dadosCarro = (_prevDados||[]).filter(p=>p.carro===novoCarro);
+  const dadosPlano = dadosCarro.find(p=>p.planoNum===novoPlanoNum) || {};
+  const ops = calcularOportunistas(dadosCarro, {planoNum:novoPlanoNum, planoNome:novoPlanoNome, proximaExec:0, excessoKm: dadosPlano.excessoKm||0});
+
+  // Substituir no mesmo slot
+  item.carro = novoCarro;
+  item.planoNum = novoPlanoNum;
+  item.planoNome = novoPlanoNome;
+  item.excessoKm = dadosPlano.excessoKm || 0;
+  item.oportunistas = ops.map(o=>o.num);
+  item.oportunistasNomes = ops.map(o=>o.nome);
+  item.incluileve = isPesada(novoPlanoNum);
+  item.motivo = `Substituição manual · ${dadosPlano.excessoKm>=0?'+':''}${(dadosPlano.excessoKm||0).toLocaleString('pt-BR')} km`;
+  item.tipo = isGarantia(novoCarro)?'garantia':isPesada(novoPlanoNum)?'pesada':'leve';
+  item.confirmado = true;
+  item.jaExiste = false;
+
+  document.getElementById('modal-substituto')?.remove();
+  _recarregarEscala();
 }
 
 async function confirmarEscalaAutomatica() {
   const gid = getGid();
-  const selecionados = (window._escalaRascunho||[]).filter(e => e.confirmado && !e.jaExiste && e.data);
+  const selecionados = (window._escalaRascunho||[]).filter(e => e.confirmado && !e.jaExiste && e.data && !e.tipo.includes('overflow'));
   if (!selecionados.length) { toast('Nenhum item selecionado','err'); return; }
 
   const btn = document.querySelector('button[onclick*="confirmarEscalaAutomatica"]');
@@ -6068,29 +6227,23 @@ async function confirmarEscalaAutomatica() {
     ].filter(Boolean).join(' | ');
 
     const { error } = await sb.from('programacao_preventiva').insert({
-      garagem_id: gid,
-      prefixo: e.carro,
-      plano_num: e.planoNum,
-      plano_nome: e.planoNome,
-      tipo_metrica: 'KM',
-      excesso_km: e.excessoKm || 0,
-      km_atual: 0,
+      garagem_id: gid, prefixo: e.carro,
+      plano_num: e.planoNum, plano_nome: e.planoNome,
+      tipo_metrica: 'KM', excesso_km: e.excessoKm||0, km_atual: 0,
       data_prevista: e.data,
       turno: e.turno === 'VAL' ? 'A' : e.turno,
       cesto_separado: e.cesto,
-      observacao: obsPartes || null,
-      status: e.tipo === 'valetamento' ? 'valetamento' : 'programado',
-      criado_por: S.perfil?.nome,
-      criado_por_id: S.perfil?.id,
+      observacao: obsPartes||null,
+      status: e.tipo==='valetamento' ? 'valetamento' : 'programado',
+      criado_por: S.perfil?.nome, criado_por_id: S.perfil?.id,
       auto_gerado: true,
     });
     if (error) { console.error(e.carro, error.message); erros++; } else ok++;
   }
 
-  // Notificação WPP com resumo
   try {
     const garagem = S.garagens?.find(g=>g.id===gid);
-    const linhas = selecionados.filter(e=>e.tipo!=='valetamento').slice(0,15).map(e =>
+    const linhas = selecionados.filter(e=>e.tipo!=='valetamento').slice(0,15).map(e=>
       `${e.tipo==='garantia'?'🔒':'🔩'} *${e.carro}* — ${e.planoNome.split(' ').slice(0,3).join(' ')} · ${e.data?.split('-').reverse().join('/')} T${e.turno}`
     ).join('\n');
     const msg = `🗓️ *ESCALA PREVENTIVA — JTP*\n📍 ${garagem?.nome||'Porto Velho'} · Gerada automaticamente\n\n✅ ${ok} programadas · ❌ ${erros} erros\n\n${linhas}${selecionados.length>15?`\n_...e mais ${selecionados.length-15} itens_`:''}\n\n_Gerado por: ${S.perfil?.nome||'PCM'}_`;
@@ -6098,12 +6251,14 @@ async function confirmarEscalaAutomatica() {
       method:'POST',headers:{'Content-Type':'application/json','apikey':'4289AC11F437-43AD-96D7-9F27C2735696'},
       body:JSON.stringify({number:'120363427489152994@g.us',options:{delay:0},textMessage:{text:msg}}),
     });
-  } catch(e) { console.warn('WPP escala:',e); }
+  } catch(e) { console.warn('WPP:',e); }
 
   toast(`✅ ${ok} programações confirmadas${erros?' · ⚠️ '+erros+' erros':''}!`);
   window._escalaRascunho = null;
   renderPrevProgramadas();
 }
+
+
 
 // ── MODAL DE PROGRAMAÇÃO ─────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════
