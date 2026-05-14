@@ -273,7 +273,7 @@ const CK_VISTORIA_PESADA=[
 let _lid='',_lck={};
 async function telaLavagem(){
   const gid=getGid();
-  const{data:lista}=await sb.from('checklist_lavagem').select('*').eq('garagem_id',gid).eq('data',hoje()).order('prefixo');
+  const{data:lista}=await sb.from('checklist_lavagem').select('*').eq('garagem_id',gid).eq('data',hoje()).not('status','in','("cancelado","arquivado")').order('prefixo');
   if(!lista?.length){render(`<div class="empty"><div class="empty-ic">🚿</div><div style="font-weight:700;font-size:16px;margin-bottom:8px">Sem programação hoje</div><div style="font-size:13px">Aguardando programação do L. Operacional.</div></div>`);return}
   const exec=lista.filter(l=>l.status==='executado').length,tot=lista.length,pct=Math.round(exec/tot*100);
   const cards=lista.map(r=>{
@@ -2076,8 +2076,8 @@ async function telaLavPesada(){
     sb.from('soltura_2_10').select('prefixo').eq('garagem_id',gid).eq('data',data),
   ]);
   
-  // Filtrar cancelados (removidos via fallback de RLS)
-  window._lavLista=(plano||[]).filter(r=>r.status!=='cancelado');
+  // Filtrar cancelados e arquivados (removidos via fallback de RLS)
+  window._lavLista=(plano||[]).filter(r=>r.status!=='cancelado'&&r.status!=='arquivado');
   const lista=window._lavLista;
   const prevSet=new Set((prevHoje||[]).map(p=>p.prefixo));
   
@@ -2183,69 +2183,85 @@ async function confirmarFechamentoLavagem(){
   const gid=getGid();
   const obs=document.getElementById('obs-lav-turno')?.value?.trim()||null;
 
-  // Bloquear botão
   const btn=document.querySelector('#shbody button:last-child');
   if(btn){btn.disabled=true;btn.textContent='Fechando...';}
 
-  const{data:plano}=await sb.from('checklist_lavagem').select('*')
+  // Busca plano do dia
+  const{data:plano,error:errPlano}=await sb.from('checklist_lavagem').select('*')
     .eq('garagem_id',gid).eq('data',_lpData);
+  if(errPlano){
+    toast('❌ Erro ao buscar plano: '+errPlano.message,'err');
+    if(btn){btn.disabled=false;btn.textContent='Tentar novamente';}
+    return;
+  }
   const lista=plano||[];
+  if(!lista.length){
+    toast('❌ Nenhum registro encontrado','err');
+    if(btn){btn.disabled=false;btn.textContent='Tentar novamente';}
+    return;
+  }
+
   const lavados=lista.filter(l=>l.status==='executado').length;
   const vistoriados=lista.filter(l=>l.validado_patio).length;
   const pct=lista.length>0?Math.round(vistoriados/lista.length*100):0;
-
-  // 1. Gravar fechamento (snapshot do turno)
-  try{
-    await sb.from('fechamento_lavagem').insert({
-      garagem_id:gid,
-      data:_lpData,
-      turno:S.turno||'dia',
-      total_planejados:lista.length,
-      total_lavados:lavados,
-      total_vistoriados:vistoriados,
-      pct_vistoriados:pct,
-      responsavel_nome:S.perfil?.nome||null,
-      responsavel_id:S.perfil?.id||null,
-      observacao:obs,
-      detalhes:lista,
-    });
-  }catch(e){console.warn('fechamento_lavagem insert:',e.message);}
-
-  // 2. Atualizar data da última lavagem na tabela frota
-  // Apenas carros que foram efetivamente lavados (status=executado)
   const prefixosLavados=[...new Set(lista.filter(l=>l.status==='executado').map(l=>l.prefixo))];
-  if(prefixosLavados.length){
-    try{
-      // Busca os IDs dos veículos para fazer o update em lote
-      const{data:veiculos}=await sb.from('frota').select('id,prefixo')
-        .eq('garagem_id',gid).in('prefixo',prefixosLavados);
-      if(veiculos?.length){
-        // Atualiza cada veículo com a data da última lavagem
-        await Promise.all(veiculos.map(v=>
-          sb.from('frota').update({ultima_lavagem:_lpData}).eq('id',v.id)
-        ));
-      }
-    }catch(e){console.warn('frota ultima_lavagem:',e.message);}
 
-
+  // PASSO 1 — Snapshot em fechamento_lavagem
+  const{error:errFech}=await sb.from('fechamento_lavagem').insert({
+    garagem_id:gid,
+    data:_lpData,
+    turno:S.turno||'dia',
+    total_planejados:lista.length,
+    total_lavados:lavados,
+    total_vistoriados:vistoriados,
+    pct_vistoriados:pct,
+    responsavel_nome:S.perfil?.nome||null,
+    responsavel_id:S.perfil?.id||null,
+    observacao:obs,
+    detalhes:lista,
+  });
+  if(errFech){
+    toast('❌ Erro ao gravar fechamento: '+errFech.message,'err');
+    if(btn){btn.disabled=false;btn.textContent='Tentar novamente';}
+    return;
   }
 
-  // 3. Zerar checklist_lavagem do dia (deletar todos os registros do dia)
+  // PASSO 2 — Atualizar ultima_lavagem na tabela frota
+  if(prefixosLavados.length){
+    const{data:veiculos,error:errVei}=await sb.from('frota').select('id,prefixo')
+      .eq('garagem_id',gid).in('prefixo',prefixosLavados);
+    if(errVei){
+      toast('⚠️ Erro ao buscar frota: '+errVei.message,'err');
+    } else if(!veiculos?.length){
+      toast('⚠️ Prefixos não encontrados na tabela frota. Verifique cadastro.','err');
+    } else {
+      const erros=[];
+      for(const v of veiculos){
+        const{error:e}=await sb.from('frota').update({ultima_lavagem:_lpData}).eq('id',v.id);
+        if(e) erros.push(v.prefixo+': '+e.message);
+      }
+      if(erros.length) toast('⚠️ Alguns não atualizados: '+erros[0],'err');
+    }
+  }
+
+  // PASSO 3 — Deletar checklist_lavagem do dia
   const ids=lista.map(l=>l.id).filter(Boolean);
   if(ids.length){
-    try{
-      const{error:errDel}=await sb.from('checklist_lavagem').delete().in('id',ids);
-      if(errDel){
-        // Se delete falhar por RLS, marcar como arquivado
-        await sb.from('checklist_lavagem').update({status:'arquivado'})
-          .eq('garagem_id',gid).eq('data',_lpData);
-        console.warn('checklist_lavagem delete bloqueado por RLS — marcado como arquivado');
+    const{error:errDel}=await sb.from('checklist_lavagem').delete().in('id',ids);
+    if(errDel){
+      // Fallback: marcar como arquivado (RLS pode estar bloqueando delete)
+      const{error:errArq}=await sb.from('checklist_lavagem')
+        .update({status:'arquivado'}).eq('garagem_id',gid).eq('data',_lpData);
+      if(errArq){
+        toast('⚠️ Não foi possível limpar o plano. Erro: '+errDel.message,'err');
+      } else {
+        toast('⚠️ Delete bloqueado (RLS) — plano marcado como arquivado','err');
       }
-    }catch(e){console.warn('checklist_lavagem delete:',e.message);}
+    }
   }
 
   closeSheet(true);
-  toast('✅ Turno fechado! '+lavados+' lavados · '+prefixosLavados.length+' carros atualizados');
+  toast('✅ Fechado! '+lavados+'/'+lista.length+' lavados · '+prefixosLavados.length+' frota atualizada');
   telaLavPesada();
 }
 
