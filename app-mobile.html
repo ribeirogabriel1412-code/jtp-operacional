@@ -252,9 +252,12 @@ async function telaHome(){
         <button onclick="S.turno='noite';telaHome()" style="flex:1;padding:8px;border-radius:8px;border:1px solid ${S.turno==='noite'?'var(--blue)':'var(--border)'};background:${S.turno==='noite'?'#2563EB18':'transparent'};color:${S.turno==='noite'?'var(--blue)':'var(--text3)'};font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">🌙 Noite</button>
       </div>
     </div>
-    <div style="padding:0 14px 14px">
+    <div style="padding:0 14px 14px;display:flex;flex-direction:column;gap:8px">
       <button onclick="abrirRelatorioManual()" style="width:100%;padding:13px;border-radius:12px;border:1px solid #2563EB40;background:#2563EB10;color:var(--blue);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
         📄 Relatório Recolha & Abastecimento
+      </button>
+      <button onclick="abrirRelatorioSoltura()" style="width:100%;padding:13px;border-radius:12px;border:1px solid #8B5CF640;background:#8B5CF610;color:#8B5CF6;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+        🚌 Relatório de Soltura
       </button>
     </div>`);
 }
@@ -2647,7 +2650,224 @@ async function confirmarPlano(){
 
 
 // ══════════════════════════════════════════════════════════
-// RELATÓRIO MANUAL — Seletor de data com janela de turno
+// RELATÓRIO DE SOLTURA
+// ══════════════════════════════════════════════════════════
+function abrirRelatorioSoltura(){
+  const hojeStr=hoje();
+  openSheet('🚌 Relatório de Soltura',`
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="background:var(--surface2);border-radius:10px;padding:12px;font-size:12px;color:var(--text3)">
+        Selecione o <strong style="color:var(--text)">dia de referência</strong>.<br>
+        O relatório mostrará todos os veículos da escala com:<br>
+        prefixo · linha · motorista · horário · trocas · última lavagem
+      </div>
+
+      <div>
+        <label class="fl">Dia da escala</label>
+        <input type="date" id="rs-data" value="${hojeStr}"
+          style="width:100%;box-sizing:border-box;padding:11px 12px;border-radius:10px;border:1px solid var(--blue);background:var(--surface);color:var(--text);font-family:'DM Sans',sans-serif;font-size:15px">
+      </div>
+
+      <button onclick="gerarRelatorioSoltura()" style="padding:15px;border-radius:12px;border:none;background:#8B5CF6;color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">
+        🚌 Gerar Relatório
+      </button>
+    </div>
+  `);
+}
+
+async function gerarRelatorioSoltura(){
+  const data=document.getElementById('rs-data')?.value;
+  if(!data){toast('Selecione a data','err');return;}
+  const btn=document.querySelector('#shbody button:last-child');
+  if(btn){btn.disabled=true;btn.textContent='Buscando...';}
+
+  const gid=getGid();
+
+  // 1. Buscar escala do dia
+  const{data:escala,error:errEsc}=await sb.from('soltura_2_10').select('*')
+    .eq('garagem_id',gid).eq('data',data).order('horario_programado');
+
+  if(errEsc||!escala?.length){
+    toast('Nenhum dado de escala para esta data','err');
+    if(btn){btn.disabled=false;btn.textContent='🚌 Gerar Relatório';}
+    return;
+  }
+
+  // 2. Buscar última lavagem de cada prefixo na tabela frota
+  const prefixos=[...new Set(escala.map(r=>r.prefixo))];
+  const{data:frota}=await sb.from('frota').select('prefixo,ultima_lavagem')
+    .eq('garagem_id',gid).in('prefixo',prefixos);
+  const lavagemMap={};
+  (frota||[]).forEach(v=>{lavagemMap[v.prefixo]=v.ultima_lavagem;});
+
+  closeSheet(true);
+  toast(`📋 Gerando: ${escala.length} veículos...`);
+  await gerarPDFSoltura(gid, data, escala, lavagemMap);
+}
+
+async function gerarPDFSoltura(gid, data, escala, lavagemMap){
+  const dataFmt=data.split('-').reverse().join('/');
+  const garagem=S.garagens?.find(g=>g.id===gid);
+  const garaGemNome=garagem?.nome||'Porto Velho';
+
+  const B='border:1px solid #333;';
+  const BH='border:1px solid #333;background:#555;color:#fff;font-weight:900;';
+
+  // Totalizadores
+  const saiu=escala.filter(r=>r.saiu===true).length;
+  const naoSaiu=escala.filter(r=>r.saiu===false).length;
+  const pendente=escala.filter(r=>r.saiu==null).length;
+  const trocaMotorista=escala.filter(r=>r.observacao?.toLowerCase().includes('falta')||r.observacao?.toLowerCase().includes('atraso')||r.observacao?.toLowerCase().includes('troca')||r.motorista_fim&&r.motorista_fim!==r.motorista).length;
+  const trocaCarro=escala.filter(r=>r.observacao?.toLowerCase().includes('reserva:')).length;
+
+  const rows=escala.map(r=>{
+    // Detectar troca
+    const temTrocaMotorista=r.observacao?.toLowerCase().includes('falta')||r.observacao?.toLowerCase().includes('atraso')||r.observacao?.toLowerCase().includes('acidente')||(r.motorista_fim&&r.motorista_fim!==r.motorista);
+    const temTrocaCarro=r.observacao?.toLowerCase().includes('reserva:');
+    const obs=r.observacao||'';
+
+    // Última lavagem — dias atrás
+    const ultLav=lavagemMap[r.prefixo];
+    let diasSemLavar='—';
+    if(ultLav){
+      const diff=Math.floor((new Date(data+'T12:00:00')-new Date(ultLav+'T12:00:00'))/(1000*60*60*24));
+      diasSemLavar=diff===0?'Hoje':diff===1?'1 dia':`${diff} dias`;
+    }
+
+    // Status
+    const statusCor=r.saiu===true?'#166534':r.saiu===false?'#991b1b':'#92400e';
+    const statusBg=r.saiu===true?'#f0fdf4':r.saiu===false?'#fef2f2':'#fffbeb';
+    const statusTxt=r.saiu===true?'✅ Saiu':r.saiu===false?'❌ Não saiu':'⏳ Pend.';
+
+    // Motorista — mostrar troca se houver
+    const motoristaTxt=temTrocaMotorista&&r.motorista_fim&&r.motorista_fim!==r.motorista
+      ?`${r.motorista||'—'} → ${r.motorista_fim}`
+      :(r.motorista||'—');
+
+    // Prefixo — mostrar troca de carro se houver
+    const prefixoTxt=temTrocaCarro
+      ?`${r.prefixo} ⇄`
+      :r.prefixo;
+
+    const rowBg=temTrocaMotorista||temTrocaCarro?'background:#fffbeb;':'';
+    return`<tr style="${rowBg}">
+      <td style="${B}padding:3px 5px;font-family:monospace;font-weight:700;font-size:10px;${temTrocaCarro?'color:#b45309;':''}">${prefixoTxt}</td>
+      <td style="${B}padding:3px 5px;font-size:10px">${r.linha||'—'}</td>
+      <td style="${B}padding:3px 5px;font-size:10px">${motoristaTxt}</td>
+      <td style="${B}padding:3px 5px;text-align:center;font-family:monospace;font-size:10px">${r.horario_programado||'—'}</td>
+      <td style="${B}padding:3px 5px;text-align:center;font-family:monospace;font-size:10px;font-weight:${r.horario_real?'700':'400'};color:${r.horario_real?'#166534':'#666'}">${r.horario_real||'—'}</td>
+      <td style="${B}padding:3px 5px;text-align:center;background:${statusBg};color:${statusCor};font-size:10px;font-weight:700">${statusTxt}</td>
+      <td style="${B}padding:3px 5px;font-size:9px;color:${temTrocaMotorista?'#b45309':temTrocaCarro?'#b45309':'#555'};font-weight:${temTrocaMotorista||temTrocaCarro?'700':'400'}">
+        ${temTrocaCarro?'🔄 '+obs.split('|')[0].trim():''}
+        ${temTrocaMotorista&&!temTrocaCarro?'👤 '+obs.split('|')[0].trim():''}
+        ${!temTrocaMotorista&&!temTrocaCarro&&obs?obs.substring(0,40):''}
+      </td>
+      <td style="${B}padding:3px 5px;text-align:center;font-size:10px;color:${ultLav?'#166534':'#999'}">${diasSemLavar}</td>
+    </tr>`;
+  }).join('');
+
+  // Totais por status
+  const rowTotais=`<tr style="background:#ddd;font-weight:900">
+    <td style="${B}padding:3px 5px;font-size:10px" colspan="5">TOTAL</td>
+    <td style="${B}padding:3px 5px;text-align:center;font-size:10px">
+      ✅${saiu} ❌${naoSaiu} ⏳${pendente}
+    </td>
+    <td style="${B}padding:3px 5px;font-size:10px">🔄${trocaCarro} troca carro · 👤${trocaMotorista} troca mot.</td>
+    <td style="${B}padding:3px 5px"></td>
+  </tr>`;
+
+  const html=`<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+  body{font-family:Arial,sans-serif;font-size:10px;color:#000;margin:0;padding:10px}
+  @media print{body{padding:0}@page{margin:10mm;size:A4 landscape}}
+  table{border-collapse:collapse;width:100%}
+  th,td{font-size:10px}
+  tr:nth-child(even){background:#f9f9f9}
+  tr:hover{background:#f0f0f0}
+</style></head><body>
+
+  <!-- CABEÇALHO -->
+  <div style="text-align:center;border:2.5px solid #000;padding:6px;margin-bottom:5px;background:#fff">
+    <div style="font-size:13px;font-weight:900;letter-spacing:1px">GRUPO JTP  │  OPERAÇÃO GARAGEM  │  Relatório de Soltura de Frota</div>
+  </div>
+
+  <!-- INFO -->
+  <table style="margin-bottom:4px">
+    <tr>
+      <td style="${B}padding:3px 6px"><strong>Data:</strong> ${dataFmt}</td>
+      <td style="${B}padding:3px 6px"><strong>Garagem:</strong> ${garaGemNome}</td>
+      <td style="${B}padding:3px 6px"><strong>Total escala:</strong> ${escala.length}</td>
+      <td style="${B}padding:3px 6px"><strong>Responsável:</strong> ${S.perfil?.nome||'—'}</td>
+    </tr>
+  </table>
+
+  <!-- TOTAIS -->
+  <div style="font-weight:900;background:#555;color:#fff;border:1.5px solid #111;padding:3px 8px;margin-bottom:2px">■ RESUMO DO DIA</div>
+  <table style="margin-bottom:6px">
+    <tr>
+      <td style="${B}padding:4px 8px;background:#f0fdf4"><strong>✅ Saíram:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900">${saiu}</span></td>
+      <td style="${B}padding:4px 8px;background:#fef2f2"><strong>❌ Não saíram:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900;color:#991b1b">${naoSaiu}</span></td>
+      <td style="${B}padding:4px 8px;background:#fffbeb"><strong>⏳ Pendentes:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900;color:#92400e">${pendente}</span></td>
+      <td style="${B}padding:4px 8px;background:#fffbeb"><strong>🔄 Troca carro:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900">${trocaCarro}</span></td>
+      <td style="${B}padding:4px 8px;background:#fffbeb"><strong>👤 Troca motorista:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900">${trocaMotorista}</span></td>
+    </tr>
+  </table>
+
+  <!-- TABELA PRINCIPAL -->
+  <div style="font-weight:900;background:#555;color:#fff;border:1.5px solid #111;padding:3px 8px;margin-bottom:2px">■ DETALHAMENTO POR VEÍCULO</div>
+  <table>
+    <thead>
+      <tr>
+        <th style="${BH}padding:3px;width:55px">PREFIXO</th>
+        <th style="${BH}padding:3px;text-align:left">LINHA</th>
+        <th style="${BH}padding:3px;text-align:left">MOTORISTA</th>
+        <th style="${BH}padding:3px;text-align:center;width:55px">HOR.<br>PREV.</th>
+        <th style="${BH}padding:3px;text-align:center;width:55px">HOR.<br>REAL</th>
+        <th style="${BH}padding:3px;text-align:center;width:60px">STATUS</th>
+        <th style="${BH}padding:3px;text-align:left">TROCA / OBSERVAÇÃO</th>
+        <th style="${BH}padding:3px;text-align:center;width:60px">ÚLT.<br>LAVAGEM</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+    <tfoot>${rowTotais}</tfoot>
+  </table>
+
+  <div style="margin-top:10px;display:flex;justify-content:space-between;font-size:9px;color:#666">
+    <span>Gerado em: ${new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'})}</span>
+    <span>JTP Transportes · Operação Garagem</span>
+  </div>
+</body></html>`;
+
+  // Enviar WPP — resumo em texto
+  try{
+    const linhas=escala.slice(0,20).map(r=>{
+      const st=r.saiu===true?'✅':r.saiu===false?'❌':'⏳';
+      const troca=r.observacao?.toLowerCase().includes('reserva:')||r.motorista_fim&&r.motorista_fim!==r.motorista?'🔄':'';
+      return`${st}${troca} *${r.prefixo}* | ${r.linha||'—'} | ${r.motorista?.split(' ').slice(0,2).join(' ')||'—'} | ${r.horario_programado||'—'}→${r.horario_real||'—'}`;
+    }).join('\n');
+
+    const msg=`🚌 *SOLTURA DE FROTA — JTP*\n📍 ${garaGemNome} · ${dataFmt}\n\n✅ ${saiu} saíram · ❌ ${naoSaiu} não saíram · ⏳ ${pendente} pendentes\n🔄 ${trocaCarro} troca carro · 👤 ${trocaMotorista} troca motorista\n\n${linhas}${escala.length>20?`\n_...e mais ${escala.length-20} veículos_`:''}\n\n_${S.perfil?.nome||'Líder de Pátio'}_`;
+
+    await fetch('https://evolution-api-production-8d56.up.railway.app/message/sendText/jtp-garagem',{
+      method:'POST',headers:{'Content-Type':'application/json','apikey':'4289AC11F437-43AD-96D7-9F27C2735696'},
+      body:JSON.stringify({number:'120363427489152994@g.us',options:{delay:0},textMessage:{text:msg}}),
+    });
+  }catch(e){console.warn('[wpp soltura]',e);}
+
+  // Abrir PDF
+  const w=window.open('','_blank','width=1000,height=700');
+  if(w){
+    w.document.write(html);
+    w.document.close();
+    w.onload=()=>{setTimeout(()=>{w.print();},400);};
+    toast('✅ Relatório de soltura gerado · 📲 WPP enviado');
+  }else{
+    toast('⚠️ Popup bloqueado — permita popups para gerar o PDF','err');
+  }
+}
+
+
 // ══════════════════════════════════════════════════════════
 function abrirRelatorioManual(){
   // Sugestão: ontem como data de referência (turno noturno mais comum)
