@@ -5731,20 +5731,24 @@ function gerarEscalaAutomatica(dados, semanaRef) {
   // ── Candidatos ordenados: mais vencido → mais próximo ─────────────
   const sorted = (arr) => [...arr].sort((a,b) => b.excessoKm - a.excessoKm);
 
-  // Garantias: todos os carros em garantia com plano vencido ou próximo
-  // Sem limite — 1 por carro, ordenado mais vencido primeiro
-  const garantias = sorted(dados.filter(r => isGarantia(r.carro) && isPesada(r.planoNum)))
-    .filter((r,_,a) => a.findIndex(x=>x.carro===r.carro)===a.indexOf(r));
+  // Capacidade semanal = 5 dias × limite/dia
+  // Garantia: 5/semana | Pesada: 10/semana | Leve: 30/semana
+  // Ordenação: mais vencido primeiro → overflow para semanas seguintes
 
-  // Pesadas: todos os carros com pesada (exceto garantia), sem corte de km
-  const pesadasNormais = sorted(dados.filter(r => isPesada(r.planoNum) && !isGarantia(r.carro)))
-    .filter((r,_,a) => a.findIndex(x=>x.carro===r.carro)===a.indexOf(r));
+  // Dedup por carro (1 plano por carro = o mais crítico)
+  const dedup = (arr) => arr.filter((r,_,a) => a.findIndex(x=>x.carro===r.carro)===a.indexOf(r));
 
-  // Leves: todos, sem corte de km
-  const leves = sorted(dados.filter(r => isLeve(r.planoNum)))
-    .filter((r,_,a) => a.findIndex(x=>x.carro===r.carro)===a.indexOf(r));
+  // Garantias — top 5 (1/dia × 5 dias), mais vencido primeiro
+  const garantias = dedup(sorted(dados.filter(r => isGarantia(r.carro) && isPesada(r.planoNum))));
 
-  // Avulsos: todos vencidos ou próximos (-1000 km)
+  // Pesadas normais — top 10 (2/dia × 5 dias), mais vencido primeiro
+  const pesadasNormais = dedup(sorted(dados.filter(r => isPesada(r.planoNum) && !isGarantia(r.carro))));
+
+  // Leves — top 30 (6/dia × 5 dias), mais vencido primeiro
+  // Carros que já têm pesada → leve será inclusa, não ocupa slot de leve
+  const leves = dedup(sorted(dados.filter(r => isLeve(r.planoNum))));
+
+  // Avulsos — vencidos ou próximos (-1000 km)
   const avulsos = sorted(dados.filter(r => isAvulso(r.planoNum) && r.excessoKm >= -1000));
 
   // ── PASSO 1: GARANTIAS — 1/dia, seg-sex ───────────────────────────
