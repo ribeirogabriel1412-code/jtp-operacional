@@ -6780,24 +6780,21 @@ async function renderAutoEscala() {
 
   if (!_prevDados.length) { toast('Importe o relatório MAN primeiro','err'); renderFerrPrev(); return; }
 
-  // Buscar programações já existentes para não duplicar
+  // Buscar programações já existentes para não duplicar e para o valetamento
   const { data: jaExiste } = await sb.from('programacao_preventiva').select('prefixo,plano_num,data_prevista')
     .eq('garagem_id', gid).in('status',['programado','em_execucao'])
     .gte('data_prevista', new Date().toISOString().slice(0,10));
   const jaSet = new Set((jaExiste||[]).map(p => p.prefixo+'::'+p.plano_num+'::'+p.data_prevista));
 
-  // Buscar prefixos já programados no banco para excluir do valetamento
-  const semanaIni = new Date(); semanaIni.setDate(semanaIni.getDate() - semanaIni.getDay() + 1);
-  const semanaFim = new Date(semanaIni); semanaFim.setDate(semanaIni.getDate() + 4);
-  const { data: jaProgBanco } = await sb.from('programacao_preventiva')
-    .select('prefixo,plano_num')
-    .eq('garagem_id', gid)
-    .in('status', ['programado','em_execucao'])
-    .gte('data_prevista', semanaIni.toISOString().slice(0,10))
-    .lte('data_prevista', semanaFim.toISOString().slice(0,10));
-  const prefixosJaProgBanco = new Set((jaProgBanco||[])
-    .filter(p => p.plano_num === '002' || ['003','029'].includes(p.plano_num))
+  // Prefixos com pesada/garantia já programados na semana corrente (próximos 7 dias)
+  // Usado pelo motor para saber quais carros JÁ estão na semana e não devem ir para valetamento
+  const proxSemanaFim = new Date(); proxSemanaFim.setDate(proxSemanaFim.getDate() + 7);
+  const prefixosJaProgBanco = new Set((jaExiste||[])
+    .filter(p => (p.plano_num === '002' || ['003','029'].includes(p.plano_num))
+      && p.data_prevista <= proxSemanaFim.toISOString().slice(0,10))
     .map(p => p.prefixo));
+
+  console.log('[VALET] prefixosJaProgBanco:', prefixosJaProgBanco.size, [...prefixosJaProgBanco].slice(0,5));
 
   const { escala, diasSemana, sabValetamento } = gerarEscalaAutomatica(_prevDados, null, prefixosJaProgBanco);
 
@@ -10672,9 +10669,8 @@ document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementB
     // Auto-login silencioso se sessão ativa
   }
 })();
-</script>
-</body>
-</html>
+
+
 // ══════════════════════════════════════════════════════════════════════════
 // RELATÓRIOS PCM — Geração automática a partir dos dados do banco
 // 2.4 · Fechamento de Turno PCM
@@ -11087,3 +11083,10 @@ async function abrirRelatorioHTMLPCM(html, nomePDF){
     a.click(); setTimeout(()=>URL.revokeObjectURL(url),3000);
   }
 }
+
+
+
+
+</script>
+</body>
+</html>
