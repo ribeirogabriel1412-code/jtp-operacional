@@ -6874,6 +6874,17 @@ function renderTelaEscala(back, diasSemana, sabValetamento) {
 
   // ── Helper: card de linha ───────────────────────────────────────────────
   function cardLinha(e, secao) {
+    // Slot vazio — visual tracejado, clicável para preencher
+    if (e.slotVazio) {
+      return `<div onclick="removerItemEscala(${e.id})"
+        style="background:transparent;border:2px dashed var(--border);border-radius:10px;padding:12px;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;opacity:0.6"
+        onmouseover="this.style.borderColor='var(--blue)';this.style.opacity='1'"
+        onmouseout="this.style.borderColor='var(--border)';this.style.opacity='0.6'">
+        <span style="font-size:16px">➕</span>
+        <span style="font-size:12px;color:var(--text3);font-weight:600">Slot vazio · ${e.data?.split('-').reverse().join('/')} · Clique para preencher</span>
+      </div>`;
+    }
+
     const cor = e.tipo==='garantia'?'#8B5CF6': e.tipo==='valetamento'?'#06B6D4': isPesada(e.planoNum)?'#3B82F6':'#22C55E';
     const check = e.confirmado&&!e.jaExiste ? '✅' : e.jaExiste ? '🔵' : '⬜';
 
@@ -7187,7 +7198,20 @@ function removerItemEscala(id) {
 }
 
 function confirmarRemocaoEscala(id) {
-  window._escalaRascunho = (window._escalaRascunho||[]).filter(e => e.id !== id);
+  const rascunho = window._escalaRascunho || [];
+  const item = rascunho.find(e => e.id === id);
+  if (!item) { document.getElementById('modal-substituto')?.remove(); return; }
+
+  // Não remove — transforma em slot vazio visível
+  item.carro = '—';
+  item.planoNome = 'Slot Vazio';
+  item.confirmado = false;
+  item.slotVazio = true;
+  item.oportunistas = [];
+  item.oportunistasNomes = [];
+  item.substituicaoManual = false;
+  item.carroOriginal = null;
+
   document.getElementById('modal-substituto')?.remove();
   _recarregarEscala();
 }
@@ -7365,7 +7389,7 @@ async function exportarEscalaExcel(){
 
 async function confirmarEscalaAutomatica() {
   const gid = getGid();
-  const selecionados = (window._escalaRascunho||[]).filter(e => e.confirmado && !e.jaExiste && e.data && !e.tipo.includes('overflow'));
+  const selecionados = (window._escalaRascunho||[]).filter(e => e.confirmado && !e.jaExiste && e.data && !e.tipo.includes('overflow') && !e.slotVazio);
   if (!selecionados.length) { toast('Nenhum item selecionado','err'); return; }
 
   const btn = document.querySelector('[onclick*="confirmarEscalaAutomatica"]');
