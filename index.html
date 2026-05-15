@@ -6536,13 +6536,12 @@ function gerarEscalaAutomatica(dados, semanaRef) {
   const dedup = (arr) => arr.filter((r,_,a) => a.findIndex(x=>x.carro===r.carro)===a.indexOf(r));
 
   // GARANTIAS — planos 003/029 dos carros 02.240-02.301
-  // Ordenado por excessoKm decrescente (mais vencido primeiro)
-  // Slot: 1 garantia/dia × 5 dias = 5/semana
+  // Slot: 1/dia × 5 dias = 5/semana — ordenado por excessoKm decrescente
   const garantias = dedup(sorted(dados.filter(r => isGarantia(r.carro) && isPlanoGarantia(r.planoNum))));
 
-  // PESADAS — plano 002 de TODOS os carros (incluindo os de garantia)
-  // Slot: 2 pesadas/dia × 5 dias = 10/semana
-  // Ordenado por excessoKm decrescente
+  // PESADAS — plano 002 de TODOS os carros — completamente independente da garantia
+  // O mesmo carro pode ter garantia E pesada na mesma semana (dias diferentes ou mesmo dia)
+  // Slot: 2/dia × 5 dias = 10/semana — ordenado por excessoKm decrescente
   const pesadasNormais = dedup(sorted(dados.filter(r => isPesada(r.planoNum))));
 
   // Leves — top 30 (6/dia × 5 dias), mais vencido primeiro
@@ -6568,21 +6567,20 @@ function gerarEscalaAutomatica(dados, semanaRef) {
     slots[ds].garantia++;
     rrG = (idx + 1) % diasSemana.length;
 
-    // Verificar se carro tem pesada ou leve para incluir junto no mesmo card
-    // Não consome slots de pesada nem leve — são independentes
-    const pesadaCarro = (porCarro[r.carro]||[]).find(p => p.planoNum==='002' && !marcado(r.carro,'002'));
-    const leveCarro   = (porCarro[r.carro]||[]).find(p => isLeve(p.planoNum) && !marcado(r.carro,p.planoNum));
+    // Verificar planos para incluir junto — não consomem slots extras
+    const pesadaCarro  = (porCarro[r.carro]||[]).find(p => isPesada(p.planoNum) && !marcado(r.carro,p.planoNum));
+    const leveCarro    = (porCarro[r.carro]||[]).find(p => isLeve(p.planoNum) && !marcado(r.carro,p.planoNum));
     const ops = calcularOportunistas(porCarro[r.carro]||[], r).filter(o=>!['001','002'].includes(o.num));
-    const incl = [pesadaCarro?'Pesada':null, leveCarro?'Leve':null].filter(Boolean);
+    const incl = [pesadaCarro?'+PES':null, leveCarro?'+LEVE':null].filter(Boolean);
 
     alocar({ carro:r.carro, planoNum:r.planoNum, planoNome:r.planoNome,
       data:ds, turno:'A', cesto:false, tipo:'garantia',
       excessoKm:r.excessoKm, oportunistas:ops.map(o=>o.num), oportunistasNomes:ops.map(o=>o.nome),
-      incluileve:true, incluiPesada:!!pesadaCarro,
-      motivo:`Garantia Grupo ${getTipoGarantia(r.carro)}${incl.length?' · +'+incl.join('+'):''}` });
+      incluileve:!!leveCarro, incluiPesada:!!pesadaCarro,
+      motivo:`Garantia Grupo ${getTipoGarantia(r.carro)}${incl.length?' · '+incl.join(' '):''}` });
 
-    // Marcar pesada e leve do carro como já incluídas (não aparecem como slot separado)
-    if (pesadaCarro) marcar(r.carro, '002');
+    // Marcar planos incluídos para não duplicar
+    if (pesadaCarro) marcar(r.carro, pesadaCarro.planoNum);
     if (leveCarro)   marcar(r.carro, leveCarro.planoNum);
   });
 
@@ -6590,34 +6588,34 @@ function gerarEscalaAutomatica(dados, semanaRef) {
   // Lógica: preenche o dia completo antes de avançar
   // Seg: pesadas 1+2 | Ter: pesadas 3+4 | Qua: 5+6 | Qui: 7+8 | Sex: 9+10
 
-  // Pesadas para alocar: plano 002 não marcado ainda
-  // Carros de garantia PODEM ter pesada no mesmo dia — são planos independentes
-  // Mas se o carro já tem garantia alocada nesta semana, a pesada vai junto no mesmo card
-  // (não ocupa slot de pesada separado)
-  const carrosComGarantiaSemana = new Set(
-    escala.filter(e => e.tipo === 'garantia').map(e => e.carro)
-  );
-
-  // Exclui carros que já têm pesada incluída via garantia (marcado como '002')
-  const pesadasParaAlocar = pesadasNormais.filter(r =>
-    !marcado(r.carro, r.planoNum) && !carrosComGarantiaSemana.has(r.carro)
-  );
+  // Pesadas para alocar: plano 002 não marcado
+  // SEM exclusão de carros com garantia — são planos independentes
+  // Um carro pode ter garantia na Seg e pesada na Ter na mesma semana
+  const pesadasParaAlocar = pesadasNormais.filter(r => !marcado(r.carro, r.planoNum));
   const totalDias = diasSemana.length; // 5
 
   pesadasParaAlocar.slice(0, totalDias * ESCALA_CONFIG.pesada).forEach((r, i) => {
     if (marcado(r.carro, r.planoNum)) return;
-    const diaIdx = Math.floor(i / ESCALA_CONFIG.pesada); // 0,0,1,1,2,2,...
+    const diaIdx = Math.floor(i / ESCALA_CONFIG.pesada);
     if (diaIdx >= diasSemana.length) return;
     const ds = toDateStr(diasSemana[diaIdx]);
     slots[ds].pesada++;
-    const leveCarro = (porCarro[r.carro]||[]).find(p => isLeve(p.planoNum) && !marcado(r.carro,p.planoNum));
+
+    // Verificar planos para incluir junto no mesmo card (não consomem slots)
+    const leveCarro    = (porCarro[r.carro]||[]).find(p => isLeve(p.planoNum) && !marcado(r.carro,p.planoNum));
+    const garantCarro  = (porCarro[r.carro]||[]).find(p => isPlanoGarantia(p.planoNum) && !marcado(r.carro,p.planoNum));
     const ops = calcularOportunistas(porCarro[r.carro]||[], r);
+    const incl = [garantCarro?'+GARAN':null, leveCarro?'+LEVE':null].filter(Boolean);
+
     alocar({ carro:r.carro, planoNum:r.planoNum, planoNome:r.planoNome,
       data:ds, turno:'B', cesto:false, tipo:'pesada',
       excessoKm:r.excessoKm, oportunistas:ops.map(o=>o.num), oportunistasNomes:ops.map(o=>o.nome),
-      incluileve:true, incluiPesada:false,
-      motivo:`Pesada · +${r.excessoKm.toLocaleString('pt-BR')} km` });
-    if (leveCarro) marcar(r.carro, leveCarro.planoNum);
+      incluileve:!!leveCarro, incluiGarantia:!!garantCarro, incluiPesada:false,
+      motivo:`Pesada${incl.length?' · '+incl.join(' '):''}` });
+
+    // Marcar planos incluídos para não duplicar em outros slots
+    if (leveCarro)   marcar(r.carro, leveCarro.planoNum);
+    if (garantCarro) marcar(r.carro, garantCarro.planoNum);
   });
 
   // Overflow: pesadas além das 10 vagas
@@ -6634,14 +6632,9 @@ function gerarEscalaAutomatica(dados, semanaRef) {
   // ── PASSO 3: LEVES — 6/dia, seg-sex ───────────────────────────────
   // Lógica: preenche o dia completo antes de avançar
   // Seg: leves 1-6 | Ter: leves 7-12 | Qua: 13-18 | Qui: 19-24 | Sex: 25-30
-  // Carros já alocados como garantia ou pesada — leve já inclusa no card deles
-  const carrosComPesadaOuGarantia = new Set(
-    escala.filter(e => e.tipo === 'garantia' || e.tipo === 'pesada').map(e => e.carro)
-  );
-
-  const levesParaAlocar = leves.filter(r =>
-    !marcado(r.carro, r.planoNum) && !carrosComPesadaOuGarantia.has(r.carro)
-  );
+  // Leves para alocar: plano 001 não marcado
+  // Independente de garantia ou pesada — cada plano compete na sua fila
+  const levesParaAlocar = leves.filter(r => !marcado(r.carro, r.planoNum));
   const LEVES_POR_DIA = ESCALA_CONFIG.leve; // 6
 
   levesParaAlocar.slice(0, diasSemana.length * LEVES_POR_DIA).forEach((r, i) => {
@@ -6810,8 +6803,9 @@ function renderTelaEscala(back, diasSemana, sabValetamento) {
     const check = e.confirmado&&!e.jaExiste ? '✅' : e.jaExiste ? '🔵' : '⬜';
 
     const tags = [
-      e.incluileve  ? `<span style="background:#00C48C18;color:#22C55E;border:1px solid #22C55E40;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">+LEVE</span>` : '',
-      e.incluiPesada? `<span style="background:#3B82F618;color:#3B82F6;border:1px solid #3B82F640;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">+PES</span>` : '',
+      e.incluileve     ? `<span style="background:#00C48C18;color:#22C55E;border:1px solid #22C55E40;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">+LEVE</span>` : '',
+      e.incluiPesada   ? `<span style="background:#3B82F618;color:#3B82F6;border:1px solid #3B82F640;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">+PES</span>` : '',
+      e.incluiGarantia ? `<span style="background:#8B5CF618;color:#8B5CF6;border:1px solid #8B5CF640;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">+GARAN</span>` : '',
       e.tipo==='garantia'?`<span style="background:#8B5CF618;color:#8B5CF6;border:1px solid #8B5CF640;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">GARAN</span>`:'',
     ].filter(Boolean).join('');
 
