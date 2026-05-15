@@ -6573,56 +6573,63 @@ function gerarEscalaAutomatica(dados, semanaRef) {
   });
 
   // ── PASSO 2: PESADAS — 2/dia, seg-sex ─────────────────────────────
-  let rrP = 0;
-  pesadasNormais.forEach(r => {
-    if (marcado(r.carro, r.planoNum)) return;
-    const idx = proxDiaComVaga(rrP, 'pesada');
-    if (idx === -1) {
-      const ops = calcularOportunistas(porCarro[r.carro]||[], r);
-      alocar({ carro:r.carro, planoNum:r.planoNum, planoNome:r.planoNome,
-        data:null, turno:'B', cesto:false, tipo:'pesada_overflow',
-        excessoKm:r.excessoKm, oportunistas:ops.map(o=>o.num), oportunistasNomes:ops.map(o=>o.nome),
-        incluileve:true, motivo:`⚠️ Sem vaga pesada · +${r.excessoKm.toLocaleString('pt-BR')} km` });
-      return;
-    }
-    const ds = toDateStr(diasSemana[idx]);
-    slots[ds].pesada++;
-    rrP = (idx + 1) % diasSemana.length;
+  // Lógica: preenche o dia completo antes de avançar
+  // Seg: pesadas 1+2 | Ter: pesadas 3+4 | Qua: 5+6 | Qui: 7+8 | Sex: 9+10
+  const pesadasParaAlocar = pesadasNormais.filter(r => !marcado(r.carro, r.planoNum));
+  const totalDias = diasSemana.length; // 5
 
+  pesadasParaAlocar.slice(0, totalDias * ESCALA_CONFIG.pesada).forEach((r, i) => {
+    if (marcado(r.carro, r.planoNum)) return;
+    const diaIdx = Math.floor(i / ESCALA_CONFIG.pesada); // 0,0,1,1,2,2,...
+    if (diaIdx >= diasSemana.length) return;
+    const ds = toDateStr(diasSemana[diaIdx]);
+    slots[ds].pesada++;
     const leveCarro = (porCarro[r.carro]||[]).find(p => isLeve(p.planoNum) && !marcado(r.carro,p.planoNum));
     const ops = calcularOportunistas(porCarro[r.carro]||[], r);
-
     alocar({ carro:r.carro, planoNum:r.planoNum, planoNome:r.planoNome,
       data:ds, turno:'B', cesto:false, tipo:'pesada',
       excessoKm:r.excessoKm, oportunistas:ops.map(o=>o.num), oportunistasNomes:ops.map(o=>o.nome),
       incluileve:true, incluiPesada:false,
       motivo:`Pesada · +${r.excessoKm.toLocaleString('pt-BR')} km` });
-
-    // Leve inclusa no card da pesada — não consome slot de leve, vaga fica para outro carro
     if (leveCarro) marcar(r.carro, leveCarro.planoNum);
   });
 
-  // ── PASSO 3: LEVES — 6/dia, seg-sex ───────────────────────────────
-  // Só carros que NÃO tiveram pesada/garantia alocada (para esses leve já inclusa)
-  let rrL = 0;
-  leves.forEach(r => {
-    if (marcado(r.carro, r.planoNum)) return; // já incluída na pesada
-    const idx = proxDiaComVaga(rrL, 'leve');
-    if (idx === -1) {
-      alocar({ carro:r.carro, planoNum:r.planoNum, planoNome:r.planoNome,
-        data:null, turno:'B', cesto:false, tipo:'leve_overflow',
-        excessoKm:r.excessoKm, oportunistas:[], oportunistasNomes:[], incluileve:false,
-        motivo:`⚠️ Sem vaga leve · +${r.excessoKm.toLocaleString('pt-BR')} km` });
-      return;
-    }
-    const ds = toDateStr(diasSemana[idx]);
-    slots[ds].leve++;
-    rrL = (idx + 1) % diasSemana.length;
+  // Overflow: pesadas além das 10 vagas
+  pesadasParaAlocar.slice(totalDias * ESCALA_CONFIG.pesada).forEach(r => {
+    if (marcado(r.carro, r.planoNum)) return;
+    const ops = calcularOportunistas(porCarro[r.carro]||[], r);
+    alocar({ carro:r.carro, planoNum:r.planoNum, planoNome:r.planoNome,
+      data:null, turno:'B', cesto:false, tipo:'pesada_overflow',
+      excessoKm:r.excessoKm, oportunistas:ops.map(o=>o.num), oportunistasNomes:ops.map(o=>o.nome),
+      incluileve:true, motivo:`⚠️ Sem vaga pesada · +${r.excessoKm.toLocaleString('pt-BR')} km` });
+  });
 
+  // Bloco substituído — remover o bloco antigo abaixo
+  // ── PASSO 3: LEVES — 6/dia, seg-sex ───────────────────────────────
+  // Lógica: preenche o dia completo antes de avançar
+  // Seg: leves 1-6 | Ter: leves 7-12 | Qua: 13-18 | Qui: 19-24 | Sex: 25-30
+  const levesParaAlocar = leves.filter(r => !marcado(r.carro, r.planoNum));
+  const LEVES_POR_DIA = ESCALA_CONFIG.leve; // 6
+
+  levesParaAlocar.slice(0, diasSemana.length * LEVES_POR_DIA).forEach((r, i) => {
+    if (marcado(r.carro, r.planoNum)) return;
+    const diaIdx = Math.floor(i / LEVES_POR_DIA); // 0,0,0,0,0,0,1,1,1,1,1,1,...
+    if (diaIdx >= diasSemana.length) return;
+    const ds = toDateStr(diasSemana[diaIdx]);
+    slots[ds].leve++;
     alocar({ carro:r.carro, planoNum:r.planoNum, planoNome:r.planoNome,
       data:ds, turno:'B', cesto:false, tipo:'leve',
       excessoKm:r.excessoKm, oportunistas:[], oportunistasNomes:[], incluileve:false,
       motivo:`Leve · +${r.excessoKm.toLocaleString('pt-BR')} km` });
+  });
+
+  // Overflow leves — além das 30 vagas semanais
+  levesParaAlocar.slice(diasSemana.length * LEVES_POR_DIA).forEach(r => {
+    if (marcado(r.carro, r.planoNum)) return;
+    alocar({ carro:r.carro, planoNum:r.planoNum, planoNome:r.planoNome,
+      data:null, turno:'B', cesto:false, tipo:'leve_overflow',
+      excessoKm:r.excessoKm, oportunistas:[], oportunistasNomes:[], incluileve:false,
+      motivo:`⚠️ Sem vaga leve · +${r.excessoKm.toLocaleString('pt-BR')} km` });
   });
 
   // ── PASSO 4: AVULSOS — distribuir proporcionalmente ────────────────
@@ -7678,10 +7685,15 @@ async function marcarPreventiva(id, novoStatus){
 }
 
 async function cancelarProgPrev(id){
-  if(!confirm('Cancelar esta programação?'))return;
-  const{error}=await sb.from('programacao_preventiva').update({status:'cancelado',updated_at:new Date().toISOString()}).eq('id',id);
-  if(error){toast('Erro: '+error.message,'err');return;}
-  toast('Programação cancelada');
+  if(!confirm('Excluir esta programação permanentemente?'))return;
+  // DELETE direto — remove do banco definitivamente
+  const{error}=await sb.from('programacao_preventiva').delete().eq('id',id);
+  if(error){
+    // Fallback: tenta update para cancelado
+    const{error:e2}=await sb.from('programacao_preventiva').update({status:'cancelado'}).eq('id',id);
+    if(e2){toast('Erro ao excluir: '+error.message,'err');return;}
+  }
+  toast('✅ Programação excluída');
   renderPrevProgramadas();
 }
 
