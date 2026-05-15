@@ -6545,6 +6545,8 @@ function gerarEscalaAutomatica(dados, semanaRef) {
 
   // ── PASSO 1: GARANTIAS — 1/dia, seg-sex ───────────────────────────
   let rrG = 0;
+  console.log('[ESCALA] Garantias candidatas:', garantias.map(r=>r.carro+'('+r.excessoKm+')'));
+  console.log('[ESCALA] Pesadas normais candidatas:', pesadasNormais.map(r=>r.carro+'('+r.excessoKm+')'));
   garantias.forEach(r => {
     if (marcado(r.carro, r.planoNum)) return;
     const idx = proxDiaComVaga(rrG, 'garantia');
