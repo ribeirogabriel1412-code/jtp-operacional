@@ -6575,7 +6575,16 @@ function gerarEscalaAutomatica(dados, semanaRef) {
   // ── PASSO 2: PESADAS — 2/dia, seg-sex ─────────────────────────────
   // Lógica: preenche o dia completo antes de avançar
   // Seg: pesadas 1+2 | Ter: pesadas 3+4 | Qua: 5+6 | Qui: 7+8 | Sex: 9+10
-  const pesadasParaAlocar = pesadasNormais.filter(r => !marcado(r.carro, r.planoNum));
+
+  // Carros já alocados como garantia esta semana — não entram na fila de pesadas
+  const carrosComGarantia = new Set(
+    escala.filter(e => e.tipo === 'garantia').map(e => e.carro)
+  );
+
+  // Filtra: não marcado E não é carro de garantia já alocado
+  const pesadasParaAlocar = pesadasNormais.filter(r =>
+    !marcado(r.carro, r.planoNum) && !carrosComGarantia.has(r.carro)
+  );
   const totalDias = diasSemana.length; // 5
 
   pesadasParaAlocar.slice(0, totalDias * ESCALA_CONFIG.pesada).forEach((r, i) => {
@@ -6608,7 +6617,14 @@ function gerarEscalaAutomatica(dados, semanaRef) {
   // ── PASSO 3: LEVES — 6/dia, seg-sex ───────────────────────────────
   // Lógica: preenche o dia completo antes de avançar
   // Seg: leves 1-6 | Ter: leves 7-12 | Qua: 13-18 | Qui: 19-24 | Sex: 25-30
-  const levesParaAlocar = leves.filter(r => !marcado(r.carro, r.planoNum));
+  // Carros já alocados como garantia ou pesada — leve já inclusa no card deles
+  const carrosComPesadaOuGarantia = new Set(
+    escala.filter(e => e.tipo === 'garantia' || e.tipo === 'pesada').map(e => e.carro)
+  );
+
+  const levesParaAlocar = leves.filter(r =>
+    !marcado(r.carro, r.planoNum) && !carrosComPesadaOuGarantia.has(r.carro)
+  );
   const LEVES_POR_DIA = ESCALA_CONFIG.leve; // 6
 
   levesParaAlocar.slice(0, diasSemana.length * LEVES_POR_DIA).forEach((r, i) => {
