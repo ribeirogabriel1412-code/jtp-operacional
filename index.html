@@ -6730,6 +6730,10 @@ function gerarEscalaAutomatica(dados, semanaRef) {
   const carrosJaNoValet = new Set(proxPesadasValet.map(r => r.carro));
 
   const sabStr = toDateStr(sabValetamento);
+  console.log('[VALET] carrosNaSemana:', carrosComPesadaNaSemana.size, [...carrosComPesadaNaSemana].slice(0,5));
+  console.log('[VALET] filaCompletaPesada total:', filaCompletaPesada.length);
+  console.log('[VALET] proxPesadasValet:', proxPesadasValet.length, proxPesadasValet.map(r=>r.carro+'('+r.excessoKm+')'));
+  console.log('[VALET] sabStr:', sabStr);
 
   // Alocar pesadas do valetamento
   proxPesadasValet.forEach(r => {
@@ -6799,10 +6803,31 @@ async function renderAutoEscala() {
 
 function _recarregarEscala() {
   const back = `<button class="btn-back" onclick="renderFerrPrev()">← Painel Preventivas</button>`;
-  const datas = [...new Set((window._escalaRascunho||[]).filter(e=>e.data&&!e.tipo.includes('overflow')&&e.tipo!=='valetamento').map(e=>e.data))].sort();
-  const diasSemana = datas.filter(d => { const dow=new Date(d+'T12:00:00').getDay(); return dow>=1&&dow<=5; }).map(d=>new Date(d+'T12:00:00'));
-  const sabStr = (window._escalaRascunho||[]).find(e=>e.tipo==='valetamento')?.data;
-  const sabValetamento = sabStr ? new Date(sabStr+'T12:00:00') : new Date();
+  const rascunho = window._escalaRascunho || [];
+
+  // Datas dos dias úteis (seg-sex)
+  const datas = [...new Set(
+    rascunho.filter(e => e.data && !e.tipo.includes('overflow') && e.tipo !== 'valetamento')
+            .map(e => e.data)
+  )].sort();
+
+  const diasSemana = datas
+    .filter(d => { const dow = new Date(d+'T12:00:00').getDay(); return dow >= 1 && dow <= 5; })
+    .map(d => new Date(d+'T12:00:00'));
+
+  // Data do sábado: pegar do valetamento existente OU calcular como seg-1
+  let sabValetamento;
+  const sabDoValet = rascunho.find(e => e.tipo === 'valetamento' && e.data)?.data;
+  if (sabDoValet) {
+    sabValetamento = new Date(sabDoValet + 'T12:00:00');
+  } else if (diasSemana.length > 0) {
+    // Sábado = primeira segunda da semana - 1 dia
+    sabValetamento = new Date(diasSemana[0]);
+    sabValetamento.setDate(sabValetamento.getDate() - 1);
+  } else {
+    sabValetamento = new Date();
+  }
+
   renderTelaEscala(back, diasSemana, sabValetamento);
 }
 
