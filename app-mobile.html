@@ -206,7 +206,7 @@ async function doLogout(){await sb.auth.signOut();location.reload()}
 const TELA_INICIO={lavador:'lavagem',lider_patio:'patio',lider_oficina:'oficina',lider_pcm:'oficina',assistente_pcm:'oficina',manobrista:'patio_man',frentista:'abastecimento',plantao:'recolha'};
 const NAV={
   lavador:[{id:'lavagem',ic:'🚿',lb:'Lavagem'},{id:'home',ic:'🏠',lb:'Início'}],
-  lider_patio:[{id:'patio',ic:'✅',lb:'Validar'},{id:'soltura',ic:'📋',lb:'Soltura'},{id:'abastecimento',ic:'⛽',lb:'Abastec.'},{id:'lav_pesada',ic:'🚿',lb:'Lavagem'},{id:'home',ic:'🏠',lb:'Início'}],
+  lider_patio:[{id:'patio',ic:'✅',lb:'Validar'},{id:'soltura',ic:'🚌',lb:'Soltura'},{id:'abastecimento',ic:'⛽',lb:'Abastec.'},{id:'lav_pesada',ic:'🚿',lb:'Lavagem'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_operacional:[{id:'patio_man',ic:'🚗',lb:'Pátio'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_oficina:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_pcm:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'checklist_equip',ic:'📋',lb:'3.4'},{id:'prev26',ic:'💰',lb:'2.6'},{id:'home',ic:'🏠',lb:'Início'}],
@@ -1479,19 +1479,26 @@ async function telaRecolha(dataFiltro=null){
   // Grava flag recolhido na soltura da data selecionada
   const hojeStr=hoje();
 
-  // Busca datas com escala disponíveis (hoje + próximos 7 dias)
+  // Busca datas com escala — janela de ontem até +7 dias
+  // Inclui ontem para não perder dados quando plantão atravessa meia-noite
   const datasAlvoRc=[];
-  for(let i=0;i<=7;i++){const d=new Date();d.setDate(d.getDate()+i);datasAlvoRc.push(d.toISOString().split('T')[0]);}
+  for(let i=-1;i<=7;i++){const d=new Date();d.setDate(d.getDate()+i);datasAlvoRc.push(d.toISOString().split('T')[0]);}
   const{data:escalasDispRc}=await sb.from('soltura_2_10').select('data')
     .eq('garagem_id',gid).in('data',datasAlvoRc);
   const datasComEscalaRc=[...new Set((escalasDispRc||[]).map(r=>r.data))].sort();
 
-  // Seleciona D+1 por padrão, ou a próxima disponível
+  // Só redefine a data se ainda não foi escolhida manualmente pelo plantonista
+  // Isso evita que a virada de meia-noite mude a data durante o plantão
   if(!_rcEscalaData||!datasComEscalaRc.includes(_rcEscalaData)){
-    const proxFutRc=datasComEscalaRc.find(d=>d>hojeStr)||datasComEscalaRc[0]||datasAlvoRc[1];
+    // Preferência: D+1 (próximo dia com escala), fallback para hoje ou ontem
+    const proxFutRc=datasComEscalaRc.find(d=>d>hojeStr)
+      ||datasComEscalaRc.find(d=>d===hojeStr)
+      ||datasComEscalaRc[datasComEscalaRc.length-1]
+      ||datasAlvoRc[1];
     _rcEscalaData=proxFutRc;
   }
-  window._rcSolturaData=_rcEscalaData;
+  // _rcSolturaData: data fixa que não muda após ser escolhida
+  if(!window._rcSolturaData) window._rcSolturaData=_rcEscalaData;
 
   // Chips de navegação para o plantão
   const _chipsRc=datasComEscalaRc.map(d=>{
@@ -1502,8 +1509,9 @@ async function telaRecolha(dataFiltro=null){
     return`<button onclick="_rcEscalaData='${d}';window._rcSolturaData='${d}';telaRecolha()" style="flex-shrink:0;padding:6px 12px;border-radius:20px;border:1px solid ${ativo?'#8B5CF6':'var(--border)'};background:${ativo?'#8B5CF618':'transparent'};color:${ativo?'#8B5CF6':'var(--text3)'};font-size:11px;font-weight:${ativo?'700':'500'};font-family:inherit;cursor:pointer;white-space:nowrap">${lbl} · ${dFmt}</button>`;
   }).join('');
 
-  // Busca escala da data selecionada
-  const{data:escala}=await sb.from('soltura_2_10').select('prefixo,linha,motorista,motorista_fim,horario_programado,horario_fim')
+  // Busca TODOS os carros da escala da data selecionada
+  // Exibe completo — plantonista vê tudo e marca os que recolheu
+  const{data:escala}=await sb.from('soltura_2_10').select('prefixo,linha,motorista,motorista_fim,horario_programado,horario_fim,saiu')
     .eq('garagem_id',gid).eq('data',_rcEscalaData).order('horario_programado');
   let recolhas=[];
   try{
@@ -1561,12 +1569,15 @@ async function telaRecolha(dataFiltro=null){
     <div style="padding:14px 14px 0">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div>
-          <div style="font-weight:800;font-size:17px">🔑 Recolha</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">Escala: <strong style="color:var(--text)">${dataExec}</strong></div>
+          <div style="font-weight:800;font-size:17px">🔑 Plantão / Recolha</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Escala: <strong style="color:var(--text)">${dataExec}</strong> · <strong style="color:${pct===100?'var(--green)':'var(--amber)'}">${tot}/${totEscala} recolhidos (${pct}%)</strong></div>
         </div>
         <button onclick="telaRecolha()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>
       </div>
-      <!-- Indicador hoje → D+1 -->
+      <!-- Barra de progresso -->
+      <div style="background:var(--border);border-radius:99px;height:6px;overflow:hidden;margin-bottom:10px">
+        <div style="height:100%;width:${pct}%;background:${pct===100?'var(--green)':'var(--amber)'};border-radius:99px;transition:width .3s"></div>
+      </div>
       <div style="display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin-bottom:10px">
         <div style="text-align:center">
           <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Recolha</div>
