@@ -529,13 +529,17 @@ function renderSoltura(lista, busca, datasComEscala=[]){
       <div style="flex:1">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           <div class="prefixo">${r.prefixo}</div>
-          ${reserva?`<span style="font-size:9px;color:var(--purple);font-weight:700;border:1px solid #8B5CF640;background:#8B5CF618;border-radius:4px;padding:1px 5px">RESERVA</span>`:''}
+          ${r.prefixo_reserva?`<span style="font-size:9px;color:var(--amber);font-weight:700;border:1px solid #F59E0B40;background:#F59E0B18;border-radius:4px;padding:1px 5px">🔄 ${r.prefixo_reserva}</span>`:''}
+          ${reserva&&!r.prefixo_reserva?`<span style="font-size:9px;color:var(--purple);font-weight:700;border:1px solid #8B5CF640;background:#8B5CF618;border-radius:4px;padding:1px 5px">RESERVA</span>`:''}
           ${zonaObj?`<span style="font-size:9px;font-weight:700;border:1px solid ${zonaObj.cor}40;background:${zonaObj.cor}18;color:${zonaObj.cor};border-radius:4px;padding:1px 6px">${zonaObj.nome}</span>`:
           `<span style="font-size:9px;color:var(--red);font-weight:700;border:1px solid #EF444430;background:#EF444410;border-radius:4px;padding:1px 6px">Sem zona</span>`}
         </div>
         <div class="vcard-sub">${r.horario_programado||'—'} · ${r.linha||'—'}</div>
-        <div class="vcard-sub" style="display:flex;gap:8px">
-          <span>${r.motorista?.split(' ').slice(0,2).join(' ')||'—'}${d&&r.horario_real?' · ✅'+r.horario_real:''}</span>
+        <div class="vcard-sub" style="display:flex;gap:8px;flex-wrap:wrap">
+          ${r.motorista_fim&&r.motorista_fim!==r.motorista
+            ? `<span style="color:var(--text4)">${r.motorista?.split(' ').slice(0,2).join(' ')||'—'}</span><span style="color:var(--amber)">→ ${r.motorista_fim.split(' ').slice(0,2).join(' ')} <span style="font-size:9px;background:#F59E0B18;border:1px solid #F59E0B40;border-radius:3px;padding:0 3px">${r.motivo_troca||'Troca'}</span></span>`
+            : `<span>${r.motorista?.split(' ').slice(0,2).join(' ')||'—'}${d&&r.horario_real?' · ✅'+r.horario_real:''}</span>`
+          }
           ${r.manobrista?`<span style="color:var(--text4)">🚗 ${r.manobrista.split(' ')[0]}</span>`:''}
         </div>
       </div>
@@ -728,12 +732,17 @@ function filtrarReservas(busca){
 }
 
 async function confirmarTroca(novoPrefixo, prefixoOriginal){
+  const motivo=window._trocaCarroMotivo||'Outro';
   await sb.from('soltura_2_10').update({
     saiu:true,
     horario_real:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),
-    observacao:`Reserva: ${novoPrefixo} | Original: ${prefixoOriginal}`,
+    // Mantém o prefixo original — registra a troca em campos dedicados
+    prefixo_reserva: novoPrefixo,              // novo carro que saiu
+    observacao:`Reserva: ${novoPrefixo} | Original: ${prefixoOriginal} | Motivo: ${motivo}`,
   }).eq('id',_sid);
-  closeSheet(true);toast(`🔄 Saiu com reserva ${novoPrefixo}!`);telaSoltura();
+  closeSheet(true);
+  toast(`🔄 Saiu com reserva ${novoPrefixo}!`);
+  telaSoltura();
 }
 
 async function abrirTrocaMotorista(solId, prefixo, motoristaAtual){
@@ -794,14 +803,19 @@ async function confirmarTrocaMotorista(motoristaAnterior){
 
   if(!novoMotorista){toast('Informe a matrícula ou nome do motorista','err');return;}
 
-  const obs=`Troca motorista: ${motoristaAnterior||'—'} → ${novoMotorista} (${motivo})`;
+  // Grava o motivo e novo motorista — mantém motorista original no campo principal
+  // motorista_fim = quem efetivamente saiu (o substituto)
+  // motorista = quem estava escalado originalmente (não altera)
+  const obs=`Troca motorista (${motivo}): ${motoristaAnterior||'—'} → ${novoMotorista}`;
   await sb.from('soltura_2_10').update({
-    motorista: novoMotorista,
+    motorista_fim: novoMotorista,   // substituto que saiu de fato
+    motivo_troca: motivo,           // falta / atraso / acidente / outro
     observacao: obs,
+    // motorista (original) NÃO é alterado — fica registrado quem era o escalado
   }).eq('id',solId);
 
   closeSheet(true);
-  toast(`👤 Motorista atualizado para ${novoMotorista}!`);
+  toast(`👤 Troca registrada: ${novoMotorista} (${motivo})`);
   telaSoltura();
 }
 
@@ -2170,8 +2184,15 @@ async function telaLavPesada(){
 async function fecharTurnoLavagem(){
   const gid=getGid();
   const{data:plano}=await sb.from('checklist_lavagem').select('*')
-    .eq('garagem_id',gid).eq('data',_lpData).order('prefixo');
+    .eq('garagem_id',gid).eq('data',_lpData)
+    .not('status','in','("cancelado","arquivado")')
+    .order('prefixo');
   const lista=plano||[];
+
+  if(!lista.length){
+    toast('Nenhum plano ativo para fechar — já foi arquivado ou não há lavagens hoje','err');
+    return;
+  }
   const lavados=lista.filter(l=>l.status==='executado').length;
   const vistoriados=lista.filter(l=>l.validado_patio).length;
   const pct=lista.length>0?Math.round(vistoriados/lista.length*100):0;
@@ -2201,18 +2222,36 @@ async function confirmarFechamentoLavagem(){
   const btn=document.querySelector('#shbody button:last-child');
   if(btn){btn.disabled=true;btn.textContent='Fechando...';}
 
-  // Busca plano do dia
+  // Busca plano do dia (inclui todos os status para ter o total real)
   const{data:plano,error:errPlano}=await sb.from('checklist_lavagem').select('*')
     .eq('garagem_id',gid).eq('data',_lpData);
-  if(errPlano){
-    toast('❌ Erro ao buscar plano: '+errPlano.message,'err');
-    if(btn){btn.disabled=false;btn.textContent='Tentar novamente';}
-    return;
+
+  if(errPlano||!plano?.length){
+    // Se não achar por _lpData, tenta hoje
+    const{data:planoHoje}=await sb.from('checklist_lavagem').select('*')
+      .eq('garagem_id',gid).eq('data',hoje());
+    if(!planoHoje?.length){
+      toast('❌ Nenhum plano encontrado para fechar','err');
+      if(btn){btn.disabled=false;btn.textContent='Tentar novamente';}
+      return;
+    }
+    // Usa hoje como referência
+    window._lpDataReal=hoje();
+  } else {
+    window._lpDataReal=_lpData;
   }
-  const lista=plano||[];
+
+  const lista=(plano?.length?plano:[]).filter(l=>l.status!=='arquivado');
+  const dataRef=window._lpDataReal||_lpData;
+
   if(!lista.length){
-    toast('❌ Nenhum registro encontrado','err');
-    if(btn){btn.disabled=false;btn.textContent='Tentar novamente';}
+    // Já foi arquivado — só avança a data
+    const amanha=new Date(dataRef+'T12:00:00');
+    amanha.setDate(amanha.getDate()+1);
+    setLpData(amanha.toISOString().split('T')[0]);
+    closeSheet(true);
+    toast('ℹ️ Plano já arquivado — avançando para o próximo turno');
+    telaLavPesada();
     return;
   }
 
@@ -2221,57 +2260,61 @@ async function confirmarFechamentoLavagem(){
   const pct=lista.length>0?Math.round(vistoriados/lista.length*100):0;
   const prefixosLavados=[...new Set(lista.filter(l=>l.status==='executado').map(l=>l.prefixo))];
 
-  // PASSO 1 — Snapshot em fechamento_lavagem
-  const{error:errFech}=await sb.from('fechamento_lavagem').insert({
-    garagem_id:gid,
-    data:_lpData,
-    turno:S.turno||'dia',
-    total_planejados:lista.length,
-    total_lavados:lavados,
-    total_vistoriados:vistoriados,
-    pct_vistoriados:pct,
-    responsavel_nome:S.perfil?.nome||null,
-    responsavel_id:S.perfil?.id||null,
-    observacao:obs,
-  });
-  if(errFech){
-    toast('❌ Erro ao gravar fechamento: '+errFech.message,'err');
-    if(btn){btn.disabled=false;btn.textContent='Tentar novamente';}
-    return;
-  }
+  // PASSO 1 — Snapshot (não bloqueia se falhar)
+  try{
+    await sb.from('fechamento_lavagem').insert({
+      garagem_id:gid, data:dataRef, turno:S.turno||'dia',
+      total_planejados:lista.length, total_lavados:lavados,
+      total_vistoriados:vistoriados, pct_vistoriados:pct,
+      responsavel_nome:S.perfil?.nome||null, responsavel_id:S.perfil?.id||null,
+      observacao:obs,
+    });
+  }catch(e){console.warn('[fechamento_lavagem]',e.message);}
 
-  // PASSO 2 — Atualizar ultima_lavagem na tabela frota
+  // PASSO 2 — Atualizar ultima_lavagem (não bloqueia se falhar)
   if(prefixosLavados.length){
-    const{data:veiculos,error:errVei}=await sb.from('frota').select('id,prefixo')
-      .eq('garagem_id',gid).in('prefixo',prefixosLavados);
-    if(errVei){
-      toast('⚠️ Erro ao buscar frota: '+errVei.message,'err');
-    } else if(!veiculos?.length){
-      toast('⚠️ Prefixos não encontrados na tabela frota. Verifique cadastro.','err');
-    } else {
-      const erros=[];
-      for(const v of veiculos){
-        const{error:e}=await sb.from('frota').update({ultima_lavagem:_lpData}).eq('id',v.id);
-        if(e) erros.push(v.prefixo+': '+e.message);
+    try{
+      const{data:veiculos}=await sb.from('frota').select('id,prefixo')
+        .eq('garagem_id',gid).in('prefixo',prefixosLavados);
+      if(veiculos?.length){
+        await Promise.all(veiculos.map(v=>
+          sb.from('frota').update({ultima_lavagem:dataRef}).eq('id',v.id)
+        ));
       }
-      if(erros.length) toast('⚠️ Alguns não atualizados: '+erros[0],'err');
-    }
+    }catch(e){console.warn('[frota ultima_lavagem]',e.message);}
   }
 
-  // PASSO 3 — Deletar checklist_lavagem do dia
-  // PASSO 3 — Marcar como arquivado (delete bloqueado por RLS — filtrado nas queries)
+  // PASSO 3 — Arquivar checklist do dia (CRÍTICO — tela deve limpar)
+  const ids=lista.map(l=>l.id).filter(Boolean);
+  let arquivado=false;
+
+  // Tenta por IDs primeiro (mais preciso)
   if(ids.length){
-    await sb.from('checklist_lavagem')
-      .update({status:'arquivado'}).eq('garagem_id',gid).eq('data',_lpData.split('T')[0]||_lpData);
+    const{error:e1}=await sb.from('checklist_lavagem')
+      .update({status:'arquivado'}).in('id',ids);
+    if(!e1){ arquivado=true; console.log('[lav] arquivado por IDs:',ids.length); }
+    else console.warn('[lav] update por ID falhou:',e1.message);
   }
 
-  // Avança a data para amanhã — tela mostra plano vazio (próximo turno)
-  const amanha=new Date(_lpData+'T12:00:00');
+  // Fallback: arquiva por garagem+data
+  if(!arquivado){
+    const{error:e2}=await sb.from('checklist_lavagem')
+      .update({status:'arquivado'}).eq('garagem_id',gid).eq('data',dataRef);
+    if(!e2){ arquivado=true; console.log('[lav] arquivado por data'); }
+    else console.warn('[lav] arquivado por data falhou:',e2.message);
+  }
+
+  if(!arquivado){
+    toast('⚠️ Não foi possível arquivar o plano — verifique permissões (RLS)','err');
+  }
+
+  // Avança a data para o próximo dia independente de erro
+  const amanha=new Date(dataRef+'T12:00:00');
   amanha.setDate(amanha.getDate()+1);
   setLpData(amanha.toISOString().split('T')[0]);
 
   closeSheet(true);
-  toast('✅ Fechado! '+lavados+'/'+lista.length+' lavados · '+prefixosLavados.length+' frota atualizada');
+  toast('✅ Turno fechado! '+lavados+'/'+lista.length+' lavados');
   telaLavPesada();
 }
 
@@ -2649,6 +2692,48 @@ async function confirmarPlano(){
 }
 
 
+
+// ══════════════════════════════════════════════════════════════════════
+// PADRÃO OFICIAL — GERAÇÃO DE RELATÓRIOS PDF NO APP JTP
+// ══════════════════════════════════════════════════════════════════════
+//
+// TODOS os relatórios do app DEVEM usar a função downloadPDF() abaixo.
+// NUNCA usar: window.open(), document.write(), w.print(), iframe.print()
+//
+// FLUXO:
+//   1. Montar o HTML do relatório (string) com cabeçalho JTP padrão
+//   2. Chamar: await downloadPDF(html, 'JTP_NomeRelatorio_YYYYMMDD_Garagem.pdf')
+//
+// NOME DO ARQUIVO — padrão obrigatório:
+//   JTP_{TipoRelatorio}_{YYYYMMDD}_{NomeGaragem}.pdf
+//   Ex: JTP_Soltura_20260514_Garagem_Porto_Velho.pdf
+//       JTP_Fechamento_Abast_20260514_Garagem_Porto_Velho.pdf
+//       JTP_Lavagem_20260514_Garagem_Porto_Velho.pdf
+//
+// COMPORTAMENTO POR DISPOSITIVO:
+//   Android Chrome  → Web Share API: abre seletor nativo (WPP, Drive, e-mail...)
+//   iOS Safari      → Fallback nova aba: menu compartilhar → Salvar em Arquivos
+//   Desktop         → Fallback nova aba: Ctrl+P → Salvar como PDF
+//   Popup bloqueado → Download do arquivo .html com print automático
+//
+// ESTRUTURA DO HTML DO RELATÓRIO:
+//   <!DOCTYPE html><html><head><meta charset="UTF-8">
+//   <style>
+//     body{font-family:Arial,sans-serif;font-size:10px;color:#000;margin:0;padding:10px}
+//     @media print{.no-print{display:none!important}body{padding:0}@page{margin:8mm;size:A4 landscape}}
+//     table{border-collapse:collapse;width:100%}
+//   </style></head><body>
+//   <div class="no-print" style="..."> ← barra de ação (some no print)
+//     <button onclick="window.print()">🖨️ Salvar PDF</button>
+//   </div>
+//   <!-- CABEÇALHO PADRÃO JTP -->
+//   <div style="text-align:center;border:2.5px solid #000;padding:6px;margin-bottom:5px">
+//     <div style="font-size:13px;font-weight:900">GRUPO JTP │ OPERAÇÃO GARAGEM │ {Título}</div>
+//   </div>
+//   ... conteúdo ...
+//   </body></html>
+//
+// ══════════════════════════════════════════════════════════════════════
 
 // ── Helper: Gerar e compartilhar PDF ──────────────────────────────────
 // Estratégia: Web Share API (compartilha arquivo real) → fallback download
