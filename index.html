@@ -6871,6 +6871,7 @@ function renderTelaEscala(back, diasSemana, sabValetamento) {
         <div style="font-size:11px;color:var(--text3)">${confirmados.length} confirmados · ${overflow.length} sem vaga</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="limparSemanaEscala()" class="btn-sm" style="border-color:#EF444440;color:var(--red);background:#EF444410">🗑️ Limpar Semana</button>
         <button onclick="toggleTodosEscala(true)" class="btn-sm">✅ Todos</button>
         <button onclick="toggleTodosEscala(false)" class="btn-sm">⬜ Nenhum</button>
         <button onclick="confirmarEscalaAutomatica()" style="padding:8px 16px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
@@ -6895,7 +6896,61 @@ function renderTelaEscala(back, diasSemana, sabValetamento) {
   `);
 }
 
-function toggleEscalaItem(id) {
+async function limparSemanaEscala(){
+  const gid = getGid();
+  const rascunho = window._escalaRascunho || [];
+
+  // Pegar as datas da semana atual exibida no rascunho
+  const datasNaSemana = [...new Set(
+    rascunho.filter(e => e.data).map(e => e.data)
+  )].sort();
+
+  if (!datasNaSemana.length) {
+    toast('Nenhuma data de semana encontrada no rascunho', 'err');
+    return;
+  }
+
+  const dataMin = datasNaSemana[0];
+  const dataMax = datasNaSemana[datasNaSemana.length - 1];
+  const fmtMin = dataMin.split('-').reverse().join('/');
+  const fmtMax = dataMax.split('-').reverse().join('/');
+
+  if (!confirm(`Excluir TODAS as programações de ${fmtMin} a ${fmtMax}?\n\nEsta ação não pode ser desfeita.`)) return;
+
+  const btn = document.querySelector('[onclick*="limparSemanaEscala"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Excluindo...'; }
+
+  try {
+    // DELETE todas as programações no intervalo de datas
+    const { error } = await sb.from('programacao_preventiva')
+      .delete()
+      .eq('garagem_id', gid)
+      .gte('data_prevista', dataMin)
+      .lte('data_prevista', dataMax);
+
+    if (error) {
+      // Fallback: marcar como cancelado se RLS bloquear delete
+      const { error: e2 } = await sb.from('programacao_preventiva')
+        .update({ status: 'cancelado' })
+        .eq('garagem_id', gid)
+        .gte('data_prevista', dataMin)
+        .lte('data_prevista', dataMax);
+      if (e2) { toast('Erro ao limpar: ' + error.message, 'err'); return; }
+      toast(`✅ ${datasNaSemana.length} dias limpos (marcados como cancelado)`);
+    } else {
+      toast(`🗑️ Semana ${fmtMin} → ${fmtMax} excluída com sucesso!`);
+    }
+
+    // Regerar a escala do zero
+    window._escalaRascunho = null;
+    renderAutoEscala();
+
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🗑️ Limpar Semana'; }
+  }
+}
+
+
   const item = (window._escalaRascunho||[]).find(e => e.id === id);
   if (!item || item.jaExiste) return;
   item.confirmado = !item.confirmado;
