@@ -6901,6 +6901,9 @@ function renderTelaEscala(back, diasSemana, sabValetamento) {
         <button onclick="limparSemanaEscala()" class="btn-sm" style="border-color:#EF444440;color:var(--red);background:#EF444410">🗑️ Limpar Semana</button>
         <button onclick="toggleTodosEscala(true)" class="btn-sm">✅ Todos</button>
         <button onclick="toggleTodosEscala(false)" class="btn-sm">⬜ Nenhum</button>
+        <button onclick="exportarEscalaExcel()" style="padding:8px 16px;border-radius:8px;border:1px solid #22C55E40;background:#22C55E10;color:#22C55E;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
+          📊 Exportar Excel
+        </button>
         <button onclick="confirmarEscalaAutomatica()" style="padding:8px 16px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
           📅 Confirmar ${confirmados.length}
         </button>
@@ -7082,6 +7085,145 @@ function substituirItemEscala(idRemover, novoCarro, novoPlanoNum, novoPlanoNome)
 
   document.getElementById('modal-substituto')?.remove();
   _recarregarEscala();
+}
+
+
+// ── Exportar escala programada como Excel (.xlsx) ────────────────────────
+// Formato: PREFIXO | PLANO_REVISAO | DATA PROGRAMADA
+// Uma linha por plano (plano principal + oportunistas expandidos)
+async function exportarEscalaExcel(){
+  const gid = getGid();
+  const rascunho = window._escalaRascunho || [];
+  const selecionados = rascunho.filter(e => e.confirmado && e.data && !e.tipo.includes('overflow'));
+
+  if(!selecionados.length){
+    toast('Nenhum item selecionado para exportar','err');
+    return;
+  }
+
+  // Mapa de nomes dos planos para o formato do Excel
+  const NOME_PLANO = {
+    '001': '(KM) PREVENTIVA LEVE',
+    '002': '(KM) PREVENTIVA PESADA',
+    '003': '(KM) OLEO MOTOR - GARANTIA MBB 20.000',
+    '029': '(KM) OLEO MOTOR - GARANTIA MBB 30.000',
+    '004': '(KM) TROCA DE OLEO DE MOTOR - 20.000 KM',
+    '005': '(KM) TROCA DE OLEO DE MOTO',
+    '006': '(KM) CALIBRACAO',
+    '007': '(KM) RODIZIO',
+    '008': '(KM) ALINHAMENTO',
+    '009': '(KM) PREVENTIVA CUBO DIANTEIRO',
+    '010': '(KM) HIGIENIZAÇÃO TECNICA A/C',
+    '011': '(KM) REVISÃO DO A/C',
+    '012': '(KM) SISTEMA DE PÓS - TRATAMENTO',
+    '013': '(KM) FILTRO DO ARLA - 120.000 KM',
+    '014': '(Km) - FILTRO DO ARLA -  120.000 Km',
+    '015': '(KM) LIMPEZA DO FILTRO DPF',
+    '016': '(KM) ÓLEO DIFERENCIAL',
+    '017': '(KM) TROCA ÓLEO CÂMBIO',
+    '018': '(KM) REGULAGEM DE VALVULAS - 60.000 KM',
+    '019': '(KM) OLEO MOTOR',
+    '020': '(KM) TROCA OLEO',
+    '021': '(KM) FILTRO DO',
+    '038': '(KM) REGULAGEM DE VÁLVULAS',
+  };
+
+  // Data Excel = número de dias desde 01/01/1900 (com bug do 1900 como bissexto)
+  function toExcelDate(dateStr){
+    const d = new Date(dateStr + 'T12:00:00');
+    const base = new Date('1899-12-30T12:00:00');
+    return Math.round((d - base) / (1000*60*60*24));
+  }
+
+  // Montar linhas — uma por plano
+  const linhas = [];
+  selecionados.forEach(e => {
+    const prefixo = e.carro.replace(/\./g,'').replace(/^0+/,''); // "02.013" → "2013"
+    const dataExcel = toExcelDate(e.data);
+    const nomePlano = NOME_PLANO[e.planoNum] || e.planoNome || `(KM) PLANO ${e.planoNum}`;
+
+    // Plano principal
+    linhas.push([prefixo, nomePlano, dataExcel]);
+
+    // Planos oportunistas expandidos
+    (e.oportunistas || []).forEach((num, idx) => {
+      const nomeOp = NOME_PLANO[num] || (e.oportunistasNomes?.[idx]) || `(KM) PLANO ${num}`;
+      linhas.push([prefixo, nomeOp, dataExcel]);
+    });
+
+    // +LEVE inclusa
+    if(e.incluileve && e.planoNum !== '001'){
+      linhas.push([prefixo, NOME_PLANO['001'], dataExcel]);
+    }
+
+    // +PES inclusa (garantia que inclui pesada)
+    if(e.incluiPesada && e.planoNum !== '002'){
+      linhas.push([prefixo, NOME_PLANO['002'], dataExcel]);
+    }
+
+    // +GARAN inclusa (pesada que inclui garantia)
+    if(e.incluiGarantia && !['003','029'].includes(e.planoNum)){
+      const numGaran = e.carro && parseInt(e.carro.replace(/\./g,'').slice(2)) <= 284 ? '003' : '029';
+      linhas.push([prefixo, NOME_PLANO[numGaran], dataExcel]);
+    }
+  });
+
+  // Montar CSV com separador de tab (para abrir no Excel como TSV)
+  // Mas vamos gerar um HTML que abre como Excel
+  const garagem = S.garagens?.find(g=>g.id===gid);
+  const semana = selecionados.find(e=>e.data)?.data?.split('-').reverse().join('/') || '';
+
+  // Gerar arquivo usando SheetJS via CDN
+  const script = document.createElement('script');
+  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  script.onload = () => {
+    const wb = XLSX.utils.book_new();
+
+    // Dados
+    const wsData = [
+      ['PREFIXO', 'PLANO_REVISAO', 'DATA PROGRAMADA'],
+      ...linhas
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Larguras de coluna
+    ws['!cols'] = [
+      {wch: 10},  // PREFIXO
+      {wch: 55},  // PLANO_REVISAO
+      {wch: 16},  // DATA PROGRAMADA
+    ];
+
+    // Formatar coluna de data como data no Excel
+    const fmt = 'DD/MM/YYYY';
+    for(let row = 1; row < wsData.length; row++){
+      const cell = ws[XLSX.utils.encode_cell({r: row, c: 2})];
+      if(cell) cell.t = 'n', cell.z = fmt;
+    }
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Programação');
+
+    // Nome do arquivo
+    const hoje = new Date().toISOString().slice(0,10).replace(/-/g,'');
+    const nomeGar = garagem?.nome?.replace(/\s/g,'_') || 'PVH';
+    const nome = `JTP_Preventivas_${hoje}_${nomeGar}.xlsx`;
+
+    XLSX.writeFile(wb, nome);
+    toast(`✅ Excel exportado · ${linhas.length} linhas · ${selecionados.length} preventivas`);
+  };
+  script.onerror = () => {
+    // Fallback: CSV
+    const csv = ['PREFIXO\tPLANO_REVISAO\tDATA PROGRAMADA',
+      ...linhas.map(l => l.join('\t'))
+    ].join('\n');
+    const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url;
+    a.download = `JTP_Preventivas_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click(); setTimeout(()=>URL.revokeObjectURL(url),3000);
+    toast('✅ Exportado como CSV (Excel não disponível)');
+  };
+  document.head.appendChild(script);
 }
 
 async function confirmarEscalaAutomatica() {
