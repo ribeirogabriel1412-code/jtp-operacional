@@ -5693,6 +5693,24 @@ async function renderFerrPCM(aba='painel'){
         <button onclick="abrirNovaOcorrencia()" class="btn-add">+ Nova OS</button>
       </div>
     </div>
+    <!-- BARRA DE RELATÓRIOS PCM — bem visível -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+      <button onclick="abrirFechamentoPCM()" style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px 16px;border-radius:12px;border:1px solid #3B82F640;background:#3B82F610;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:left">
+        <span style="font-size:18px">📋</span>
+        <span style="font-size:13px;font-weight:800;color:var(--blue)">Fechamento 2.4</span>
+        <span style="font-size:11px;color:var(--text3)">Gerar relatório de turno PCM</span>
+      </button>
+      <button onclick="abrirFechamentoCustoTurno()" style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px 16px;border-radius:12px;border:1px solid #F59E0B40;background:#F59E0B10;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:left">
+        <span style="font-size:18px">💰</span>
+        <span style="font-size:13px;font-weight:800;color:var(--amber)">Custo do Turno</span>
+        <span style="font-size:11px;color:var(--text3)">Previsto × real por OS</span>
+      </button>
+      <button onclick="gerarRelatorio34()" style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px 16px;border-radius:12px;border:1px solid #06B6D440;background:#06B6D410;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:left">
+        <span style="font-size:18px">🔧</span>
+        <span style="font-size:13px;font-weight:800;color:#06B6D4">Checklist 3.4</span>
+        <span style="font-size:11px;color:var(--text3)">Equipamentos da oficina</span>
+      </button>
+    </div>
     ${!parados
       ?`<div class="empty"><div style="font-size:40px">✅</div><div style="color:var(--green);font-weight:600;margin:12px 0">Nenhum veículo parado!</div></div>`
       :cards}
