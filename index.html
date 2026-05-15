@@ -6877,6 +6877,13 @@ function renderTelaEscala(back, diasSemana, sabValetamento) {
     const cor = e.tipo==='garantia'?'#8B5CF6': e.tipo==='valetamento'?'#06B6D4': isPesada(e.planoNum)?'#3B82F6':'#22C55E';
     const check = e.confirmado&&!e.jaExiste ? '✅' : e.jaExiste ? '🔵' : '⬜';
 
+    // Destaque para substituição manual
+    const bordaSub = e.substituicaoManual ? '#F59E0B' : cor;
+    const bgSub    = e.substituicaoManual ? '#F59E0B08' : 'transparent';
+    const tagSub   = e.substituicaoManual
+      ? `<span style="background:#F59E0B18;color:#F59E0B;border:1px solid #F59E0B40;border-radius:4px;padding:1px 5px;font-size:9px;font-weight:700">🔄 Substituiu ${e.carroOriginal}</span>`
+      : '';
+
     const tags = [
       e.incluileve     ? `<span style="background:#00C48C18;color:#22C55E;border:1px solid #22C55E40;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">+LEVE</span>` : '',
       e.incluiPesada   ? `<span style="background:#3B82F618;color:#3B82F6;border:1px solid #3B82F640;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700">+PES</span>` : '',
@@ -6899,7 +6906,7 @@ function renderTelaEscala(back, diasSemana, sabValetamento) {
       </div>`).join('')}
     </div>`;
 
-    return `<div style="background:var(--surface);border:1.5px solid ${e.confirmado&&!e.jaExiste?cor+'60':'var(--border2)'};border-left:4px solid ${cor};border-radius:10px;padding:10px 12px;margin-bottom:8px;opacity:${e.jaExiste?'0.4':'1'}">
+    return `<div style="background:var(--surface);border:1.5px solid ${e.confirmado&&!e.jaExiste?bordaSub+'60':'var(--border2)'};border-left:4px solid ${bordaSub};border-radius:10px;padding:10px 12px;margin-bottom:8px;opacity:${e.jaExiste?'0.4':'1'};background:${bgSub}">
       <div style="display:flex;align-items:flex-start;gap:6px">
         <span onclick="toggleEscalaItem(${e.id})" style="cursor:pointer;flex-shrink:0;font-size:16px;margin-top:1px">${check}</span>
         <div style="flex:1;min-width:0">
@@ -6907,6 +6914,7 @@ function renderTelaEscala(back, diasSemana, sabValetamento) {
             <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:800;color:${cor}">${e.carro}</span>
             <span style="font-size:11px;font-weight:600;color:var(--text2)">${e.planoNome.split(' - ')[0]}</span>
             ${tags}
+            ${tagSub}
           </div>
           ${opStr}
         </div>
@@ -7079,55 +7087,103 @@ function removerItemEscala(id) {
   const item = rascunho.find(e => e.id === id);
   if (!item) return;
 
-  // Buscar fila de substitutos: planos pendentes que NÃO estão no rascunho
   const jaNoRascunho = new Set(rascunho.map(e => e.carro+'::'+e.planoNum));
-  const tipo = item.incluileve||isPesada(item.planoNum) ? 'pesada' : isLeve(item.planoNum) ? 'leve' : 'avulso';
-  
-  const substitutos = (_prevDados||[])
+  const tipo = (isGarantia(item.carro)&&isPlanoGarantia(item.planoNum)) ? 'garantia'
+             : isPesada(item.planoNum) ? 'pesada'
+             : isLeve(item.planoNum)   ? 'leve' : 'avulso';
+
+  // Todos os candidatos do tipo correto, ordenados por mais vencido
+  const todosSubstitutos = (_prevDados||[])
     .filter(p => {
       if (jaNoRascunho.has(p.carro+'::'+p.planoNum)) return false;
-      if (tipo === 'pesada') return isPesada(p.planoNum) && p.excessoKm >= -2000;
-      if (tipo === 'leve') return isLeve(p.planoNum) && p.excessoKm >= -2000;
-      return isAvulso(p.planoNum) && p.excessoKm >= -500;
+      if (tipo === 'garantia') return isGarantia(p.carro) && isPlanoGarantia(p.planoNum);
+      if (tipo === 'pesada')   return isPesada(p.planoNum);
+      if (tipo === 'leve')     return isLeve(p.planoNum);
+      return isAvulso(p.planoNum);
     })
-    .sort((a,b) => b.excessoKm - a.excessoKm)
-    .slice(0, 12);
+    .sort((a,b) => b.excessoKm - a.excessoKm);
 
-  const html = `
-    <div style="font-size:13px;font-weight:700;margin-bottom:10px">
-      Remover <span style="font-family:'DM Mono',monospace;color:var(--red)">${item.carro}</span> — escolher substituto
-    </div>
-    <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
-      Vaga: ${item.data?.split('-').reverse().join('/')} · T${item.turno} · ${item.planoNome}
-    </div>
-    <div style="max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:5px">
-      ${substitutos.length ? substitutos.map(p => {
-        const cor = p.excessoKm>0?'var(--red)':p.excessoKm>-500?'var(--amber)':'var(--green)';
-        return `<div onclick="substituirItemEscala(${id},'${p.carro}','${p.planoNum}','${p.planoNome.replace(/'/g,'\\u0027')}')" 
-          style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--surface);border:1px solid var(--border2);border-radius:8px;cursor:pointer"
-          onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border2)'">
-          <div>
-            <span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--blue)">${p.carro}</span>
-            <span style="font-size:11px;color:var(--text2);margin-left:6px">${PREV_NOMES[p.planoNum]||p.planoNome}</span>
+  // Remover modal anterior se existir
+  document.getElementById('modal-substituto')?.remove();
+
+  function renderListaSubs(filtro=''){
+    const lista = filtro
+      ? todosSubstitutos.filter(p => p.carro.replace(/\./g,'').includes(filtro.replace(/\./g,'')))
+      : todosSubstitutos.slice(0, 15);
+
+    if(!lista.length) return '<div style="text-align:center;padding:20px;color:var(--text4);font-size:12px">Nenhum carro encontrado</div>';
+
+    return lista.map(p => {
+      const cor = p.excessoKm>0?'var(--red)':p.excessoKm>-1000?'var(--amber)':'var(--text3)';
+      const opNames = (_prevDados||[]).filter(d=>d.carro===p.carro&&d.planoNum!==p.planoNum)
+        .slice(0,4).map(d=>PREV_NOMES[d.planoNum]||d.planoNome.split(' ').slice(0,2).join(' ')).join(' · ');
+      return `<div onclick="substituirItemEscala(${id},'${p.carro}','${p.planoNum}','${p.planoNome.replace(/'/g,'\\u0027')}')"
+        style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--surface);border:1px solid var(--border2);border-radius:10px;cursor:pointer;margin-bottom:5px"
+        onmouseover="this.style.background='var(--surface2)';this.style.borderColor='var(--blue)'"
+        onmouseout="this.style.background='var(--surface)';this.style.borderColor='var(--border2)'">
+        <div style="min-width:0">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-family:'DM Mono',monospace;font-size:14px;font-weight:800;color:var(--blue)">${p.carro}</span>
+            <span style="font-size:11px;color:var(--text2)">${PREV_NOMES[p.planoNum]||p.planoNome.split(' ').slice(0,3).join(' ')}</span>
           </div>
-          <span style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:${cor}">${p.excessoKm>=0?'+':''}${p.excessoKm.toLocaleString('pt-BR')} km</span>
-        </div>`;
-      }).join('') : '<div style="text-align:center;padding:20px;color:var(--text3)">Nenhum substituto disponível</div>'}
-    </div>
-    <div style="display:flex;gap:8px;margin-top:12px">
-      <button onclick="closeModal?closeModal():document.querySelector('[id^=modal]')?.remove()" 
-        style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">Cancelar</button>
-      <button onclick="confirmarRemocaoEscala(${id})" 
-        style="flex:1;padding:10px;border-radius:8px;border:1px solid #EF444440;background:#EF444410;color:var(--red);font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">Remover sem substituir</button>
-    </div>`;
+          ${opNames?`<div style="font-size:10px;color:var(--amber);margin-top:2px">⚡ ${opNames}</div>`:''}
+        </div>
+        <span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:${cor};flex-shrink:0;margin-left:8px">${p.excessoKm>=0?'+':''}${p.excessoKm.toLocaleString('pt-BR')} km</span>
+      </div>`;
+    }).join('');
+  }
 
-  // Abrir modal inline
   const modal = document.createElement('div');
   modal.id = 'modal-substituto';
   modal.style.cssText = 'position:fixed;inset:0;background:#00000088;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
-  modal.innerHTML = `<div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:20px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px #00000060">${html}</div>`;
+  modal.innerHTML = `
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:20px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px #00000060">
+      
+      <!-- Cabeçalho -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div>
+          <div style="font-size:15px;font-weight:800">🔄 Substituir Carro</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px">
+            Removendo <span style="font-family:'DM Mono',monospace;color:var(--red);font-weight:700">${item.carro}</span>
+            · ${item.data?.split('-').reverse().join('/')} · ${item.planoNome.split(' ').slice(0,3).join(' ')}
+          </div>
+        </div>
+        <button onclick="document.getElementById('modal-substituto')?.remove()"
+          style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">✕</button>
+      </div>
+
+      <!-- Busca por prefixo -->
+      <div style="margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">🔍 Buscar prefixo</div>
+        <input id="sub-busca" type="text" placeholder="Ex: 02.255 ou 255..."
+          oninput="document.getElementById('sub-lista').innerHTML=renderListaSubs_${id}(this.value)"
+          style="width:100%;background:var(--surface2);border:1px solid var(--blue);border-radius:10px;padding:10px 14px;color:var(--text);font-size:15px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+      </div>
+
+      <!-- Lista de substitutos -->
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">
+        📋 ${todosSubstitutos.length} disponíveis — do mais vencido
+      </div>
+      <div id="sub-lista" style="max-height:320px;overflow-y:auto">
+        ${renderListaSubs()}
+      </div>
+
+      <!-- Ações -->
+      <div style="display:flex;gap:8px;margin-top:14px;border-top:1px solid var(--border2);padding-top:14px">
+        <button onclick="document.getElementById('modal-substituto')?.remove()"
+          style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">Cancelar</button>
+        <button onclick="confirmarRemocaoEscala(${id})"
+          style="flex:1;padding:10px;border-radius:8px;border:1px solid #EF444440;background:#EF444410;color:var(--red);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">🗑️ Remover sem substituir</button>
+      </div>
+    </div>`;
+
+  // Expor renderListaSubs para o oninput do campo
+  window[`renderListaSubs_${id}`] = renderListaSubs;
+
   modal.onclick = e => { if(e.target===modal) modal.remove(); };
   document.body.appendChild(modal);
+  // Foco automático na busca
+  setTimeout(()=>document.getElementById('sub-busca')?.focus(), 100);
 }
 
 function confirmarRemocaoEscala(id) {
@@ -7145,6 +7201,9 @@ function substituirItemEscala(idRemover, novoCarro, novoPlanoNum, novoPlanoNome)
   const dadosPlano = dadosCarro.find(p=>p.planoNum===novoPlanoNum) || {};
   const ops = calcularOportunistas(dadosCarro, {planoNum:novoPlanoNum, planoNome:novoPlanoNome, proximaExec:0, excessoKm: dadosPlano.excessoKm||0});
 
+  // Guardar carro original para destaque visual
+  const carroOriginal = item.carro;
+
   // Substituir no mesmo slot
   item.carro = novoCarro;
   item.planoNum = novoPlanoNum;
@@ -7153,10 +7212,13 @@ function substituirItemEscala(idRemover, novoCarro, novoPlanoNum, novoPlanoNome)
   item.oportunistas = ops.map(o=>o.num);
   item.oportunistasNomes = ops.map(o=>o.nome);
   item.incluileve = isPesada(novoPlanoNum);
-  item.motivo = `Substituição manual · ${dadosPlano.excessoKm>=0?'+':''}${(dadosPlano.excessoKm||0).toLocaleString('pt-BR')} km`;
+  item.incluiGarantia = isGarantia(novoCarro) && isPlanoGarantia(novoPlanoNum);
+  item.motivo = `🔄 Substituiu ${carroOriginal} · ${dadosPlano.excessoKm>=0?'+':''}${(dadosPlano.excessoKm||0).toLocaleString('pt-BR')} km`;
   item.tipo = (isGarantia(novoCarro)&&isPlanoGarantia(novoPlanoNum))?'garantia':isPesada(novoPlanoNum)?'pesada':'leve';
   item.confirmado = true;
   item.jaExiste = false;
+  item.substituicaoManual = true;   // flag para destaque visual
+  item.carroOriginal = carroOriginal; // para mostrar no card
 
   document.getElementById('modal-substituto')?.remove();
   _recarregarEscala();
