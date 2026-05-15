@@ -6470,7 +6470,7 @@ function isAvulso(planoNum) { return !isPesada(planoNum) && !isLeve(planoNum) &&
 function toDateStr(d) { return d.toISOString().slice(0,10); }
 
 // ── GERADOR PRINCIPAL ────────────────────────────────────────────────────
-function gerarEscalaAutomatica(dados, semanaRef) {
+function gerarEscalaAutomatica(dados, semanaRef, prefixosJaProgramados=new Set()) {
 
   // ── Calcular semana de referência ────────────────────────────────────
   let seg;
@@ -6706,12 +6706,14 @@ function gerarEscalaAutomatica(dados, semanaRef) {
     ...sorted(dados.filter(r => isPesada(r.planoNum))),
   ]);
 
-  // Carros já alocados esta semana (pesada ou garantia) — usar a escala já montada
-  const carrosComPesadaNaSemana = new Set(
+  // Carros da semana atual = alocados neste rascunho + já programados no banco
+  const carrosRascunho = new Set(
     escala
       .filter(e => e.data && (e.tipo === 'pesada' || e.tipo === 'garantia'))
       .map(e => e.carro)
   );
+  // União: rascunho atual + banco (semana corrente)
+  const carrosComPesadaNaSemana = new Set([...carrosRascunho, ...prefixosJaProgramados]);
 
   // Próximas 10 pesadas para a semana seguinte
   const proxPesadasValet = filaCompletaPesada
@@ -6784,7 +6786,20 @@ async function renderAutoEscala() {
     .gte('data_prevista', new Date().toISOString().slice(0,10));
   const jaSet = new Set((jaExiste||[]).map(p => p.prefixo+'::'+p.plano_num+'::'+p.data_prevista));
 
-  const { escala, diasSemana, sabValetamento } = gerarEscalaAutomatica(_prevDados, _prevImportadoEm ? null : null);
+  // Buscar prefixos já programados no banco para excluir do valetamento
+  const semanaIni = new Date(); semanaIni.setDate(semanaIni.getDate() - semanaIni.getDay() + 1);
+  const semanaFim = new Date(semanaIni); semanaFim.setDate(semanaIni.getDate() + 4);
+  const { data: jaProgBanco } = await sb.from('programacao_preventiva')
+    .select('prefixo,plano_num')
+    .eq('garagem_id', gid)
+    .in('status', ['programado','em_execucao'])
+    .gte('data_prevista', semanaIni.toISOString().slice(0,10))
+    .lte('data_prevista', semanaFim.toISOString().slice(0,10));
+  const prefixosJaProgBanco = new Set((jaProgBanco||[])
+    .filter(p => p.plano_num === '002' || ['003','029'].includes(p.plano_num))
+    .map(p => p.prefixo));
+
+  const { escala, diasSemana, sabValetamento } = gerarEscalaAutomatica(_prevDados, null, prefixosJaProgBanco);
 
   // Estado de confirmação (começa tudo selecionado)
   window._escalaRascunho = escala.map((e, i) => ({
