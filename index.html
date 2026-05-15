@@ -3742,6 +3742,7 @@ async function renderFerr22(aba='ativas'){
   const addBtn=isPCM?`<div style="display:flex;gap:8px;flex-wrap:wrap">
     <button class="btn-sm" onclick="gerarResumoTurno()" style="background:#8B5CF618;border-color:#8B5CF640;color:#8B5CF6">📊 Resumo de Turno</button>
     <button class="btn-sm" onclick="abrirFechamentoCustoTurno()" style="background:#F59E0B18;border-color:#F59E0B40;color:var(--amber)">💰 Fechar Custo do Turno</button>
+    <button class="btn-sm" onclick="gerarRelatorio34()" style="background:#06B6D418;border-color:#06B6D440;color:#06B6D4">📋 3.4 Checklist Equip.</button>
     <button class="btn-add" onclick="abrirModal22()">+ Nova Ocorrência</button>
   </div>`:'<button class="btn-add" onclick="abrirModal22()">+ Nova Ocorrência</button>';
 
@@ -5152,6 +5153,7 @@ async function carregarFechamentoPCM(){
 
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button class="btn-sec" onclick="document.getElementById('modal-fech-pcm').style.display='none'">Cancelar</button>
+      <button onclick="gerarRelatorio24()" style="padding:10px 16px;border-radius:10px;border:1px solid #8B5CF640;background:#8B5CF618;color:#8B5CF6;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">📄 Relatório 2.4 PDF</button>
       <button class="btn-success" onclick="salvarFechamentoPCM()">💾 Salvar e Enviar WhatsApp</button>
     </div>`;
 }
@@ -10111,3 +10113,415 @@ document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementB
 </script>
 </body>
 </html>
+// ══════════════════════════════════════════════════════════════════════════
+// RELATÓRIOS PCM — Geração automática a partir dos dados do banco
+// 2.4 · Fechamento de Turno PCM
+// 3.4 · Checklist de Equipamentos
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── HELPER: Estilo padrão dos relatórios JTP ──────────────────────────────
+function estiloRelJTP(){
+  return `
+    body{font-family:Arial,sans-serif;font-size:9px;color:#000;margin:0;padding:10px}
+    @media print{.no-print{display:none!important}body{padding:0}@page{margin:8mm;size:A4}}
+    table{border-collapse:collapse;width:100%}
+    th,td{border:1px solid #333;padding:3px 5px;font-size:9px}
+    th{background:#333;color:#fff;font-weight:900;text-align:left}
+    .sec-header{background:#333;color:#fff;font-weight:900;padding:4px 8px;font-size:10px;margin:8px 0 0}
+    .cabecalho{text-align:center;border:2px solid #000;padding:5px;margin-bottom:6px}
+    .campo-label{font-size:8px;color:#555;font-weight:700;text-transform:uppercase}
+    .campo-val{font-size:10px;font-weight:700}
+    .check-box{display:inline-block;width:10px;height:10px;border:1px solid #333;margin-right:3px;vertical-align:middle}
+    .checked::after{content:'✓';font-size:10px;font-weight:900}
+    tr:nth-child(even) td{background:#f9f9f9}
+  `;
+}
+
+function barraPrint(titulo, nomePDF){
+  return `<div class="no-print" style="position:sticky;top:0;background:#1e293b;padding:8px 12px;display:flex;gap:8px;align-items:center;z-index:999;margin:-10px -10px 10px">
+    <span style="color:#fff;font-size:12px;font-weight:700">${titulo}</span>
+    <button onclick="window.print()" style="margin-left:auto;padding:6px 16px;background:#3B82F6;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">🖨️ Imprimir / PDF</button>
+  </div>`;
+}
+
+// ── 2.4 — Fechamento de Turno PCM ─────────────────────────────────────────
+async function gerarRelatorio24(){
+  const d=S._fechPCM;
+  if(!d){ toast('Gere o fechamento primeiro','err'); return; }
+
+  const{gid,garagem,numFech,label,iniTurno,fimTurno,abertasNaTurno,fechadasNaTurno,paradosAgora,turno}=d;
+  const agora=new Date();
+  const dtFmt=agora.toLocaleDateString('pt-BR',{timeZone:'America/Manaus'});
+  const hrFmt=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'});
+  const resp=S.perfil?.nome||'—';
+
+  // Todas as OS do turno (abertas + fechadas + paradas)
+  const todasOS=[...(abertasNaTurno||[]),...(fechadasNaTurno||[]),...(paradosAgora||[])];
+  // Dedup por ID
+  const osMap={};
+  todasOS.forEach(o=>{ osMap[o.id]=o; });
+  const osLista=Object.values(osMap).sort((a,b)=>new Date(a.hora_entrada)-new Date(b.hora_entrada));
+
+  // Buscar peças sem estoque (OS com status aguardando_peca)
+  const osAgPeca=osLista.filter(o=>o.status==='aguardando_peca'||o.pecas_necessarias);
+
+  // Buscar preventivas programadas vs executadas do dia
+  const diaRef=iniTurno.toISOString().slice(0,10);
+  const{data:prevProg}=await sb.from('programacao_preventiva').select('*')
+    .eq('garagem_id',gid).eq('data_prevista',diaRef).order('prefixo');
+
+  // Buscar frota com km atual
+  const prefixosPrev=[...new Set((prevProg||[]).map(p=>p.prefixo))];
+  const{data:frotaKm}=prefixosPrev.length
+    ? await sb.from('frota').select('prefixo,km_atual').eq('garagem_id',gid).in('prefixo',prefixosPrev)
+    : {data:[]};
+  const kmMap={};
+  (frotaKm||[]).forEach(v=>{kmMap[v.prefixo]=v.km_atual;});
+
+  // Verificar quais preventivas foram executadas (OS liberada no dia)
+  const osLiberadas=new Set((fechadasNaTurno||[]).map(o=>o.prefixo));
+
+  const B='border:1px solid #333;';
+  const BH='border:1px solid #333;background:#555;color:#fff;font-weight:900;';
+  const BG='border:1px solid #333;background:#333;color:#fff;font-weight:900;padding:5px 8px;font-size:10px;';
+
+  // ── SEÇÃO 1: Controle de OS ──────────────────────────────────────────────
+  const rowsOS=osLista.map(o=>{
+    const tipoStr=o.tipo==='preventiva_leve'?'Prev':'Corr';
+    const fechada=o.status==='liberado';
+    return`<tr>
+      <td style="${B}font-family:monospace;font-weight:700;font-size:9px">${o.praxio_os_id||'—'}</td>
+      <td style="${B}font-family:monospace;font-weight:700">${o.prefixo}</td>
+      <td style="${B}text-align:center;font-size:9px">
+        <span style="font-weight:${o.tipo?.includes('prev')?'700':'400'}">${o.tipo?.includes('prev')?'☑':'☐'} Prev</span>
+        <span style="margin-left:4px;font-weight:${!o.tipo?.includes('prev')?'700':'400'}">${!o.tipo?.includes('prev')?'☑':'☐'} Corr</span>
+      </td>
+      <td style="${B}">${o.mecanico||'—'}</td>
+      <td style="${B}text-align:center">
+        <span style="font-weight:${fechada?'700':'400'}">${fechada?'☑':'☐'} Fechada</span>
+        <span style="margin-left:4px;font-weight:${!fechada?'700':'400'}">${!fechada?'☑':'☐'} Pendente</span>
+      </td>
+      <td style="${B}font-size:9px;color:${o.descricao?'#000':'#999'}">${o.descricao||''}</td>
+    </tr>`;
+  }).join('');
+
+  // Linhas vazias para completar
+  const vaziosOS=Math.max(0,20-osLista.length);
+  const rowsOSVazios=Array.from({length:vaziosOS},()=>`<tr>
+    <td style="${B}height:16px"></td><td style="${B}"></td>
+    <td style="${B}font-size:9px">☐ Prev &nbsp; ☐ Corr</td>
+    <td style="${B}"></td>
+    <td style="${B}font-size:9px">☐ Fechada &nbsp; ☐ Pendente</td>
+    <td style="${B}"></td>
+  </tr>`).join('');
+
+  // ── SEÇÃO 2: Peças sem estoque ───────────────────────────────────────────
+  const rowsPecas=osAgPeca.map(o=>`<tr>
+    <td style="${B}font-family:monospace;font-size:9px">${o.praxio_os_id||'—'}</td>
+    <td style="${B}font-family:monospace;font-weight:700">${o.prefixo}</td>
+    <td style="${B}"></td>
+    <td style="${B}">${o.pecas_necessarias||'—'}</td>
+    <td style="${B}font-size:8px">${o.hora_entrada?o.hora_entrada.slice(0,10):'—'}</td>
+    <td style="${B}"></td>
+  </tr>`).join('');
+  const vaziosPecas=Math.max(0,8-osAgPeca.length);
+  const rowsPecasVazios=Array.from({length:vaziosPecas},()=>`<tr>
+    <td style="${B}height:16px"></td><td style="${B}"></td><td style="${B}"></td>
+    <td style="${B}"></td><td style="${B}"></td><td style="${B}"></td>
+  </tr>`).join('');
+
+  // ── SEÇÃO 3: Preventivas Prog vs Executado ───────────────────────────────
+  const rowsPrev=(prevProg||[]).map(p=>{
+    const exec=osLiberadas.has(p.prefixo);
+    const tipo=p.plano_num==='001'?'Leve':'Pesada';
+    return`<tr>
+      <td style="${B}font-family:monospace;font-weight:700">${p.prefixo}</td>
+      <td style="${B}font-family:monospace">${kmMap[p.prefixo]?.toLocaleString('pt-BR')||'—'}</td>
+      <td style="${B}text-align:center;font-size:9px">
+        ${tipo==='Leve'?'☑ Leve &nbsp; ☐ Pesada':'☐ Leve &nbsp; ☑ Pesada'}
+      </td>
+      <td style="${B}text-align:center;font-size:9px">☑ Sim &nbsp; ☐ Não</td>
+      <td style="${B}text-align:center;font-size:9px">${exec?'☑ Sim &nbsp; ☐ Não':'☐ Sim &nbsp; ☑ Não'}</td>
+      <td style="${B}"></td>
+      <td style="${B}text-align:center;font-family:monospace;font-weight:700">${exec?'100%':'0%'}</td>
+      <td style="${B}font-size:9px">${exec?'':'Pendente próximo turno'}</td>
+    </tr>`;
+  }).join('');
+  const vaziosPrev=Math.max(0,10-(prevProg||[]).length);
+  const rowsPrevVazios=Array.from({length:vaziosPrev},()=>`<tr>
+    <td style="${B}height:16px"></td><td style="${B}"></td>
+    <td style="${B}font-size:9px">☐ Leve &nbsp; ☐ Pesada</td>
+    <td style="${B}font-size:9px">☐ Sim &nbsp; ☐ Não</td>
+    <td style="${B}font-size:9px">☐ Sim &nbsp; ☐ Não</td>
+    <td style="${B}"></td><td style="${B}"></td><td style="${B}"></td>
+  </tr>`).join('');
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>${estiloRelJTP()}</style></head><body>
+${barraPrint('📋 2.4 · Fechamento de Turno PCM · '+garagem?.nome,'JTP_24_FechamentoPCM')}
+
+<div class="cabecalho">
+  <table style="border:none">
+    <tr>
+      <td style="border:none;width:60px"><div style="background:#222;color:#fff;font-size:8px;font-weight:900;padding:4px 6px;text-align:center">JTP</div></td>
+      <td style="border:none;text-align:center">
+        <div style="font-size:12px;font-weight:900">GRUPO JTP | OPERAÇÃO GARAGEM | Fechamento de Turno – PCM | 2.4</div>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<table style="margin-bottom:6px">
+  <tr>
+    <td style="${B}width:80px"><span class="campo-label">Código</span><br><span class="campo-val">2.4</span></td>
+    <td style="${B}"><span class="campo-label">Responsável</span><br><span class="campo-val">${resp}</span></td>
+    <td style="${B}"><span class="campo-label">Assistente de PCM / Líder PCM</span><br><span class="campo-val">${resp}</span></td>
+    <td style="${B}width:80px"><span class="campo-label">Periodicidade</span><br><span class="campo-val">Diário - Turnos</span></td>
+  </tr>
+  <tr>
+    <td style="${B}"><span class="campo-label">Processo</span><br><span class="campo-val">Fechamento de Turno - PCM</span></td>
+    <td style="${B}"><span class="campo-label">Turno</span><br><span class="campo-val">${turno==='dia'?'☑ Dia &nbsp; ☐ Noite':'☐ Dia &nbsp; ☑ Noite'}</span></td>
+    <td style="${B}" colspan="2"><span class="campo-label">Data</span><br><span class="campo-val">${dtFmt} · ${hrFmt}</span></td>
+  </tr>
+  <tr>
+    <td style="${B}" colspan="3"><span class="campo-label">Descrição</span><br>
+      <span style="font-size:8px">Garante que todas as OS foram fechadas, controle de requisição, RJNP e movimentação de pneus.</span></td>
+    <td style="${B}"><span class="campo-label">Assinatura</span><br><br></td>
+  </tr>
+  <tr><td style="${B}"><span class="campo-label">Preenchido por</span><br><span class="campo-val">${resp}</span></td>
+    <td style="${B}" colspan="3"></td></tr>
+</table>
+
+<div style="${BG}">■ CONTROLE DE ORDENS DE SERVIÇO (OS)</div>
+<table>
+  <thead><tr>
+    <th style="${BH}width:70px">Nº OS</th>
+    <th style="${BH}width:55px">Prefixo</th>
+    <th style="${BH}width:110px">Tipo</th>
+    <th style="${BH}">Mecânico Resp.</th>
+    <th style="${BH}width:130px">Status</th>
+    <th style="${BH}">Obs / Pendência</th>
+  </tr></thead>
+  <tbody>${rowsOS}${rowsOSVazios}</tbody>
+</table>
+
+<div style="${BG}margin-top:8px">■ CONTROLE DE REQUISIÇÃO DE PEÇAS SEM ESTOQUE (SOLICITAÇÃO DE COMPRA)</div>
+<table>
+  <thead><tr>
+    <th style="${BH}width:70px">O.S</th>
+    <th style="${BH}width:55px">Prefixo</th>
+    <th style="${BH}width:40px">Qtd</th>
+    <th style="${BH}">Item</th>
+    <th style="${BH}width:70px">Data</th>
+    <th style="${BH}">Obs</th>
+  </tr></thead>
+  <tbody>${rowsPecas}${rowsPecasVazios}</tbody>
+</table>
+
+<div style="${BG}margin-top:8px">■ PREVENTIVAS (PROGRAMADO vs. EXECUTADO)</div>
+<table>
+  <thead><tr>
+    <th style="${BH}width:55px">Prefixo</th>
+    <th style="${BH}width:65px">KM Atual</th>
+    <th style="${BH}width:110px">Tipo Prev.</th>
+    <th style="${BH}width:80px">Programado?</th>
+    <th style="${BH}width:80px">Executado?</th>
+    <th style="${BH}width:80px">Reagendamento</th>
+    <th style="${BH}width:70px">% Conclusão</th>
+    <th style="${BH}">Pendência</th>
+  </tr></thead>
+  <tbody>${rowsPrev}${rowsPrevVazios}</tbody>
+</table>
+
+<div style="${BG}margin-top:8px">■ MOVIMENTAÇÃO DE PNEUS E SUCATEAMENTO</div>
+<table>
+  <thead><tr>
+    <th style="${BH}width:55px">Prefixo</th>
+    <th style="${BH}width:50px">Posição</th>
+    <th style="${BH}width:60px">Nº Pneu</th>
+    <th style="${BH}width:130px">Ação</th>
+    <th style="${BH}">Motivo</th>
+    <th style="${BH}">Responsável</th>
+    <th style="${BH}width:80px">Lançado Praxio?</th>
+    <th style="${BH}">Obs</th>
+  </tr></thead>
+  <tbody>${Array.from({length:7},()=>`<tr>
+    <td style="${B}height:16px"></td><td style="${B}"></td><td style="${B}"></td>
+    <td style="${B}font-size:8px">☐ Rodízio &nbsp;☐ Troca &nbsp;☐ Sucata</td>
+    <td style="${B}"></td><td style="${B}"></td>
+    <td style="${B}font-size:8px">☐ Sim &nbsp;☐ Não</td>
+    <td style="${B}"></td>
+  </tr>`).join('')}</tbody>
+</table>
+
+<div style="margin-top:10px;display:flex;justify-content:space-between;font-size:8px;color:#555">
+  <span>Elaborado por (PCM / Líder PCM): ____________________________</span>
+  <span>Horário de Emissão: ${hrFmt}</span>
+</div>
+<div style="margin-top:4px;font-size:8px;color:#888;text-align:right">
+  Gerado automaticamente · ${dtFmt} ${hrFmt} · JTP Transportes
+</div>
+</body></html>`;
+
+  abrirRelatorioHTMLPCM(html, `JTP_24_FechamentoPCM_${diaRef.replace(/-/g,'')}.pdf`);
+}
+
+// ── 3.4 — Checklist de Equipamentos ───────────────────────────────────────
+async function gerarRelatorio34(){
+  const gid=getGid();
+  const agora=new Date();
+  const dtFmt=agora.toLocaleDateString('pt-BR',{timeZone:'America/Manaus'});
+  const hrFmt=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'});
+  const garagem=S.garagens?.find(g=>g.id===gid);
+  const resp=S.perfil?.nome||'—';
+  const turno=S.turno||'dia';
+
+  // Buscar checklist de equipamentos do dia (se já preenchido)
+  const{data:ckEquip}=await sb.from('checklist_equipamentos').select('*')
+    .eq('garagem_id',gid).eq('data',agora.toISOString().slice(0,10))
+    .eq('turno',turno).maybeSingle().catch(()=>({data:null}));
+
+  // Itens padrão da oficina
+  const EQUIP_OFICINA=[
+    {equip:'Compressor de ar',criterio:'Verificar nível de óleo e pressão de trabalho'},
+    {equip:'Máquina de diagnóstico eletrônico (scanner)',criterio:'Verificar conexão, bateria e atualização de software'},
+    {equip:'Máquina de alinhamento',criterio:'Verificar calibração e funcionamento'},
+    {equip:'Esmerilhadeira / Furadeira (todas)',criterio:'Verificar condição dos discos, brocas e proteções'},
+    {equip:'Macaco hidráulico / Pneumático',criterio:'Verificar capacidade e condição de vedação'},
+    {equip:'Prensa hidráulica',criterio:'Verificar se não há vazamento hidráulico'},
+    {equip:'Rebitadeira pneumática',criterio:'Verificar se não há vazamento pneumático'},
+    {equip:'Parafusadeira Pneumática',criterio:'Verificar funcionamento e regulagem de torque'},
+    {equip:'Elevadores de veículo',criterio:'Verificar travas de segurança e sistema hidráulico'},
+    {equip:'Coletor de dados / Tablet',criterio:'Verificar carga da bateria e conectividade'},
+  ];
+  const EQUIP_PATIO=[
+    {equip:'Abastecedora de diesel (bomba)',criterio:'Verificar acurácia do medidor e vedações'},
+    {equip:'Abastecedora de Arla (bomba)',criterio:'Verificar acurácia do medidor e vedações'},
+    {equip:'Lavadora de alta pressão',criterio:'Verificar mangueiras, bico e pressão'},
+    {equip:'Máquina de lavagem de chassis',criterio:'Verificar funcionamento e abastecimento de produto'},
+    {equip:'Iluminação do pátio',criterio:'Verificar luminárias e circuitos críticos'},
+  ];
+
+  const ckData=ckEquip?.dados||{};
+
+  function rowEquip(item, idx, secao){
+    const key=`${secao}_${idx}`;
+    const status=ckData[key+'_status']||''; // ok / nok
+    const manut=ckData[key+'_manut']||''; // sim / nao
+    return`<tr>
+      <td style="border:1px solid #333;padding:3px 5px">${item.equip}</td>
+      <td style="border:1px solid #333;padding:3px 5px;font-size:8px">${item.criterio}</td>
+      <td style="border:1px solid #333;padding:3px 5px;text-align:center;font-size:9px">
+        <span style="font-weight:${status==='ok'?'900':'400'}">${status==='ok'?'☑':'☐'} OK</span> &nbsp;
+        <span style="font-weight:${status==='nok'?'900':'400'}">${status==='nok'?'☑':'☐'} NOK</span>
+      </td>
+      <td style="border:1px solid #333;padding:3px 5px;text-align:center;font-size:9px;width:80px">
+        <span style="font-weight:${manut==='sim'?'900':'400'}">${manut==='sim'?'☑':'☐'} Sim</span> &nbsp;
+        <span style="font-weight:${manut!=='sim'?'900':'400'}">${manut!=='sim'?'☑':'☐'} Não</span>
+      </td>
+    </tr>`;
+  }
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>${estiloRelJTP()}</style></head><body>
+${barraPrint('📋 3.4 · Checklist de Equipamentos · '+garagem?.nome,'JTP_34_ChecklistEquipamentos')}
+
+<div class="cabecalho">
+  <table style="border:none">
+    <tr>
+      <td style="border:none;width:60px"><div style="background:#222;color:#fff;font-size:8px;font-weight:900;padding:4px 6px;text-align:center">JTP</div></td>
+      <td style="border:none;text-align:center">
+        <div style="font-size:12px;font-weight:900">GRUPO JTP | OPERAÇÃO GARAGEM | Checklist de Equipamentos | 3.4</div>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<table style="margin-bottom:6px">
+  <tr>
+    <td style="border:1px solid #333;width:80px"><span class="campo-label">Código</span><br><span class="campo-val">3.4</span></td>
+    <td style="border:1px solid #333;"><span class="campo-label">Responsável</span><br><span class="campo-val">${resp}</span></td>
+    <td style="border:1px solid #333;width:90px"><span class="campo-label">Periodicidade</span><br><span class="campo-val">Diária</span></td>
+  </tr>
+  <tr>
+    <td style="border:1px solid #333;"><span class="campo-label">Processo</span><br><span class="campo-val">3.4</span></td>
+    <td style="border:1px solid #333;"><span class="campo-label">Turno</span><br><span class="campo-val">${turno==='dia'?'Dia':'Noite'}</span></td>
+    <td style="border:1px solid #333;"><span class="campo-label">Data</span><br><span class="campo-val">${dtFmt}</span></td>
+  </tr>
+  <tr>
+    <td style="border:1px solid #333;" colspan="2"><span style="font-size:8px">Checklist de verificação da funcionalidade dos equipamentos de apoio à operação. Equipamento inoperante = processo parado.</span></td>
+    <td style="border:1px solid #333;"><span class="campo-label">Assinatura</span><br><br></td>
+  </tr>
+  <tr><td style="border:1px solid #333;"><span class="campo-label">Preenchido por</span><br><span class="campo-val">${resp}</span></td>
+    <td style="border:1px solid #333;" colspan="2"></td></tr>
+</table>
+
+<div style="background:#333;color:#fff;font-weight:900;padding:4px 8px;font-size:10px;">■ EQUIPAMENTOS DA OFICINA</div>
+<table>
+  <thead><tr>
+    <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px">Equipamento / Item</th>
+    <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px">Critério de Verificação</th>
+    <th style="border:1px solid #333;background:#555;color:#fff;text-align:center;width:80px;font-size:9px">Status</th>
+    <th style="border:1px solid #333;background:#555;color:#fff;text-align:center;width:90px;font-size:9px">Manutenção Necessária?</th>
+  </tr></thead>
+  <tbody>${EQUIP_OFICINA.map((it,i)=>rowEquip(it,i,'of')).join('')}</tbody>
+</table>
+
+<div style="background:#333;color:#fff;font-weight:900;padding:4px 8px;font-size:10px;margin-top:6px">■ EQUIPAMENTOS DE PÁTIO</div>
+<table>
+  <thead><tr>
+    <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px">Equipamento / Item</th>
+    <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px">Critério de Verificação</th>
+    <th style="border:1px solid #333;background:#555;color:#fff;text-align:center;width:80px;font-size:9px">Status</th>
+    <th style="border:1px solid #333;background:#555;color:#fff;text-align:center;width:90px;font-size:9px">Manutenção Necessária?</th>
+  </tr></thead>
+  <tbody>${EQUIP_PATIO.map((it,i)=>rowEquip(it,i,'pt')).join('')}</tbody>
+</table>
+
+<div style="background:#333;color:#fff;font-weight:900;padding:4px 8px;font-size:10px;margin-top:6px">■ EQUIPAMENTOS COM NOK – AÇÃO IMEDIATA</div>
+<table>
+  <thead><tr>
+    <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px">Equipamento</th>
+    <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px">Descrição do Problema</th>
+    <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px;width:100px">Responsável</th>
+    <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px;width:100px">Prazo para Resolução</th>
+  </tr></thead>
+  <tbody>${Array.from({length:4},()=>`<tr>
+    <td style="border:1px solid #333;height:18px"></td>
+    <td style="border:1px solid #333;"></td>
+    <td style="border:1px solid #333;"></td>
+    <td style="border:1px solid #333;"></td>
+  </tr>`).join('')}</tbody>
+</table>
+
+<div style="margin-top:12px;display:flex;justify-content:space-between;align-items:flex-end">
+  <div style="font-size:9px">Verificado por (Assist. PCM): <span style="display:inline-block;min-width:200px;border-bottom:1px solid #333">&nbsp;</span></div>
+  <div style="font-size:9px">Horário de Verificação: <span style="font-weight:700">${hrFmt}</span></div>
+</div>
+<div style="margin-top:8px;font-size:8px;color:#555">GRUPO JTP | OPERAÇÃO GARAGEM</div>
+<div style="margin-top:4px;font-size:8px;color:#888;text-align:right">Gerado automaticamente · ${dtFmt} · JTP Transportes</div>
+</body></html>`;
+
+  abrirRelatorioHTMLPCM(html, `JTP_34_ChecklistEquip_${agora.toISOString().slice(0,10).replace(/-/g,'')}.pdf`);
+}
+
+// ── Helper: abrir relatório HTML como PDF ─────────────────────────────────
+async function abrirRelatorioHTMLPCM(html, nomePDF){
+  const blob=new Blob([html],{type:'text/html;charset=utf-8'});
+  if(navigator.share&&navigator.canShare){
+    try{
+      const file=new File([blob],nomePDF.replace('.pdf','.html'),{type:'text/html'});
+      if(navigator.canShare({files:[file]})){
+        await navigator.share({title:nomePDF,files:[file]});
+        return;
+      }
+    }catch(e){ if(e.name==='AbortError') return; }
+  }
+  const url=URL.createObjectURL(blob);
+  const w=window.open(url,'_blank');
+  if(w) setTimeout(()=>URL.revokeObjectURL(url),60000);
+  else{
+    const a=document.createElement('a'); a.href=url; a.download=nomePDF.replace('.pdf','.html');
+    a.click(); setTimeout(()=>URL.revokeObjectURL(url),3000);
+  }
+}
