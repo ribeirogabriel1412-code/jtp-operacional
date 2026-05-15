@@ -6528,8 +6528,13 @@ function gerarEscalaAutomatica(dados, semanaRef) {
   // Garantias — top 5 (1/dia × 5 dias), mais vencido primeiro
   const garantias = dedup(sorted(dados.filter(r => isGarantia(r.carro) && isPesada(r.planoNum))));
 
-  // Pesadas normais — top 10 (2/dia × 5 dias), mais vencido primeiro
-  const pesadasNormais = dedup(sorted(dados.filter(r => isPesada(r.planoNum) && !isGarantia(r.carro))));
+  // Pesadas normais — carros SEM garantia + garantias excedentes (além das 5 vagas semanais)
+  // Garantias que não couberem na semana entram como pesada normal
+  const garantiasExcedentes = garantias.slice(ESCALA_CONFIG.garantia * diasSemana.length);
+  const pesadasNormais = dedup(sorted([
+    ...dados.filter(r => isPesada(r.planoNum) && !isGarantia(r.carro)),
+    ...garantiasExcedentes,
+  ]));
 
   // Leves — top 30 (6/dia × 5 dias), mais vencido primeiro
   // Carros que já têm pesada → leve será inclusa, não ocupa slot de leve
