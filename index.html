@@ -6876,12 +6876,15 @@ function renderTelaEscala(back, diasSemana, sabValetamento) {
   function cardLinha(e, secao) {
     // Slot vazio — visual tracejado, clicável para preencher
     if (e.slotVazio) {
-      return `<div onclick="removerItemEscala(${e.id})"
-        style="background:transparent;border:2px dashed var(--border);border-radius:10px;padding:12px;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;opacity:0.6"
-        onmouseover="this.style.borderColor='var(--blue)';this.style.opacity='1'"
-        onmouseout="this.style.borderColor='var(--border)';this.style.opacity='0.6'">
-        <span style="font-size:16px">➕</span>
-        <span style="font-size:12px;color:var(--text3);font-weight:600">Slot vazio · ${e.data?.split('-').reverse().join('/')} · Clique para preencher</span>
+      return `<div onclick="abrirPreencherSlot(${e.id})"
+        style="background:transparent;border:2px dashed var(--border);border-radius:10px;padding:14px;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;opacity:0.7;transition:all .2s"
+        onmouseover="this.style.borderColor='var(--blue)';this.style.opacity='1';this.style.background='#2563EB08'"
+        onmouseout="this.style.borderColor='var(--border)';this.style.opacity='0.7';this.style.background='transparent'">
+        <span style="font-size:18px">➕</span>
+        <div>
+          <div style="font-size:12px;color:var(--blue);font-weight:700">Slot vazio — clique para preencher</div>
+          <div style="font-size:10px;color:var(--text4)">${e.data?.split('-').reverse().join('/')} · ${e.tipo==='pesada'?'Pesada':e.tipo==='leve'?'Leve':e.tipo==='garantia'?'Garantia':'Slot'}</div>
+        </div>
       </div>`;
     }
 
@@ -7195,6 +7198,116 @@ function removerItemEscala(id) {
   document.body.appendChild(modal);
   // Foco automático na busca
   setTimeout(()=>document.getElementById('sub-busca')?.focus(), 100);
+}
+
+
+// Abrir modal para preencher um slot vazio
+function abrirPreencherSlot(id) {
+  const rascunho = window._escalaRascunho || [];
+  const item = rascunho.find(e => e.id === id);
+  if (!item || !item.slotVazio) return;
+
+  const jaNoRascunho = new Set(
+    rascunho.filter(e => !e.slotVazio).map(e => e.carro+'::'+e.planoNum)
+  );
+
+  // Candidatos do tipo do slot
+  const candidatos = (_prevDados||[])
+    .filter(p => {
+      if (jaNoRascunho.has(p.carro+'::'+p.planoNum)) return false;
+      if (item.tipo === 'garantia') return isGarantia(p.carro) && isPlanoGarantia(p.planoNum);
+      if (item.tipo === 'pesada')   return isPesada(p.planoNum);
+      if (item.tipo === 'leve')     return isLeve(p.planoNum);
+      return true;
+    })
+    .sort((a,b) => b.excessoKm - a.excessoKm);
+
+  document.getElementById('modal-substituto')?.remove();
+
+  function renderCandidatos(filtro='') {
+    const lista = filtro
+      ? candidatos.filter(p => p.carro.replace(/\./g,'').includes(filtro.replace(/\./g,'')))
+      : candidatos.slice(0, 15);
+    if (!lista.length) return '<div style="text-align:center;padding:20px;color:var(--text4);font-size:12px">Nenhum carro encontrado</div>';
+    return lista.map(p => {
+      const cor = p.excessoKm>0?'var(--red)':p.excessoKm>-1000?'var(--amber)':'var(--text3)';
+      const opNames = (_prevDados||[]).filter(d=>d.carro===p.carro&&d.planoNum!==p.planoNum)
+        .slice(0,4).map(d=>PREV_NOMES[d.planoNum]||d.planoNome.split(' ').slice(0,2).join(' ')).join(' · ');
+      return `<div onclick="preencherSlotVazio(${id},'${p.carro}','${p.planoNum}','${p.planoNome.replace(/'/g,'\u0027')}')"
+        style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--surface);border:1px solid var(--border2);border-radius:10px;cursor:pointer;margin-bottom:5px"
+        onmouseover="this.style.background='var(--surface2)';this.style.borderColor='var(--blue)'"
+        onmouseout="this.style.background='var(--surface)';this.style.borderColor='var(--border2)'">
+        <div style="min-width:0">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-family:'DM Mono',monospace;font-size:14px;font-weight:800;color:var(--blue)">${p.carro}</span>
+            <span style="font-size:11px;color:var(--text2)">${PREV_NOMES[p.planoNum]||p.planoNome.split(' ').slice(0,3).join(' ')}</span>
+          </div>
+          ${opNames?`<div style="font-size:10px;color:var(--amber);margin-top:2px">⚡ ${opNames}</div>`:''}
+        </div>
+        <span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:${cor};flex-shrink:0;margin-left:8px">${p.excessoKm>=0?'+':''}${p.excessoKm.toLocaleString('pt-BR')} km</span>
+      </div>`;
+    }).join('');
+  }
+
+  const modal = document.createElement('div');
+  modal.id = 'modal-substituto';
+  modal.style.cssText = 'position:fixed;inset:0;background:#00000088;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML = `
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:20px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px #00000060">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div>
+          <div style="font-size:15px;font-weight:800">➕ Preencher Slot</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px">
+            ${item.data?.split('-').reverse().join('/')} · ${item.tipo==='pesada'?'Pesada':item.tipo==='leve'?'Leve':item.tipo==='garantia'?'Garantia':'Slot'}
+          </div>
+        </div>
+        <button onclick="document.getElementById('modal-substituto')?.remove()"
+          style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">✕</button>
+      </div>
+      <div style="margin-bottom:12px">
+        <input id="slot-busca" type="text" placeholder="Buscar prefixo... ex: 02.255"
+          oninput="document.getElementById('slot-lista').innerHTML=renderCandidatos_${id}(this.value)"
+          style="width:100%;background:var(--surface2);border:1px solid var(--blue);border-radius:10px;padding:10px 14px;color:var(--text);font-size:15px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+      </div>
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">${candidatos.length} disponíveis</div>
+      <div id="slot-lista" style="max-height:340px;overflow-y:auto">${renderCandidatos()}</div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border2)">
+        <button onclick="document.getElementById('modal-substituto')?.remove()"
+          style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">Cancelar</button>
+      </div>
+    </div>`;
+
+  window[`renderCandidatos_${id}`] = renderCandidatos;
+  modal.onclick = e => { if(e.target===modal) modal.remove(); };
+  document.body.appendChild(modal);
+  setTimeout(()=>document.getElementById('slot-busca')?.focus(), 100);
+}
+
+function preencherSlotVazio(id, novoCarro, novoPlanoNum, novoPlanoNome) {
+  const rascunho = window._escalaRascunho || [];
+  const item = rascunho.find(e => e.id === id);
+  if (!item) return;
+
+  const dadosCarro = (_prevDados||[]).filter(p=>p.carro===novoCarro);
+  const dadosPlano = dadosCarro.find(p=>p.planoNum===novoPlanoNum) || {};
+  const ops = calcularOportunistas(dadosCarro, {planoNum:novoPlanoNum, planoNome:novoPlanoNome, excessoKm:dadosPlano.excessoKm||0});
+
+  item.carro = novoCarro;
+  item.planoNum = novoPlanoNum;
+  item.planoNome = novoPlanoNome;
+  item.excessoKm = dadosPlano.excessoKm||0;
+  item.oportunistas = ops.map(o=>o.num);
+  item.oportunistasNomes = ops.map(o=>o.nome);
+  item.incluileve = isPesada(novoPlanoNum);
+  item.incluiGarantia = isGarantia(novoCarro)&&isPlanoGarantia(novoPlanoNum);
+  item.tipo = (isGarantia(novoCarro)&&isPlanoGarantia(novoPlanoNum))?'garantia':isPesada(novoPlanoNum)?'pesada':'leve';
+  item.motivo = `✋ Manual · ${dadosPlano.excessoKm>=0?'+':''}${(dadosPlano.excessoKm||0).toLocaleString('pt-BR')} km`;
+  item.confirmado = true;
+  item.slotVazio = false;
+  item.substituicaoManual = false;
+
+  document.getElementById('modal-substituto')?.remove();
+  _recarregarEscala();
 }
 
 function confirmarRemocaoEscala(id) {
