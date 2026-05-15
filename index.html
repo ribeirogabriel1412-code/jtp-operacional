@@ -6706,14 +6706,11 @@ function gerarEscalaAutomatica(dados, semanaRef) {
     ...sorted(dados.filter(r => isPesada(r.planoNum))),
   ]);
 
-  // Carros já alocados esta semana (pesada ou garantia)
+  // Carros já alocados esta semana (pesada ou garantia) — usar a escala já montada
   const carrosComPesadaNaSemana = new Set(
-    [...alocados]
-      .filter(key => {
-        const planoNum = key.split('::')[1];
-        return isPesada(planoNum) || isPlanoGarantia(planoNum);
-      })
-      .map(key => key.split('::')[0])
+    escala
+      .filter(e => e.data && (e.tipo === 'pesada' || e.tipo === 'garantia'))
+      .map(e => e.carro)
   );
 
   // Próximas 10 pesadas para a semana seguinte
