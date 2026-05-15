@@ -6448,14 +6448,24 @@ const ESCALA_CONFIG = {
 // Faixas de garantia por prefixo
 function getTipoGarantia(carro) {
   const num = parseInt(carro.replace(/\./g,'').slice(2));
-  if (num >= 240 && num <= 284) return 'A'; // 20/40/60k
-  if (num >= 245 && num <= 301) return 'B'; // 30/60/96k
+  if (num >= 240 && num <= 284) return 'A'; // 20/40/60k — plano 003
+  if (num >= 285 && num <= 301) return 'B'; // 30/60/90k — plano 029
   return null;
 }
-function isGarantia(carro)  { return getTipoGarantia(carro) !== null; }
-function isPesada(planoNum) { return ['002','003','029'].includes(planoNum); }
+// isGarantia: carro está na faixa de garantia (02.240-02.301)
+function isGarantia(carro) { return getTipoGarantia(carro) !== null; }
+
+// isPlanoGarantia: o plano em si é de garantia (003=Óleo Motor 20/40/60k, 029=Óleo Motor 30/60/90k)
+function isPlanoGarantia(planoNum) { return ['003','029'].includes(planoNum); }
+
+// isPesada: plano de preventiva pesada (002) — independente da garantia
+function isPesada(planoNum) { return planoNum === '002'; }
+
+// isLeve: plano de preventiva leve (001)
 function isLeve(planoNum)   { return planoNum === '001'; }
-function isAvulso(planoNum) { return !isPesada(planoNum) && !isLeve(planoNum) && !PREV_IGNORAR.has(planoNum); }
+
+// isAvulso: qualquer outro plano (calibração, rodízio, etc.)
+function isAvulso(planoNum) { return !isPesada(planoNum) && !isLeve(planoNum) && !isPlanoGarantia(planoNum) && !PREV_IGNORAR.has(planoNum); }
 
 function toDateStr(d) { return d.toISOString().slice(0,10); }
 
@@ -6525,16 +6535,15 @@ function gerarEscalaAutomatica(dados, semanaRef) {
   // Dedup por carro (1 plano por carro = o mais crítico)
   const dedup = (arr) => arr.filter((r,_,a) => a.findIndex(x=>x.carro===r.carro)===a.indexOf(r));
 
-  // Garantias — top 5 (1/dia × 5 dias), mais vencido primeiro
-  const garantias = dedup(sorted(dados.filter(r => isGarantia(r.carro) && isPesada(r.planoNum))));
+  // GARANTIAS — planos 003/029 dos carros 02.240-02.301
+  // Ordenado por excessoKm decrescente (mais vencido primeiro)
+  // Slot: 1 garantia/dia × 5 dias = 5/semana
+  const garantias = dedup(sorted(dados.filter(r => isGarantia(r.carro) && isPlanoGarantia(r.planoNum))));
 
-  // Pesadas normais — carros SEM garantia + garantias excedentes (além das 5 vagas semanais)
-  // Garantias que não couberem na semana entram como pesada normal
-  const garantiasExcedentes = garantias.slice(ESCALA_CONFIG.garantia * diasSemana.length);
-  const pesadasNormais = dedup(sorted([
-    ...dados.filter(r => isPesada(r.planoNum) && !isGarantia(r.carro)),
-    ...garantiasExcedentes,
-  ]));
+  // PESADAS — plano 002 de TODOS os carros (incluindo os de garantia)
+  // Slot: 2 pesadas/dia × 5 dias = 10/semana
+  // Ordenado por excessoKm decrescente
+  const pesadasNormais = dedup(sorted(dados.filter(r => isPesada(r.planoNum))));
 
   // Leves — top 30 (6/dia × 5 dias), mais vencido primeiro
   // Carros que já têm pesada → leve será inclusa, não ocupa slot de leve
@@ -6545,8 +6554,6 @@ function gerarEscalaAutomatica(dados, semanaRef) {
 
   // ── PASSO 1: GARANTIAS — 1/dia, seg-sex ───────────────────────────
   let rrG = 0;
-  console.log('[ESCALA] Garantias candidatas:', garantias.map(r=>r.carro+'('+r.excessoKm+')'));
-  console.log('[ESCALA] Pesadas normais candidatas:', pesadasNormais.map(r=>r.carro+'('+r.excessoKm+')'));
   garantias.forEach(r => {
     if (marcado(r.carro, r.planoNum)) return;
     const idx = proxDiaComVaga(rrG, 'garantia');
@@ -6583,14 +6590,17 @@ function gerarEscalaAutomatica(dados, semanaRef) {
   // Lógica: preenche o dia completo antes de avançar
   // Seg: pesadas 1+2 | Ter: pesadas 3+4 | Qua: 5+6 | Qui: 7+8 | Sex: 9+10
 
-  // Carros já alocados como garantia esta semana — não entram na fila de pesadas
-  const carrosComGarantia = new Set(
+  // Pesadas para alocar: plano 002 não marcado ainda
+  // Carros de garantia PODEM ter pesada no mesmo dia — são planos independentes
+  // Mas se o carro já tem garantia alocada nesta semana, a pesada vai junto no mesmo card
+  // (não ocupa slot de pesada separado)
+  const carrosComGarantiaSemana = new Set(
     escala.filter(e => e.tipo === 'garantia').map(e => e.carro)
   );
 
-  // Filtra: não marcado E não é carro de garantia já alocado
+  // Exclui carros que já têm pesada incluída via garantia (marcado como '002')
   const pesadasParaAlocar = pesadasNormais.filter(r =>
-    !marcado(r.carro, r.planoNum) && !carrosComGarantia.has(r.carro)
+    !marcado(r.carro, r.planoNum) && !carrosComGarantiaSemana.has(r.carro)
   );
   const totalDias = diasSemana.length; // 5
 
@@ -6689,7 +6699,7 @@ function gerarEscalaAutomatica(dados, semanaRef) {
     [...alocados]
       .filter(key => {
         const [carro, planoNum] = key.split('::');
-        return isPesada(planoNum) || planoNum === '003' || planoNum === '029';
+        return isPesada(planoNum) || isPlanoGarantia(planoNum);
       })
       .map(key => key.split('::')[0])
   );
@@ -6697,8 +6707,8 @@ function gerarEscalaAutomatica(dados, semanaRef) {
   // Fila completa de todas as pesadas/garantias, ordenada por mais vencido
   // Garantias na frente (prioridade), depois pesadas normais
   const filaCompletaPesada = dedup([
-    ...sorted(dados.filter(r => isGarantia(r.carro) && isPesada(r.planoNum))),
-    ...sorted(dados.filter(r => isPesada(r.planoNum) && !isGarantia(r.carro))),
+    ...sorted(dados.filter(r => isGarantia(r.carro) && isPlanoGarantia(r.planoNum))),
+    ...sorted(dados.filter(r => isPesada(r.planoNum))),
   ]);
 
   // Próximos 10 que NÃO foram escalados esta semana
@@ -7072,7 +7082,7 @@ function substituirItemEscala(idRemover, novoCarro, novoPlanoNum, novoPlanoNome)
   item.oportunistasNomes = ops.map(o=>o.nome);
   item.incluileve = isPesada(novoPlanoNum);
   item.motivo = `Substituição manual · ${dadosPlano.excessoKm>=0?'+':''}${(dadosPlano.excessoKm||0).toLocaleString('pt-BR')} km`;
-  item.tipo = isGarantia(novoCarro)?'garantia':isPesada(novoPlanoNum)?'pesada':'leve';
+  item.tipo = (isGarantia(novoCarro)&&isPlanoGarantia(novoPlanoNum))?'garantia':isPesada(novoPlanoNum)?'pesada':'leve';
   item.confirmado = true;
   item.jaExiste = false;
 
