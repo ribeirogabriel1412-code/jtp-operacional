@@ -6715,18 +6715,17 @@ function gerarEscalaAutomatica(dados, semanaRef, prefixosJaProgramados=new Set()
   // União: rascunho atual + banco (semana corrente)
   const carrosComPesadaNaSemana = new Set([...carrosRascunho, ...prefixosJaProgramados]);
 
-  // Próximas 10 pesadas para a semana seguinte
+  // Próximas 10 pesadas para a semana seguinte — exatamente 10
   const proxPesadasValet = filaCompletaPesada
     .filter(r => !carrosComPesadaNaSemana.has(r.carro))
     .slice(0, 10);
 
-  // Próximas garantias para a semana seguinte (até 5)
-  const proxGarantiasValet = filaGarantiaCompleta
-    .filter(r => !carrosComPesadaNaSemana.has(r.carro))
-    .slice(0, 5);
-
-  // Carros de garantia que já estarão no valetamento de pesada (não duplicar)
+  // Próximas garantias extras (carros de garantia sem pesada pendente) — até 5
+  // Só entra se não estiver na lista de pesadas do valetamento
   const carrosJaNoValet = new Set(proxPesadasValet.map(r => r.carro));
+  const proxGarantiasValet = filaGarantiaCompleta
+    .filter(r => !carrosComPesadaNaSemana.has(r.carro) && !carrosJaNoValet.has(r.carro))
+    .slice(0, 5);
 
   const sabStr = toDateStr(sabValetamento);
   console.log('[VALET] carrosNaSemana:', carrosComPesadaNaSemana.size, [...carrosComPesadaNaSemana].slice(0,5));
