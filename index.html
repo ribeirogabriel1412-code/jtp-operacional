@@ -1129,29 +1129,70 @@ async function renderPainel(){
 
     ${rankingHTML}
 
-    <!-- Preventivas Programadas — Visão do Líder Operacional -->
+    <!-- Preventivas Programadas — Visual em colunas por dia -->
     ${prevProg?.length ? `
     <div style="margin-top:4px">
       ${secTitle('🔧','Preventivas Programadas — Próximos 7 Dias',
         `<button class="btn-add" style="font-size:12px;padding:6px 12px" onclick="navToSub('ferr-prev')">Ver Escala →</button>`
       )}
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:8px">
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
-          <div class="kpi ok" style="padding:10px 8px">
-            <div class="kpi-label">Hoje</div>
-            <div class="kpi-val" style="color:var(--amber)">${prevPorData[hojeStr]?.length||0}</div>
-          </div>
-          <div class="kpi neu" style="padding:10px 8px">
-            <div class="kpi-label">Semana</div>
-            <div class="kpi-val">${prevProg.length}</div>
-          </div>
-          <div class="kpi neu" style="padding:10px 8px">
-            <div class="kpi-label">Dias c/ prev.</div>
-            <div class="kpi-val">${Object.keys(prevPorData).length}</div>
-          </div>
+      <!-- KPIs -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
+        <div class="kpi ${prevPorData[hojeStr]?.length?'nok':'ok'}" style="padding:10px 8px">
+          <div class="kpi-label">Hoje</div>
+          <div class="kpi-val" style="color:${prevPorData[hojeStr]?.length?'var(--amber)':'var(--green)'}">${prevPorData[hojeStr]?.length||0}</div>
         </div>
-        <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">📅 Retirada de Carros Prevista</div>
-        ${prevHTML}
+        <div class="kpi neu" style="padding:10px 8px">
+          <div class="kpi-label">Semana</div>
+          <div class="kpi-val">${prevProg.length}</div>
+        </div>
+        <div class="kpi neu" style="padding:10px 8px">
+          <div class="kpi-label">Pesadas</div>
+          <div class="kpi-val" style="color:#F97316">${prevProg.filter(p=>p.plano_num==='002').length}</div>
+        </div>
+        <div class="kpi neu" style="padding:10px 8px">
+          <div class="kpi-label">Garantias</div>
+          <div class="kpi-val" style="color:#8B5CF6">${prevProg.filter(p=>['003','029'].includes(p.plano_num)).length}</div>
+        </div>
+      </div>
+      <!-- Colunas por dia -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
+        ${Object.entries(prevPorData).sort(([a],[b])=>a.localeCompare(b)).map(([data,items])=>{
+          const dtFmt=new Date(data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+          const diff=Math.round((new Date(data+'T12:00:00')-new Date(hojeStr+'T12:00:00'))/86400000);
+          const lbl=diff===0?'Hoje':diff===1?'Amanhã':`D+${diff}`;
+          const isHoje=diff===0;
+          const gars=items.filter(p=>['003','029'].includes(p.plano_num));
+          const pes=items.filter(p=>p.plano_num==='002');
+          const lev=items.filter(p=>p.plano_num==='001');
+
+          const chipP=(p,cor,bg)=>`<span style="display:inline-flex;align-items:center;font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:${cor};background:${bg};border:1px solid ${cor}30;border-radius:6px;padding:2px 6px;margin:2px">${p.prefixo}</span>`;
+
+          return`<div style="background:var(--surface);border:1px solid ${isHoje?'var(--amber)':'var(--border)'};border-top:3px solid ${isHoje?'var(--amber)':'var(--border2)'};border-radius:12px;padding:12px">
+            <!-- Header do dia -->
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <div>
+                <span style="font-size:11px;font-weight:800;padding:2px 8px;border-radius:6px;background:${isHoje?'#F59E0B20':'var(--surface2)'};color:${isHoje?'var(--amber)':'var(--text3)'}">${lbl}</span>
+                <div style="font-size:10px;color:var(--text4);margin-top:2px">${dtFmt}</div>
+              </div>
+              <span style="font-size:10px;background:var(--surface2);border-radius:20px;padding:1px 8px;color:var(--text3);font-weight:700">${items.length}</span>
+            </div>
+            <!-- Garantias -->
+            ${gars.length?`<div style="margin-bottom:8px">
+              <div style="font-size:9px;font-weight:800;color:#8B5CF6;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">🔒 Garantia</div>
+              <div style="display:flex;flex-wrap:wrap;gap:2px">${gars.map(p=>chipP(p,'#8B5CF6','#8B5CF610')).join('')}</div>
+            </div>`:''}
+            <!-- Pesadas -->
+            ${pes.length?`<div style="margin-bottom:8px">
+              <div style="font-size:9px;font-weight:800;color:#F97316;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">🔩 Pesada</div>
+              <div style="display:flex;flex-wrap:wrap;gap:2px">${pes.map(p=>chipP(p,'#F97316','#F9731610')).join('')}</div>
+            </div>`:''}
+            <!-- Leves -->
+            ${lev.length?`<div>
+              <div style="font-size:9px;font-weight:800;color:#3B82F6;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">🔵 Leve</div>
+              <div style="display:flex;flex-wrap:wrap;gap:2px">${lev.map(p=>chipP(p,'#3B82F6','#3B82F610')).join('')}</div>
+            </div>`:''}
+          </div>`;
+        }).join('')}
       </div>
     </div>` : ''}
 
