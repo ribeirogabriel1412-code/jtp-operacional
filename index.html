@@ -6493,6 +6493,7 @@ async function renderPrevPainel(back){
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button onclick="renderAutoEscala()" class="btn-sm" style="background:#8B5CF618;border-color:#8B5CF640;color:#8B5CF6">🤖 Escala Automática</button>
         <button onclick="renderPrevProgramadas()" class="btn-sm" style="background:#2563EB18;border-color:#2563EB40;color:var(--blue)">📅 Programações (${programados})</button>
+        <button onclick="renderPrevisibilidade()" class="btn-sm" style="background:#06B6D418;border-color:#06B6D440;color:#06B6D4">📈 Previsibilidade</button>
         <button onclick="verHistoricoImportacoes()" class="btn-sm" style="background:#8B5CF618;border-color:#8B5CF640;color:#8B5CF6">📋 Histórico</button>
         <button onclick="excluirImportacao()" class="btn-sm" style="background:#EF444418;border-color:#EF444440;color:var(--red)">🗑️ Excluir</button>
         <button onclick="_prevDados=[];_prevGrupoAtivo='todos';_prevImportId=null;renderFerrPrev()" class="btn-sm">🔄 Nova Importação</button>
@@ -6838,6 +6839,419 @@ function gerarEscalaAutomatica(dados, semanaRef, prefixosJaProgramados=new Set()
 }
 
 // ── RENDER DA TELA DE AUTO-ESCALA ────────────────────────────────────────
+
+// ══════════════════════════════════════════════════════════════════════════
+// MÓDULO DE PREVISIBILIDADE — Upload CSV/Excel + Projeção de Vencimentos
+// ══════════════════════════════════════════════════════════════════════════
+
+let _prevKmHistorico = {}; // { prefixo: [{data, km}] }
+let _prevMediaDiaria = {}; // { prefixo: kmPorDia }
+let _prevProjecoes   = []; // lista de projeções por carro/plano
+
+async function renderPrevisibilidade(){
+  const gid = getGid();
+  const back = `<button class="btn-back" onclick="renderFerrPrev()">← Painel Preventivas</button>`;
+
+  // Carregar histórico salvo no banco
+  let histBanco = [];
+  try{
+    const{data}=await sb.from('km_historico').select('prefixo,data,km')
+      .eq('garagem_id',gid).order('data',{ascending:true}).limit(5000);
+    histBanco=data||[];
+  }catch(e){}
+
+  // Montar _prevKmHistorico a partir do banco
+  _prevKmHistorico={};
+  histBanco.forEach(r=>{
+    if(!_prevKmHistorico[r.prefixo]) _prevKmHistorico[r.prefixo]=[];
+    _prevKmHistorico[r.prefixo].push({data:r.data,km:r.km});
+  });
+
+  _calcularMediasKm();
+
+  const temHistorico = Object.keys(_prevKmHistorico).length > 0;
+  const temDados = _prevDados.length > 0;
+
+  if(!temHistorico){
+    // Tela de upload
+    setMain(`${back}
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <div>
+          <div style="font-size:16px;font-weight:800">📈 Previsibilidade de Vencimentos</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px">Projeta quando cada plano vai vencer baseado no km rodado</div>
+        </div>
+      </div>
+      <div style="background:var(--surface);border:2px dashed var(--border);border-radius:14px;padding:40px;text-align:center;margin-bottom:16px">
+        <div style="font-size:40px;margin-bottom:12px">📊</div>
+        <div style="font-size:15px;font-weight:700;color:var(--text2);margin-bottom:6px">Faça upload do histórico de KM</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:20px">CSV ou Excel com colunas: Prefixo · Data · KM atual</div>
+        <label style="padding:12px 24px;border-radius:10px;background:var(--blue);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
+          📂 Selecionar Arquivo
+          <input type="file" accept=".csv,.xlsx,.xls" onchange="uploadKmHistorico(this)" style="display:none">
+        </label>
+        <div style="margin-top:16px;font-size:11px;color:var(--text4)">
+          Formato esperado: coluna com prefixo do carro, coluna com data, coluna com KM atual
+        </div>
+      </div>
+      <!-- Template de download -->
+      <button onclick="baixarTemplateKm()" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">
+        ⬇️ Baixar template de exemplo
+      </button>
+    `);
+    return;
+  }
+
+  _calcularProjecoes();
+  _renderDashboardPrevisibilidade(back, gid);
+}
+
+function _calcularMediasKm(){
+  _prevMediaDiaria={};
+  Object.entries(_prevKmHistorico).forEach(([pref, registros])=>{
+    if(registros.length < 2) return;
+    const sorted=[...registros].sort((a,b)=>a.data.localeCompare(b.data));
+    // Usar os últimos 30 dias para média mais precisa
+    const recentes=sorted.slice(-30);
+    const primeiro=recentes[0];
+    const ultimo=recentes[recentes.length-1];
+    const diasDiff=Math.max(1,Math.round((new Date(ultimo.data)-new Date(primeiro.data))/(86400000)));
+    const kmDiff=Math.max(0,ultimo.km-primeiro.km);
+    _prevMediaDiaria[pref]=kmDiff/diasDiff;
+  });
+}
+
+function _calcularProjecoes(){
+  if(!_prevDados.length) return;
+  _prevProjecoes=[];
+
+  // Agrupar _prevDados por carro
+  const porCarro={};
+  _prevDados.forEach(p=>{ if(!porCarro[p.carro]) porCarro[p.carro]=[]; porCarro[p.carro].push(p); });
+
+  Object.entries(porCarro).forEach(([pref,planos])=>{
+    const mediaDia=_prevMediaDiaria[pref]||0;
+    const hist=_prevKmHistorico[pref]||[];
+    const kmAtualHist=hist.length?[...hist].sort((a,b)=>b.data.localeCompare(a.data))[0].km:0;
+
+    planos.forEach(p=>{
+      const excessoKm=p.excessoKm||0;
+      // Dias até vencimento (negativo = já venceu)
+      let diasRestantes=null;
+      if(mediaDia>0 && excessoKm<0){
+        diasRestantes=Math.round(Math.abs(excessoKm)/mediaDia);
+      } else if(excessoKm>=0){
+        diasRestantes=-Math.round(excessoKm/(mediaDia||1)); // já venceu
+      }
+
+      const dataVenc=diasRestantes!==null?new Date(Date.now()+diasRestantes*86400000):null;
+
+      // Semáforo
+      let semaforo='cinza';
+      if(excessoKm>=0) semaforo='vermelho';
+      else if(diasRestantes!==null && diasRestantes<=7) semaforo='vermelho';
+      else if(diasRestantes!==null && diasRestantes<=21) semaforo='amarelo';
+      else if(diasRestantes!==null && diasRestantes<=45) semaforo='verde';
+      else semaforo='azul';
+
+      _prevProjecoes.push({
+        carro:pref, planoNum:p.planoNum, planoNome:p.planoNome,
+        excessoKm, mediaDia, diasRestantes, dataVenc, semaforo,
+        kmAtual:kmAtualHist||0,
+      });
+    });
+  });
+
+  // Ordenar: mais urgentes primeiro
+  const ordem={vermelho:0,amarelo:1,verde:2,azul:3,cinza:4};
+  _prevProjecoes.sort((a,b)=>{
+    if(ordem[a.semaforo]!==ordem[b.semaforo]) return ordem[a.semaforo]-ordem[b.semaforo];
+    return (a.diasRestantes??999)-(b.diasRestantes??999);
+  });
+}
+
+function _renderDashboardPrevisibilidade(back, gid){
+  const carros=Object.keys(_prevMediaDiaria).length;
+  const vermelhos=_prevProjecoes.filter(p=>p.semaforo==='vermelho').length;
+  const amarelos=_prevProjecoes.filter(p=>p.semaforo==='amarelo').length;
+  const verdes=_prevProjecoes.filter(p=>p.semaforo==='verde').length;
+
+  const COR={vermelho:'#EF4444',amarelo:'#F59E0B',verde:'#22C55E',azul:'#3B82F6',cinza:'#475569'};
+  const BG={vermelho:'#EF444415',amarelo:'#F59E0B15',verde:'#22C55E15',azul:'#3B82F615',cinza:'#47556915'};
+
+  const NOME={'001':'Prev. Leve','002':'Prev. Pesada','003':'Garantia 20k','029':'Garantia 30k'};
+
+  // Filtros ativos
+  const filtroSem = window._prevFiltroSem||'todos';
+  const filtroBusca = window._prevFiltroB||'';
+  const filtroPlano = window._prevFiltroP||'todos';
+
+  let projecoesFilt=[..._prevProjecoes];
+  if(filtroSem!=='todos') projecoesFilt=projecoesFilt.filter(p=>p.semaforo===filtroSem);
+  if(filtroPlano!=='todos') projecoesFilt=projecoesFilt.filter(p=>p.planoNum===filtroPlano);
+  if(filtroBusca) projecoesFilt=projecoesFilt.filter(p=>p.carro.replace(/\./g,'').includes(filtroBusca.replace(/\./g,'')));
+
+  const rows=projecoesFilt.slice(0,100).map(p=>{
+    const cor=COR[p.semaforo];
+    const diasStr=p.diasRestantes===null?'—':p.diasRestantes<=0?'Vencido':p.diasRestantes+'d';
+    const dataStr=p.dataVenc?p.dataVenc.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):'—';
+    const mediaStr=p.mediaDia?p.mediaDia.toFixed(0)+' km/d':'—';
+    const exStr=(p.excessoKm>=0?'+':'')+p.excessoKm.toLocaleString('pt-BR')+' km';
+    return`<tr style="border-bottom:1px solid var(--border2)">
+      <td style="padding:8px 12px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:8px;height:8px;border-radius:50%;background:${cor};flex-shrink:0"></div>
+          <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700">${p.carro}</span>
+        </div>
+      </td>
+      <td style="padding:8px 12px;font-size:11px;color:var(--text3)">${NOME[p.planoNum]||p.planoNome.split(' ').slice(0,3).join(' ')}</td>
+      <td style="padding:8px 12px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;color:${p.excessoKm>=0?'var(--red)':p.excessoKm>-1000?'var(--amber)':'var(--text3)'};font-weight:700">${exStr}</td>
+      <td style="padding:8px 12px;text-align:right;font-family:'DM Mono',monospace;font-size:11px;color:var(--text3)">${mediaStr}</td>
+      <td style="padding:8px 12px;text-align:center">
+        <span style="background:${BG[p.semaforo]};color:${cor};border:1px solid ${cor}40;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">${diasStr}</span>
+      </td>
+      <td style="padding:8px 12px;text-align:center;font-size:11px;color:var(--text3);font-family:'DM Mono',monospace">${dataStr}</td>
+    </tr>`;
+  }).join('');
+
+  setMain(`${back}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:16px;font-weight:800">📈 Previsibilidade de Vencimentos</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">${carros} carros com histórico · ${_prevProjecoes.length} planos projetados</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <label style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text3);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">
+          📂 Atualizar CSV
+          <input type="file" accept=".csv,.xlsx,.xls" onchange="uploadKmHistorico(this)" style="display:none">
+        </label>
+        <button onclick="limparHistoricoKm()" class="btn-sm" style="border-color:#EF444440;color:var(--red)">🗑️ Limpar</button>
+      </div>
+    </div>
+
+    <!-- KPIs semáforo -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">
+      <div onclick="window._prevFiltroSem='vermelho';_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')" class="kpi nok" style="cursor:pointer;border-color:#EF444440">
+        <div class="kpi-label">🔴 Crítico / Vencido</div>
+        <div class="kpi-val" style="color:var(--red)">${vermelhos}</div>
+      </div>
+      <div onclick="window._prevFiltroSem='amarelo';_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')" class="kpi" style="cursor:pointer;border:1px solid #F59E0B40;background:#F59E0B08">
+        <div class="kpi-label">🟡 Atenção (7-21d)</div>
+        <div class="kpi-val" style="color:var(--amber)">${amarelos}</div>
+      </div>
+      <div onclick="window._prevFiltroSem='verde';_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')" class="kpi ok" style="cursor:pointer">
+        <div class="kpi-label">🟢 OK (21-45d)</div>
+        <div class="kpi-val" style="color:var(--green)">${verdes}</div>
+      </div>
+      <div onclick="window._prevFiltroSem='todos';window._prevFiltroB='';window._prevFiltroP='todos';_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')" class="kpi neu" style="cursor:pointer">
+        <div class="kpi-label">Todos</div>
+        <div class="kpi-val">${_prevProjecoes.length}</div>
+      </div>
+    </div>
+
+    <!-- Filtros -->
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <div style="position:relative;flex:1;min-width:180px">
+        <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px">🔍</span>
+        <input type="text" placeholder="Buscar prefixo..." value="${filtroBusca}"
+          oninput="window._prevFiltroB=this.value;_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')"
+          style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 12px 9px 32px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;outline:none">
+      </div>
+      <select onchange="window._prevFiltroP=this.value;_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')"
+        style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;cursor:pointer">
+        <option value="todos" ${filtroPlano==='todos'?'selected':''}>Todos os planos</option>
+        <option value="001" ${filtroPlano==='001'?'selected':''}>001 · Preventiva Leve</option>
+        <option value="002" ${filtroPlano==='002'?'selected':''}>002 · Preventiva Pesada</option>
+        <option value="003" ${filtroPlano==='003'?'selected':''}>003 · Garantia 20k</option>
+        <option value="029" ${filtroPlano==='029'?'selected':''}>029 · Garantia 30k</option>
+      </select>
+    </div>
+
+    <!-- Tabela -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr style="background:var(--surface2);border-bottom:2px solid var(--border)">
+            <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">PREFIXO</th>
+            <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">PLANO</th>
+            <th style="padding:10px 12px;text-align:right;font-size:11px;color:var(--text3);font-weight:700">EXCESSO KM</th>
+            <th style="padding:10px 12px;text-align:right;font-size:11px;color:var(--text3);font-weight:700">MÉDIA KM/DIA</th>
+            <th style="padding:10px 12px;text-align:center;font-size:11px;color:var(--text3);font-weight:700">VENCE EM</th>
+            <th style="padding:10px 12px;text-align:center;font-size:11px;color:var(--text3);font-weight:700">DATA PREV.</th>
+          </tr>
+        </thead>
+        <tbody>${rows||`<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text4)">Nenhum resultado</td></tr>`}</tbody>
+      </table>
+    </div>
+    ${projecoesFilt.length>100?`<div style="text-align:center;padding:10px;font-size:11px;color:var(--text4)">Mostrando 100 de ${projecoesFilt.length} resultados</div>`:''}
+  `);
+}
+
+// ── Upload do arquivo CTAplus (XLS/XLSX/CSV) de km histórico ─────────────
+// Formato CTA+: colunas fixas
+//   Col 0: Data/Hora início (DD/MM/YYYY HH:MM:SS)
+//   Col 2: Empresa (filtra pela garagem ativa)
+//   Col 5: Descricao = prefixo (02.229)
+//   Col 13: Odometro = km atual
+async function uploadKmHistorico(inputEl){
+  const file=inputEl.files?.[0];
+  if(!file) return;
+  const gid=getGid();
+  toast('⏳ Processando arquivo CTA+...');
+
+  // Carregar SheetJS para ler XLS/XLSX
+  const carregarSheetJS=()=>new Promise(res=>{
+    if(window.XLSX){res();return;}
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload=res; document.head.appendChild(s);
+  });
+
+  const reader=new FileReader();
+  reader.onload=async(e)=>{
+    try{
+      await carregarSheetJS();
+      const dados=e.target.result;
+      const wb=XLSX.read(dados,{type:'array',cellDates:false});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+
+      if(!rows.length){toast('Arquivo vazio','err');return;}
+
+      // Detectar formato CTA+ pelo header
+      const header=rows[0].map(h=>String(h).trim());
+      const isCTAplus = header.some(h=>h.includes('Data/Hora')) && header.some(h=>h.includes('Odometro'));
+      const isGenerico = header.some(h=>['prefixo','carro','data','km'].some(k=>h.toLowerCase().includes(k)));
+
+      let registros=[];
+      if(isCTAplus){
+        registros = _parsearCTAplus(rows, gid);
+      } else {
+        registros = _parsearGenerico(rows);
+      }
+
+      if(!registros.length){
+        toast('Nenhum registro válido encontrado para esta garagem','err');
+        return;
+      }
+      await _salvarKmBanco(registros,gid);
+    }catch(err){
+      console.error(err);
+      toast('Erro ao processar: '+err.message,'err');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// Parser específico para o formato CTA+ (ctaplus-YYYYMMDD-YYYYMMDD.xls)
+function _parsearCTAplus(rows, gid){
+  // Identificar garagem ativa para filtrar empresa
+  const garagem = S.garagens?.find(g=>g.id===gid);
+  const nomeGar = (garagem?.nome||garagem?.cidade||'').toUpperCase();
+  // Mapear nome da garagem para filtro de empresa
+  const filtroEmpresa = nomeGar.includes('BRAGANCA')||nomeGar.includes('BRAGANÇA')
+    ? 'BRAGANCA'
+    : nomeGar.includes('PORTO')||nomeGar.includes('VELHO')
+    ? 'PORTO VELHO'
+    : null; // null = sem filtro (usa todos)
+
+  const porCarroDia = {}; // {prefixo_data: km_max}
+
+  for(let r=1;r<rows.length;r++){
+    const row=rows[r];
+    const empresa=String(row[2]||'').toUpperCase();
+    // Filtrar por garagem
+    if(filtroEmpresa && !empresa.includes(filtroEmpresa)) continue;
+
+    const pref=String(row[5]||'').trim();   // Descricao = 02.229
+    const dataHora=String(row[0]||'').trim(); // "01/01/2026 00:01:26"
+    const odo=parseFloat(String(row[13]||'').replace(',','.'));
+
+    if(!pref||!dataHora||!odo) continue;
+
+    // Extrair data DD/MM/YYYY → YYYY-MM-DD
+    const partes=dataHora.split(' ')[0].split('/');
+    if(partes.length!==3) continue;
+    const dataISO=`${partes[2]}-${partes[1].padStart(2,'0')}-${partes[0].padStart(2,'0')}`;
+
+    // Guardar km máximo por carro por dia (último abastecimento do dia = km mais alto)
+    const chave=pref+'::'+dataISO;
+    if(!porCarroDia[chave]||odo>porCarroDia[chave]) porCarroDia[chave]=odo;
+  }
+
+  return Object.entries(porCarroDia).map(([chave,km])=>{
+    const [prefixo,data]=chave.split('::');
+    return{prefixo,data,km:Math.round(km)};
+  }).filter(r=>r.prefixo&&r.data&&r.km>0);
+}
+
+// Parser genérico (CSV ou Excel com colunas prefixo/data/km)
+function _parsearGenerico(rows){
+  const header=rows[0].map(h=>String(h).trim().toLowerCase());
+  const iP=header.findIndex(h=>['prefixo','carro','descricao','veiculo'].some(k=>h.includes(k)));
+  const iD=header.findIndex(h=>['data','date','dia'].some(k=>h.includes(k)));
+  const iK=header.findIndex(h=>['odometro','hodometro','km','quilometragem'].some(k=>h.includes(k)));
+  if(iP<0||iD<0||iK<0){toast('Colunas não identificadas. Use o template.','err');return[];}
+
+  const porCarroDia={};
+  for(let r=1;r<rows.length;r++){
+    const row=rows[r];
+    const pref=String(row[iP]||'').trim();
+    const dataRaw=row[iD];
+    const kmRaw=parseFloat(String(row[iK]||'').replace(/[^0-9.]/g,''));
+    if(!pref||!kmRaw) continue;
+    let dataISO='';
+    if(typeof dataRaw==='number'){
+      const d=new Date(Math.round((dataRaw-25569)*86400*1000));
+      dataISO=d.toISOString().slice(0,10);
+    } else {
+      const s=String(dataRaw).replace(/\//g,'-');
+      dataISO=s.match(/^\d{2}-\d{2}-\d{4}$/)?s.split('-').reverse().join('-'):s.slice(0,10);
+    }
+    const chave=pref+'::'+dataISO;
+    if(!porCarroDia[chave]||kmRaw>porCarroDia[chave]) porCarroDia[chave]=kmRaw;
+  }
+  return Object.entries(porCarroDia).map(([chave,km])=>{
+    const [prefixo,data]=chave.split('::');
+    return{prefixo,data,km:Math.round(km)};
+  }).filter(r=>r.prefixo&&r.data&&r.km>0);
+}
+
+async function _salvarKmBanco(registros,gid){
+  if(!registros.length){ toast('Nenhum registro válido encontrado','err'); return; }
+
+  // Criar tabela se não existir via insert simples
+  const lote=registros.slice(0,500).map(r=>({garagem_id:gid,...r}));
+  const{error}=await sb.from('km_historico').upsert(lote,{onConflict:'garagem_id,prefixo,data'});
+
+  if(error){ toast('Erro ao salvar: '+error.message,'err'); return; }
+  toast(`✅ ${registros.length} registros de km salvos!`);
+
+  // Recarregar previsibilidade
+  Object.assign(_prevKmHistorico,{});
+  registros.forEach(r=>{
+    if(!_prevKmHistorico[r.prefixo]) _prevKmHistorico[r.prefixo]=[];
+    _prevKmHistorico[r.prefixo].push({data:r.data,km:r.km});
+  });
+  _calcularMediasKm();
+  _calcularProjecoes();
+  renderPrevisibilidade();
+}
+
+async function limparHistoricoKm(){
+  if(!confirm('Limpar todo o histórico de km? Esta ação não pode ser desfeita.')) return;
+  const gid=getGid();
+  await sb.from('km_historico').delete().eq('garagem_id',gid);
+  _prevKmHistorico={};_prevMediaDiaria={};_prevProjecoes=[];
+  toast('✅ Histórico limpo');
+  renderPrevisibilidade();
+}
+
+function baixarTemplateKm(){
+  const csv='Prefixo;Data;KM_Atual\n02.250;2026-05-01;18000\n02.250;2026-05-08;18560\n02.250;2026-05-15;19120\n02.013;2026-05-01;17500\n02.013;2026-05-08;18100\n02.013;2026-05-15;18700\n';
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='JTP_Template_KM_Historico.csv';a.click();
+}
+
 async function renderAutoEscala() {
   const gid = getGid();
   const back = `<button class="btn-back" onclick="renderFerrPrev()">← Painel Preventivas</button>`;
