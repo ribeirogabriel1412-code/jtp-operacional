@@ -1510,11 +1510,11 @@ function abrirSeletorFaixa(callback){
 
       <!-- Atalhos -->
       <div style="display:flex;gap:8px">
-        <button onclick="aplicarFaixaRapida('dia')"
+        <button data-turno-btn="dia" onclick="aplicarFaixaRapida('dia')"
           style="flex:1;padding:10px;border-radius:10px;border:2px solid ${f.turno==='dia'?'var(--blue)':'var(--border)'};background:${f.turno==='dia'?'#2563EB18':'transparent'};color:${f.turno==='dia'?'var(--blue)':'var(--text3)'};font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">
           ☀️ Dia<br><span style="font-size:10px;font-weight:400">07:00 → 17:00</span>
         </button>
-        <button onclick="aplicarFaixaRapida('noite')"
+        <button data-turno-btn="noite" onclick="aplicarFaixaRapida('noite')"
           style="flex:1;padding:10px;border-radius:10px;border:2px solid ${f.turno==='noite'?'var(--blue)':'var(--border)'};background:${f.turno==='noite'?'#2563EB18':'transparent'};color:${f.turno==='noite'?'var(--blue)':'var(--text3)'};font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">
           🌙 Noite<br><span style="font-size:10px;font-weight:400">19:00 → 07:20</span>
         </button>
@@ -1571,6 +1571,13 @@ function aplicarFaixaRapida(turno){
     if(dFim) dFim.value=amanhaStr;
     if(hFim) hFim.value='07:20';
   }
+  // Atualizar visual dos botões de atalho
+  document.querySelectorAll('[data-turno-btn]').forEach(btn=>{
+    const sel=btn.dataset.turnoBtn===turno;
+    btn.style.borderColor=sel?'var(--blue)':'var(--border)';
+    btn.style.background=sel?'#2563EB18':'transparent';
+    btn.style.color=sel?'var(--blue)':'var(--text3)';
+  });
 }
 
 function confirmarFaixa(){
