@@ -6935,51 +6935,83 @@ function _mediaSemanalFormatada(pref){
 function _calcularProjecoes(){
   if(!_prevDados.length) return;
   _prevProjecoes=[];
-  _prevCronograma={}; // {YYYY-WW: {leves:[], pesadas:[]}}
+  _prevCronograma={};
 
-  // Filtrar só leves e pesadas (planos 001 e 002)
+  // Só leves (001) e pesadas (002)
   const dadosLP=_prevDados.filter(p=>p.planoNum==='001'||p.planoNum==='002');
   const porCarro={};
   dadosLP.forEach(p=>{ if(!porCarro[p.carro]) porCarro[p.carro]=[]; porCarro[p.carro].push(p); });
 
   const hoje=new Date(); hoje.setHours(12,0,0,0);
+  const SEMANAS_HORIZONTE=12; // projetar 12 semanas à frente
+
+  // Intervalo padrão por tipo de plano
+  // Buscar do relatório MAN (proximaExec = km do próximo vencimento, ultimaExec = km da última)
+  // Intervalo = proximaExec - ultimaExec (quando disponível) ou padrão
+  const INTERVALO_PADRAO={'001':5000,'002':20000};
 
   Object.entries(porCarro).forEach(([pref,planos])=>{
     const mediaDia=_prevMediaDiaria[pref]||0;
     const mediaSemanal=(window._prevMediaSemanal?.[pref])||Math.round(mediaDia*7);
+    if(!mediaSemanal) return; // sem histórico de km, não projeta
 
     planos.forEach(p=>{
       const excessoKm=p.excessoKm||0;
-      // Semanas até vencimento
-      let semanasRestantes=null;
-      if(mediaSemanal>0 && excessoKm<0){
-        semanasRestantes=Math.abs(excessoKm)/mediaSemanal;
-      } else if(excessoKm>=0){
-        semanasRestantes=0; // já venceu
+
+      // Calcular intervalo real do plano (km entre execuções)
+      const intervalo = (p.proximaExec && p.ultimaExec && p.proximaExec>p.ultimaExec)
+        ? (p.proximaExec - p.ultimaExec)
+        : INTERVALO_PADRAO[p.planoNum]||5000;
+
+      // Semanas para a PRÓXIMA execução
+      let semanasProxima=null;
+      if(excessoKm<0){
+        semanasProxima=Math.abs(excessoKm)/mediaSemanal;
+      } else {
+        semanasProxima=0; // já venceu — execução imediata
       }
-      const diasRestantes=semanasRestantes!==null?Math.round(semanasRestantes*7):null;
-      const dataVenc=diasRestantes!==null?new Date(hoje.getTime()+diasRestantes*86400000):null;
 
-      // Semáforo baseado em semanas
-      let semaforo='cinza';
-      if(excessoKm>=0) semaforo='vermelho';
-      else if(semanasRestantes!==null && semanasRestantes<=1) semaforo='vermelho';
-      else if(semanasRestantes!==null && semanasRestantes<=3) semaforo='amarelo';
-      else if(semanasRestantes!==null && semanasRestantes<=6) semaforo='verde';
-      else semaforo='azul';
+      // Projetar recorrências até o horizonte de 12 semanas
+      let execucao=0;
+      let semanasAcumuladas=semanasProxima;
+      const intervaloSemanas=intervalo/mediaSemanal;
 
-      _prevProjecoes.push({
-        carro:pref, planoNum:p.planoNum, planoNome:p.planoNome,
-        excessoKm, mediaDia, mediaSemanal, diasRestantes, semanasRestantes, dataVenc, semaforo,
-      });
+      while(semanasAcumuladas<=SEMANAS_HORIZONTE){
+        execucao++;
+        const diasRestantes=Math.round(semanasAcumuladas*7);
+        const dataVenc=new Date(hoje.getTime()+diasRestantes*86400000);
 
-      // Alimentar cronograma por semana
-      if(dataVenc){
+        // Semáforo só para a 1ª execução
+        let semaforo='cinza';
+        if(execucao===1){
+          if(excessoKm>=0)             semaforo='vermelho';
+          else if(semanasProxima<=1)   semaforo='vermelho';
+          else if(semanasProxima<=3)   semaforo='amarelo';
+          else if(semanasProxima<=6)   semaforo='verde';
+          else                          semaforo='azul';
+        } else {
+          semaforo='azul'; // futuras = azul (planejadas)
+        }
+
+        // Adicionar à lista de projeções (só a 1ª aparece na tabela por carro)
+        if(execucao===1){
+          _prevProjecoes.push({
+            carro:pref, planoNum:p.planoNum, planoNome:p.planoNome,
+            excessoKm, mediaDia, mediaSemanal,
+            diasRestantes, semanasRestantes:semanasAcumuladas,
+            dataVenc, semaforo, intervaloSemanas,
+          });
+        }
+
+        // Alimentar cronograma — TODAS as recorrências aparecem no calendário
         const semISO=`${dataVenc.getFullYear()}-W${_isoWeek(dataVenc).toString().padStart(2,'0')}`;
         const dtSeg=_inicioSemana(dataVenc);
         if(!_prevCronograma[semISO]) _prevCronograma[semISO]={seg:dtSeg,leves:[],pesadas:[]};
         if(p.planoNum==='001') _prevCronograma[semISO].leves.push(pref);
         else                   _prevCronograma[semISO].pesadas.push(pref);
+
+        // Avançar para a próxima recorrência
+        semanasAcumuladas+=intervaloSemanas;
       }
     });
   });
