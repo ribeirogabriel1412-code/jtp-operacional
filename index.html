@@ -6907,10 +6907,16 @@ async function renderPrevisibilidade(){
 
 function _calcularMediasKm(){
   _prevMediaDiaria={};
+  // Preferir média semanal (coluna Distância do CTA+) quando disponível
+  const mediaSemanal=window._prevMediaSemanal||{};
   Object.entries(_prevKmHistorico).forEach(([pref, registros])=>{
+    if(mediaSemanal[pref]){
+      // Usar média semanal convertida para diária
+      _prevMediaDiaria[pref]=mediaSemanal[pref]/7;
+      return;
+    }
     if(registros.length < 2) return;
     const sorted=[...registros].sort((a,b)=>a.data.localeCompare(b.data));
-    // Usar os últimos 30 dias para média mais precisa
     const recentes=sorted.slice(-30);
     const primeiro=recentes[0];
     const ultimo=recentes[recentes.length-1];
@@ -6920,56 +6926,272 @@ function _calcularMediasKm(){
   });
 }
 
+function _mediaSemanalFormatada(pref){
+  const sem=window._prevMediaSemanal?.[pref];
+  return sem?sem.toLocaleString('pt-BR')+' km/sem':
+    _prevMediaDiaria[pref]?Math.round(_prevMediaDiaria[pref]*7).toLocaleString('pt-BR')+' km/sem (est.)':'—';
+}
+
 function _calcularProjecoes(){
   if(!_prevDados.length) return;
   _prevProjecoes=[];
+  _prevCronograma={}; // {YYYY-WW: {leves:[], pesadas:[]}}
 
-  // Agrupar _prevDados por carro
+  // Filtrar só leves e pesadas (planos 001 e 002)
+  const dadosLP=_prevDados.filter(p=>p.planoNum==='001'||p.planoNum==='002');
   const porCarro={};
-  _prevDados.forEach(p=>{ if(!porCarro[p.carro]) porCarro[p.carro]=[]; porCarro[p.carro].push(p); });
+  dadosLP.forEach(p=>{ if(!porCarro[p.carro]) porCarro[p.carro]=[]; porCarro[p.carro].push(p); });
+
+  const hoje=new Date(); hoje.setHours(12,0,0,0);
 
   Object.entries(porCarro).forEach(([pref,planos])=>{
     const mediaDia=_prevMediaDiaria[pref]||0;
-    const hist=_prevKmHistorico[pref]||[];
-    const kmAtualHist=hist.length?[...hist].sort((a,b)=>b.data.localeCompare(a.data))[0].km:0;
+    const mediaSemanal=(window._prevMediaSemanal?.[pref])||Math.round(mediaDia*7);
 
     planos.forEach(p=>{
       const excessoKm=p.excessoKm||0;
-      // Dias até vencimento (negativo = já venceu)
-      let diasRestantes=null;
-      if(mediaDia>0 && excessoKm<0){
-        diasRestantes=Math.round(Math.abs(excessoKm)/mediaDia);
+      // Semanas até vencimento
+      let semanasRestantes=null;
+      if(mediaSemanal>0 && excessoKm<0){
+        semanasRestantes=Math.abs(excessoKm)/mediaSemanal;
       } else if(excessoKm>=0){
-        diasRestantes=-Math.round(excessoKm/(mediaDia||1)); // já venceu
+        semanasRestantes=0; // já venceu
       }
+      const diasRestantes=semanasRestantes!==null?Math.round(semanasRestantes*7):null;
+      const dataVenc=diasRestantes!==null?new Date(hoje.getTime()+diasRestantes*86400000):null;
 
-      const dataVenc=diasRestantes!==null?new Date(Date.now()+diasRestantes*86400000):null;
-
-      // Semáforo
+      // Semáforo baseado em semanas
       let semaforo='cinza';
       if(excessoKm>=0) semaforo='vermelho';
-      else if(diasRestantes!==null && diasRestantes<=7) semaforo='vermelho';
-      else if(diasRestantes!==null && diasRestantes<=21) semaforo='amarelo';
-      else if(diasRestantes!==null && diasRestantes<=45) semaforo='verde';
+      else if(semanasRestantes!==null && semanasRestantes<=1) semaforo='vermelho';
+      else if(semanasRestantes!==null && semanasRestantes<=3) semaforo='amarelo';
+      else if(semanasRestantes!==null && semanasRestantes<=6) semaforo='verde';
       else semaforo='azul';
 
       _prevProjecoes.push({
         carro:pref, planoNum:p.planoNum, planoNome:p.planoNome,
-        excessoKm, mediaDia, diasRestantes, dataVenc, semaforo,
-        kmAtual:kmAtualHist||0,
+        excessoKm, mediaDia, mediaSemanal, diasRestantes, semanasRestantes, dataVenc, semaforo,
       });
+
+      // Alimentar cronograma por semana
+      if(dataVenc){
+        const semISO=`${dataVenc.getFullYear()}-W${_isoWeek(dataVenc).toString().padStart(2,'0')}`;
+        const dtSeg=_inicioSemana(dataVenc);
+        if(!_prevCronograma[semISO]) _prevCronograma[semISO]={seg:dtSeg,leves:[],pesadas:[]};
+        if(p.planoNum==='001') _prevCronograma[semISO].leves.push(pref);
+        else                   _prevCronograma[semISO].pesadas.push(pref);
+      }
     });
   });
 
-  // Ordenar: mais urgentes primeiro
   const ordem={vermelho:0,amarelo:1,verde:2,azul:3,cinza:4};
   _prevProjecoes.sort((a,b)=>{
     if(ordem[a.semaforo]!==ordem[b.semaforo]) return ordem[a.semaforo]-ordem[b.semaforo];
-    return (a.diasRestantes??999)-(b.diasRestantes??999);
+    return (a.semanasRestantes??999)-(b.semanasRestantes??999);
   });
 }
 
+let _prevCronograma={};
+
+function _inicioSemana(d){
+  const dt=new Date(d.getTime());
+  const dow=dt.getDay();
+  const diff=dt.getDate()-(dow===0?6:dow-1);
+  dt.setDate(diff);dt.setHours(12,0,0,0);
+  return dt;
+}
+
 function _renderDashboardPrevisibilidade(back, gid){
+  const carros=Object.keys(_prevMediaDiaria).length;
+  const vermelhos=_prevProjecoes.filter(p=>p.semaforo==='vermelho').length;
+  const amarelos=_prevProjecoes.filter(p=>p.semaforo==='amarelo').length;
+  const verdes=_prevProjecoes.filter(p=>p.semaforo==='verde').length;
+
+  const COR={vermelho:'#EF4444',amarelo:'#F59E0B',verde:'#22C55E',azul:'#3B82F6',cinza:'#475569'};
+  const BG={vermelho:'#EF444415',amarelo:'#F59E0B15',verde:'#22C55E15',azul:'#3B82F615',cinza:'#47556915'};
+  const NOME={'001':'Prev. Leve','002':'Prev. Pesada'};
+
+  const abaAtiva=window._prevAba||'cronograma';
+  const filtroSem=window._prevFiltroSem||'todos';
+  const filtroBusca=window._prevFiltroB||'';
+  const filtroPlano=window._prevFiltroP||'todos';
+
+  // ── ABA CRONOGRAMA ────────────────────────────────────────────────────
+  let conteudo='';
+  if(abaAtiva==='cronograma'){
+    const semanas=Object.entries(_prevCronograma)
+      .sort(([a],[b])=>a.localeCompare(b))
+      .slice(0,12); // próximas 12 semanas
+
+    const hoje=new Date(); hoje.setHours(12,0,0,0);
+    const semAtual=`${hoje.getFullYear()}-W${_isoWeek(hoje).toString().padStart(2,'0')}`;
+
+    const blocosSemanais=semanas.map(([semISO,dados])=>{
+      const isAtual=semISO===semAtual;
+      const dtStr=dados.seg.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+      const diff=Math.round((dados.seg-hoje)/604800000);
+      const lbl=diff===0?'Esta semana':diff===1?'Próxima sem.':diff<0?`${Math.abs(diff)} sem. atrás`:`S+${diff}`;
+      const totalL=dados.leves.length, totalP=dados.pesadas.length;
+
+      return`<div style="background:var(--surface);border:1px solid ${isAtual?'var(--blue)':'var(--border)'};border-top:3px solid ${isAtual?'var(--blue)':totalP>0?'#F97316':'#3B82F6'};border-radius:12px;padding:14px;min-width:200px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div>
+            <div style="font-size:10px;font-weight:800;padding:1px 7px;border-radius:5px;background:${isAtual?'#2563EB20':'var(--surface2)'};color:${isAtual?'var(--blue)':'var(--text3)'};display:inline-block">${lbl}</div>
+            <div style="font-size:10px;color:var(--text4);margin-top:2px">Seg ${dtStr}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:11px;font-weight:700;color:#F97316">${totalP}P</div>
+            <div style="font-size:11px;font-weight:700;color:#3B82F6">${totalL}L</div>
+          </div>
+        </div>
+        ${totalP>0?`<div style="margin-bottom:8px">
+          <div style="font-size:9px;font-weight:800;color:#F97316;text-transform:uppercase;margin-bottom:4px">🔩 Pesadas</div>
+          <div style="display:flex;flex-wrap:wrap;gap:3px">${dados.pesadas.map(p=>`<span style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:#F97316;background:#F9731612;border:1px solid #F9731630;border-radius:5px;padding:1px 5px">${p}</span>`).join('')}</div>
+        </div>`:''}
+        ${totalL>0?`<div>
+          <div style="font-size:9px;font-weight:800;color:#3B82F6;text-transform:uppercase;margin-bottom:4px">🔵 Leves</div>
+          <div style="display:flex;flex-wrap:wrap;gap:3px">${dados.leves.map(p=>`<span style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:#3B82F6;background:#3B82F612;border:1px solid #3B82F630;border-radius:5px;padding:1px 5px">${p}</span>`).join('')}</div>
+        </div>`:''}
+      </div>`;
+    }).join('');
+
+    // Resumo consolidado
+    const maxSems=Math.min(8,semanas.length);
+    const resumoRows=semanas.slice(0,maxSems).map(([sem,d])=>{
+      const diff=Math.round((d.seg-hoje)/604800000);
+      const dtStr=d.seg.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+      return`<tr style="border-bottom:1px solid var(--border2)">
+        <td style="padding:8px 12px;font-family:'DM Mono',monospace;font-size:12px">${sem}</td>
+        <td style="padding:8px 12px;font-size:11px;color:var(--text3)">Seg ${dtStr}</td>
+        <td style="padding:8px 12px;text-align:center;font-weight:700;font-size:13px;color:#F97316">${d.pesadas.length}</td>
+        <td style="padding:8px 12px;text-align:center;font-weight:700;font-size:13px;color:#3B82F6">${d.leves.length}</td>
+        <td style="padding:8px 12px;text-align:center;font-weight:700;font-size:13px;color:var(--text)">${d.pesadas.length+d.leves.length}</td>
+      </tr>`;
+    }).join('');
+
+    conteudo=`
+      <!-- Cards de semana -->
+      <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:8px;margin-bottom:16px;scrollbar-width:thin">
+        ${blocosSemanais||'<div style="color:var(--text4);padding:20px">Nenhuma projeção disponível. Importe o relatório MAN para calcular.</div>'}
+      </div>
+      <!-- Tabela resumo -->
+      ${semanas.length?`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+        <div style="padding:10px 12px;font-size:11px;font-weight:700;color:var(--text3);border-bottom:1px solid var(--border);text-transform:uppercase">📊 Resumo Consolidado</div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:var(--surface2)">
+            <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3)">SEMANA</th>
+            <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3)">DATA</th>
+            <th style="padding:8px 12px;text-align:center;font-size:11px;color:#F97316">🔩 PESADAS</th>
+            <th style="padding:8px 12px;text-align:center;font-size:11px;color:#3B82F6">🔵 LEVES</th>
+            <th style="padding:8px 12px;text-align:center;font-size:11px;color:var(--text3)">TOTAL</th>
+          </tr></thead>
+          <tbody>${resumoRows}</tbody>
+        </table>
+      </div>`:''}`
+  }
+
+  // ── ABA POR CARRO ─────────────────────────────────────────────────────
+  else {
+    let projecoesFilt=[..._prevProjecoes];
+    if(filtroSem!=='todos') projecoesFilt=projecoesFilt.filter(p=>p.semaforo===filtroSem);
+    if(filtroPlano!=='todos') projecoesFilt=projecoesFilt.filter(p=>p.planoNum===filtroPlano);
+    if(filtroBusca) projecoesFilt=projecoesFilt.filter(p=>p.carro.replace(/\./g,'').includes(filtroBusca.replace(/\./g,'')));
+
+    const rows=projecoesFilt.slice(0,150).map(p=>{
+      const cor=COR[p.semaforo];
+      const semStr=p.semanasRestantes===null?'—':p.semanasRestantes<=0?'Vencido':
+        p.semanasRestantes<1?'Esta sem.':Math.ceil(p.semanasRestantes)+'sem';
+      const dataStr=p.dataVenc?p.dataVenc.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):'—';
+      const exStr=(p.excessoKm>=0?'+':'')+p.excessoKm.toLocaleString('pt-BR')+' km';
+      const mediaStr=p.mediaSemanal?p.mediaSemanal.toLocaleString('pt-BR')+'/sem':'—';
+      return`<tr style="border-bottom:1px solid var(--border2)">
+        <td style="padding:8px 12px"><div style="display:flex;align-items:center;gap:8px">
+          <div style="width:8px;height:8px;border-radius:50%;background:${cor};flex-shrink:0"></div>
+          <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700">${p.carro}</span>
+        </div></td>
+        <td style="padding:8px 12px;font-size:11px;color:var(--text3)">${NOME[p.planoNum]||p.planoNome.split(' ').slice(0,2).join(' ')}</td>
+        <td style="padding:8px 12px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;color:${p.excessoKm>=0?'var(--red)':p.excessoKm>-1000?'var(--amber)':'var(--text3)'};font-weight:700">${exStr}</td>
+        <td style="padding:8px 12px;text-align:right;font-family:'DM Mono',monospace;font-size:11px;color:var(--text3)">${mediaStr}</td>
+        <td style="padding:8px 12px;text-align:center">
+          <span style="background:${BG[p.semaforo]};color:${cor};border:1px solid ${cor}40;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">${semStr}</span>
+        </td>
+        <td style="padding:8px 12px;text-align:center;font-size:11px;color:var(--text3);font-family:'DM Mono',monospace">${dataStr}</td>
+      </tr>`;
+    }).join('');
+
+    conteudo=`
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <div style="position:relative;flex:1;min-width:180px">
+          <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px">🔍</span>
+          <input type="text" placeholder="Buscar prefixo..." value="${filtroBusca}"
+            oninput="window._prevFiltroB=this.value;_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')"
+            style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 12px 9px 32px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;outline:none">
+        </div>
+        <select onchange="window._prevFiltroP=this.value;_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')"
+          style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;cursor:pointer">
+          <option value="todos" ${filtroPlano==='todos'?'selected':''}>Leve + Pesada</option>
+          <option value="001" ${filtroPlano==='001'?'selected':''}>001 · Só Leve</option>
+          <option value="002" ${filtroPlano==='002'?'selected':''}>002 · Só Pesada</option>
+        </select>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:var(--surface2);border-bottom:2px solid var(--border)">
+            <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--text3)">PREFIXO</th>
+            <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--text3)">PLANO</th>
+            <th style="padding:10px 12px;text-align:right;font-size:11px;color:var(--text3)">EXCESSO KM</th>
+            <th style="padding:10px 12px;text-align:right;font-size:11px;color:var(--text3)">MÉDIA/SEM</th>
+            <th style="padding:10px 12px;text-align:center;font-size:11px;color:var(--text3)">VENCE EM</th>
+            <th style="padding:10px 12px;text-align:center;font-size:11px;color:var(--text3)">DATA PREV.</th>
+          </tr></thead>
+          <tbody>${rows||'<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text4)">Nenhum resultado</td></tr>'}</tbody>
+        </table>
+      </div>`;
+  }
+
+  setMain(`${back}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:16px;font-weight:800">📈 Previsibilidade de Vencimentos</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">${carros} carros · ${_prevProjecoes.filter(p=>p.planoNum==='002').length} pesadas + ${_prevProjecoes.filter(p=>p.planoNum==='001').length} leves projetadas</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <label style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text3);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">
+          📂 Atualizar CTA+
+          <input type="file" accept=".csv,.xlsx,.xls" onchange="uploadKmHistorico(this)" style="display:none">
+        </label>
+        <button onclick="limparHistoricoKm()" class="btn-sm" style="border-color:#EF444440;color:var(--red)">🗑️</button>
+      </div>
+    </div>
+    <!-- KPIs semáforo -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">
+      <div onclick="window._prevFiltroSem='vermelho';window._prevAba='carros';_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')" class="kpi nok" style="cursor:pointer;border-color:#EF444440">
+        <div class="kpi-label">🔴 Crítico / ≤1 sem</div><div class="kpi-val" style="color:var(--red)">${vermelhos}</div>
+      </div>
+      <div onclick="window._prevFiltroSem='amarelo';window._prevAba='carros';_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')" class="kpi" style="cursor:pointer;border:1px solid #F59E0B40;background:#F59E0B08">
+        <div class="kpi-label">🟡 Atenção 1-3 sem</div><div class="kpi-val" style="color:var(--amber)">${amarelos}</div>
+      </div>
+      <div onclick="window._prevFiltroSem='verde';window._prevAba='carros';_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')" class="kpi ok" style="cursor:pointer">
+        <div class="kpi-label">🟢 OK 3-6 sem</div><div class="kpi-val" style="color:var(--green)">${verdes}</div>
+      </div>
+      <div onclick="window._prevFiltroSem='todos';window._prevFiltroB='';window._prevFiltroP='todos';window._prevAba='carros';_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')" class="kpi neu" style="cursor:pointer">
+        <div class="kpi-label">Total</div><div class="kpi-val">${_prevProjecoes.length}</div>
+      </div>
+    </div>
+    <!-- Abas -->
+    <div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:10px">
+      <button onclick="window._prevAba='cronograma';window._prevFiltroSem='todos';_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')"
+        style="padding:8px 16px;border-radius:8px;border:2px solid ${abaAtiva==='cronograma'?'var(--blue)':'transparent'};background:${abaAtiva==='cronograma'?'#2563EB18':'transparent'};color:${abaAtiva==='cronograma'?'var(--blue)':'var(--text3)'};font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
+        📅 Cronograma por Semana
+      </button>
+      <button onclick="window._prevAba='carros';_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')"
+        style="padding:8px 16px;border-radius:8px;border:2px solid ${abaAtiva==='carros'?'var(--blue)':'transparent'};background:${abaAtiva==='carros'?'#2563EB18':'transparent'};color:${abaAtiva==='carros'?'var(--blue)':'var(--text3)'};font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
+        🚌 Por Carro
+      </button>
+    </div>
+    ${conteudo}
+  `);
+}
   const carros=Object.keys(_prevMediaDiaria).length;
   const vermelhos=_prevProjecoes.filter(p=>p.semaforo==='vermelho').length;
   const amarelos=_prevProjecoes.filter(p=>p.semaforo==='amarelo').length;
@@ -7143,45 +7365,76 @@ async function uploadKmHistorico(inputEl){
 }
 
 // Parser específico para o formato CTA+ (ctaplus-YYYYMMDD-YYYYMMDD.xls)
+// Salva km diário (Odometro) E km semanal (Distância) separadamente
 function _parsearCTAplus(rows, gid){
-  // Identificar garagem ativa para filtrar empresa
   const garagem = S.garagens?.find(g=>g.id===gid);
   const nomeGar = (garagem?.nome||garagem?.cidade||'').toUpperCase();
-  // Mapear nome da garagem para filtro de empresa
   const filtroEmpresa = nomeGar.includes('BRAGANCA')||nomeGar.includes('BRAGANÇA')
     ? 'BRAGANCA'
     : nomeGar.includes('PORTO')||nomeGar.includes('VELHO')
     ? 'PORTO VELHO'
-    : null; // null = sem filtro (usa todos)
+    : null;
 
-  const porCarroDia = {}; // {prefixo_data: km_max}
+  const porCarroDia = {};     // {pref::data: km_max}     — odômetro
+  const porCarroSemana = {};  // {pref::YYYY-WW: km_soma} — distância rodada
 
   for(let r=1;r<rows.length;r++){
     const row=rows[r];
     const empresa=String(row[2]||'').toUpperCase();
-    // Filtrar por garagem
     if(filtroEmpresa && !empresa.includes(filtroEmpresa)) continue;
 
-    const pref=String(row[5]||'').trim();   // Descricao = 02.229
-    const dataHora=String(row[0]||'').trim(); // "01/01/2026 00:01:26"
+    const pref=String(row[5]||'').trim();
+    const dataHora=String(row[0]||'').trim();
     const odo=parseFloat(String(row[13]||'').replace(',','.'));
+    const dist=parseFloat(String(row[14]||'').replace(',','.'));  // Distância (km)
 
-    if(!pref||!dataHora||!odo) continue;
+    if(!pref||!dataHora) continue;
 
-    // Extrair data DD/MM/YYYY → YYYY-MM-DD
     const partes=dataHora.split(' ')[0].split('/');
     if(partes.length!==3) continue;
     const dataISO=`${partes[2]}-${partes[1].padStart(2,'0')}-${partes[0].padStart(2,'0')}`;
+    const dt=new Date(dataISO+'T12:00:00');
+    const semana=_isoWeek(dt);
+    const chaveSem=`${partes[2]}-W${semana.toString().padStart(2,'0')}`;
 
-    // Guardar km máximo por carro por dia (último abastecimento do dia = km mais alto)
-    const chave=pref+'::'+dataISO;
-    if(!porCarroDia[chave]||odo>porCarroDia[chave]) porCarroDia[chave]=odo;
+    // Odômetro: km máximo por dia
+    if(odo>0){
+      const chaveDia=pref+'::'+dataISO;
+      if(!porCarroDia[chaveDia]||odo>porCarroDia[chaveDia]) porCarroDia[chaveDia]=odo;
+    }
+    // Distância: soma por semana (km rodado nessa semana)
+    if(dist>0){
+      const chaveSem2=pref+'::'+chaveSem;
+      porCarroSemana[chaveSem2]=(porCarroSemana[chaveSem2]||0)+dist;
+    }
   }
+
+  // Calcular e guardar médias semanais
+  const mediasMap={};
+  Object.entries(porCarroSemana).forEach(([chave,km])=>{
+    const [pref]=chave.split('::');
+    if(!mediasMap[pref]) mediasMap[pref]={soma:0,cnt:0};
+    mediasMap[pref].soma+=km;
+    mediasMap[pref].cnt++;
+  });
+  window._prevMediaSemanal={};
+  Object.entries(mediasMap).forEach(([pref,v])=>{
+    window._prevMediaSemanal[pref]=v.cnt>=2?Math.round(v.soma/v.cnt):0;
+  });
 
   return Object.entries(porCarroDia).map(([chave,km])=>{
     const [prefixo,data]=chave.split('::');
     return{prefixo,data,km:Math.round(km)};
   }).filter(r=>r.prefixo&&r.data&&r.km>0);
+}
+
+// ISO week number
+function _isoWeek(d){
+  const date=new Date(d.getTime());
+  date.setHours(0,0,0,0);
+  date.setDate(date.getDate()+3-(date.getDay()+6)%7);
+  const week1=new Date(date.getFullYear(),0,4);
+  return 1+Math.round(((date.getTime()-week1.getTime())/86400000-3+(week1.getDay()+6)%7)/7);
 }
 
 // Parser genérico (CSV ou Excel com colunas prefixo/data/km)
