@@ -7002,6 +7002,11 @@ function _inicioSemana(d){
 }
 
 function _renderDashboardPrevisibilidade(back, gid){
+  // Guardar em globais para os onclick não precisarem passar strings com caracteres especiais
+  if(back) window._prevBack=back;
+  if(gid)  window._prevGid=gid;
+  back=window._prevBack||'';
+  gid=window._prevGid||getGid();
   const carros=Object.keys(_prevMediaDiaria).length;
   const vermelhos=_prevProjecoes.filter(p=>p.semaforo==='vermelho').length;
   const amarelos=_prevProjecoes.filter(p=>p.semaforo==='amarelo').length;
@@ -7124,10 +7129,10 @@ function _renderDashboardPrevisibilidade(back, gid){
         <div style="position:relative;flex:1;min-width:180px">
           <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px">🔍</span>
           <input type="text" placeholder="Buscar prefixo..." value="${filtroBusca}"
-            oninput="window._prevFiltroB=this.value;_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')"
+            oninput="window._prevFiltroB=this.value;_renderDashboardPrevisibilidade()"
             style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 12px 9px 32px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;outline:none">
         </div>
-        <select onchange="window._prevFiltroP=this.value;_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')"
+        <select onchange="window._prevFiltroP=this.value;_renderDashboardPrevisibilidade()"
           style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;cursor:pointer">
           <option value="todos" ${filtroPlano==='todos'?'selected':''}>Leve + Pesada</option>
           <option value="001" ${filtroPlano==='001'?'selected':''}>001 · Só Leve</option>
@@ -7165,26 +7170,26 @@ function _renderDashboardPrevisibilidade(back, gid){
     </div>
     <!-- KPIs semáforo -->
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">
-      <div onclick="window._prevFiltroSem='vermelho';window._prevAba='carros';_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')" class="kpi nok" style="cursor:pointer;border-color:#EF444440">
+      <div onclick="window._prevFiltroSem='vermelho';window._prevAba='carros';_renderDashboardPrevisibilidade()" class="kpi nok" style="cursor:pointer;border-color:#EF444440">
         <div class="kpi-label">🔴 Crítico / ≤1 sem</div><div class="kpi-val" style="color:var(--red)">${vermelhos}</div>
       </div>
-      <div onclick="window._prevFiltroSem='amarelo';window._prevAba='carros';_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')" class="kpi" style="cursor:pointer;border:1px solid #F59E0B40;background:#F59E0B08">
+      <div onclick="window._prevFiltroSem='amarelo';window._prevAba='carros';_renderDashboardPrevisibilidade()" class="kpi" style="cursor:pointer;border:1px solid #F59E0B40;background:#F59E0B08">
         <div class="kpi-label">🟡 Atenção 1-3 sem</div><div class="kpi-val" style="color:var(--amber)">${amarelos}</div>
       </div>
-      <div onclick="window._prevFiltroSem='verde';window._prevAba='carros';_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')" class="kpi ok" style="cursor:pointer">
+      <div onclick="window._prevFiltroSem='verde';window._prevAba='carros';_renderDashboardPrevisibilidade()" class="kpi ok" style="cursor:pointer">
         <div class="kpi-label">🟢 OK 3-6 sem</div><div class="kpi-val" style="color:var(--green)">${verdes}</div>
       </div>
-      <div onclick="window._prevFiltroSem='todos';window._prevFiltroB='';window._prevFiltroP='todos';window._prevAba='carros';_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')" class="kpi neu" style="cursor:pointer">
+      <div onclick="window._prevFiltroSem='todos';window._prevFiltroB='';window._prevFiltroP='todos';window._prevAba='carros';_renderDashboardPrevisibilidade()" class="kpi neu" style="cursor:pointer">
         <div class="kpi-label">Total</div><div class="kpi-val">${_prevProjecoes.length}</div>
       </div>
     </div>
     <!-- Abas -->
     <div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:10px">
-      <button onclick="window._prevAba='cronograma';window._prevFiltroSem='todos';_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')"
+      <button onclick="window._prevAba='cronograma';window._prevFiltroSem='todos';_renderDashboardPrevisibilidade()"
         style="padding:8px 16px;border-radius:8px;border:2px solid ${abaAtiva==='cronograma'?'var(--blue)':'transparent'};background:${abaAtiva==='cronograma'?'#2563EB18':'transparent'};color:${abaAtiva==='cronograma'?'var(--blue)':'var(--text3)'};font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
         📅 Cronograma por Semana
       </button>
-      <button onclick="window._prevAba='carros';_renderDashboardPrevisibilidade('${back.replace(/'/g,"\\'")}','${gid}')"
+      <button onclick="window._prevAba='carros';_renderDashboardPrevisibilidade()"
         style="padding:8px 16px;border-radius:8px;border:2px solid ${abaAtiva==='carros'?'var(--blue)':'transparent'};background:${abaAtiva==='carros'?'#2563EB18':'transparent'};color:${abaAtiva==='carros'?'var(--blue)':'var(--text3)'};font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
         🚌 Por Carro
       </button>
