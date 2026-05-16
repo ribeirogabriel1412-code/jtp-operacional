@@ -11956,7 +11956,7 @@ ${barraPrint('📋 3.4 · Checklist de Equipamentos · '+garagem?.nome,'JTP_34_C
 <div style="margin-top:4px;font-size:8px;color:#888;text-align:right">Gerado automaticamente · ${dtFmt} · JTP Transportes</div>
 </body></html>`;
 
-  abrirRelatorioHTMLPCM(html, `JTP_34_ChecklistEquip_${agora.toISOString().slice(0,10).replace(/-/g,'')}.pdf`);
+  abrirRelatorioHTMLPCM(html, `JTP_34_ChecklistEquip_${agora.toISOString().slice(0,10).replace(/-/g,"")}.pdf`);
 }
 
 // ── Helper: abrir relatório HTML como PDF ─────────────────────────────────
