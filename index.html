@@ -7358,18 +7358,38 @@ function preencherSlotVazio(id, novoCarro, novoPlanoNum, novoPlanoNome) {
   if (!item) return;
 
   const dadosCarro = (_prevDados||[]).filter(p=>p.carro===novoCarro);
-  const dadosPlano = dadosCarro.find(p=>p.planoNum===novoPlanoNum) || {};
-  const ops = calcularOportunistas(dadosCarro, {planoNum:novoPlanoNum, planoNome:novoPlanoNome, excessoKm:dadosPlano.excessoKm||0});
+
+  // Forçar o plano correto pelo tipo do slot — não usar o plano da busca
+  let planoFinal, planoNomeFinal;
+  if(item.tipo === 'pesada'){
+    const p002 = dadosCarro.find(p=>p.planoNum==='002');
+    planoFinal = p002?.planoNum || novoPlanoNum;
+    planoNomeFinal = p002?.planoNome || novoPlanoNome;
+  } else if(item.tipo === 'leve'){
+    const p001 = dadosCarro.find(p=>p.planoNum==='001');
+    planoFinal = p001?.planoNum || novoPlanoNum;
+    planoNomeFinal = p001?.planoNome || novoPlanoNome;
+  } else if(item.tipo === 'garantia'){
+    const pGar = dadosCarro.find(p=>isPlanoGarantia(p.planoNum));
+    planoFinal = pGar?.planoNum || novoPlanoNum;
+    planoNomeFinal = pGar?.planoNome || novoPlanoNome;
+  } else {
+    planoFinal = novoPlanoNum;
+    planoNomeFinal = novoPlanoNome;
+  }
+
+  const dadosPlano = dadosCarro.find(p=>p.planoNum===planoFinal) || {};
+  const ops = calcularOportunistas(dadosCarro, {planoNum:planoFinal, planoNome:planoNomeFinal, excessoKm:dadosPlano.excessoKm||0});
 
   item.carro = novoCarro;
-  item.planoNum = novoPlanoNum;
-  item.planoNome = novoPlanoNome;
+  item.planoNum = planoFinal;
+  item.planoNome = planoNomeFinal;
   item.excessoKm = dadosPlano.excessoKm||0;
   item.oportunistas = ops.map(o=>o.num);
   item.oportunistasNomes = ops.map(o=>o.nome);
-  item.incluileve = isPesada(novoPlanoNum);
-  item.incluiGarantia = isGarantia(novoCarro)&&isPlanoGarantia(novoPlanoNum);
-  item.tipo = (isGarantia(novoCarro)&&isPlanoGarantia(novoPlanoNum))?'garantia':isPesada(novoPlanoNum)?'pesada':'leve';
+  item.incluileve = isPesada(planoFinal);
+  item.incluiGarantia = isGarantia(novoCarro)&&isPlanoGarantia(planoFinal);
+  item.tipo = (isGarantia(novoCarro)&&isPlanoGarantia(planoFinal))?'garantia':isPesada(planoFinal)?'pesada':'leve';
   item.motivo = `✋ Manual · ${dadosPlano.excessoKm>=0?'+':''}${(dadosPlano.excessoKm||0).toLocaleString('pt-BR')} km`;
   item.confirmado = true;
   item.slotVazio = false;
@@ -7404,27 +7424,45 @@ function substituirItemEscala(idRemover, novoCarro, novoPlanoNum, novoPlanoNome)
   if (!item) return;
 
   const dadosCarro = (_prevDados||[]).filter(p=>p.carro===novoCarro);
-  const dadosPlano = dadosCarro.find(p=>p.planoNum===novoPlanoNum) || {};
-  const ops = calcularOportunistas(dadosCarro, {planoNum:novoPlanoNum, planoNome:novoPlanoNome, proximaExec:0, excessoKm: dadosPlano.excessoKm||0});
+  const tipoSlot = item.tipo; // preservar o tipo original do slot
 
-  // Guardar carro original para destaque visual
+  // Forçar plano correto pelo tipo do slot
+  let planoFinal, planoNomeFinal;
+  if(tipoSlot === 'pesada'){
+    const p = dadosCarro.find(p=>p.planoNum==='002');
+    planoFinal = p?.planoNum || '002';
+    planoNomeFinal = p?.planoNome || 'PREVENTIVA PESADA';
+  } else if(tipoSlot === 'leve'){
+    const p = dadosCarro.find(p=>p.planoNum==='001');
+    planoFinal = p?.planoNum || '001';
+    planoNomeFinal = p?.planoNome || 'PREVENTIVA LEVE';
+  } else if(tipoSlot === 'garantia'){
+    const p = dadosCarro.find(p=>isPlanoGarantia(p.planoNum));
+    planoFinal = p?.planoNum || novoPlanoNum;
+    planoNomeFinal = p?.planoNome || novoPlanoNome;
+  } else {
+    planoFinal = novoPlanoNum;
+    planoNomeFinal = novoPlanoNome;
+  }
+
+  const dadosPlano = dadosCarro.find(p=>p.planoNum===planoFinal) || {};
+  const ops = calcularOportunistas(dadosCarro, {planoNum:planoFinal, planoNome:planoNomeFinal, excessoKm:dadosPlano.excessoKm||0});
   const carroOriginal = item.carro;
 
-  // Substituir no mesmo slot
   item.carro = novoCarro;
-  item.planoNum = novoPlanoNum;
-  item.planoNome = novoPlanoNome;
+  item.planoNum = planoFinal;
+  item.planoNome = planoNomeFinal;
   item.excessoKm = dadosPlano.excessoKm || 0;
   item.oportunistas = ops.map(o=>o.num);
   item.oportunistasNomes = ops.map(o=>o.nome);
-  item.incluileve = isPesada(novoPlanoNum);
-  item.incluiGarantia = isGarantia(novoCarro) && isPlanoGarantia(novoPlanoNum);
+  item.incluileve = isPesada(planoFinal);
+  item.incluiGarantia = isGarantia(novoCarro) && isPlanoGarantia(planoFinal);
   item.motivo = `🔄 Substituiu ${carroOriginal} · ${dadosPlano.excessoKm>=0?'+':''}${(dadosPlano.excessoKm||0).toLocaleString('pt-BR')} km`;
-  item.tipo = (isGarantia(novoCarro)&&isPlanoGarantia(novoPlanoNum))?'garantia':isPesada(novoPlanoNum)?'pesada':'leve';
+  item.tipo = tipoSlot; // manter o tipo do slot original
   item.confirmado = true;
   item.jaExiste = false;
-  item.substituicaoManual = true;   // flag para destaque visual
-  item.carroOriginal = carroOriginal; // para mostrar no card
+  item.substituicaoManual = true;
+  item.carroOriginal = carroOriginal;
 
   document.getElementById('modal-substituto')?.remove();
   _recarregarEscala();
