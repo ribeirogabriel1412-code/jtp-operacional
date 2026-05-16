@@ -1037,6 +1037,36 @@ async function renderPainel(){
       ${ocs.length>6?`<div style="text-align:center"><button onclick="navToSub('ferr-22')" style="background:none;border:1px solid var(--border);color:var(--text3);border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">+ ${ocs.length-6} outros carros em aberto →</button></div>`:''}
     </div>`;
 
+  // ── Preventivas programadas próximos 7 dias ──────────────────────────────
+  const hojeStr=hoje();
+  const proxSemana=new Date();proxSemana.setDate(proxSemana.getDate()+7);
+  const{data:prevProg}=await sb.from('programacao_preventiva')
+    .select('prefixo,plano_num,data_prevista,turno')
+    .eq('garagem_id',gid).in('status',['programado','em_execucao'])
+    .gte('data_prevista',hojeStr).lte('data_prevista',proxSemana.toISOString().slice(0,10))
+    .order('data_prevista');
+  const CPNC={'001':'Leve','002':'Pesada','003':'Garantia','029':'Garantia'};
+  const CPLC={'001':'#3B82F6','002':'#F97316','003':'#8B5CF6','029':'#8B5CF6'};
+  const prevPorData={};
+  (prevProg||[]).forEach(p=>{if(!prevPorData[p.data_prevista])prevPorData[p.data_prevista]=[];prevPorData[p.data_prevista].push(p);});
+  const prevHTML=Object.entries(prevPorData).sort(([a],[b])=>a.localeCompare(b)).map(([data,items])=>{
+    const dtFmt=new Date(data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
+    const diff=Math.round((new Date(data+'T12:00:00')-new Date(hojeStr+'T12:00:00'))/86400000);
+    const lbl=diff===0?'Hoje':diff===1?'Amanhã':`D+${diff}`;
+    const chips=items.map(p=>`<div style="display:inline-flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid ${CPLC[p.plano_num]||'var(--border)'}40;border-radius:8px;padding:4px 8px;margin-bottom:4px">
+      <span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700">${p.prefixo}</span>
+      <span style="font-size:9px;padding:1px 4px;border-radius:3px;background:${CPLC[p.plano_num]||'#475569'}25;color:${CPLC[p.plano_num]||'var(--text3)'};font-weight:700">${CPNC[p.plano_num]||p.plano_num}</span>
+    </div>`).join('');
+    return`<div style="margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="font-size:11px;font-weight:800;padding:2px 8px;border-radius:6px;background:${diff===0?'#EF444420':'var(--surface2)'};color:${diff===0?'var(--red)':'var(--text3)'}">${lbl}</span>
+        <span style="font-size:11px;color:var(--text3)">${dtFmt}</span>
+        <span style="font-size:10px;background:var(--surface2);border-radius:20px;padding:1px 8px;color:var(--text3);font-weight:700">${items.length} carros</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px">${chips}</div>
+    </div>`;
+  }).join('');
+
   setMain(`
     <div class="painel-hero">
       <div><div style="color:var(--text2);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Painel do Dia</div>
@@ -1098,6 +1128,32 @@ async function renderPainel(){
     </div>
 
     ${rankingHTML}
+
+    <!-- Preventivas Programadas — Visão do Líder Operacional -->
+    ${prevProg?.length ? `
+    <div style="margin-top:4px">
+      ${secTitle('🔧','Preventivas Programadas — Próximos 7 Dias',
+        `<button class="btn-add" style="font-size:12px;padding:6px 12px" onclick="navToSub('ferr-prev')">Ver Escala →</button>`
+      )}
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:8px">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
+          <div class="kpi ok" style="padding:10px 8px">
+            <div class="kpi-label">Hoje</div>
+            <div class="kpi-val" style="color:var(--amber)">${prevPorData[hojeStr]?.length||0}</div>
+          </div>
+          <div class="kpi neu" style="padding:10px 8px">
+            <div class="kpi-label">Semana</div>
+            <div class="kpi-val">${prevProg.length}</div>
+          </div>
+          <div class="kpi neu" style="padding:10px 8px">
+            <div class="kpi-label">Dias c/ prev.</div>
+            <div class="kpi-val">${Object.keys(prevPorData).length}</div>
+          </div>
+        </div>
+        <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">📅 Retirada de Carros Prevista</div>
+        ${prevHTML}
+      </div>
+    </div>` : ''}
 
     ${secTitle('🚌','Frota — Visão Rápida',`<button class="btn-add" onclick="navTo('frota',null)">Ver Tudo →</button>`)}
     ${total===0?`<div class="empty"><div style="font-size:40px">🚌</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Nenhum veículo cadastrado</div></div>`:`<div class="frota-grid">${top}</div>`}`);
