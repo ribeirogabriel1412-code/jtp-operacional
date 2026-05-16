@@ -6908,7 +6908,7 @@ function renderTelaEscala(back, diasSemana, sabValetamento) {
         <span style="font-size:18px">➕</span>
         <div>
           <div style="font-size:12px;color:var(--blue);font-weight:700">Slot vazio — clique para preencher</div>
-          <div style="font-size:10px;color:var(--text4)">${e.data?.split('-').reverse().join('/')} · ${e.tipo==='pesada'?'Pesada':e.tipo==='leve'?'Leve':e.tipo==='garantia'?'Garantia':'Slot'}</div>
+          <div style="font-size:10px;color:var(--text4)">${e.data?.split('-').reverse().join('/')} · ${e.tipo==='pesada'?'Pesada':e.tipo==='leve'?'Leve':e.tipo==='garantia'?'Garantia':e.tipo==='valetamento'?'📦 Valetamento':'Slot'}</div>
         </div>
       </div>`;
     }
@@ -7326,10 +7326,27 @@ function preencherSlotVazio(id, novoCarro, novoPlanoNum, novoPlanoNome) {
   const item = rascunho.find(e => e.id === id);
   if (!item) return;
 
-  const dadosCarro = (_prevDados||[]).filter(p=>p.carro===novoCarro);
+  // Se o slot é valetamento, manter tipo e forçar plano 002
+  if(item.tipo === 'valetamento'){
+    const p002 = dadosCarro.find(p=>p.planoNum==='002');
+    const planoFinal = p002?.planoNum || '002';
+    const planoNomeFinal = p002?.planoNome || 'PREVENTIVA PESADA';
+    const dadosPlano = dadosCarro.find(p=>p.planoNum===planoFinal) || {};
+    item.carro = novoCarro;
+    item.planoNum = planoFinal;
+    item.planoNome = planoNomeFinal;
+    item.excessoKm = dadosPlano.excessoKm||0;
+    item.oportunistas = []; item.oportunistasNomes = [];
+    item.incluileve = false; item.incluiGarantia = false; item.incluiPesada = false;
+    item.tipo = 'valetamento';
+    item.motivo = `📦 Próxima pesada · manual · ${(dadosPlano.excessoKm||0).toLocaleString('pt-BR')} km`;
+    item.confirmado = true; item.slotVazio = false;
+    document.getElementById('modal-substituto')?.remove();
+    _recarregarEscala();
+    return;
+  }
 
-  // Forçar o plano correto pelo tipo do slot — não usar o plano da busca
-  let planoFinal, planoNomeFinal;
+  // Para outros tipos de slot, forçar plano correto pelo tipo
   if(item.tipo === 'pesada'){
     const p002 = dadosCarro.find(p=>p.planoNum==='002');
     planoFinal = p002?.planoNum || novoPlanoNum;
