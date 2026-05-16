@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -7180,6 +7179,10 @@ function removerItemEscala(id) {
   function renderListaSubs(filtro=''){
     const lista = filtro && filtro.length >= 2
       ? todosSubstitutos.filter(p => p.carro.replace(/\./g,'').toLowerCase().includes(filtro.replace(/\./g,'').toLowerCase()))
+          .concat((_prevDados||[]).filter(p =>
+            p.carro.replace(/\./g,'').toLowerCase().includes(filtro.replace(/\./g,'').toLowerCase()) &&
+            !todosSubstitutos.find(s=>s.carro===p.carro&&s.planoNum===p.planoNum)
+          )).slice(0, 20)
       : todosSubstitutos.slice(0, 15);
 
     if(!lista.length) return '<div style="text-align:center;padding:20px;color:var(--text4);font-size:12px">Nenhum carro encontrado</div>';
@@ -7285,10 +7288,10 @@ function abrirPreencherSlot(id) {
     let lista;
     if(filtro && filtro.length >= 2) {
       // Busca ampla: qualquer plano do carro digitado
+      // NÃO filtra por jaNoRascunho — usuário pode querer trocar especificamente este carro
       const termo = filtro.replace(/\./g,'').toLowerCase();
       lista = (_prevDados||[])
         .filter(p => p.carro.replace(/\./g,'').toLowerCase().includes(termo))
-        .filter(p => !jaNoRascunho.has(p.carro+'::'+p.planoNum))
         .sort((a,b) => b.excessoKm - a.excessoKm)
         .slice(0, 20);
     } else {
