@@ -7244,6 +7244,7 @@ function abrirPreencherSlot(id) {
   const candidatos = (_prevDados||[])
     .filter(p => {
       if (jaNoRascunho.has(p.carro+'::'+p.planoNum)) return false;
+      if (item.tipo === 'valetamento') return isPesada(p.planoNum); // só plano 002
       if (item.tipo === 'garantia') return isGarantia(p.carro) && isPlanoGarantia(p.planoNum);
       if (item.tipo === 'pesada')   return isPesada(p.planoNum);
       if (item.tipo === 'leve')     return isLeve(p.planoNum);
@@ -7256,13 +7257,19 @@ function abrirPreencherSlot(id) {
   function renderCandidatos(filtro='') {
     let lista;
     if(filtro && filtro.length >= 2) {
-      // Busca ampla: qualquer plano do carro digitado
-      // NÃO filtra por jaNoRascunho — usuário pode querer trocar especificamente este carro
       const termo = filtro.replace(/\./g,'').toLowerCase();
-      lista = (_prevDados||[])
-        .filter(p => p.carro.replace(/\./g,'').toLowerCase().includes(termo))
-        .sort((a,b) => b.excessoKm - a.excessoKm)
-        .slice(0, 20);
+      // Valetamento: busca só plano 002 do carro digitado
+      if(item.tipo === 'valetamento'){
+        lista = (_prevDados||[])
+          .filter(p => isPesada(p.planoNum) && p.carro.replace(/\./g,'').toLowerCase().includes(termo))
+          .sort((a,b) => b.excessoKm - a.excessoKm)
+          .slice(0, 15);
+      } else {
+        lista = (_prevDados||[])
+          .filter(p => p.carro.replace(/\./g,'').toLowerCase().includes(termo))
+          .sort((a,b) => b.excessoKm - a.excessoKm)
+          .slice(0, 20);
+      }
     } else {
       lista = candidatos.slice(0, 15);
     }
