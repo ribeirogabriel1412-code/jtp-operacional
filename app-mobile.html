@@ -1469,146 +1469,246 @@ async function salvarPosicaoPatio(){
 // ══════════════════════════════════════════════════════════
 let _rcData=hoje(), _rcEscalaData='', _rcEscalaLista=[];
 
+// ── FAIXA HORÁRIA GLOBAL (compartilhada entre plantão e abastecimento) ───
+// O operador define uma vez e todos os módulos usam
+// Noite padrão: hoje 19:00 → amanhã 07:20
+function _faixaDefault(){
+  const agora=new Date();
+  const h=agora.getHours();
+  const d=agora.toISOString().slice(0,10);
+  const amanha=new Date(agora); amanha.setDate(agora.getDate()+1);
+  const amanhaStr=amanha.toISOString().slice(0,10);
+  const ontem=new Date(agora); ontem.setDate(agora.getDate()-1);
+  const ontemStr=ontem.toISOString().slice(0,10);
+  // Se estiver entre 07h e 17h → faixa dia
+  if(h>=7&&h<17) return {dIni:d,hIni:'07:00',dFim:d,hFim:'17:00',turno:'dia'};
+  // Se estiver entre 17h e 23h59 → faixa noite (começa hoje)
+  if(h>=17) return {dIni:d,hIni:'19:00',dFim:amanhaStr,hFim:'07:20',turno:'noite'};
+  // Entre 00h e 07h → noite que começou ontem
+  return {dIni:ontemStr,hIni:'19:00',dFim:d,hFim:'07:20',turno:'noite'};
+}
+if(!window._faixa) window._faixa=_faixaDefault();
+
+function _faixaIniISO(){ return window._faixa.dIni+'T'+window._faixa.hIni+':00'; }
+function _faixaFimISO(){ return window._faixa.dFim+'T'+window._faixa.hFim+':00'; }
+function _faixaLabel(){
+  const f=window._faixa;
+  const fi=new Date(f.dIni+'T'+f.hIni).toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const ff=new Date(f.dFim+'T'+f.hFim).toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  return fi+' → '+ff;
+}
+
+
+// ── Widget de seleção de faixa horária ───────────────────────────────────
+function abrirSeletorFaixa(callback){
+  const f=window._faixa;
+  openSheet('⏰ Definir Faixa de Referência',`
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="background:var(--surface2);border-radius:10px;padding:10px 12px;font-size:12px;color:var(--text3)">
+        Define o período de trabalho. Registros fora desta faixa <strong>não serão contabilizados</strong>.
+      </div>
+
+      <!-- Atalhos -->
+      <div style="display:flex;gap:8px">
+        <button onclick="aplicarFaixaRapida('dia')"
+          style="flex:1;padding:10px;border-radius:10px;border:2px solid ${f.turno==='dia'?'var(--blue)':'var(--border)'};background:${f.turno==='dia'?'#2563EB18':'transparent'};color:${f.turno==='dia'?'var(--blue)':'var(--text3)'};font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">
+          ☀️ Dia<br><span style="font-size:10px;font-weight:400">07:00 → 17:00</span>
+        </button>
+        <button onclick="aplicarFaixaRapida('noite')"
+          style="flex:1;padding:10px;border-radius:10px;border:2px solid ${f.turno==='noite'?'var(--blue)':'var(--border)'};background:${f.turno==='noite'?'#2563EB18':'transparent'};color:${f.turno==='noite'?'var(--blue)':'var(--text3)'};font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">
+          🌙 Noite<br><span style="font-size:10px;font-weight:400">19:00 → 07:20</span>
+        </button>
+      </div>
+
+      <!-- Manual -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">📅 Data Início</label>
+          <input type="date" id="fx-d-ini" value="${f.dIni}"
+            style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 10px;color:var(--text);font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">🕐 Hora Início</label>
+          <input type="time" id="fx-h-ini" value="${f.hIni}"
+            style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 10px;color:var(--text);font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">📅 Data Fim</label>
+          <input type="date" id="fx-d-fim" value="${f.dFim}"
+            style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 10px;color:var(--text);font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">🕔 Hora Fim</label>
+          <input type="time" id="fx-h-fim" value="${f.hFim}"
+            style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 10px;color:var(--text);font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+        </div>
+      </div>
+
+      <button onclick="confirmarFaixa()" style="padding:14px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">
+        ✅ Confirmar Faixa
+      </button>
+    </div>
+  `);
+  window._faixaCallback=callback;
+}
+
+function aplicarFaixaRapida(turno){
+  const d=hoje();
+  const amanha=new Date(); amanha.setDate(amanha.getDate()+1);
+  const amanhaStr=amanha.toISOString().slice(0,10);
+  const dIni=document.getElementById('fx-d-ini');
+  const hIni=document.getElementById('fx-h-ini');
+  const dFim=document.getElementById('fx-d-fim');
+  const hFim=document.getElementById('fx-h-fim');
+  if(turno==='dia'){
+    if(dIni) dIni.value=d;
+    if(hIni) hIni.value='07:00';
+    if(dFim) dFim.value=d;
+    if(hFim) hFim.value='17:00';
+  } else {
+    if(dIni) dIni.value=d;
+    if(hIni) hIni.value='19:00';
+    if(dFim) dFim.value=amanhaStr;
+    if(hFim) hFim.value='07:20';
+  }
+}
+
+function confirmarFaixa(){
+  const dIni=document.getElementById('fx-d-ini')?.value;
+  const hIni=document.getElementById('fx-h-ini')?.value;
+  const dFim=document.getElementById('fx-d-fim')?.value;
+  const hFim=document.getElementById('fx-h-fim')?.value;
+  if(!dIni||!hIni||!dFim||!hFim){ toast('Preencha todos os campos','err'); return; }
+  const turno=hIni<='12:00'?'dia':'noite';
+  window._faixa={dIni,hIni,dFim,hFim,turno};
+  closeSheet(true);
+  toast('✅ Faixa: '+_faixaLabel());
+  if(window._faixaCallback) window._faixaCallback();
+}
+
 async function telaRecolha(dataFiltro=null){
   const gid=getGid();
-  if(dataFiltro) _rcData=dataFiltro;
-
   setMain('<div class="loading"><div class="sp"></div></div>');
 
-  // Plantão: exibe a próxima escala disponível (D+1 ou a mais próxima futura)
-  // Grava flag recolhido na soltura da data selecionada
-  const hojeStr=hoje();
+  const f=window._faixa;
+  const iniISO=_faixaIniISO();
+  const fimISO=_faixaFimISO();
 
-  // Busca datas com escala — janela de ontem até +7 dias
-  // Inclui ontem para não perder dados quando plantão atravessa meia-noite
-  const datasAlvoRc=[];
-  for(let i=-1;i<=7;i++){const d=new Date();d.setDate(d.getDate()+i);datasAlvoRc.push(d.toISOString().split('T')[0]);}
-  const{data:escalasDispRc}=await sb.from('soltura_2_10').select('data')
-    .eq('garagem_id',gid).in('data',datasAlvoRc);
-  const datasComEscalaRc=[...new Set((escalasDispRc||[]).map(r=>r.data))].sort();
-
-  // Só redefine a data se ainda não foi escolhida manualmente pelo plantonista
-  // Isso evita que a virada de meia-noite mude a data durante o plantão
-  if(!_rcEscalaData||!datasComEscalaRc.includes(_rcEscalaData)){
-    // Preferência: D+1 (próximo dia com escala), fallback para hoje ou ontem
-    const proxFutRc=datasComEscalaRc.find(d=>d>hojeStr)
-      ||datasComEscalaRc.find(d=>d===hojeStr)
-      ||datasComEscalaRc[datasComEscalaRc.length-1]
-      ||datasAlvoRc[1];
-    _rcEscalaData=proxFutRc;
+  // Busca frota completa
+  let frotaRaw=[];
+  try{
+    const{data:fr}=await sb.from('frota').select('prefixo,modelo,tipo').eq('garagem_id',gid).order('prefixo');
+    if(fr?.length) frotaRaw=fr;
+  }catch(e){}
+  // Fallback: prefixos únicos dos últimos 30 dias
+  if(!frotaRaw.length){
+    try{
+      const d30=new Date();d30.setDate(d30.getDate()-30);
+      const{data:sol}=await sb.from('soltura_2_10').select('prefixo').eq('garagem_id',gid).gte('data',d30.toISOString().slice(0,10));
+      frotaRaw=[...new Set((sol||[]).map(s=>s.prefixo))].sort().map(p=>({prefixo:p}));
+    }catch(e){}
   }
-  // _rcSolturaData: data fixa que não muda após ser escolhida
-  if(!window._rcSolturaData) window._rcSolturaData=_rcEscalaData;
 
-  // Chips de navegação para o plantão
-  const _chipsRc=datasComEscalaRc.map(d=>{
-    const ativo=d===_rcEscalaData;
-    const dFmt=new Date(d+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
-    const diff=Math.round((new Date(d+'T12:00:00')-new Date(hojeStr+'T12:00:00'))/(86400000));
-    const lbl=diff===0?'Hoje':diff===1?'D+1':diff>1?'D+'+diff:'D'+diff;
-    return`<button onclick="_rcEscalaData='${d}';window._rcSolturaData='${d}';telaRecolha()" style="flex-shrink:0;padding:6px 12px;border-radius:20px;border:1px solid ${ativo?'#8B5CF6':'var(--border)'};background:${ativo?'#8B5CF618':'transparent'};color:${ativo?'#8B5CF6':'var(--text3)'};font-size:11px;font-weight:${ativo?'700':'500'};font-family:inherit;cursor:pointer;white-space:nowrap">${lbl} · ${dFmt}</button>`;
-  }).join('');
-
-  // Busca TODOS os carros da escala da data selecionada
-  // Exibe completo — plantonista vê tudo e marca os que recolheu
-  const{data:escala}=await sb.from('soltura_2_10').select('prefixo,linha,motorista,motorista_fim,horario_programado,horario_fim,saiu')
-    .eq('garagem_id',gid).eq('data',_rcEscalaData).order('horario_programado');
+  // Recolhas dentro da faixa horária
   let recolhas=[];
   try{
     const{data:r}=await sb.from('recolha_checklist').select('*')
-      .eq('garagem_id',gid).eq('data_recolha',_rcEscalaData).order('created_at',{ascending:false});
+      .eq('garagem_id',gid)
+      .gte('created_at',iniISO)
+      .lte('created_at',fimISO)
+      .order('created_at',{ascending:false});
     if(r) recolhas=r;
   }catch(e){}
-  _rcEscalaLista=escala||[];
 
-  // Mapa de recolhas por prefixo
-  const recMap={};(recolhas||[]).forEach(r=>{recMap[r.prefixo]=r;});
-  // Mapa de abastecimento por prefixo
+  // Abastecimentos dentro da faixa
   let abastMap={};
   try{
-    const{data:abast}=await sb.from('abastecimento_checklist').select('prefixo,litros,arla').eq('garagem_id',gid).eq('data',_rcEscalaData);
-    if(abast) abast.forEach(a=>{abastMap[a.prefixo]=a;});
+    const{data:ab}=await sb.from('abastecimento_checklist').select('prefixo,litros,arla_litros,horario')
+      .eq('garagem_id',gid)
+      .gte('created_at',iniISO)
+      .lte('created_at',fimISO);
+    if(ab) ab.forEach(a=>{abastMap[a.prefixo]=a;});
   }catch(e){}
 
+  const recMap={};recolhas.forEach(r=>{recMap[r.prefixo]=r;});
+  _rcEscalaLista=frotaRaw;
+
   const tot=Object.keys(recMap).length;
-  const totEscala=_rcEscalaLista.length;
-  const pct=totEscala>0?Math.round((tot/totEscala)*100):0;
+  const totFrota=frotaRaw.length;
+  const totDisp=frotaRaw.filter(e=>recMap[e.prefixo]&&abastMap[e.prefixo]).length;
+  const pct=totFrota>0?Math.round((tot/totFrota)*100):0;
 
-  // Chips de seleção de escala referência
-  const chipsEscala=_chipsRc||'';
-
-  // Lista de carros da escala — ordenada por horario_fim (último a voltar primeiro)
-  const escalaSorted=[..._rcEscalaLista].sort((a,b)=>{
-    const hA=a.horario_fim||a.horario_programado||'00:00';
-    const hB=b.horario_fim||b.horario_programado||'00:00';
-    return hA.localeCompare(hB);
-  });
-
-  const cards=escalaSorted.map(e=>{
+  const cards=frotaRaw.map(e=>{
     const rec=recMap[e.prefixo];
+    const ab=abastMap[e.prefixo];
     const recOk=!!rec;
-    const horaRef=e.horario_fim||e.horario_programado||'—';
-    const motRef=e.motorista_fim||e.motorista||'—';
-    return`<div class="vcard ${recOk?'done':''}" onclick="abrirRecolha('${e.prefixo}','${e.linha||''}','${motRef.replace(/'/g,'')}','${horaRef}')">
+    const abOk=!!ab;
+    const dispOk=recOk&&abOk;
+    return`<div class="vcard ${dispOk?'done':''}" onclick="abrirRecolha('${e.prefixo}','','','')">
       <div style="flex:1;min-width:0">
-        <div class="prefixo" style="color:${recOk?'var(--green)':'var(--text)'}">${e.prefixo}</div>
-        <div class="vcard-sub">${horaRef} · ${e.linha||'—'}</div>
-        <div class="vcard-sub" style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${motRef.split(' ').slice(0,2).join(' ')}${rec?.km_hodometro?' · 📍'+rec.km_hodometro.toLocaleString()+'km':''}</div>
+        <div class="prefixo" style="color:${dispOk?'var(--green)':recOk?'var(--amber)':'var(--text)'}">${e.prefixo}</div>
+        ${e.modelo?`<div class="vcard-sub" style="color:var(--text4)">${e.modelo}</div>`:''}
+        ${rec?`<div class="vcard-sub" style="color:var(--amber);font-size:10px">🔑 ${rec.horario_real||rec.created_at?.slice(11,16)||'✓'}${rec.km_hodometro?' · '+rec.km_hodometro.toLocaleString()+'km':''}</div>`:''}
+        ${ab?`<div class="vcard-sub" style="color:var(--green);font-size:10px">⛽ ${ab.litros}L${ab.arla_litros?' · ARLA '+ab.arla_litros+'L':''}</div>`:''}
       </div>
-      <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:2px;margin-left:8px">
-        <div style="min-width:62px;height:22px;border-radius:5px;border:2px solid ${recOk?'var(--green)':'var(--red)'};background:${recOk?'#00C48C18':'#EF444410'};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:${recOk?'var(--green)':'var(--red)'}">Recolha</div>
-        <span style="font-size:8px;font-weight:700;color:${recOk?'var(--green)':'var(--red)'}">${recOk?rec?.horario_real||'✓':'—'}</span>
+      <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:3px;margin-left:8px">
+        <div style="width:62px;height:20px;border-radius:5px;border:2px solid ${recOk?'var(--amber)':'var(--border)'};background:${recOk?'#F59E0B18':'transparent'};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:${recOk?'var(--amber)':'var(--text4)'}">🔑 Recolha</div>
+        <div style="width:62px;height:20px;border-radius:5px;border:2px solid ${abOk?'var(--green)':'var(--border)'};background:${abOk?'#00C48C18':'transparent'};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:${abOk?'var(--green)':'var(--text4)'}">⛽ Abast.</div>
+        ${dispOk?`<div style="font-size:8px;font-weight:800;color:var(--green)">✅ Pronto</div>`:`<div style="font-size:8px;color:var(--text4)">—</div>`}
       </div>
     </div>`;
   }).join('');
 
-  const dataExec=new Date(_rcEscalaData+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
-  const dataRef=dataExec;
-
   render(`
     <div style="padding:14px 14px 0">
+      <!-- Cabeçalho -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div>
           <div style="font-weight:800;font-size:17px">🔑 Plantão / Recolha</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">Escala: <strong style="color:var(--text)">${dataExec}</strong> · <strong style="color:${pct===100?'var(--green)':'var(--amber)'}">${tot}/${totEscala} recolhidos (${pct}%)</strong></div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${tot}/${totFrota} recolhidos · ✅ ${totDisp} prontos p/ soltura</div>
         </div>
         <button onclick="telaRecolha()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>
       </div>
-      <!-- Barra de progresso -->
-      <div style="background:var(--border);border-radius:99px;height:6px;overflow:hidden;margin-bottom:10px">
+
+      <!-- Faixa horária -->
+      <div onclick="abrirSeletorFaixa(()=>telaRecolha())"
+        style="background:var(--surface2);border:1px solid var(--blue);border-radius:10px;padding:10px 12px;margin-bottom:10px;cursor:pointer;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:9px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:1px">⏰ Faixa de Referência</div>
+          <div style="font-size:12px;font-weight:700;color:var(--text);margin-top:2px">${_faixaLabel()}</div>
+        </div>
+        <span style="font-size:11px;color:var(--blue);font-weight:700">Alterar →</span>
+      </div>
+
+      <!-- Progresso -->
+      <div style="background:var(--border);border-radius:99px;height:6px;overflow:hidden;margin-bottom:6px">
         <div style="height:100%;width:${pct}%;background:${pct===100?'var(--green)':'var(--amber)'};border-radius:99px;transition:width .3s"></div>
       </div>
-      <div style="display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin-bottom:10px">
-        <div style="text-align:center">
-          <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Recolha</div>
-          <div style="font-size:12px;font-weight:800;color:var(--text)">${dataExec}</div>
-        </div>
-        <div style="flex:1;height:2px;background:var(--border);border-radius:99px;position:relative">
-          <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:12px">→</div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-size:9px;color:#8B5CF6;font-weight:700;text-transform:uppercase">Soltura</div>
-          <div style="font-size:12px;font-weight:800;color:#8B5CF6">${new Date((_rcSolturaData||_rcEscalaData)+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'})}</div>
-        </div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text4);margin-bottom:10px">
+        <span>🔑 ${tot} recolhidos · ⛽ ${Object.keys(abastMap).length} abastecidos</span>
+        <span style="color:${totDisp>0?'var(--green)':'var(--text4)'}">✅ ${totDisp} prontos</span>
       </div>
-      <!-- Progresso -->
-      <div class="prog"><div class="prog-f" style="width:${pct}%;background:${pct===100?'var(--green)':'var(--blue)'}"></div></div>
-      <div style="margin-top:5px;font-size:11px;color:var(--text3)">
-        <span>🔑 ${tot}/${totEscala} recolhidos</span>
-      </div>
+
       <!-- Busca -->
-      <div style="position:relative;margin-top:10px">
+      <div style="position:relative">
         <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:14px">🔍</span>
-        <input type="text" placeholder="Buscar prefixo, linha ou motorista..." id="busca-recolha"
-          oninput="filtrarRecolha(this.value)"
+        <input type="text" placeholder="Buscar prefixo..." oninput="filtrarCards('cards-recolha','prefixo',this.value)"
           style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 10px 10px 32px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
       </div>
     </div>
-    <div class="sl" id="sl-recolha">${totEscala} veículo(s)</div>
+    <div class="sl" id="sl-recolha">${totFrota} veículo(s) · ${tot} recolhidos na faixa</div>
     <div id="cards-recolha">${cards}</div>
   `);
 }
 
+
+
+function filtrarCards(containerId, campo, busca){
+  document.querySelectorAll('#'+containerId+' .vcard').forEach(el=>{
+    const txt=el.querySelector('.'+campo)?.textContent||'';
+    el.style.display=!busca||txt.toLowerCase().includes(busca.toLowerCase())?'flex':'none';
+  });
+}
 function mudarEscalaRef(data){_rcEscalaData=data;telaRecolha();}
 
 function filtrarRecolha(busca){
@@ -1787,14 +1887,15 @@ async function telaAbastecimento(){
   }
   _abFrotaLista=frotaRaw;
 
-  // Abastecimentos já feitos: busca hoje E ontem (turno noturno cruza a meia-noite)
+  // Abastecimentos dentro da faixa horária definida pelo operador
+  const iniISO=_faixaIniISO(), fimISO=_faixaFimISO();
   let abastMap={};
   try{
-    const ontem=new Date();ontem.setDate(ontem.getDate()-1);
-    const ontemStr=ontem.toISOString().split('T')[0];
     const{data:abast}=await sb.from('abastecimento_checklist').select('*')
-      .eq('garagem_id',gid).in('data',[hojeStrAb,ontemStr]).order('created_at',{ascending:false});
-    // abastMap: último por prefixo (mais recente prevalece)
+      .eq('garagem_id',gid)
+      .gte('created_at',iniISO)
+      .lte('created_at',fimISO)
+      .order('created_at',{ascending:false});
     if(abast) abast.forEach(a=>{if(!abastMap[a.prefixo])abastMap[a.prefixo]=a;});
   }catch(e){}
 
@@ -1823,9 +1924,18 @@ async function telaAbastecimento(){
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div>
           <div style="font-weight:800;font-size:17px">⛽ Abastecimento</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">Toda a frota · ${dataFmt}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Toda a frota · ${tot} na faixa</div>
         </div>
         <button onclick="telaAbastecimento()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>
+      </div>
+      <!-- Faixa horária -->
+      <div onclick="abrirSeletorFaixa(()=>telaAbastecimento())"
+        style="background:var(--surface2);border:1px solid var(--blue);border-radius:10px;padding:10px 12px;margin-bottom:10px;cursor:pointer;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:9px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:1px">⏰ Faixa de Referência</div>
+          <div style="font-size:12px;font-weight:700;color:var(--text);margin-top:2px">${_faixaLabel()}</div>
+        </div>
+        <span style="font-size:11px;color:var(--blue);font-weight:700">Alterar →</span>
       </div>
       <div class="prog"><div class="prog-f" style="width:${pct}%;background:${pct===100?'var(--green)':'var(--blue)'}"></div></div>
       <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:11px;color:var(--text3);margin-bottom:10px">
