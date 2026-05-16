@@ -7333,12 +7333,14 @@ function preencherSlotVazio(id, novoCarro, novoPlanoNum, novoPlanoNome) {
   const item = rascunho.find(e => e.id === id);
   if (!item) return;
 
+  const dadosCarro = (_prevDados||[]).filter(p=>p.carro===novoCarro);
+
   // Se o slot é valetamento, manter tipo e forçar plano 002
   if(item.tipo === 'valetamento'){
     const p002 = dadosCarro.find(p=>p.planoNum==='002');
     const planoFinal = p002?.planoNum || '002';
     const planoNomeFinal = p002?.planoNome || 'PREVENTIVA PESADA';
-    const dadosPlano = dadosCarro.find(p=>p.planoNum===planoFinal) || {};
+    const dadosPlano = p002 || {};
     item.carro = novoCarro;
     item.planoNum = planoFinal;
     item.planoNome = planoNomeFinal;
