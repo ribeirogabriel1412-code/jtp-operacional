@@ -6771,24 +6771,15 @@ function gerarEscalaAutomatica(dados, semanaRef, prefixosJaProgramados=new Set()
   // União: rascunho atual + banco (semana corrente)
   const carrosComPesadaNaSemana = new Set([...carrosRascunho, ...prefixosJaProgramados]);
 
-  // Próximas 10 pesadas para a semana seguinte — exatamente 10
-  const proxPesadasValet = filaCompletaPesada
-    .filter(r => !carrosComPesadaNaSemana.has(r.carro))
-    .slice(0, 10);
-
-  // Próximas garantias extras (carros de garantia sem pesada pendente) — até 5
-  // Só entra se não estiver na lista de pesadas do valetamento
-
   const sabStr = toDateStr(sabValetamento);
 
   // ── PASSO 5: VALETAMENTO — Sábado, exatamente 10 pesadas ───────────────
   // Finalidade: preparar cestos de peças para as próximas 10 pesadas
-  // Regra simples: próximos 10 da fila de pesadas que NÃO estão na semana atual
   // SEM +LEVE, SEM +GARAN, SEM oportunistas — é só sobre a pesada em si
 
   const proxPesadasValet = filaCompletaPesada
     .filter(r => !carrosComPesadaNaSemana.has(r.carro))
-    .slice(0, 10); // exatamente 10
+    .slice(0, 10);
 
   proxPesadasValet.forEach(r => {
     escala.push({
