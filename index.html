@@ -7303,7 +7303,7 @@ function abrirPreencherSlot(id) {
         <div>
           <div style="font-size:15px;font-weight:800">➕ Preencher Slot</div>
           <div style="font-size:12px;color:var(--text3);margin-top:2px">
-            ${item.data?.split('-').reverse().join('/')} · ${item.tipo==='pesada'?'Pesada':item.tipo==='leve'?'Leve':item.tipo==='garantia'?'Garantia':'Slot'}
+            ${item.data?.split('-').reverse().join('/')} · ${item.tipo==='pesada'?'Pesada':item.tipo==='leve'?'Leve':item.tipo==='garantia'?'Garantia':item.tipo==='valetamento'?'📦 Valetamento':'Slot'}
           </div>
         </div>
         <button onclick="document.getElementById('modal-substituto')?.remove()"
@@ -7398,10 +7398,13 @@ function confirmarRemocaoEscala(id) {
   if (!item) { document.getElementById('modal-substituto')?.remove(); return; }
 
   // Não remove — transforma em slot vazio visível
+  // IMPORTANTE: preservar o tipo original para a busca de substitutos funcionar corretamente
+  const tipoOriginal = item.tipo; // preservar antes de limpar
   item.carro = '—';
   item.planoNome = 'Slot Vazio';
   item.confirmado = false;
   item.slotVazio = true;
+  item.tipo = tipoOriginal; // manter tipo original (pesada, leve, garantia, valetamento)
   item.oportunistas = [];
   item.oportunistasNomes = [];
   item.substituicaoManual = false;
