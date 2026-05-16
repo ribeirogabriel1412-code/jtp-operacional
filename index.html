@@ -6778,51 +6778,29 @@ function gerarEscalaAutomatica(dados, semanaRef, prefixosJaProgramados=new Set()
 
   // Próximas garantias extras (carros de garantia sem pesada pendente) — até 5
   // Só entra se não estiver na lista de pesadas do valetamento
-  const carrosJaNoValet = new Set(proxPesadasValet.map(r => r.carro));
-  const proxGarantiasValet = filaGarantiaCompleta
-    .filter(r => !carrosComPesadaNaSemana.has(r.carro) && !carrosJaNoValet.has(r.carro))
-    .slice(0, 5);
 
   const sabStr = toDateStr(sabValetamento);
-  console.log('[VALET] carrosNaSemana:', carrosComPesadaNaSemana.size, [...carrosComPesadaNaSemana].slice(0,5));
-  console.log('[VALET] filaCompletaPesada total:', filaCompletaPesada.length);
-  console.log('[VALET] proxPesadasValet:', proxPesadasValet.length, proxPesadasValet.map(r=>r.carro+'('+r.excessoKm+')'));
-  console.log('[VALET] sabStr:', sabStr);
 
-  // Alocar pesadas do valetamento
+  // ── PASSO 5: VALETAMENTO — Sábado, exatamente 10 pesadas ───────────────
+  // Finalidade: preparar cestos de peças para as próximas 10 pesadas
+  // Regra simples: próximos 10 da fila de pesadas que NÃO estão na semana atual
+  // SEM +LEVE, SEM +GARAN, SEM oportunistas — é só sobre a pesada em si
+
+  const proxPesadasValet = filaCompletaPesada
+    .filter(r => !carrosComPesadaNaSemana.has(r.carro))
+    .slice(0, 10); // exatamente 10
+
   proxPesadasValet.forEach(r => {
-    const leveCarro = (porCarro[r.carro]||[]).find(p => isLeve(p.planoNum));
-    const garantCarro = (porCarro[r.carro]||[]).find(p => isPlanoGarantia(p.planoNum));
-    const incl = [
-      leveCarro   ? '+LEVE' : null,
-      garantCarro ? '+GARAN': null,
-    ].filter(Boolean);
-
     escala.push({
       carro: r.carro, planoNum: r.planoNum, planoNome: r.planoNome,
       data: sabStr, turno: 'VAL', cesto: true, tipo: 'valetamento',
-      excessoKm: r.excessoKm, oportunistas: [], oportunistasNomes: [],
-      incluileve: !!leveCarro, incluiGarantia: !!garantCarro, incluiPesada: false,
-      motivo: `📦 Pesada próxima semana${incl.length?' · '+incl.join(' '):''} · ${r.excessoKm.toLocaleString('pt-BR')} km`,
+      excessoKm: r.excessoKm,
+      oportunistas: [], oportunistasNomes: [],
+      incluileve: false, incluiGarantia: false, incluiPesada: false,
+      motivo: `📦 Próxima pesada · ${r.excessoKm.toLocaleString('pt-BR')} km`,
       refData: null,
     });
   });
-
-  // Alocar garantias do valetamento que não estão na fila de pesadas
-  proxGarantiasValet
-    .filter(r => !carrosJaNoValet.has(r.carro))
-    .forEach(r => {
-      const leveCarro = (porCarro[r.carro]||[]).find(p => isLeve(p.planoNum));
-
-      escala.push({
-        carro: r.carro, planoNum: r.planoNum, planoNome: r.planoNome,
-        data: sabStr, turno: 'VAL', cesto: true, tipo: 'valetamento',
-        excessoKm: r.excessoKm, oportunistas: [], oportunistasNomes: [],
-        incluileve: !!leveCarro, incluiGarantia: false, incluiPesada: false,
-        motivo: `📦 Garantia próxima semana${leveCarro?' · +LEVE':''} · ${r.excessoKm.toLocaleString('pt-BR')} km`,
-        refData: null,
-      });
-    });
 
   return { escala, diasSemana, sabValetamento, slots };
 }
