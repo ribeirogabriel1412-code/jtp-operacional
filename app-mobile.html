@@ -1469,127 +1469,108 @@ async function salvarPosicaoPatio(){
 // ══════════════════════════════════════════════════════════
 let _rcData=hoje(), _rcEscalaData='', _rcEscalaLista=[];
 
-// ── FAIXA HORÁRIA GLOBAL (compartilhada entre plantão e abastecimento) ───
-// O operador define uma vez e todos os módulos usam
-// Noite padrão: hoje 19:00 → amanhã 07:20
-function _faixaDefault(){
+// ── DIA DE REFERÊNCIA (plantão, abastecimento, líder de pátio) ───────────
+// O operador escolhe só o DIA — faixa 19:00 → dia+1 07:20 calculada automaticamente
+
+function _diaRefDefault(){
   const agora=new Date();
   const h=agora.getHours();
-  const d=agora.toISOString().slice(0,10);
-  const amanha=new Date(agora); amanha.setDate(agora.getDate()+1);
-  const amanhaStr=amanha.toISOString().slice(0,10);
-  const ontem=new Date(agora); ontem.setDate(agora.getDate()-1);
-  const ontemStr=ontem.toISOString().slice(0,10);
-  // Se estiver entre 07h e 17h → faixa dia
-  if(h>=7&&h<17) return {dIni:d,hIni:'07:00',dFim:d,hFim:'17:00',turno:'dia'};
-  // Se estiver entre 17h e 23h59 → faixa noite (começa hoje)
-  if(h>=17) return {dIni:d,hIni:'19:00',dFim:amanhaStr,hFim:'07:20',turno:'noite'};
-  // Entre 00h e 07h → noite que começou ontem
-  return {dIni:ontemStr,hIni:'19:00',dFim:d,hFim:'07:20',turno:'noite'};
+  if(h<17){
+    const ontem=new Date(agora); ontem.setDate(ontem.getDate()-1);
+    return ontem.toISOString().slice(0,10);
+  }
+  return agora.toISOString().slice(0,10);
 }
-if(!window._faixa) window._faixa=_faixaDefault();
 
-function _faixaIniISO(){ return window._faixa.dIni+'T'+window._faixa.hIni+':00'; }
-function _faixaFimISO(){ return window._faixa.dFim+'T'+window._faixa.hFim+':00'; }
+if(!window._diaRef) window._diaRef=_diaRefDefault();
+
+function _faixaIniISO(){ return window._diaRef+'T19:00:00'; }
+function _faixaFimISO(){
+  const d=new Date(window._diaRef+'T12:00:00');
+  d.setDate(d.getDate()+1);
+  return d.toISOString().slice(0,10)+'T07:20:00';
+}
+function _diaSoltura(){
+  const d=new Date(window._diaRef+'T12:00:00');
+  d.setDate(d.getDate()+1);
+  return d.toISOString().slice(0,10);
+}
+function _diaRefLabel(){
+  return new Date(window._diaRef+'T12:00:00').toLocaleDateString('pt-BR',{
+    timeZone:'America/Manaus',weekday:'short',day:'2-digit',month:'2-digit'
+  });
+}
 function _faixaLabel(){
-  const f=window._faixa;
-  const fi=new Date(f.dIni+'T'+f.hIni).toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-  const ff=new Date(f.dFim+'T'+f.hFim).toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-  return fi+' → '+ff;
+  const ini=new Date(window._diaRef+'T19:00:00').toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const d=new Date(window._diaRef+'T12:00:00');d.setDate(d.getDate()+1);
+  const fim=new Date(d.toISOString().slice(0,10)+'T07:20:00').toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  return ini+' → '+fim;
 }
+// Compatibilidade com código legado que usa window._faixa
+if(!window._faixa) window._faixa={
+  get dIni(){ return window._diaRef; },
+  get hIni(){ return '19:00'; },
+  get dFim(){ const d=new Date(window._diaRef+'T12:00:00');d.setDate(d.getDate()+1);return d.toISOString().slice(0,10); },
+  get hFim(){ return '07:20'; },
+  turno:'noite'
+};
 
 
-// ── Widget de seleção de faixa horária ───────────────────────────────────
+// ── Seletor de Dia de Referência ─────────────────────────────────────────
+// O operador escolhe só o DIA — faixa calculada automaticamente (19h→07h20)
 function abrirSeletorFaixa(callback){
-  const f=window._faixa;
-  openSheet('⏰ Definir Faixa de Referência',`
-    <div style="display:flex;flex-direction:column;gap:12px">
-      <div style="background:var(--surface2);border-radius:10px;padding:10px 12px;font-size:12px;color:var(--text3)">
-        Define o período de trabalho. Registros fora desta faixa <strong>não serão contabilizados</strong>.
+  window._faixaCallback=callback;
+  const dRef=window._diaRef||_diaRefDefault();
+  const dRefFmt=new Date(dRef+'T12:00:00').toLocaleDateString('pt-BR',{timeZone:'America/Manaus',weekday:'long',day:'2-digit',month:'2-digit'});
+  const dSoltura=_diaSoltura();
+  const dSolturaFmt=new Date(dSoltura+'T12:00:00').toLocaleDateString('pt-BR',{timeZone:'America/Manaus',weekday:'long',day:'2-digit',month:'2-digit'});
+
+  openSheet('📅 Dia de Referência',`
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div style="background:var(--surface2);border-radius:10px;padding:12px;font-size:12px;color:var(--text3)">
+        Escolha o <strong>dia do plantão</strong>. A faixa de dados será calculada automaticamente:
+        <strong style="color:var(--text)"> 19:00 → dia seguinte 07:20</strong>
       </div>
 
-      <!-- Atalhos -->
-      <div style="display:flex;gap:8px">
-        <button data-turno-btn="dia" onclick="aplicarFaixaRapida('dia')"
-          style="flex:1;padding:10px;border-radius:10px;border:2px solid ${f.turno==='dia'?'var(--blue)':'var(--border)'};background:${f.turno==='dia'?'#2563EB18':'transparent'};color:${f.turno==='dia'?'var(--blue)':'var(--text3)'};font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">
-          ☀️ Dia<br><span style="font-size:10px;font-weight:400">07:00 → 17:00</span>
-        </button>
-        <button data-turno-btn="noite" onclick="aplicarFaixaRapida('noite')"
-          style="flex:1;padding:10px;border-radius:10px;border:2px solid ${f.turno==='noite'?'var(--blue)':'var(--border)'};background:${f.turno==='noite'?'#2563EB18':'transparent'};color:${f.turno==='noite'?'var(--blue)':'var(--text3)'};font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">
-          🌙 Noite<br><span style="font-size:10px;font-weight:400">19:00 → 07:20</span>
-        </button>
+      <div>
+        <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:8px">📅 Dia do Plantão</label>
+        <input type="date" id="fx-dia-ref" value="${dRef}"
+          oninput="document.getElementById('fx-preview').innerHTML=_previewDiaRef(this.value)"
+          style="width:100%;background:var(--surface);border:2px solid var(--blue);border-radius:10px;padding:12px;color:var(--text);font-size:16px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box;text-align:center">
       </div>
 
-      <!-- Manual -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div>
-          <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">📅 Data Início</label>
-          <input type="date" id="fx-d-ini" value="${f.dIni}"
-            style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 10px;color:var(--text);font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
-        </div>
-        <div>
-          <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">🕐 Hora Início</label>
-          <input type="time" id="fx-h-ini" value="${f.hIni}"
-            style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 10px;color:var(--text);font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
-        </div>
-        <div>
-          <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">📅 Data Fim</label>
-          <input type="date" id="fx-d-fim" value="${f.dFim}"
-            style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 10px;color:var(--text);font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
-        </div>
-        <div>
-          <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">🕔 Hora Fim</label>
-          <input type="time" id="fx-h-fim" value="${f.hFim}"
-            style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 10px;color:var(--text);font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
-        </div>
+      <div id="fx-preview" style="background:var(--surface2);border-radius:10px;padding:12px">
+        ${_previewDiaRef(dRef)}
       </div>
 
-      <button onclick="confirmarFaixa()" style="padding:14px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">
-        ✅ Confirmar Faixa
+      <button onclick="confirmarDiaRef()" style="padding:15px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">
+        ✅ Confirmar
       </button>
     </div>
   `);
-  window._faixaCallback=callback;
 }
 
-function aplicarFaixaRapida(turno){
-  const d=hoje();
-  const amanha=new Date(); amanha.setDate(amanha.getDate()+1);
-  const amanhaStr=amanha.toISOString().slice(0,10);
-  const dIni=document.getElementById('fx-d-ini');
-  const hIni=document.getElementById('fx-h-ini');
-  const dFim=document.getElementById('fx-d-fim');
-  const hFim=document.getElementById('fx-h-fim');
-  if(turno==='dia'){
-    if(dIni) dIni.value=d;
-    if(hIni) hIni.value='07:00';
-    if(dFim) dFim.value=d;
-    if(hFim) hFim.value='17:00';
-  } else {
-    if(dIni) dIni.value=d;
-    if(hIni) hIni.value='19:00';
-    if(dFim) dFim.value=amanhaStr;
-    if(hFim) hFim.value='07:20';
-  }
-  // Atualizar visual dos botões de atalho
-  document.querySelectorAll('[data-turno-btn]').forEach(btn=>{
-    const sel=btn.dataset.turnoBtn===turno;
-    btn.style.borderColor=sel?'var(--blue)':'var(--border)';
-    btn.style.background=sel?'#2563EB18':'transparent';
-    btn.style.color=sel?'var(--blue)':'var(--text3)';
-  });
+function _previewDiaRef(dRef){
+  if(!dRef) return '';
+  const d=new Date(dRef+'T12:00:00');
+  const dNext=new Date(dRef+'T12:00:00');dNext.setDate(d.getDate()+1);
+  const fmt=(dt,h,m)=>dt.toLocaleDateString('pt-BR',{timeZone:'America/Manaus',weekday:'short',day:'2-digit',month:'2-digit'})+' '+h+':'+m;
+  return`<div style="font-size:11px;color:var(--text3)">
+    <div style="margin-bottom:6px;font-weight:700;color:var(--text)">Dados que serão computados:</div>
+    <div>🔑 Plantão/⛽ Abastecimento: <strong style="color:var(--blue)">${fmt(d,'19','00')} → ${fmt(dNext,'07','20')}</strong></div>
+    <div style="margin-top:4px">🚌 Soltura do Líder de Pátio: <strong style="color:var(--green)">${dNext.toLocaleDateString('pt-BR',{timeZone:'America/Manaus',weekday:'short',day:'2-digit',month:'2-digit'})}</strong></div>
+  </div>`;
 }
 
-function confirmarFaixa(){
-  const dIni=document.getElementById('fx-d-ini')?.value;
-  const hIni=document.getElementById('fx-h-ini')?.value;
-  const dFim=document.getElementById('fx-d-fim')?.value;
-  const hFim=document.getElementById('fx-h-fim')?.value;
-  if(!dIni||!hIni||!dFim||!hFim){ toast('Preencha todos os campos','err'); return; }
-  const turno=hIni<='12:00'?'dia':'noite';
-  window._faixa={dIni,hIni,dFim,hFim,turno};
+function confirmarDiaRef(){
+  const dRef=document.getElementById('fx-dia-ref')?.value;
+  if(!dRef){ toast('Selecione o dia','err'); return; }
+  window._diaRef=dRef;
+  // Atualizar compatibilidade com _faixa
+  const dNext=new Date(dRef+'T12:00:00');dNext.setDate(dNext.getDate()+1);
+  window._faixa={dIni:dRef,hIni:'19:00',dFim:dNext.toISOString().slice(0,10),hFim:'07:20',turno:'noite'};
   closeSheet(true);
-  toast('✅ Faixa: '+_faixaLabel());
+  toast('✅ Dia de referência: '+_diaRefLabel());
   if(window._faixaCallback) window._faixaCallback();
 }
 
@@ -1677,12 +1658,13 @@ async function telaRecolha(dataFiltro=null){
         <button onclick="telaRecolha()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>
       </div>
 
-      <!-- Faixa horária -->
+      <!-- Dia de referência -->
       <div onclick="abrirSeletorFaixa(()=>telaRecolha())"
-        style="background:var(--surface2);border:1px solid var(--blue);border-radius:10px;padding:10px 12px;margin-bottom:10px;cursor:pointer;display:flex;align-items:center;justify-content:space-between">
+        style="background:var(--surface2);border:1px solid var(--blue);border-radius:10px;padding:10px 14px;margin-bottom:10px;cursor:pointer;display:flex;align-items:center;justify-content:space-between">
         <div>
-          <div style="font-size:9px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:1px">⏰ Faixa de Referência</div>
-          <div style="font-size:12px;font-weight:700;color:var(--text);margin-top:2px">${_faixaLabel()}</div>
+          <div style="font-size:9px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:1px">📅 Dia de Referência</div>
+          <div style="font-size:14px;font-weight:800;color:var(--text);margin-top:2px">${_diaRefLabel()}</div>
+          <div style="font-size:10px;color:var(--text4);margin-top:1px">${_faixaLabel()}</div>
         </div>
         <span style="font-size:11px;color:var(--blue);font-weight:700">Alterar →</span>
       </div>
@@ -1935,12 +1917,13 @@ async function telaAbastecimento(){
         </div>
         <button onclick="telaAbastecimento()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>
       </div>
-      <!-- Faixa horária -->
+      <!-- Dia de referência -->
       <div onclick="abrirSeletorFaixa(()=>telaAbastecimento())"
-        style="background:var(--surface2);border:1px solid var(--blue);border-radius:10px;padding:10px 12px;margin-bottom:10px;cursor:pointer;display:flex;align-items:center;justify-content:space-between">
+        style="background:var(--surface2);border:1px solid var(--blue);border-radius:10px;padding:10px 14px;margin-bottom:10px;cursor:pointer;display:flex;align-items:center;justify-content:space-between">
         <div>
-          <div style="font-size:9px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:1px">⏰ Faixa de Referência</div>
-          <div style="font-size:12px;font-weight:700;color:var(--text);margin-top:2px">${_faixaLabel()}</div>
+          <div style="font-size:9px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:1px">📅 Dia de Referência</div>
+          <div style="font-size:14px;font-weight:800;color:var(--text);margin-top:2px">${_diaRefLabel()}</div>
+          <div style="font-size:10px;color:var(--text4);margin-top:1px">${_faixaLabel()}</div>
         </div>
         <span style="font-size:11px;color:var(--blue);font-weight:700">Alterar →</span>
       </div>
@@ -3524,10 +3507,123 @@ window._ck34={};
 
 async function telaChecklistEquip(){
   const gid=getGid();
-  const f=window._faixa||_faixaDefault();
-  const turno=f.turno||S.turno||'dia';
+  const turno=S.turno||'dia';
   const agora=new Date();
   const dataHoje=hoje();
+
+  // Buscar se já foi preenchido hoje neste turno
+  let jaFeito=false, ultimoReg=null;
+  try{
+    const{data:existentes}=await sb.from('checklist_equipamentos')
+      .select('id,criado_em,criado_por,total_ok,total_nok')
+      .eq('garagem_id',gid)
+      .eq('data',dataHoje)
+      .order('criado_em',{ascending:false}).limit(1);
+    if(existentes?.[0]){ jaFeito=true; ultimoReg=existentes[0]; }
+  }catch(e){}
+
+  const totalItens=EQUIP_OFICINA_34.length+EQUIP_PATIO_34.length;
+  const preenchidos=Object.values(window._ck34).filter(v=>v.status).length;
+  const noks=Object.values(window._ck34).filter(v=>v.status==='nok').length;
+  const oks=Object.values(window._ck34).filter(v=>v.status==='ok').length;
+  const pct=totalItens>0?Math.round(preenchidos/totalItens*100):0;
+
+  function cardEquip(equip,secao){
+    const val=window._ck34[secao+'_'+equip.id]||{status:'',manut:'',obs:''};
+    const okSel=val.status==='ok';
+    const nokSel=val.status==='nok';
+    const simSel=val.manut==='sim';
+    const borda=nokSel?'var(--red)':okSel?'var(--green)':'var(--border)';
+    return`<div class="vcard" style="border-left:4px solid ${borda};border-color:${borda};margin-bottom:8px;flex-direction:column;align-items:stretch">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+        <div>
+          <div style="font-size:13px;font-weight:700">${equip.nome}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">✓ ${equip.criterio}</div>
+        </div>
+        ${okSel?`<span style="font-size:18px">✅</span>`:nokSel?`<span style="font-size:18px">❌</span>`:`<span style="font-size:18px;color:var(--border)">○</span>`}
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="setCk34('${secao}','${equip.id}','status','ok')"
+          style="flex:1;padding:10px;border-radius:8px;border:2px solid ${okSel?'var(--green)':'var(--border)'};background:${okSel?'#00C48C18':'transparent'};color:${okSel?'var(--green)':'var(--text3)'};font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">
+          ✅ OK
+        </button>
+        <button onclick="setCk34('${secao}','${equip.id}','status','nok')"
+          style="flex:1;padding:10px;border-radius:8px;border:2px solid ${nokSel?'var(--red)':'var(--border)'};background:${nokSel?'#EF444418':'transparent'};color:${nokSel?'var(--red)':'var(--text3)'};font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">
+          ❌ NOK
+        </button>
+      </div>
+      ${nokSel?`<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <input type="text" placeholder="Descreva o problema..." oninput="setCk34('${secao}','${equip.id}','obs',this.value)"
+          value="${val.obs||''}"
+          style="background:var(--surface2);border:1px solid var(--red);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+        <div style="display:flex;gap:6px">
+          <button onclick="setCk34('${secao}','${equip.id}','manut','sim')"
+            style="flex:1;padding:7px;border-radius:7px;border:2px solid ${simSel?'var(--amber)':'var(--border)'};background:${simSel?'#F59E0B18':'transparent'};color:${simSel?'var(--amber)':'var(--text3)'};font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">
+            🔧 Manutenção necessária
+          </button>
+          <button onclick="setCk34('${secao}','${equip.id}','manut','nao')"
+            style="flex:1;padding:7px;border-radius:7px;border:2px solid ${val.manut==='nao'?'var(--blue)':'var(--border)'};background:${val.manut==='nao'?'#2563EB18':'transparent'};color:${val.manut==='nao'?'var(--blue)':'var(--text3)'};font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">
+            👁️ Monitorar
+          </button>
+        </div>
+      </div>`:''}
+    </div>`;
+  }
+
+  render(`
+    <div style="padding:14px 14px 0">
+      <!-- Cabeçalho -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div>
+          <div style="font-weight:800;font-size:17px">📋 Checklist 3.4</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:3px">
+            ${agora.toLocaleDateString('pt-BR',{timeZone:'America/Manaus',weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'})}
+          </div>
+        </div>
+        <button onclick="telaChecklistEquip()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>
+      </div>
+
+      <!-- Já preenchido hoje -->
+      ${jaFeito?`<div style="background:#00C48C10;border:1px solid #00C48C40;border-radius:10px;padding:10px 12px;margin-bottom:12px">
+        <div style="font-size:12px;font-weight:700;color:var(--green)">✅ Já preenchido neste turno</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:3px">
+          ${ultimoReg?.criado_por||'—'} · ${ultimoReg?.criado_em?new Date(ultimoReg.criado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):''}
+          <span style="margin-left:8px">✅ ${ultimoReg?.total_ok||0} OK · ❌ ${ultimoReg?.total_nok||0} NOK</span>
+        </div>
+        <div style="font-size:10px;color:var(--text4);margin-top:4px">Preencha novamente para substituir o registro</div>
+      </div>`:''}
+
+      <!-- Progresso -->
+      <div style="background:var(--border);border-radius:99px;height:6px;overflow:hidden;margin-bottom:6px">
+        <div style="height:100%;width:${pct}%;background:${noks>0?'var(--red)':pct===100?'var(--green)':'var(--blue)'};border-radius:99px;transition:width .3s"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text4);margin-bottom:16px">
+        <span>${preenchidos}/${totalItens} verificados · ✅ ${oks} · ❌ ${noks}</span>
+        <span style="font-weight:700;color:${pct===100?'var(--green)':noks>0?'var(--red)':'var(--text3)'}">${pct===100?'Completo':pct+'%'}</span>
+      </div>
+
+      <!-- Seção Oficina -->
+      <div style="font-size:11px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;padding:6px 10px;background:#2563EB10;border-radius:8px;border-left:3px solid var(--blue)">
+        🔧 Equipamentos da Oficina
+      </div>
+      ${EQUIP_OFICINA_34.map(e=>cardEquip(e,'of')).join('')}
+
+      <div style="font-size:11px;font-weight:800;color:var(--amber);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;margin-top:18px;padding:6px 10px;background:#F59E0B10;border-radius:8px;border-left:3px solid var(--amber)">
+        🚌 Equipamentos de Pátio
+      </div>
+      ${EQUIP_PATIO_34.map(e=>cardEquip(e,'pt')).join('')}
+      <div style="height:90px"></div>
+    </div>
+
+    <!-- Botão fixo acima da navbar -->
+    <div style="position:fixed;bottom:60px;left:0;right:0;padding:10px 14px;background:var(--bg);border-top:1px solid var(--border);z-index:50">
+      <button onclick="salvarChecklist34()"
+        style="width:100%;padding:15px;border-radius:12px;border:none;background:${pct===100?'var(--green)':noks>0?'var(--red)':'var(--blue)'};color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">
+        ${pct===100?'✅ Concluir e Enviar':noks>0?'⚠️ Enviar ('+noks+' NOK)':'💾 Salvar Progresso ('+pct+'%)'}
+      </button>
+    </div>
+  `);
+}
 
   // Buscar registros já salvos na faixa horária atual
   let jaFeito=false, ultimoReg=null;
@@ -3694,7 +3790,6 @@ async function salvarChecklist34(){
   const{error}=await sb.from('checklist_equipamentos').insert({
     garagem_id:gid,
     data:dataHoje,
-    turno,
     dados:dados,
     total_itens:totalItens,
     total_ok:Object.values(dados).filter(v=>v.status==='ok').length,
