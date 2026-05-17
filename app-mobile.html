@@ -3505,21 +3505,75 @@ const EQUIP_PATIO_34=[
 // Estado dos checks em memória durante a sessão
 window._ck34={};
 
+
+// ── TURNOS DO PCM ─────────────────────────────────────────────────────────
+// Dias úteis (seg-sex): Manhã 05:00-13:20 | Tarde 13:00-20:20 | Noite 20:00-04:20
+// Fins de semana: Dia 08:00-16:20 | Noite 20:00-04:20
+
+const TURNOS_PCM = {
+  util: [
+    {id:'manha', label:'☀️ Manhã',  ini:'05:00', fim:'13:20'},
+    {id:'tarde', label:'🌤️ Tarde',  ini:'13:00', fim:'20:20'},
+    {id:'noite', label:'🌙 Noite',  ini:'20:00', fim:'04:20'},
+  ],
+  fds: [
+    {id:'dia',   label:'☀️ Dia',    ini:'08:00', fim:'16:20'},
+    {id:'noite', label:'🌙 Noite',  ini:'20:00', fim:'04:20'},
+  ]
+};
+
+function _turnosHoje(){
+  const dow = new Date().getDay(); // 0=dom, 6=sab
+  return (dow===0||dow===6) ? TURNOS_PCM.fds : TURNOS_PCM.util;
+}
+
+function _turnoAtualPCM(){
+  const agora = new Date();
+  const h = agora.getHours();
+  const min = agora.getMinutes();
+  const hAtual = h + min/60;
+  const turnos = _turnosHoje();
+
+  for(const t of turnos){
+    const [hi,mi] = t.ini.split(':').map(Number);
+    const [hf,mf] = t.fim.split(':').map(Number);
+    const ini = hi + mi/60;
+    let fim = hf + mf/60;
+    if(fim < ini) fim += 24; // cruza meia-noite
+    let h2 = hAtual; if(h2 < ini && fim > 20) h2 += 24;
+    if(h2 >= ini && h2 < fim) return t;
+  }
+  return turnos[0]; // fallback
+}
+
+// Turno selecionado manualmente (permite trocar)
+if(!window._turnoPCM) window._turnoPCM = _turnoAtualPCM()?.id || 'manha';
+
 async function telaChecklistEquip(){
   const gid=getGid();
-  const turno=S.turno||'dia';
   const agora=new Date();
   const dataHoje=hoje();
+  const turnos=_turnosHoje();
+  const turnoId=window._turnoPCM||_turnoAtualPCM()?.id||turnos[0].id;
+  const turnoObj=turnos.find(t=>t.id===turnoId)||turnos[0];
 
-  // Buscar se já foi preenchido hoje neste turno
+  // Buscar registro já feito hoje neste turno
   let jaFeito=false, ultimoReg=null;
   try{
     const{data:existentes}=await sb.from('checklist_equipamentos')
       .select('id,criado_em,criado_por,total_ok,total_nok')
-      .eq('garagem_id',gid)
-      .eq('data',dataHoje)
+      .eq('garagem_id',gid).eq('data',dataHoje).eq('turno',turnoId)
       .order('criado_em',{ascending:false}).limit(1);
     if(existentes?.[0]){ jaFeito=true; ultimoReg=existentes[0]; }
+  }catch(e){}
+
+  // Buscar NOKs pendentes (abertos e não resolvidos)
+  let noksPendentes=[];
+  try{
+    const{data:noks}=await sb.from('checklist_nok_pendentes')
+      .select('*').eq('garagem_id',gid).eq('resolvido',false)
+      .order('criado_em');
+    noksPendentes=noks||[];
   }catch(e){}
 
   const totalItens=EQUIP_OFICINA_34.length+EQUIP_PATIO_34.length;
@@ -3573,24 +3627,64 @@ async function telaChecklistEquip(){
   render(`
     <div style="padding:14px 14px 0">
       <!-- Cabeçalho -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div>
           <div style="font-weight:800;font-size:17px">📋 Checklist 3.4</div>
-          <div style="font-size:12px;color:var(--text3);margin-top:3px">
-            ${agora.toLocaleDateString('pt-BR',{timeZone:'America/Manaus',weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'})}
+          <div style="font-size:11px;color:var(--text3);margin-top:3px">
+            ${agora.toLocaleDateString('pt-BR',{timeZone:'America/Manaus',weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'})}
           </div>
         </div>
         <button onclick="telaChecklistEquip()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>
       </div>
 
-      <!-- Já preenchido hoje -->
-      ${jaFeito?`<div style="background:#00C48C10;border:1px solid #00C48C40;border-radius:10px;padding:10px 12px;margin-bottom:12px">
-        <div style="font-size:12px;font-weight:700;color:var(--green)">✅ Já preenchido neste turno</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:3px">
+      <!-- Seletor de turno -->
+      <div style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px">
+        ${turnos.map(t=>`
+          <button onclick="window._turnoPCM='${t.id}';window._ck34={};telaChecklistEquip()"
+            style="flex:0 0 auto;padding:8px 14px;border-radius:8px;border:2px solid ${t.id===turnoId?'var(--blue)':'var(--border)'};background:${t.id===turnoId?'#2563EB18':'transparent'};color:${t.id===turnoId?'var(--blue)':'var(--text3)'};font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap">
+            ${t.label}<br><span style="font-size:10px;font-weight:400;opacity:0.8">${t.ini}–${t.fim}</span>
+          </button>`).join('')}
+      </div>
+
+      <!-- Já preenchido neste turno -->
+      ${jaFeito?`<div style="background:#00C48C10;border:1px solid #00C48C40;border-radius:10px;padding:10px 12px;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:700;color:var(--green)">✅ Já preenchido — ${turnoObj.label}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">
           ${ultimoReg?.criado_por||'—'} · ${ultimoReg?.criado_em?new Date(ultimoReg.criado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):''}
-          <span style="margin-left:8px">✅ ${ultimoReg?.total_ok||0} OK · ❌ ${ultimoReg?.total_nok||0} NOK</span>
+          · ✅ ${ultimoReg?.total_ok||0} · ❌ ${ultimoReg?.total_nok||0}
         </div>
-        <div style="font-size:10px;color:var(--text4);margin-top:4px">Preencha novamente para substituir o registro</div>
+        <div style="font-size:10px;color:var(--text4);margin-top:3px">Preencha novamente para atualizar</div>
+      </div>`:''}
+
+      <!-- NOKs pendentes — aparecem SEMPRE até o Líder PCM fechar -->
+      ${noksPendentes.length?`<div style="background:#EF444410;border:1px solid #EF444440;border-radius:10px;padding:10px 12px;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:800;color:var(--red);margin-bottom:8px">⚠️ ${noksPendentes.length} PENDÊNCIA(S) EM ABERTO</div>
+        ${noksPendentes.map(n=>{
+          const dias=Math.round((new Date()-new Date(n.criado_em))/86400000);
+          return`<div style="background:var(--surface);border-radius:8px;padding:8px 10px;margin-bottom:6px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:12px;font-weight:700;color:var(--red)">❌ ${n.equipamento}</div>
+                <div style="font-size:11px;color:var(--text3);margin-top:2px">${n.problema||'—'}</div>
+                ${n.ultima_tratativa?`<div style="font-size:10px;color:var(--amber);margin-top:4px">↳ ${n.ultima_tratativa}</div>`:'<div style="font-size:10px;color:var(--red);margin-top:4px;font-weight:700">⚠️ Sem tratativa registrada</div>'}
+              </div>
+              <div style="flex-shrink:0;margin-left:10px;text-align:right">
+                <div style="font-size:11px;font-weight:800;color:${dias>=3?'var(--red)':'var(--amber)'}">${dias}d</div>
+                <div style="font-size:9px;color:var(--text4)">em aberto</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:8px">
+              <button onclick="atualizarNOK('${n.id}')"
+                style="flex:1;padding:7px;border-radius:7px;border:1px solid var(--amber);background:#F59E0B10;color:var(--amber);font-size:11px;font-weight:700;font-family:inherit;cursor:pointer">
+                ✏️ Atualizar
+              </button>
+              ${(S.perfil?.cargo==='lider_pcm'||S.perfil?.is_admin)?`<button onclick="fecharNOK('${n.id}')"
+                style="flex:1;padding:7px;border-radius:7px;border:1px solid var(--green);background:#00C48C10;color:var(--green);font-size:11px;font-weight:700;font-family:inherit;cursor:pointer">
+                ✅ Resolver
+              </button>`:'<div style="flex:1;text-align:center;font-size:10px;color:var(--text4);padding:7px">Líder PCM resolve</div>'}
+            </div>
+          </div>`;
+        }).join('')}
       </div>`:''}
 
       <!-- Progresso -->
@@ -3625,6 +3719,69 @@ async function telaChecklistEquip(){
   `);
 }
 
+
+// ── Atualizar tratativa de NOK pendente ───────────────────────────────────
+async function atualizarNOK(id){
+  openSheet('✏️ Atualizar Tratativa',`
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="background:var(--surface2);border-radius:10px;padding:10px 12px;font-size:12px;color:var(--text3)">
+        Registre o que foi feito ou o status atual da pendência.
+      </div>
+      <textarea id="nok-tratativa" rows="4" placeholder="Descreva a tratativa realizada ou status atual..."
+        style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-size:14px;font-family:inherit;outline:none;resize:none"></textarea>
+      <button onclick="confirmarTratativaNOK('${id}')"
+        style="padding:14px;border-radius:12px;border:none;background:var(--amber);color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">
+        💾 Salvar Tratativa
+      </button>
+    </div>
+  `);
+}
+
+async function confirmarTratativaNOK(id){
+  const txt=document.getElementById('nok-tratativa')?.value?.trim();
+  if(!txt){ toast('Descreva a tratativa','err'); return; }
+  const{error}=await sb.from('checklist_nok_pendentes').update({
+    ultima_tratativa:txt,
+    ultima_atualizacao:new Date().toISOString(),
+    ultima_atualizacao_por:S.perfil?.nome||null,
+  }).eq('id',id);
+  if(error){ toast('Erro: '+error.message,'err'); return; }
+  toast('✅ Tratativa registrada!');
+  closeSheet(true);
+  telaChecklistEquip();
+}
+
+// ── Fechar NOK como resolvido (só Líder PCM) ──────────────────────────────
+async function fecharNOK(id){
+  openSheet('✅ Confirmar Resolução',`
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="background:#00C48C10;border:1px solid #00C48C40;border-radius:10px;padding:12px;font-size:12px;color:var(--green)">
+        Confirme que o equipamento foi reparado e está operacional.
+      </div>
+      <textarea id="nok-resolucao" rows="3" placeholder="Descreva como foi resolvido..."
+        style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-size:14px;font-family:inherit;outline:none;resize:none"></textarea>
+      <button onclick="confirmarFechamentoNOK('${id}')"
+        style="padding:14px;border-radius:12px;border:none;background:var(--green);color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">
+        ✅ Confirmar Resolução
+      </button>
+    </div>
+  `);
+}
+
+async function confirmarFechamentoNOK(id){
+  const txt=document.getElementById('nok-resolucao')?.value?.trim();
+  const{error}=await sb.from('checklist_nok_pendentes').update({
+    resolvido:true,
+    resolvido_em:new Date().toISOString(),
+    resolvido_por:S.perfil?.nome||null,
+    resolucao:txt||'Resolvido',
+  }).eq('id',id);
+  if(error){ toast('Erro: '+error.message,'err'); return; }
+  toast('✅ NOK fechado como resolvido!');
+  closeSheet(true);
+  telaChecklistEquip();
+}
+
 function setCk34(secao, id, campo, valor){
   const key=secao+'_'+id;
   if(!window._ck34[key]) window._ck34[key]={status:'',manut:'',obs:''};
@@ -3657,9 +3814,11 @@ async function salvarChecklist34(){
   if(btn){ btn.disabled=true; btn.textContent='Salvando...'; }
 
   // Salvar no banco
+  const turnoId=window._turnoPCM||_turnoAtualPCM()?.id||'manha';
   const{error}=await sb.from('checklist_equipamentos').insert({
     garagem_id:gid,
     data:dataHoje,
+    turno:turnoId,
     dados:dados,
     total_itens:totalItens,
     total_ok:Object.values(dados).filter(v=>v.status==='ok').length,
@@ -3675,8 +3834,35 @@ async function salvarChecklist34(){
     return;
   }
 
-  // Montar e enviar mensagem WhatsApp
+  // Criar/atualizar pendências de NOK no banco
   const garagem=S.garagens?.find(g=>g.id===gid);
+  for(const n of noks){
+    try{
+      // Verificar se já existe pendência aberta para este equipamento
+      const{data:exist}=await sb.from('checklist_nok_pendentes')
+        .select('id').eq('garagem_id',gid).eq('equipamento',n.nome).eq('resolvido',false).maybeSingle();
+      if(!exist){
+        // Criar nova pendência
+        await sb.from('checklist_nok_pendentes').insert({
+          garagem_id:gid,
+          equipamento:n.nome,
+          problema:n.obs||'',
+          criado_por:S.perfil?.nome||null,
+          criado_em:new Date().toISOString(),
+          resolvido:false,
+          ultima_tratativa:null,
+          ultima_atualizacao:null,
+        });
+      } else {
+        // Atualizar o problema se mudou
+        await sb.from('checklist_nok_pendentes')
+          .update({problema:n.obs||''}).eq('id',exist.id);
+      }
+    }catch(e){}
+  }
+
+  // Montar e enviar mensagem WhatsApp
+  const garagem2=garagem;void garagem2; // compatibilidade
   const dtFmt=agora.toLocaleDateString('pt-BR',{timeZone:'America/Manaus'});
   const hrFmt=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'});
   const emoji=noks.length===0?'✅':'⚠️';
