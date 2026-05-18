@@ -1404,7 +1404,7 @@ function formatDataBR(d){if(!d)return'—';const[y,m,dia]=d.split('-');return`${
 function almBadge(txt,cor){return`<span style="background:${cor}18;border:1px solid ${cor}40;color:${cor};border-radius:6px;padding:2px 9px;font-size:11px;font-weight:700">${txt}</span>`;}
 function almRow(ic,titulo,sub,badge,onclick){
   const clk=onclick?`onclick="${onclick}" style="cursor:pointer"`:'';
-  return`<div ${clk} style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:center;gap:14px${onclick?';transition:border-color .15s" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'':''}">
+  return`<div ${clk} style="background:'var'(--surface);border:1px solid 'var'(--border);border-radius:12px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:center;gap:14px${onclick?';transition:border-color .15s" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'':''}">
     <div style="font-size:24px;flex-shrink:0">${ic}</div>
     <div style="flex:1;min-width:0">
       <div style="font-size:14px;font-weight:700;color:var(--text)">${titulo}</div>
