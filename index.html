@@ -4388,12 +4388,12 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
                 <button onclick="salvarManutentores('${id}')" style="margin-left:auto;padding:5px 12px;border-radius:6px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Registrar</button>
               </div>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-              <button onclick="salvarManutentoresEAbrirChecklist('${id}')" style="background:#2563EB18;border:1px solid #2563EB40;color:var(--blue);border-radius:10px;padding:12px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer">
-                🔍 Diagnóstico<br><span style="font-size:10px;font-weight:400;color:var(--text3)">Verificar itens</span>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <button onclick="salvarManutentoresEAbrirChecklist('${id}')" style="background:#F59E0B18;border:1px solid #F59E0B40;color:var(--amber);border-radius:10px;padding:12px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer">
+                ✅ Qualificação<br><span style="font-size:10px;font-weight:400;color:var(--text3)">Verificar itens</span>
               </button>
-              <button style="background:#47556918;border:1px solid #47556940;color:var(--text3);border-radius:10px;padding:12px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:not-allowed;opacity:.5">
-                ✅ Qualificação<br><span style="font-size:10px;font-weight:400">Liberado após V</span>
+              <button onclick="abrirChecklist38FromOS('${id}','${prefixo||''}')" style="background:#00C48C18;border:1px solid #00C48C40;color:var(--green);border-radius:10px;padding:12px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer">
+                🚌 3.8 Checklist Liberação<br><span style="font-size:10px;font-weight:400;color:var(--text3)">Verificação final do veículo</span>
               </button>
             </div>
           </div>`;
@@ -4410,21 +4410,35 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
       wrap.innerHTML=`
         <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px">
           <div style="color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">📋 CHECKLIST DE LIBERAÇÃO ${aprovado?'<span style="color:var(--green)">✅ APROVADO</span>':submetido?'<span style="color:var(--amber)">⏳ AGUARD. PCM</span>':''}</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <button onclick="verChecklistLib()" style="background:${vOk?'#00C48C18':'#2563EB18'};border:1px solid ${vOk?'#00C48C40':'#2563EB40'};color:${vOk?'var(--green)':'var(--blue)'};border-radius:10px;padding:12px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer">
-              🔍 Diagnóstico ${vOk?'✅':''}<br>
-              <span style="font-size:10px;font-weight:400">${vFeitos}/${total} itens · ${pctV}%</span>
-              <div style="background:${vOk?'#00C48C30':'#2563EB30'};border-radius:99px;height:3px;overflow:hidden;margin-top:6px"><div style="height:100%;width:${pctV}%;background:${vOk?'var(--green)':'var(--blue)'}"></div></div>
-            </button>
-            <button onclick="verChecklistLib()" ${!vOk?'disabled':''} style="background:${tOk?'#00C48C18':'#F59E0B18'};border:1px solid ${tOk?'#00C48C40':'#F59E0B40'};color:${tOk?'var(--green)':'var(--amber)'};border-radius:10px;padding:12px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:${vOk?'pointer':'not-allowed'};opacity:${vOk?'1':'.5'}">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <button onclick="verChecklistLib()" style="background:${tOk?'#00C48C18':'#F59E0B18'};border:1px solid ${tOk?'#00C48C40':'#F59E0B40'};color:${tOk?'var(--green)':'var(--amber)'};border-radius:10px;padding:12px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer">
               ✅ Qualificação ${tOk?'✅':''}<br>
               <span style="font-size:10px;font-weight:400">${tFeitos}/${total} itens · ${pctT}%</span>
               <div style="background:${tOk?'#00C48C30':'#F59E0B30'};border-radius:99px;height:3px;overflow:hidden;margin-top:6px"><div style="height:100%;width:${pctT}%;background:${tOk?'var(--green)':'var(--amber)'}"></div></div>
+            </button>
+            <button onclick="abrirChecklist38FromOS('${id}','${prefixo||''}')" style="background:#00C48C18;border:1px solid #00C48C40;color:var(--green);border-radius:10px;padding:12px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer">
+              🚌 3.8 Checklist Liberação<br>
+              <span style="font-size:10px;font-weight:400">Verificação final do veículo</span>
             </button>
           </div>
         </div>`;
     });
   document.getElementById('modal-22-status').style.display='flex';
+}
+
+// Abrir checklist 3.8 a partir de uma OS — pré-preenche prefixo e abre modal
+function abrirChecklist38FromOS(ocId, prefixo){
+  // Fechar modal de OS
+  document.getElementById('modal-22-status')?.style && (document.getElementById('modal-22-status').style.display='none');
+
+  // Pré-preencher estado do 3.8
+  S._ck38Pref=prefixo||'';
+  S._ck38Dados={};
+  S._ck38OcId=ocId; // guardar referência da OS
+
+  // Navegar para aba 3.8 do PCM
+  navToSub('ferr-pcm');
+  setTimeout(()=>renderFerrPCM('ck38'),100);
 }
 
 // ── MANUTENTORES ─────────────────────────────────────────────
