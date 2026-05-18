@@ -1036,27 +1036,65 @@ async function confirmarFechamentoAbastecimento(){
 async function telaOficina(){
   const gid=getGid();
   const{data:ocs}=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado').order('hora_entrada',{ascending:true});
-  if(!ocs?.length){render(`<div class="empty"><div class="empty-ic">✅</div><div style="font-weight:700;font-size:16px;margin-bottom:8px">Nenhuma OS aberta</div></div>`);
-    if(['lider_pcm','assistente_pcm'].includes(cargo())) document.getElementById('content').insertAdjacentHTML('beforeend','<button class="fab" onclick="abrirNovaOS()">＋</button>');
-    return}
+  if(!ocs?.length){
+    render(`<div class="empty"><div class="empty-ic">✅</div><div style="font-weight:700;font-size:16px;margin-bottom:8px">Nenhuma OS aberta</div></div>`);
+    if(['lider_pcm','assistente_pcm','lider_oficina'].includes(cargo()))
+      document.getElementById('content').insertAdjacentHTML('beforeend','<button class="fab" onclick="abrirNovaOS()">＋</button>');
+    return;
+  }
   const agora=new Date();
-  const SC={em_manutencao:{c:'var(--amber)',l:'Manutenção'},aguardando_peca:{c:'var(--red)',l:'Ag. Peça'},aguardando_aprovacao:{c:'var(--purple)',l:'Ag. Aprovação'}};
+  const SC={
+    em_manutencao:{c:'var(--amber)',l:'Manutenção'},
+    aguardando_peca:{c:'var(--red)',l:'Ag. Peça'},
+    aguardando_aprovacao:{c:'var(--purple)',l:'Ag. Aprovação'},
+  };
+  // Busca qualificação de todos os ckl de uma vez
+  const ids=ocs.map(o=>o.id);
+  const{data:ckAll}=await sb.from('checklist_liberacao').select('ocorrencia_id,trocado,nao_se_aplica').in('ocorrencia_id',ids);
+  const ckMap={};
+  (ckAll||[]).forEach(i=>{
+    if(!ckMap[i.ocorrencia_id]) ckMap[i.ocorrencia_id]={tot:0,qual:0};
+    ckMap[i.ocorrencia_id].tot++;
+    if(i.trocado||i.nao_se_aplica) ckMap[i.ocorrencia_id].qual++;
+  });
+
+  // Total pessoas trabalhando agora
+  const totalPessoas=ocs.reduce((s,o)=>s+(parseInt(o.manutentores)||0),0);
+
   const cards=ocs.map(o=>{
     const st=SC[o.status]||{c:'var(--text3)',l:o.status};
     const min=Math.round((agora-new Date(o.hora_entrada))/60000);
     const h=Math.floor(min/60),m=min%60;
     const venc=o.hora_previsao&&new Date(o.hora_previsao)<agora;
-    return`<div class="os-card ${o.tipo||''}" onclick="abrirOS('${o.id}')">
-      <div class="os-hdr"><div class="os-pre">${o.prefixo}</div><span class="badge" style="color:${st.c};border-color:${st.c}40;background:${st.c}12">${st.l}</span></div>
-      <div style="font-size:11px;color:var(--text3);display:flex;gap:10px;flex-wrap:wrap">
-        <span>${o.tipo?.replace('_',' ')||'—'}</span>
-        <span>⏱ ${h>0?h+'h'+m+'min':m+'min'}</span>
-        ${o.mecanico?`<span>👤 ${o.mecanico.split(' ')[0]}</span>`:''}
-        ${venc?'<span style="color:var(--red)">🔴 Vencida</span>':''}
+    const ck=ckMap[o.id]||{tot:0,qual:0};
+    const pct=ck.tot>0?Math.round(ck.qual/ck.tot*100):0;
+    const corPct=pct>=100?'var(--green)':pct>=60?'var(--amber)':'var(--text3)';
+    const pessoas=parseInt(o.manutentores)||0;
+    return`<div onclick="abrirOS('${o.id}')" style="background:var(--surface);border:1px solid var(--border2);border-left:3px solid ${st.c};border-radius:14px;padding:14px 16px;margin-bottom:10px;cursor:pointer">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:900;color:var(--text)">${o.prefixo}</div>
+        <span style="background:${st.c}12;border:1px solid ${st.c}40;color:${st.c};border-radius:8px;padding:3px 10px;font-size:11px;font-weight:700">${st.l}</span>
       </div>
+      <div style="font-size:11px;color:var(--text3);display:flex;gap:10px;flex-wrap:wrap;margin-bottom:${ck.tot>0?'10px':'0'}">
+        <span>${o.tipo?.replace(/_/g,' ')||'—'}</span>
+        <span>⏱ ${h>0?h+'h '+m+'min':m+'min'}</span>
+        ${pessoas>0?`<span style="color:var(--blue);font-weight:700">👷 ${pessoas} pessoa${pessoas>1?'s':''}</span>`:''}
+        ${venc?'<span style="color:var(--red);font-weight:700">🔴 Vencida</span>':''}
+      </div>
+      ${ck.tot>0?`
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="flex:1;background:var(--surface2);border-radius:6px;height:5px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${corPct};border-radius:6px;transition:width .3s"></div>
+        </div>
+        <div style="font-size:11px;font-weight:800;color:${corPct};min-width:50px;text-align:right">${ck.qual}/${ck.tot} Qual.</div>
+      </div>`:''}
     </div>`;
   }).join('');
-  render(`<div class="sl">${ocs.length} OS em aberto</div>${cards}`);
+
+  render(`
+    <div class="sl">🔧 ${ocs.length} OS em aberto ${totalPessoas>0?`<span style="font-size:11px;font-weight:400;color:var(--text3)">· 👷 ${totalPessoas} na oficina</span>`:''}  </div>
+    ${cards}
+  `);
   if(['lider_pcm','assistente_pcm','lider_oficina'].includes(cargo()))
     document.getElementById('content').insertAdjacentHTML('beforeend','<button class="fab" onclick="abrirNovaOS()">＋</button>');
 }
@@ -1072,34 +1110,50 @@ async function abrirOS(ocId){
   const{data:oc}=await sb.from('ocorrencias_22').select('*').eq('id',ocId).single();
   if(!oc) return;
   const{data:ckl}=await sb.from('checklist_liberacao').select('id,verificado,trocado,nao_se_aplica,item').eq('ocorrencia_id',ocId);
-  const tot=(ckl||[]).length,v=(ckl||[]).filter(i=>i.verificado||i.nao_se_aplica).length,t=(ckl||[]).filter(i=>i.trocado||i.nao_se_aplica).length;
-  const pctV=tot>0?Math.round(v/tot*100):0,pctT=tot>0?Math.round(t/tot*100):0;
+  const tot=(ckl||[]).length;
+  const qual=(ckl||[]).filter(i=>i.trocado||i.nao_se_aplica).length;
+  const pctQ=tot>0?Math.round(qual/tot*100):0;
+  const corQ=pctQ>=100?'var(--green)':pctQ>=60?'var(--amber)':'var(--blue)';
   const subm=(ckl||[]).some(i=>i.submetido),aprov=(ckl||[]).some(i=>i.aprovado);
   const podeEd=['lider_oficina','lider_pcm','assistente_pcm'].includes(cargo())&&!subm&&!aprov;
+  const pessoas=parseInt(oc.manutentores)||0;
+
   const setores=SETORES_M.map(sg=>{
     const its=(ckl||[]).filter(i=>{const m=i.item?.match(/^\[([^\]]+)\]/);return sg.gr.includes(m?m[1]:'GERAL');});
     if(!its.length) return '';
-    const vS=its.filter(i=>i.verificado||i.nao_se_aplica).length,tS=its.filter(i=>i.trocado||i.nao_se_aplica).length;
-    const ok=vS===its.length&&tS===its.length,part=vS===its.length&&tS<its.length;
-    return`<div onclick="abrirSetor('${ocId}','${sg.key}')" style="display:inline-flex;align-items:center;gap:4px;background:${ok?'#00C48C12':part?'#F59E0B12':'var(--surface2)'};border:1px solid ${ok?'#00C48C40':part?'#F59E0B40':'var(--border)'};border-radius:10px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;margin:3px;color:${ok?'var(--green)':part?'var(--amber)':'var(--text2)'}">${sg.ic} ${sg.key} ${ok?'✅':vS+'/'+its.length}</div>`;
+    const tS=its.filter(i=>i.trocado||i.nao_se_aplica).length;
+    const ok=tS===its.length;
+    const part=tS>0&&tS<its.length;
+    return`<div onclick="abrirSetor('${ocId}','${sg.key}')" style="display:inline-flex;align-items:center;gap:5px;background:${ok?'#00C48C12':part?'#F59E0B12':'var(--surface2)'};border:1px solid ${ok?'#00C48C40':part?'#F59E0B40':'var(--border)'};border-radius:10px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;margin:3px;color:${ok?'var(--green)':part?'var(--amber)':'var(--text2)'}">${sg.ic} ${sg.key} ${ok?'✅':tS+'/'+its.length}</div>`;
   }).join('');
+
   const ST={em_manutencao:'🔧 Manutenção',aguardando_peca:'📦 Ag. Peça',aguardando_aprovacao:'⏳ Ag. Aprovação',liberado:'✅ Liberado'};
-  openSheet(oc.prefixo+' — '+(oc.tipo?.replace('_',' ')||'—'),`
+  openSheet(oc.prefixo+' — '+(oc.tipo?.replace(/_/g,' ')||'—'),`
+    <div style="background:var(--surface2);border-radius:12px;padding:12px 14px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Qualificação</div>
+        <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:900;color:${corQ}">${qual}/${tot}</div>
+      </div>
+      <div style="background:var(--border);border-radius:6px;height:6px;overflow:hidden">
+        <div style="height:100%;width:${pctQ}%;background:${corQ};border-radius:6px"></div>
+      </div>
+      ${tot===0?'<div style="font-size:11px;color:var(--text4);margin-top:6px">Checklist 3.8 ainda não criado</div>':''}
+    </div>
+
     <div style="display:flex;gap:8px;margin-bottom:12px">
       <div style="flex:1;background:var(--surface2);border-radius:10px;padding:10px;text-align:center">
-        <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--blue)">${v}/${tot}</div>
-        <div style="font-size:10px;color:var(--text3);font-weight:700">V DIAGNÓSTICO</div>
-        <div class="prog" style="margin-top:4px"><div class="prog-f" style="width:${pctV}%;background:var(--blue)"></div></div>
+        <div style="font-size:10px;color:var(--text3);font-weight:700;margin-bottom:4px">STATUS</div>
+        <div style="font-size:12px;font-weight:700">${ST[oc.status]||oc.status}</div>
       </div>
-      <div style="flex:1;background:var(--surface2);border-radius:10px;padding:10px;text-align:center">
-        <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--green)">${t}/${tot}</div>
-        <div style="font-size:10px;color:var(--text3);font-weight:700">T QUALIFICAÇÃO</div>
-        <div class="prog" style="margin-top:4px"><div class="prog-f" style="width:${pctT}%;background:var(--green)"></div></div>
+      <div style="flex:1;background:${pessoas>0?'#3B82F618':'var(--surface2)'};border:1px solid ${pessoas>0?'#3B82F640':'var(--border)'};border-radius:10px;padding:10px;text-align:center;cursor:pointer" onclick="editarPessoas('${ocId}',${pessoas})">
+        <div style="font-size:10px;color:var(--text3);font-weight:700;margin-bottom:4px">👷 NA OS</div>
+        <div style="font-size:18px;font-weight:900;color:${pessoas>0?'var(--blue)':'var(--text4)'}">${pessoas>0?pessoas:'—'}</div>
       </div>
     </div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">${ST[oc.status]||oc.status} · ${oc.mecanico||'—'}</div>
-    <div style="margin-bottom:12px;line-height:1">${setores||'<div style="color:var(--text4);font-size:12px">Abra no desktop para criar o checklist.</div>'}</div>
-    ${podeEd?`<div style="display:flex;gap:8px">
+
+    <div style="margin-bottom:12px;line-height:1.2">${setores||'<div style="color:var(--text4);font-size:12px;padding:4px 0">Checklist 3.8 não iniciado.</div>'}</div>
+
+    ${podeEd?`<div style="display:flex;gap:8px;margin-bottom:10px">
       <select id="sel-st" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
         <option value="em_manutencao" ${oc.status==='em_manutencao'?'selected':''}>🔧 Em Manutenção</option>
         <option value="aguardando_peca" ${oc.status==='aguardando_peca'?'selected':''}>📦 Ag. Peça</option>
@@ -1108,8 +1162,87 @@ async function abrirOS(ocId){
       </select>
       <button onclick="salvarSt('${ocId}')" style="padding:12px 16px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">OK</button>
     </div>`:''}
+
+    ${tot>0?`<button onclick="exportar38Mobile('${ocId}')" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;margin-top:4px">📋 Exportar Relatório 3.8</button>`:''}
   `);
 }
+
+async function editarPessoas(ocId,atual){
+  closeSheet(true);
+  setTimeout(()=>{
+    window._qtdPessoas=parseInt(atual)||0;
+    openSheet('👷 Pessoas na OS',`
+      <div style="text-align:center;margin:8px 0 20px">
+        <div style="font-size:12px;color:var(--text3);margin-bottom:16px">Quantas pessoas estão trabalhando neste veículo agora?</div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:24px">
+          <button onclick="ajustarPessoas(-1)" style="width:44px;height:44px;border-radius:50%;border:2px solid var(--border);background:var(--surface2);color:var(--text);font-size:22px;font-weight:700;cursor:pointer;font-family:inherit">−</button>
+          <div id="qtd-pessoas" style="font-family:'DM Mono',monospace;font-size:48px;font-weight:900;color:var(--blue);min-width:60px;text-align:center">${parseInt(atual)||0}</div>
+          <button onclick="ajustarPessoas(1)" style="width:44px;height:44px;border-radius:50%;border:2px solid var(--border);background:var(--surface2);color:var(--text);font-size:22px;font-weight:700;cursor:pointer;font-family:inherit">＋</button>
+        </div>
+      </div>
+      <button onclick="confirmarPessoas('${ocId}')" style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">✅ Confirmar</button>
+    `);
+  },200);
+}
+function ajustarPessoas(delta){
+  window._qtdPessoas=Math.max(0,(window._qtdPessoas||0)+delta);
+  const el=document.getElementById('qtd-pessoas');
+  if(el) el.textContent=window._qtdPessoas;
+}
+async function confirmarPessoas(ocId){
+  const qtd=window._qtdPessoas||0;
+  await sb.from('ocorrencias_22').update({manutentores:qtd}).eq('id',ocId);
+  toast('✅ Atualizado — '+qtd+' pessoa'+(qtd!==1?'s':''));
+  closeSheet(true);
+  setTimeout(()=>abrirOS(ocId),250);
+}
+
+async function exportar38Mobile(ocId){
+  const[{data:oc},{data:ckl}]=await Promise.all([
+    sb.from('ocorrencias_22').select('*').eq('id',ocId).single(),
+    sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem'),
+  ]);
+  if(!oc||!ckl?.length){toast('Sem checklist para exportar','err');return;}
+  const tot=ckl.length;
+  const qual=ckl.filter(i=>i.trocado||i.nao_se_aplica).length;
+  const pct=tot>0?Math.round(qual/tot*100):0;
+  const agora=new Date();
+  const dtFmt=agora.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'America/Manaus'});
+  const hrFmt=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'});
+  const grupos={};
+  ckl.forEach(i=>{
+    const m=i.item?.match(/^\[([^\]]+)\]/);
+    const sec=m?m[1]:'GERAL';
+    const sg=SETORES_M.find(s=>s.gr.includes(sec))||{key:'GERAL',ic:'🔧'};
+    if(!grupos[sg.key]) grupos[sg.key]={ic:sg.ic,itens:[]};
+    grupos[sg.key].itens.push(i);
+  });
+  const linhas=Object.entries(grupos).map(([k,g])=>{
+    const okC=g.itens.filter(i=>i.trocado||i.nao_se_aplica).length;
+    const rows=g.itens.map(i=>{
+      const txt=(i.item||'').replace(/^\[[^\]]+\]\s*/,'');
+      const status=i.nao_se_aplica?'N/A':i.trocado?'✅ Qual.':i.verificado?'👁 Verif.':'—';
+      const cor=i.trocado?'#00C48C':i.verificado?'#3B82F6':'#94A3B8';
+      return`<tr style="border-bottom:1px solid #eee"><td style="padding:7px 8px;font-size:11px">${txt}</td><td style="padding:7px 8px;font-size:11px;text-align:center;font-weight:700;color:${cor}">${status}</td><td style="padding:7px 8px;font-size:10px;color:#94A3B8">${i.trocado_por||i.verificado_por||''}</td></tr>`;
+    }).join('');
+    return`<tr style="background:#f1f5f9"><td colspan="3" style="padding:9px 8px;font-size:12px;font-weight:800;color:#1e293b">${g.ic} ${k} — ${okC}/${g.itens.length}</td></tr>${rows}`;
+  }).join('');
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>3.8 — ${oc.prefixo}</title><style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:24px;color:#1e293b;max-width:800px}h2{margin:0 0 6px;font-size:18px}p{margin:2px 0;font-size:12px;color:#64748b}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#1e293b;color:#fff;padding:9px 8px;font-size:11px;text-align:left}.kpi{display:inline-flex;align-items:center;gap:16px;background:#f0fdf4;border:2px solid #00C48C;border-radius:10px;padding:14px 20px;margin:12px 0}.pct{font-size:36px;font-weight:900;color:#00C48C;font-family:monospace}.sub{font-size:12px;color:#64748b;line-height:1.5}@media print{button{display:none}}</style></head><body>
+  <h2>Relatório 3.8 — Checklist de Liberação</h2>
+  <p><b>${oc.prefixo}</b> &nbsp;·&nbsp; ${oc.tipo?.replace(/_/g,' ')||'—'} &nbsp;·&nbsp; ${dtFmt} ${hrFmt}</p>
+  <p>Responsável: ${oc.mecanico||'—'} &nbsp;·&nbsp; 👷 Manutentores: ${oc.manutentores||'—'}</p>
+  <div class="kpi"><div class="pct">${pct}%</div><div class="sub">Qualificação<br><b style="font-size:18px;color:#1e293b">${qual}/${tot}</b> itens verificados</div></div>
+  <table><thead><tr><th>Item</th><th style="width:90px">Status</th><th style="width:140px">Responsável</th></tr></thead><tbody>${linhas}</tbody></table>
+  <p style="margin-top:20px;font-size:10px;color:#94A3B8">Gerado em ${dtFmt} ${hrFmt} · JTP Operacional</p>
+  </body></html>`;
+  const blob=new Blob([html],{type:'text/html'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=`3.8_${oc.prefixo.replace(/\./g,'')}_${dtFmt.replace(/\//g,'')}.html`;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  toast('📋 Relatório exportado!');
+}
+
 async function salvarSt(ocId){
   const st=document.getElementById('sel-st')?.value;
   if(!st) return;
