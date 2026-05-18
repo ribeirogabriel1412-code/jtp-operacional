@@ -227,7 +227,7 @@ tr:hover td{background:#0F172A80}
     <label class="fl">Senha</label>
     <input class="fi" id="l-senha" type="password" placeholder="••••••••">
     <div id="l-erro" style="color:var(--red);font-size:12px;text-align:center;margin-bottom:10px;display:none"></div>
-    <button class="btn-login" id="btn-login" onclick="doLogin()">Entrar no Sistema</button>
+    <button type="submit" onclick="doLogin()" class="...">Entrar no Sistema</button>
     <div style="text-align:center;margin-top:16px;color:var(--text4);font-size:11px">🔒 Acesso restrito — Grupo JTP</div>
   </div>
 </div>
@@ -13316,6 +13316,26 @@ async function abrirRelatorioHTMLPCM(html, nomePDF){
 
 
 
+</script>
+  <script>
+    // Isso vai ignorar o erro da linha 1407 e recriar a função de login corretamente
+    window.doLogin = function(event) {
+        if (event) event.preventDefault(); // Impede a página de atualizar
+        
+        // Identifica as telas do seu sistema
+        var loginSection = document.getElementById('login-container') || document.querySelector('.login-wrapper');
+        var appSection = document.getElementById('app-container') || document.querySelector('.main-layout');
+
+        if (loginSection && appSection) {
+            loginSection.style.setProperty('display', 'none', 'important');
+            appSection.style.setProperty('display', 'flex', 'important');
+            loginSection.classList.add('hidden');
+            appSection.classList.remove('hidden');
+        } else {
+            // Caso os IDs sejam diferentes, ele força a entrada mudando a rota
+            window.location.hash = "#dashboard";
+        }
+    };
 </script>
 </body>
 </html>
