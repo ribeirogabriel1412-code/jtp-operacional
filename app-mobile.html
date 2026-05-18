@@ -1508,14 +1508,17 @@ async function abrirSetor(ocId,setor){
   `;
 }
 async function togCk(itemId,tipo,ocId,setor){
-  const{data:it}=await sb.from('checklist_liberacao').select('*').eq('id',itemId).single();
-  if(!it) return;
+  toast('⏳ Salvando...','ok',800);
+  const{data:it,error:e1}=await sb.from('checklist_liberacao').select('*').eq('id',itemId).single();
+  if(!it){toast('❌ Item não encontrado: '+itemId,'err');return;}
   let p={};
   if(tipo==='v'){const n=!it.verificado;p={verificado:n,verificado_por:n?S.perfil?.nome:null,verificado_em:n?new Date().toISOString():null};if(!n)p={...p,trocado:false};}
-  else if(tipo==='t'){if(!it.verificado)return;const n=!it.trocado;p={trocado:n,trocado_por:n?S.perfil?.nome:null,trocado_em:n?new Date().toISOString():null};}
+  else if(tipo==='t'){if(!it.verificado){toast('⚠️ Verifique antes de qualificar','err');return;}const n=!it.trocado;p={trocado:n,trocado_por:n?S.perfil?.nome:null,trocado_em:n?new Date().toISOString():null};}
   else if(tipo==='nsa'){const n=!it.nao_se_aplica;p={nao_se_aplica:n,verificado:n,trocado:n,verificado_por:n?S.perfil?.nome:null,trocado_por:n?S.perfil?.nome:null,verificado_em:n?new Date().toISOString():null,trocado_em:n?new Date().toISOString():null};}
-  await sb.from('checklist_liberacao').update(p).eq('id',itemId);
-  abrirSetor(ocId,setor); // reload sem fechar sheet
+  const{error:e2}=await sb.from('checklist_liberacao').update(p).eq('id',itemId);
+  if(e2){toast('❌ Erro: '+e2.message,'err');return;}
+  toast('✅ Salvo!','ok',600);
+  abrirSetor(ocId,setor);
 }
 function abrirNovaOS(){
   openSheet('＋ Nova OS',`
