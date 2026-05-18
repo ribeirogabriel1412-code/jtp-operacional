@@ -4024,16 +4024,21 @@ Deixe em branco para usar o previsto:`);
 
 // ── Fechamento de custo do turno pelo Líder PCM ────────────────────────────
 async function abrirFechamentoCustoTurno(){
-  const gid=getGid();
+  renderFerrPCM('custo_turno');
+}
+
+async function renderCustoTurno(gid, back, tabs){
   const agora=new Date();
-  const hoje=agora.toISOString().slice(0,10);
+  const hoje_=agora.toISOString().slice(0,10);
   const ontem=new Date(agora); ontem.setDate(ontem.getDate()-1);
   const ontemStr=ontem.toISOString().slice(0,10);
   const turno=S.turno||'dia';
-  const ini=turno==='dia'?`${hoje}T07:00`:`${ontemStr}T21:00`;
-  const fim=turno==='dia'?`${hoje}T17:00`:`${hoje}T05:20`;
+  const ini=turno==='dia'?`${hoje_}T07:00`:`${ontemStr}T21:00`;
+  const fim=turno==='dia'?`${hoje_}T17:00`:`${hoje_}T07:20`;
+  const tLabel=turno==='dia'?'☀️ Diurno (07:00–17:00)':'🌙 Noturno (21:00–07:20)';
 
-  // Buscar OS do turno com custos
+  setMain(`${back}${tabs}<div class="loading"><div class="spinner"></div></div>`);
+
   const{data:osHoje}=await sb.from('ocorrencias_22').select('*')
     .eq('garagem_id',gid)
     .gte('hora_entrada',new Date(ini).toISOString())
@@ -4045,8 +4050,10 @@ async function abrirFechamentoCustoTurno(){
   const totalReal=lista.reduce((s,o)=>s+(o.custo_real||0),0);
   const liberadas=lista.filter(o=>o.status==='liberado').length;
   const pendentes=lista.filter(o=>o.status!=='liberado').length;
+  const variacao=totalReal-totalPrev;
+  const corVar=variacao>0?'var(--red)':variacao<0?'var(--green)':'var(--text3)';
 
-  // KPIs por tipo
+  // Por tipo
   const porTipo={};
   lista.forEach(o=>{
     if(!porTipo[o.tipo]) porTipo[o.tipo]={qtd:0,previsto:0,real:0};
@@ -4055,96 +4062,95 @@ async function abrirFechamentoCustoTurno(){
     porTipo[o.tipo].real+=o.custo_real||0;
   });
 
-  const rows=lista.map(o=>`
-    <tr style="border-bottom:1px solid var(--border2)">
+  const rows=lista.map(o=>{
+    const isFech=o.status==='liberado';
+    const hrAb=o.hora_entrada?new Date(o.hora_entrada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
+    return`<tr style="border-bottom:1px solid var(--border2)">
       <td style="padding:8px 12px;font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${o.prefixo}</td>
-      <td style="padding:8px 12px;font-size:11px">${TIPO22[o.tipo]?.ic||''} ${TIPO22[o.tipo]?.l||o.tipo}</td>
+      <td style="padding:8px 12px;font-size:11px">${TIPO22[o.tipo]?.ic||''} ${TIPO22[o.tipo]?.l||o.tipo||'—'}</td>
       <td style="padding:8px 12px;font-size:11px">${o.mecanico||'—'}</td>
-      <td style="padding:8px 12px"><span class="badge ${STATUS22[o.status]?.cls||''}">${STATUS22[o.status]?.ic||''} ${STATUS22[o.status]?.l||o.status}</span></td>
-      <td style="padding:8px 12px;text-align:right;font-family:'DM Mono',monospace;font-size:12px">${o.custo_previsto?'R$ '+Number(o.custo_previsto).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</td>
-      <td style="padding:8px 12px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:${o.custo_real>o.custo_previsto?'var(--red)':o.custo_real?'var(--green)':'var(--text3)'}">${o.custo_real?'R$ '+Number(o.custo_real).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</td>
-      <td style="padding:8px 12px">
-        ${!o.custo_real&&o.status==='liberado'?`<button onclick="lancarCustoReal('${o.id}',${o.custo_previsto||0},this)"
-          style="padding:3px 8px;border-radius:5px;border:1px solid var(--amber);background:transparent;color:var(--amber);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">
-          + Custo Real
-        </button>`:''}
+      <td style="padding:8px 12px;text-align:center;font-family:'DM Mono',monospace;font-size:11px">${hrAb}</td>
+      <td style="padding:8px 12px;text-align:center">
+        <span style="background:${isFech?'var(--green)':'var(--red)'}18;border:1px solid ${isFech?'var(--green)':'var(--red)'}40;color:${isFech?'var(--green)':'var(--red)'};border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">
+          ${isFech?'✅ Fechada':'⏳ Pendente'}
+        </span>
       </td>
-    </tr>`).join('');
+      <td style="padding:8px 12px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;color:var(--text3)">${o.custo_previsto?'R$ '+Number(o.custo_previsto).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</td>
+      <td style="padding:8px 12px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:${o.custo_real>o.custo_previsto?'var(--red)':o.custo_real?'var(--green)':'var(--text3)'}">
+        ${o.custo_real?'R$ '+Number(o.custo_real).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}
+      </td>
+      <td style="padding:8px 12px;text-align:center">
+        ${!o.custo_real&&isFech?`<button onclick="lancarCustoReal('${o.id}',${o.custo_previsto||0},this)"
+          style="padding:4px 10px;border-radius:6px;border:1px solid var(--amber);background:transparent;color:var(--amber);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">+ Real</button>`:''}
+      </td>
+    </tr>`;
+  }).join('');
 
-  const tiposRows=Object.entries(porTipo).map(([tipo,v])=>`
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border2)">
-      <span style="font-size:12px">${TIPO22[tipo]?.ic||'🔧'} ${TIPO22[tipo]?.l||tipo} (${v.qtd})</span>
+  const tiposHtml=Object.entries(porTipo).map(([tipo,v])=>
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border2)">
+      <span style="font-size:13px">${TIPO22[tipo]?.ic||'🔧'} ${TIPO22[tipo]?.l||tipo} <span style="color:var(--text3);font-size:11px">(${v.qtd} OS)</span></span>
       <div style="text-align:right">
-        <div style="font-size:10px;color:var(--text3)">Prev: R$ ${v.previsto.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
-        <div style="font-size:12px;font-weight:700;color:${v.real>v.previsto?'var(--red)':'var(--green)'}">Real: R$ ${v.real.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+        <div style="font-size:11px;color:var(--text3)">Prev: <span style="font-family:'DM Mono',monospace">R$ ${v.previsto.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+        <div style="font-size:13px;font-weight:800;color:${v.real>v.previsto?'var(--red)':'var(--green)'}">Real: <span style="font-family:'DM Mono',monospace">R$ ${v.real.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
       </div>
-    </div>`).join('');
+    </div>`
+  ).join('');
 
-  const modal=document.createElement('div');
-  modal.id='modal-custo-turno';
-  modal.style.cssText='position:fixed;inset:0;background:#00000090;z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto';
-  modal.innerHTML=`
-    <div style="background:var(--bg);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:860px;margin:auto">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+  setMain(`${back}${tabs}
+
+    <!-- KPIs -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div>
-          <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:1px">Fechamento de Custo</div>
-          <div style="font-size:18px;font-weight:800">💰 Custo do Turno ${turno==='dia'?'☀️ Dia':'🌙 Noite'}</div>
-          <div style="font-size:12px;color:var(--text3);margin-top:2px">${new Date(ini).toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})} → ${new Date(fim).toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
+          <div style="font-size:18px;font-weight:900">💰 Custo do Turno</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px">${tLabel} · ${agora.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'})}</div>
         </div>
-        <button onclick="document.getElementById('modal-custo-turno').remove()" style="padding:6px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">✕</button>
-      </div>
-
-      <!-- KPIs -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
-        <div class="kpi neu"><div class="kpi-label">OS no Turno</div><div class="kpi-val">${lista.length}</div></div>
-        <div class="kpi ok"><div class="kpi-label">Liberadas</div><div class="kpi-val" style="color:var(--green)">${liberadas}</div></div>
-        <div class="kpi ${pendentes?'nok':'ok'}"><div class="kpi-label">Pendentes</div><div class="kpi-val" style="color:${pendentes?'var(--red)':'var(--green)'}">${pendentes}</div></div>
-        <div class="kpi neu"><div class="kpi-label">Variação</div><div class="kpi-val" style="font-size:12px;color:${totalReal>totalPrev?'var(--red)':'var(--green)'}">${totalReal>totalPrev?'▲':'▼'} R$ ${Math.abs(totalReal-totalPrev).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div></div>
-      </div>
-
-      <!-- Totais por tipo -->
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px">
-        <div style="padding:10px 12px;font-size:11px;font-weight:700;color:var(--text3);border-bottom:1px solid var(--border);text-transform:uppercase">Por Tipo de Serviço</div>
-        ${tiposRows||'<div style="padding:12px;color:var(--text4);font-size:12px">Nenhuma OS neste turno</div>'}
-        <div style="padding:10px 12px;display:flex;justify-content:space-between;background:var(--surface2)">
-          <span style="font-size:13px;font-weight:700">TOTAL</span>
-          <div style="text-align:right">
-            <div style="font-size:11px;color:var(--text3)">Previsto: R$ ${totalPrev.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
-            <div style="font-size:14px;font-weight:800;color:${totalReal>totalPrev?'var(--red)':'var(--green)'}">Real: R$ ${totalReal.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Tabela detalhada -->
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px;overflow-x:auto">
-        <div style="padding:10px 12px;font-size:11px;font-weight:700;color:var(--text3);border-bottom:1px solid var(--border);text-transform:uppercase">Detalhamento por OS</div>
-        <table style="width:100%;border-collapse:collapse">
-          <thead>
-            <tr style="border-bottom:2px solid var(--border)">
-              <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3)">PREFIXO</th>
-              <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3)">TIPO</th>
-              <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3)">MECÂNICO</th>
-              <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3)">STATUS</th>
-              <th style="padding:8px 12px;text-align:right;font-size:11px;color:var(--text3)">PREVISTO</th>
-              <th style="padding:8px 12px;text-align:right;font-size:11px;color:var(--text3)">REAL</th>
-              <th style="padding:8px 12px;width:100px"></th>
-            </tr>
-          </thead>
-          <tbody id="custo-turno-rows">${rows}</tbody>
-        </table>
-      </div>
-
-      <!-- Botões -->
-      <div style="display:flex;gap:8px;justify-content:flex-end">
         <button onclick="gerarRelatorioCustoTurno('${ini}','${fim}','${turno}')"
-          style="padding:11px 20px;border-radius:10px;border:1px solid #8B5CF640;background:#8B5CF618;color:#8B5CF6;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
-          📄 Exportar Relatório PDF
-        </button>
+          style="padding:8px 16px;border-radius:9px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">📄 Exportar PDF</button>
       </div>
-    </div>`;
-  modal.onclick=e=>{ if(e.target===modal) modal.remove(); };
-  document.body.appendChild(modal);
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">
+        <div class="kpi2"><div class="kpi2-v">${lista.length}</div><div class="kpi2-l">OS no Turno</div></div>
+        <div class="kpi2"><div class="kpi2-v" style="color:var(--green)">${liberadas}</div><div class="kpi2-l">Fechadas</div></div>
+        <div class="kpi2"><div class="kpi2-v" style="color:${pendentes>0?'var(--red)':'var(--green)'}">${pendentes}</div><div class="kpi2-l">Pendentes</div></div>
+        <div class="kpi2"><div class="kpi2-v" style="color:var(--text3);font-size:13px">R$ ${totalPrev.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div><div class="kpi2-l">Previsto</div></div>
+        <div class="kpi2"><div class="kpi2-v" style="color:${corVar};font-size:13px">R$ ${totalReal.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div><div class="kpi2-l">Real${variacao!==0?` (${variacao>0?'+':''}${variacao.toLocaleString('pt-BR',{minimumFractionDigits:2})})`:''}</div></div>
+      </div>
+    </div>
+
+    <!-- Resumo por tipo -->
+    ${secTitle('📊','Resumo por Tipo de Serviço')}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:20px">
+      ${tiposHtml||'<div style="padding:16px;color:var(--text4);font-size:13px;text-align:center">Nenhuma OS neste turno</div>'}
+      <div style="padding:12px 14px;display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border-top:2px solid var(--border)">
+        <span style="font-size:14px;font-weight:800">TOTAL</span>
+        <div style="text-align:right">
+          <div style="font-size:11px;color:var(--text3)">Previsto: <span style="font-family:'DM Mono',monospace;font-weight:700">R$ ${totalPrev.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+          <div style="font-size:15px;font-weight:900;color:${corVar}">Real: <span style="font-family:'DM Mono',monospace">R$ ${totalReal.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detalhamento por OS -->
+    ${secTitle('📋','Detalhamento por OS')}
+    ${lista.length===0?'<div class="empty">Nenhuma OS no período deste turno</div>':''}
+    ${lista.length>0?`<div style="overflow-x:auto;margin-bottom:20px">
+      <table style="width:100%;border-collapse:collapse;min-width:700px">
+        <thead><tr style="background:var(--surface2)">
+          <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">PREFIXO</th>
+          <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">TIPO</th>
+          <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">MECÂNICO</th>
+          <th style="padding:8px 12px;text-align:center;font-size:11px;color:var(--text3);font-weight:700">ABERTURA</th>
+          <th style="padding:8px 12px;text-align:center;font-size:11px;color:var(--text3);font-weight:700">STATUS</th>
+          <th style="padding:8px 12px;text-align:right;font-size:11px;color:var(--text3);font-weight:700">PREVISTO</th>
+          <th style="padding:8px 12px;text-align:right;font-size:11px;color:var(--text3);font-weight:700">REAL</th>
+          <th style="padding:8px 12px;width:80px"></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`:''}
+  `);
 }
+
 
 async function lancarCustoReal(ocId, custoPrev, btnEl){
   const valor=prompt(`Custo real da OS (previsto: R$ ${Number(custoPrev).toLocaleString('pt-BR',{minimumFractionDigits:2})}):`);
@@ -6431,8 +6437,7 @@ async function renderFerrPCM(aba='painel'){
   }
 
   if(aba==='custo_turno'){
-    abrirFechamentoCustoTurno();
-    return;
+    return await renderCustoTurno(gid, back, tabs);
   }
 
   if(aba==='historico'){
