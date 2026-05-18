@@ -4172,6 +4172,7 @@ async function lancarCustoReal(ocId, custoPrev, btnEl){
   const{error}=await sb.from('ocorrencias_22').update({custo_real:custo}).eq('id',ocId);
   if(error){ toast('Erro: '+error.message,'err'); return; }
   toast(`✅ Custo real: R$ ${custo.toLocaleString('pt-BR',{minimumFractionDigits:2})}`);
+  verificarEstouroAoLancar(getGid());
   if(btnEl) btnEl.closest('tr').cells[5].innerHTML=`<span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--green)">R$ ${custo.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>`;
 }
 
@@ -6031,6 +6032,8 @@ async function renderFerrPCM(aba='painel'){
     <button class="filtro-btn${aba==='mov_pneu'?' active':''}" onclick="renderFerrPCM('mov_pneu')">⚙️ Pneus</button>
     <button class="filtro-btn${aba==='fech24'?' active':''}" onclick="renderFerrPCM('fech24')">📋 2.4 Fechamento</button>
     <button class="filtro-btn${aba==='custo_turno'?' active':''}" onclick="renderFerrPCM('custo_turno')">💰 Custo do Turno</button>
+    <button class="filtro-btn${aba==='conf_orc'?' active':''}" onclick="renderFerrPCM('conf_orc')">📊 Conferência</button>
+    <button class="filtro-btn${aba==='sap_precos'?' active':''}" onclick="renderFerrPCM('sap_precos')">💲 Preços SAP</button>
     <button class="filtro-btn${aba==='historico'?' active':''}" onclick="renderFerrPCM('historico')">🗂️ Histórico</button>
   </div>`;
 
@@ -6451,6 +6454,12 @@ async function renderFerrPCM(aba='painel'){
 
   if(aba==='custo_turno'){
     return await renderCustoTurno(gid, back, tabs);
+  }
+  if(aba==='conf_orc'){
+    return await renderConfOrc(gid, back, tabs);
+  }
+  if(aba==='sap_precos'){
+    return await renderSapPrecos(gid, back, tabs);
   }
 
   if(aba==='historico'){
@@ -7386,6 +7395,363 @@ ${fech?.observacoes?`<div style="border:1px solid #333;padding:6px 8px;margin-bo
   const w=window.open('','_blank');
   if(w){w.document.write(html);w.document.close();}
   else toast('Habilite pop-ups para exportar o PDF','err');
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// MÓDULO: CONTROLE DE CUSTO / CONFERÊNCIA / PREÇOS SAP
+// ══════════════════════════════════════════════════════════════════════
+
+const WPP_ORC = {url:'https://evolution-api-production-8d56.up.railway.app/message/sendText/jtp-garagem',key:'4289AC11F437-43AD-96D7-9F27C2735696',grp:'120363427489152994@g.us'};
+
+async function enviarWppOrc(msg){
+  try{
+    await fetch(WPP_ORC.url,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':WPP_ORC.key},
+      body:JSON.stringify({number:WPP_ORC.grp,options:{delay:0},textMessage:{text:msg}})
+    });
+  }catch(e){console.warn('WPP err',e);}
+}
+
+// ── 1. CONFERÊNCIA DE CUSTO ────────────────────────────────────────────
+async function fazerConferenciaOrc(){
+  const gid=getGid();
+  const agora=new Date();
+  const hoje_=agora.toISOString().slice(0,10);
+  const turno=S.turno||'dia';
+  const ontem=new Date(agora); ontem.setDate(ontem.getDate()-1);
+  const ontemStr=ontem.toISOString().slice(0,10);
+  const ini=turno==='dia'?`${hoje_}T07:00`:`${ontemStr}T21:00`;
+  const fim=turno==='dia'?`${hoje_}T17:00`:`${hoje_}T07:20`;
+
+  const[r1,r2,r3]=await Promise.all([
+    sb.from('pcm_orcamento').select('*').eq('garagem_id',gid).eq('data',hoje_).eq('turno',turno).limit(1),
+    sb.from('ocorrencias_22').select('custo_previsto,custo_real,status,prefixo,tipo')
+      .eq('garagem_id',gid)
+      .gte('hora_entrada',new Date(ini).toISOString())
+      .lte('hora_entrada',new Date(fim).toISOString()),
+    sb.from('garagens').select('nome').eq('id',gid).single(),
+  ]);
+
+  const orc=r1.data&&r1.data[0];
+  const ocs=r2.data||[];
+  const gNome=r3.data?.nome||'Porto Velho';
+  const disponivel=parseFloat(orc?.valor_disponivel||0);
+  const gastoReal=ocs.reduce((s,o)=>s+parseFloat(o.custo_real||0),0);
+  const gastoPrev=ocs.reduce((s,o)=>s+parseFloat(o.custo_previsto||0),0);
+  const saldo=disponivel-gastoReal;
+  const pct=disponivel>0?Math.round(gastoReal/disponivel*100):0;
+  const abertas=ocs.filter(o=>o.status!=='liberado').length;
+  const fmtR=v=>'R$\u00a0'+parseFloat(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});
+  const alerta=saldo<0;
+
+  await sb.from('pcm_conferencias').insert({
+    garagem_id:gid, data:hoje_, turno,
+    disponivel, gasto_real:gastoReal, gasto_previsto:gastoPrev,
+    saldo, pct_utilizado:pct,
+    conferido_por:S.perfil?.nome||'—',
+    conferido_em:agora.toISOString(),
+  }).catch(()=>{});
+
+  const emoji=pct>=100?'🚨':pct>=80?'⚠️':pct>=50?'📊':'✅';
+  const hrFmt=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'});
+  const dtFmt=agora.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',timeZone:'America/Manaus'});
+  const turnoLabel=turno==='dia'?'☀️ Diurno':'🌙 Noturno';
+
+  const msg=emoji+' *CONFERÊNCIA DE CUSTO — '+gNome.toUpperCase()+'*\n'+
+    '🕐 '+dtFmt+' às '+hrFmt+' · '+turnoLabel+'\n'+
+    '👤 Por: '+(S.perfil?.nome||'—')+'\n\n'+
+    '💰 *Orçamento Disponível:* '+fmtR(disponivel)+'\n'+
+    '✅ *Gasto Real:* '+fmtR(gastoReal)+' ('+pct+'%)\n'+
+    '📋 *Previsto em aberto:* '+fmtR(gastoPrev)+'\n'+
+    (saldo>=0?'🟢':'🔴')+' *Saldo restante:* '+fmtR(saldo)+'\n\n'+
+    '📌 OS em andamento: '+abertas+
+    (alerta?'\n\n🚨 *ATENÇÃO: ORÇAMENTO ESTOURADO!*\nSaldo negativo de '+fmtR(Math.abs(saldo))+'\nSolicitar aprovação imediata.':'');
+
+  await enviarWppOrc(msg);
+  toast('✅ Conferência enviada para o grupo!');
+  if(alerta) alertarEstouro(gid,gNome,saldo,disponivel,gastoReal);
+  renderFerrPCM('conf_orc');
+}
+
+// ── 2. ALERTA DE ESTOURO ──────────────────────────────────────────────
+async function alertarEstouro(gid,gNome,saldo,disponivel,gastoReal){
+  const fmtR=v=>'R$\u00a0'+parseFloat(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});
+  const msg='🚨🚨🚨 *ALERTA URGENTE — ESTOURO DE ORÇAMENTO*\n'+
+    '🏢 Garagem: '+gNome+'\n'+
+    '💸 Orçamento: '+fmtR(disponivel)+'\n'+
+    '💰 Gasto: '+fmtR(gastoReal)+'\n'+
+    '🔴 Saldo: '+fmtR(saldo)+' (negativo)\n\n'+
+    '⚡ Líder PCM / Supervisor — TOMADA DE DECISÃO NECESSÁRIA\n'+
+    '👤 Identificado por: '+(S.perfil?.nome||'—');
+  await enviarWppOrc(msg);
+}
+
+async function verificarEstouroAoLancar(gid){
+  const hoje_=new Date().toISOString().slice(0,10);
+  const turno=S.turno||'dia';
+  const ontem=new Date(); ontem.setDate(ontem.getDate()-1);
+  const ontemStr=ontem.toISOString().slice(0,10);
+  const ini=turno==='dia'?`${hoje_}T07:00`:`${ontemStr}T21:00`;
+  const fim=turno==='dia'?`${hoje_}T17:00`:`${hoje_}T07:20`;
+  const[r1,r2,r3]=await Promise.all([
+    sb.from('pcm_orcamento').select('valor_disponivel').eq('garagem_id',gid).eq('data',hoje_).eq('turno',turno).limit(1),
+    sb.from('ocorrencias_22').select('custo_real').eq('garagem_id',gid)
+      .gte('hora_entrada',new Date(ini).toISOString())
+      .lte('hora_entrada',new Date(fim).toISOString()),
+    sb.from('garagens').select('nome').eq('id',gid).single(),
+  ]);
+  const disponivel=parseFloat(r1.data?.[0]?.valor_disponivel||0);
+  if(!disponivel) return;
+  const gastoReal=(r2.data||[]).reduce((s,o)=>s+parseFloat(o.custo_real||0),0);
+  const saldo=disponivel-gastoReal;
+  if(saldo<0) alertarEstouro(gid,r3.data?.nome||'Porto Velho',saldo,disponivel,gastoReal);
+}
+
+// ── 3. PAINEL DE CONFERÊNCIAS ─────────────────────────────────────────
+async function renderConfOrc(gid,back,tabs){
+  setMain(back+tabs+'<div class="loading"><div class="spinner"></div></div>');
+  const hoje_=new Date().toISOString().slice(0,10);
+  const agora=new Date();
+  const turno=S.turno||'dia';
+  const ontem=new Date(agora); ontem.setDate(ontem.getDate()-1);
+  const ontemStr=ontem.toISOString().slice(0,10);
+  const ini=turno==='dia'?`${hoje_}T07:00`:`${ontemStr}T21:00`;
+  const fim=turno==='dia'?`${hoje_}T17:00`:`${hoje_}T07:20`;
+
+  const[r1,r2,r3]=await Promise.all([
+    sb.from('pcm_orcamento').select('*').eq('garagem_id',gid).eq('data',hoje_).eq('turno',turno).limit(1),
+    sb.from('ocorrencias_22').select('custo_previsto,custo_real,status').eq('garagem_id',gid)
+      .gte('hora_entrada',new Date(ini).toISOString())
+      .lte('hora_entrada',new Date(fim).toISOString()),
+    sb.from('pcm_conferencias').select('*').eq('garagem_id',gid).eq('data',hoje_).eq('turno',turno)
+      .order('conferido_em',{ascending:false}).limit(10),
+  ]);
+
+  const orc=r1.data?.[0];
+  const ocs=r2.data||[];
+  const confs=r3.data||[];
+  const disponivel=parseFloat(orc?.valor_disponivel||0);
+  const gastoReal=ocs.reduce((s,o)=>s+parseFloat(o.custo_real||0),0);
+  const gastoPrev=ocs.reduce((s,o)=>s+parseFloat(o.custo_previsto||0),0);
+  const saldo=disponivel-gastoReal;
+  const pct=disponivel>0?Math.round(gastoReal/disponivel*100):0;
+  const corSaldo=saldo<0?'var(--red)':saldo<disponivel*0.2?'var(--amber)':'var(--green)';
+  const fmtR=v=>'R$\u00a0'+parseFloat(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});
+
+  const proxConf=confs.length>0?new Date(new Date(confs[0].conferido_em).getTime()+3*60*60*1000):null;
+  const tempoProx=proxConf?Math.max(0,Math.round((proxConf-agora)/60000)):null;
+  const jaPassou=!proxConf||(proxConf<agora);
+
+  const kpis=[
+    {l:'Orçamento Disponível',v:fmtR(disponivel),c:'var(--blue)'},
+    {l:'Gasto Real',v:fmtR(gastoReal),c:gastoReal>disponivel?'var(--red)':'var(--amber)'},
+    {l:'Previsto em Aberto',v:fmtR(gastoPrev),c:'var(--text3)'},
+    {l:'Saldo',v:fmtR(saldo),c:corSaldo},
+  ].map(k=>
+    '<div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid '+k.c+';border-radius:10px;padding:12px 14px">'+
+      '<div style="color:var(--text3);font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">'+k.l+'</div>'+
+      '<div style="font-family:monospace;font-size:16px;font-weight:800;color:'+k.c+'">'+k.v+'</div>'+
+    '</div>'
+  ).join('');
+
+  const confRows=confs.map(c=>{
+    const s=parseFloat(c.saldo||0);
+    const p=parseInt(c.pct_utilizado||0);
+    const corS=s<0?'var(--red)':s<parseFloat(c.disponivel||0)*0.2?'var(--amber)':'var(--green)';
+    const hr=c.conferido_em?new Date(c.conferido_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
+    return '<tr style="border-bottom:1px solid var(--border2)">'+
+      '<td style="padding:8px 14px;font-family:monospace;font-size:13px">'+hr+'</td>'+
+      '<td style="padding:8px 14px;font-size:12px">'+(c.conferido_por||'—')+'</td>'+
+      '<td style="padding:8px 14px;text-align:right;font-family:monospace;font-size:12px">'+fmtR(c.disponivel)+'</td>'+
+      '<td style="padding:8px 14px;text-align:right;font-family:monospace;font-size:12px;font-weight:700">'+fmtR(c.gasto_real)+'</td>'+
+      '<td style="padding:8px 14px;text-align:right;font-family:monospace;font-size:12px;font-weight:700;color:'+corS+'">'+fmtR(s)+'</td>'+
+      '<td style="padding:8px 14px;text-align:center">'+
+        '<div style="background:var(--border);border-radius:6px;height:6px;overflow:hidden;width:80px;margin:auto">'+
+          '<div style="height:100%;width:'+Math.min(p,100)+'%;background:'+(s<0?'var(--red)':p>=80?'var(--amber)':'var(--green)')+';border-radius:6px"></div>'+
+        '</div>'+
+        '<div style="font-size:10px;color:var(--text3);margin-top:3px">'+p+'%</div>'+
+      '</td>'+
+    '</tr>';
+  }).join('');
+
+  const btnConfLabel=(saldo<0?'🚨':'📊')+' Fazer Conferência'+(saldo<0?' URGENTE':'');
+  const btnConfBg=saldo<0?'var(--red)':'var(--green)';
+  const btnConf=jaPassou?
+    '<button onclick="fazerConferenciaOrc()" style="padding:10px 20px;border-radius:9px;border:none;background:'+btnConfBg+';color:#fff;font-size:13px;font-weight:700;cursor:pointer">'+btnConfLabel+'</button>':
+    '<div style="font-size:12px;color:var(--text3);padding:9px 14px;border:1px solid var(--border);border-radius:9px">\u23f1 Pr\u00f3xima em '+tempoProx+'min <button onclick="fazerConferenciaOrc()" style="margin-left:8px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:11px;cursor:pointer">For\u00e7ar</button></div>';
+
+  setMain(
+    secTitle('📊','Conferência de Custo',back)+tabs+
+
+    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'+
+        '<div>'+
+          '<div style="font-size:16px;font-weight:900">💰 Status do Orçamento — '+agora.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'})+'</div>'+
+          '<div style="font-size:12px;color:var(--text3);margin-top:2px">'+(turno==='dia'?'☀️ Diurno 07:00–17:00':'🌙 Noturno 21:00–07:20')+'</div>'+
+        '</div>'+
+        btnConf+
+      '</div>'+
+      '<div style="margin-bottom:14px">'+
+        '<div style="display:flex;justify-content:space-between;margin-bottom:6px">'+
+          '<span style="font-size:12px;color:var(--text3)">Utilização do orçamento</span>'+
+          '<span style="font-size:13px;font-weight:800;color:'+corSaldo+'">'+pct+'%</span>'+
+        '</div>'+
+        '<div style="background:var(--border);border-radius:8px;height:10px;overflow:hidden">'+
+          '<div style="height:100%;width:'+Math.min(pct,100)+'%;background:'+(saldo<0?'var(--red)':pct>=80?'var(--amber)':'var(--green)')+';border-radius:8px;transition:width .4s"></div>'+
+        '</div>'+
+        (pct>100?'<div style="font-size:11px;color:var(--red);font-weight:700;margin-top:4px">🚨 Orçamento estourado em '+fmtR(Math.abs(saldo))+'</div>':'')+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">'+kpis+'</div>'+
+    '</div>'+
+
+    secTitle('🕐','Histórico de Conferências do Turno')+
+    (confs.length===0?'<div class="empty">Nenhuma conferência realizada neste turno ainda</div>':
+      '<div style="overflow-x:auto;margin-bottom:20px">'+
+      '<table style="width:100%;border-collapse:collapse;min-width:600px">'+
+        '<thead><tr style="background:var(--surface2)">'+
+          '<th style="padding:8px 14px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">HORA</th>'+
+          '<th style="padding:8px 14px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">CONFERIDO POR</th>'+
+          '<th style="padding:8px 14px;text-align:right;font-size:11px;color:var(--text3);font-weight:700">DISPONÍVEL</th>'+
+          '<th style="padding:8px 14px;text-align:right;font-size:11px;color:var(--text3);font-weight:700">GASTO</th>'+
+          '<th style="padding:8px 14px;text-align:right;font-size:11px;color:var(--text3);font-weight:700">SALDO</th>'+
+          '<th style="padding:8px 14px;text-align:center;font-size:11px;color:var(--text3);font-weight:700">USO</th>'+
+        '</tr></thead>'+
+        '<tbody>'+confRows+'</tbody>'+
+      '</table></div>')
+  );
+}
+
+// ── 4. PREÇOS SAP ─────────────────────────────────────────────────────
+async function renderSapPrecos(gid,back,tabs){
+  setMain(back+tabs+'<div class="loading"><div class="spinner"></div></div>');
+  const{data:precos}=await sb.from('sap_precos').select('*').eq('garagem_id',gid).order('descricao').limit(500);
+  const lista=precos||[];
+  const rows=lista.map(p=>
+    '<tr data-cod="'+(p.cod_sap||'')+'" data-desc="'+(p.descricao||'')+'" style="border-bottom:1px solid var(--border2)">'+
+      '<td style="padding:8px 14px;font-family:monospace;font-weight:700;color:var(--blue)">'+(p.cod_sap||'—')+'</td>'+
+      '<td style="padding:8px 14px;font-size:13px">'+(p.descricao||'—')+'</td>'+
+      '<td style="padding:8px 14px;font-size:12px;color:var(--text3)">'+(p.unidade||'UN')+'</td>'+
+      '<td style="padding:8px 14px;text-align:right;font-family:monospace;font-size:13px;font-weight:700;color:var(--green)">R$\u00a0'+parseFloat(p.preco_unit||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+'</td>'+
+      '<td style="padding:8px 14px;font-size:11px;color:var(--text3)">'+(p.atualizado_em?new Date(p.atualizado_em).toLocaleDateString('pt-BR'):'—')+'</td>'+
+    '</tr>'
+  ).join('');
+
+  setMain(
+    secTitle('💲','Tabela de Preços SAP',back)+tabs+
+    '<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px">'+
+      '<input class="fi" id="sap-busca" placeholder="Buscar por código SAP ou descrição..." oninput="filtrarSapPrecos()" style="flex:1;margin-bottom:0">'+
+      '<label class="btn-add" style="cursor:pointer;white-space:nowrap">📤 Importar CSV/Excel<input type="file" accept=".csv,.xlsx,.xls" onchange="importarSapPrecos(this)" style="display:none"></label>'+
+    '</div>'+
+    (lista.length===0?
+      '<div class="empty"><div style="font-size:36px">📋</div><div style="margin:12px 0;font-weight:600;color:var(--text2)">Nenhum preço cadastrado</div><p style="color:var(--text3)">Importe a planilha do SAP com colunas: Código SAP, Descrição, Preço Unitário, Unidade.</p></div>':
+      '<div style="overflow-x:auto"><table id="sap-table" style="width:100%;border-collapse:collapse;min-width:500px">'+
+        '<thead><tr style="background:var(--surface2)">'+
+          '<th style="padding:8px 14px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">CÓD. SAP</th>'+
+          '<th style="padding:8px 14px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">DESCRIÇÃO</th>'+
+          '<th style="padding:8px 14px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">UNIDADE</th>'+
+          '<th style="padding:8px 14px;text-align:right;font-size:11px;color:var(--text3);font-weight:700">PREÇO UNIT.</th>'+
+          '<th style="padding:8px 14px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">ATUALIZADO</th>'+
+        '</tr></thead>'+
+        '<tbody>'+rows+'</tbody>'+
+      '</table></div>')+
+    '<div class="info-blue info-banner" style="margin-top:16px">'+
+      '💡 '+lista.length+' itens cadastrados · Ao digitar o código SAP em uma requisição, o preço estimado é preenchido automaticamente.'+
+    '</div>'
+  );
+}
+
+function filtrarSapPrecos(){
+  const q=(document.getElementById('sap-busca')?.value||'').toLowerCase();
+  document.querySelectorAll('#sap-table tbody tr').forEach(tr=>{
+    const cod=(tr.dataset.cod||'').toLowerCase();
+    const desc=(tr.dataset.desc||'').toLowerCase();
+    tr.style.display=(cod.includes(q)||desc.includes(q)||!q)?'':'none';
+  });
+}
+
+async function importarSapPrecos(input){
+  const file=input.files[0]; if(!file) return;
+  toast('⏳ Processando arquivo...');
+  const gid=getGid();
+  const lerArquivo=()=>new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=e=>res(e.target.result);
+    r.onerror=rej;
+    if(file.name.endsWith('.csv')) r.readAsText(file,'utf-8');
+    else r.readAsArrayBuffer(file);
+  });
+  try{
+    let rows=[];
+    if(file.name.endsWith('.csv')){
+      const txt=await lerArquivo();
+      const lines=txt.split('\n').filter(l=>l.trim());
+      const sep=lines[0].includes(';')?';':',';
+      const header=lines[0].split(sep).map(h=>h.trim().toLowerCase().replace(/"/g,''));
+      const iCod=header.findIndex(h=>h.includes('cod')||h.includes('material')||h.includes('sap'));
+      const iDesc=header.findIndex(h=>h.includes('desc')||h.includes('nome'));
+      const iPreco=header.findIndex(h=>h.includes('pre')||h.includes('valor')||h.includes('unit'));
+      const iUnd=header.findIndex(h=>h.includes('und')||h.includes('unid'));
+      for(let i=1;i<lines.length;i++){
+        const cols=lines[i].split(sep).map(c=>c.trim().replace(/"/g,''));
+        if(!cols[iCod>-1?iCod:0]) continue;
+        rows.push({garagem_id:gid,
+          cod_sap:String(cols[iCod>-1?iCod:0]).trim(),
+          descricao:String(cols[iDesc>-1?iDesc:1]||'').trim(),
+          preco_unit:parseFloat((cols[iPreco>-1?iPreco:2]||'0').replace(',','.'))||0,
+          unidade:String(cols[iUnd>-1?iUnd:3]||'UN').trim()||'UN',
+          atualizado_em:new Date().toISOString()});
+      }
+    } else if(typeof XLSX!=='undefined'){
+      const buf=await lerArquivo();
+      const wb=XLSX.read(new Uint8Array(buf),{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const data=XLSX.utils.sheet_to_json(ws,{header:1});
+      const header=(data[0]||[]).map(h=>String(h).toLowerCase());
+      const iCod=header.findIndex(h=>h.includes('cod')||h.includes('material'));
+      const iDesc=header.findIndex(h=>h.includes('desc')||h.includes('nome'));
+      const iPreco=header.findIndex(h=>h.includes('pre')||h.includes('valor'));
+      const iUnd=header.findIndex(h=>h.includes('und')||h.includes('unid'));
+      for(let i=1;i<data.length;i++){
+        const r=data[i]; if(!r[iCod>-1?iCod:0]) continue;
+        rows.push({garagem_id:gid,
+          cod_sap:String(r[iCod>-1?iCod:0]).trim(),
+          descricao:String(r[iDesc>-1?iDesc:1]||'').trim(),
+          preco_unit:parseFloat(String(r[iPreco>-1?iPreco:2]||'0').replace(',','.'))||0,
+          unidade:String(r[iUnd>-1?iUnd:3]||'UN').trim()||'UN',
+          atualizado_em:new Date().toISOString()});
+      }
+    } else { toast('Use arquivo CSV para este navegador','err'); return; }
+    if(!rows.length){toast('Nenhuma linha válida encontrada','err');return;}
+    let total=0;
+    for(let i=0;i<rows.length;i+=100){
+      const{error}=await sb.from('sap_precos').upsert(rows.slice(i,i+100),{onConflict:'garagem_id,cod_sap'});
+      if(error){toast('Erro: '+error.message,'err');return;}
+      total+=rows.slice(i,i+100).length;
+    }
+    toast('✅ '+total+' itens importados!');
+    input.value='';
+    renderFerrPCM('sap_precos');
+  }catch(e){toast('Erro: '+e.message,'err');}
+}
+
+async function consultarPrecoSAP(codSap,gid){
+  if(!codSap||!gid) return null;
+  const{data}=await sb.from('sap_precos').select('preco_unit,descricao,unidade').eq('garagem_id',gid).eq('cod_sap',codSap.trim()).limit(1);
+  return data&&data[0]||null;
+}
+
+async function onSapCodInput(inputEl,precoEl,descEl,gid){
+  const cod=inputEl.value?.trim();
+  if(!cod||cod.length<4) return;
+  const item=await consultarPrecoSAP(cod,gid);
+  if(item){
+    if(precoEl) precoEl.value=item.preco_unit||'';
+    if(descEl&&!descEl.value) descEl.value=item.descricao||'';
+    inputEl.style.borderColor='var(--green)';
+    toast('💲 Preço SAP: R$\u00a0'+parseFloat(item.preco_unit||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+' / '+(item.unidade||'UN'),'ok',3000);
+  }
 }
 
 
