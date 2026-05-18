@@ -55,8 +55,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 /* SHEET */
 .sheet-ov{position:fixed;inset:0;background:#00000088;z-index:300;display:none;align-items:flex-end}
 .sheet-ov.open{display:flex}
-.sheet{background:var(--surface);border-radius:24px 24px 0 0;width:100%;max-height:92vh;overflow-y:auto;padding-bottom:calc(var(--safe-bot) + 16px);-webkit-tap-highlight-color:transparent}
-.sheet button{touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none}
+.sheet{background:var(--surface);border-radius:24px 24px 0 0;width:100%;max-height:92vh;overflow-y:auto;padding-bottom:calc(var(--safe-bot) + 16px)}
 .sheet-handle{width:40px;height:4px;background:var(--border);border-radius:99px;margin:12px auto}
 .sheet-ttl{font-size:17px;font-weight:800;padding:4px 20px 14px;border-bottom:1px solid var(--border)}
 .sheet-body{padding:16px 20px}
@@ -105,7 +104,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 
 <!-- APP -->
 <div id="app" style="display:none">
-<div id="dbg" style="display:none;position:fixed;bottom:60px;left:0;right:0;background:#000e;color:#0f0;font-size:10px;font-family:monospace;padding:6px 8px;z-index:9999;max-height:160px;overflow-y:auto;border-top:1px solid #0f0"></div>
   <div id="topbar">
     <div style="display:flex;align-items:center;gap:10px">
       <span style="font-size:18px">🚌</span>
@@ -145,177 +143,11 @@ function cargo(){return S.perfil?.cargo}
 const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente',lider_pcm:'Líder PCM',assistente_pcm:'Ass. PCM',almoxarifado:'Almoxarifado',lider_operacional:'L. Operacional',lider_suprimentos:'L. Suprimentos',operacoes_seguras:'Op. Seguras',lider_oficina:'L. Oficina',lider_patio:'L. Pátio',lavador:'Lavador',manobrista:'Manobrista',frentista:'Frentista',plantao:'Plantão'};
 function toast(msg,tipo='ok',dur=2200){const t=document.getElementById('toast');t.textContent=msg;t.className='show'+(tipo==='err'?' err':'');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',dur);}
 function render(html){document.getElementById('content').innerHTML=html}
-function dbg(msg,cor){
-  var el=document.getElementById('dbg');
-  if(!el)return;
-  el.style.display='block';
-  var line=document.createElement('div');
-  line.style.color=cor||'#0f0';
-  line.textContent=new Date().toLocaleTimeString('pt-BR')+' '+msg;
-  el.appendChild(line);
-  el.scrollTop=el.scrollHeight;
-  // auto-hide after 15s of inactivity
-  clearTimeout(el._t);
-  el._t=setTimeout(function(){el.style.display='none';el.innerHTML='';},15000);
-}
 function setTela(t){S.tela=t;buildNav();render('<div class="loading"><div class="sp"></div></div>');TELAS[t]&&TELAS[t]()}
 function openSheet(ttl,html){document.getElementById('shttl').textContent=ttl;document.getElementById('shbody').innerHTML=html;document.getElementById('shov').classList.add('open')}
 function closeSheet(e){if(e===true||e.target===document.getElementById('shov'))document.getElementById('shov').classList.remove('open')}
 
 // LOGIN
-async function exportarRelOS(ocId){
-  const gid=getGid();
-  const[{data:oc},{data:ckl}]=await Promise.all([
-    sb.from('ocorrencias_22').select('*').eq('id',ocId).single(),
-    sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem'),
-  ]);
-  if(!oc){toast('OS não encontrada','err');return;}
-
-  let dados38=(window._ck38Cache&&window._ck38Cache[ocId])||{};
-  if(!Object.keys(dados38).length){
-    const{data:ck}=await sb.from('checklist_38').select('dados')
-      .eq('garagem_id',gid).eq('prefixo',oc.prefixo)
-      .order('criado_em',{ascending:false}).limit(1);
-    dados38=(ck&&ck[0]&&ck[0].dados)||{};
-  }
-
-  const agora=new Date();
-  const dtFmt=agora.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'America/Manaus'});
-  const hrFmt=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'});
-  const garaGemNome=(S.garagens&&S.garagens.find(g=>g.id===gid)&&S.garagens.find(g=>g.id===gid).nome)||'Porto Velho';
-  const B='border:1px solid #333;';
-  const BH='border:1px solid #333;background:#555;color:#fff;font-weight:900;';
-
-  // ── QUALIFICAÇÃO ─────────────────────────────────────────
-  const totQ=(ckl||[]).length;
-  const qualQ=(ckl||[]).filter(i=>i.trocado||i.nao_se_aplica).length;
-  const pctQ=totQ>0?Math.round(qualQ/totQ*100):0;
-
-  const rowsQ=(ckl||[]).map(i=>{
-    const txt=(i.item||'').replace(/^\[[^\]]+\]\s*/,'');
-    const m=i.item?.match(/^\[([^\]]+)\]/);
-    const sec=m?m[1]:'GERAL';
-    const sg=SETORES_M.find(s=>s.gr.includes(sec))||{key:'GERAL',ic:'🔧'};
-    const statusTxt=i.nao_se_aplica?'N/A':i.trocado?'✅ QUALIF.':i.verificado?'👁 VERIF.':'—';
-    const stBg=i.nao_se_aplica?'#f8fafc':i.trocado?'#f0fdf4':i.verificado?'#eff6ff':'#fff';
-    const stCor=i.nao_se_aplica?'#64748b':i.trocado?'#166534':i.verificado?'#1d4ed8':'#94a3b8';
-    return`<tr><td style="${B}padding:3px 5px;font-size:9px;color:#555;width:80px">${sg.ic} ${sg.key}</td><td style="${B}padding:3px 5px;font-size:10px">${txt}</td><td style="${B}padding:3px 5px;text-align:center;background:${stBg};color:${stCor};font-size:10px;font-weight:700;width:70px">${statusTxt}</td></tr>`;
-  }).join('');
-
-  const resumoSetores=SETORES_M.map(sg=>{
-    const its=(ckl||[]).filter(i=>{const m=i.item?.match(/^\[([^\]]+)\]/);return sg.gr.includes(m?m[1]:'GERAL');});
-    if(!its.length) return '';
-    const qS=its.filter(i=>i.trocado||i.nao_se_aplica).length;
-    const pS=Math.round(qS/its.length*100);
-    const bg=pS===100?'#f0fdf4':pS>0?'#fffbeb':'#fef2f2';
-    const cor=pS===100?'#166534':pS>0?'#92400e':'#991b1b';
-    return`<td style="${B}padding:4px 6px;background:${bg};text-align:center"><div style="font-size:9px;font-weight:700">${sg.ic} ${sg.key}</div><div style="font-family:monospace;font-size:11px;font-weight:900;color:${cor}">${qS}/${its.length}</div></td>`;
-  }).join('');
-
-  // ── CHECKLIST 3.8 ────────────────────────────────────────
-  let qual38=0, nao38=0;
-  const rows38=SECS38.map(sec=>{
-    const qS=sec.itens.filter(it=>dados38[sec.sec+'_'+it.id]==='sim').length;
-    const pS=Math.round(qS/sec.itens.length*100);
-    const bg=pS===100?'#f0fdf4':pS>0?'#fffbeb':'#fef2f2';
-    const cor=pS===100?'#166534':pS>0?'#92400e':'#991b1b';
-    const header=`<tr style="background:#f1f5f9"><td colspan="2" style="${B}padding:5px 8px;font-size:11px;font-weight:800">${sec.sec}<span style="float:right;color:${cor};font-family:monospace">${qS}/${sec.itens.length}</span></td></tr>`;
-    const itens=sec.itens.map(it=>{
-      const key=sec.sec+'_'+it.id;
-      const val=dados38[key]||'';
-      if(val==='sim') qual38++;
-      if(val==='nao') nao38++;
-      const stTxt=val==='sim'?'✅ SIM':val==='nao'?'❌ NÃO':'—';
-      const stBg=val==='sim'?'#f0fdf4':val==='nao'?'#fef2f2':'#fff';
-      const stCor=val==='sim'?'#166534':val==='nao'?'#991b1b':'#94a3b8';
-      return`<tr><td style="${B}padding:3px 5px;font-size:10px">${it.txt}</td><td style="${B}padding:3px 5px;text-align:center;background:${stBg};color:${stCor};font-size:10px;font-weight:700;width:65px">${stTxt}</td></tr>`;
-    }).join('');
-    return header+itens;
-  }).join('');
-  const pct38=Math.round(qual38/TOTAL_38*100);
-
-  const entH=oc.hora_entrada?new Date(oc.hora_entrada).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
-
-  const html=`<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
-<style>
-  body{font-family:Arial,sans-serif;font-size:10px;color:#000;margin:0;padding:10px}
-  @media print{.no-print{display:none!important}body{padding:0;margin:0}@page{margin:8mm;size:A4 portrait}}
-  table{border-collapse:collapse;width:100%}
-  tr:nth-child(even) td{background:#f9f9f9}
-</style></head><body>
-
-<div class="no-print" style="position:sticky;top:0;background:#1e293b;padding:8px 12px;display:flex;gap:8px;align-items:center;z-index:999;margin:-10px -10px 10px -10px">
-  <span style="color:#fff;font-size:12px;font-weight:700">📋 JTP — Relatório OS ${oc.prefixo}</span>
-  <button onclick="window.print()" style="margin-left:auto;padding:6px 16px;background:#3B82F6;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">🖨️ Salvar PDF</button>
-</div>
-
-<div style="text-align:center;border:2.5px solid #000;padding:6px;margin-bottom:5px;background:#fff">
-  <div style="font-size:13px;font-weight:900;letter-spacing:1px">GRUPO JTP  │  OPERAÇÃO GARAGEM  │  Qualificação & Checklist 3.8</div>
-</div>
-
-<table style="margin-bottom:4px">
-  <tr>
-    <td style="${B}padding:3px 6px"><strong>Prefixo:</strong> <span style="font-family:monospace;font-weight:900">${oc.prefixo}</span></td>
-    <td style="${B}padding:3px 6px"><strong>Tipo OS:</strong> ${(oc.tipo||'').replace(/_/g,' ')}</td>
-    <td style="${B}padding:3px 6px"><strong>Garagem:</strong> ${garaGemNome}</td>
-    <td style="${B}padding:3px 6px"><strong>Data/Hora:</strong> ${dtFmt} ${hrFmt}</td>
-  </tr>
-  <tr>
-    <td style="${B}padding:3px 6px"><strong>Responsável:</strong> ${oc.mecanico||'—'}</td>
-    <td style="${B}padding:3px 6px"><strong>👷 Manutentores:</strong> ${oc.manutentores||'—'}</td>
-    <td style="${B}padding:3px 6px"><strong>OS Nº:</strong> ${oc.numero||'—'}</td>
-    <td style="${B}padding:3px 6px"><strong>Entrada:</strong> ${entH}</td>
-  </tr>
-</table>
-
-<!-- PARTE 1: QUALIFICAÇÃO -->
-<div style="font-weight:900;background:#1e3a5f;color:#fff;border:1.5px solid #111;padding:4px 8px;margin:8px 0 2px">■ PARTE 1 — QUALIFICAÇÃO DO CHECKLIST DE LIBERAÇÃO</div>
-<table style="margin-bottom:4px">
-  <tr>
-    <td style="${B}padding:4px 8px;background:#f0fdf4"><strong>✅ Qualificados:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900;color:#166534"> ${qualQ}/${totQ} (${pctQ}%)</span></td>
-    <td style="${B}padding:4px 8px;background:#fffbeb"><strong>👁 Verificados:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900;color:#92400e"> ${(ckl||[]).filter(i=>i.verificado||i.nao_se_aplica).length}/${totQ}</span></td>
-  </tr>
-</table>
-${resumoSetores?`<table style="margin-bottom:4px"><tr>${resumoSetores}</tr></table>`:''}
-<table>
-  <thead><tr>
-    <th style="${BH}padding:3px;width:80px">SETOR</th>
-    <th style="${BH}padding:3px;text-align:left">ITEM</th>
-    <th style="${BH}padding:3px;text-align:center;width:70px">STATUS</th>
-  </tr></thead>
-  <tbody>${rowsQ||'<tr><td colspan="3" style="padding:8px;color:#999;text-align:center">Checklist de qualificação não iniciado</td></tr>'}</tbody>
-  <tfoot><tr style="background:#ddd;font-weight:900"><td style="${B}padding:3px 5px" colspan="2">TOTAL QUALIFICAÇÃO</td><td style="${B}padding:3px 5px;text-align:center">✅ ${qualQ}/${totQ}</td></tr></tfoot>
-</table>
-
-<!-- PARTE 2: CHECKLIST 3.8 -->
-<div style="font-weight:900;background:#1e3a5f;color:#fff;border:1.5px solid #111;padding:4px 8px;margin:12px 0 2px">■ PARTE 2 — CHECKLIST 3.8 — LIBERAÇÃO DE VEÍCULO</div>
-<table style="margin-bottom:4px">
-  <tr>
-    <td style="${B}padding:4px 8px;background:#f0fdf4"><strong>✅ SIM:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900;color:#166534"> ${qual38}/${TOTAL_38} (${pct38}%)</span></td>
-    <td style="${B}padding:4px 8px;background:#fef2f2"><strong>❌ NÃO:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900;color:#991b1b"> ${nao38}</span></td>
-    <td style="${B}padding:4px 8px;background:#f8fafc"><strong>— Sem resp.:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900"> ${TOTAL_38-qual38-nao38}</span></td>
-  </tr>
-</table>
-<table>
-  <thead><tr>
-    <th style="${BH}padding:3px;text-align:left">ITEM</th>
-    <th style="${BH}padding:3px;text-align:center;width:65px">RESPOSTA</th>
-  </tr></thead>
-  <tbody>${rows38}</tbody>
-  <tfoot><tr style="background:#ddd;font-weight:900"><td style="${B}padding:3px 5px">TOTAL 3.8</td><td style="${B}padding:3px 5px;text-align:center">✅${qual38} / ❌${nao38} / —${TOTAL_38-qual38-nao38}</td></tr></tfoot>
-</table>
-
-<div style="margin-top:10px;display:flex;justify-content:space-between;font-size:9px;color:#666">
-  <span>Gerado em: ${agora.toLocaleString('pt-BR',{timeZone:'America/Manaus'})} por ${(S.perfil&&S.perfil.nome)||'—'}</span>
-  <span>JTP Transportes · Operação Garagem</span>
-</div>
-</body></html>`;
-
-  const nomeArq='JTP_OS_'+oc.prefixo.replace(/\./g,'')+'_'+dtFmt.replace(/\//g,'')+'_'+garaGemNome.replace(/\s/g,'_')+'.pdf';
-  await downloadPDF(html,nomeArq);
-}
-
 async function doLogin(){
   const input=document.getElementById('le').value.trim();
   const senha=document.getElementById('ls').value;
@@ -1202,74 +1034,378 @@ async function confirmarFechamentoAbastecimento(){
 
 // ── OFICINA (Líder Oficina / PCM) ─────────────────────────
 async function telaOficina(){
-  const gid=getGid();
-  const{data:ocs}=await sb.from('ocorrencias_22').select('*')
-    .eq('garagem_id',gid).neq('status','liberado').order('hora_entrada',{ascending:true});
-  if(!ocs?.length){
-    render('<div class="empty"><div class="empty-ic">✅</div><div style="font-weight:700;font-size:16px;margin-bottom:8px">Nenhuma OS aberta</div></div>');
+  var gid=getGid();
+  var r=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado').order('hora_entrada',{ascending:true});
+  var ocs=r.data||[];
+  if(!ocs.length){
+    render('<div class="empty"><div class="empty-ic">✅</div><div style="font-weight:700;font-size:16px">Nenhuma OS aberta</div></div>');
     if(['lider_pcm','assistente_pcm','lider_oficina'].includes(cargo()))
       document.getElementById('content').insertAdjacentHTML('beforeend','<button class="fab" onclick="abrirNovaOS()">＋</button>');
     return;
   }
-  const agora=new Date();
-  const SC={
-    em_manutencao:{c:'var(--amber)',l:'Manutenção'},
-    aguardando_peca:{c:'var(--red)',l:'Ag. Peça'},
-    aguardando_aprovacao:{c:'var(--purple)',l:'Ag. Aprovação'},
-  };
-
-  // Busca qualificação de todos os ckl de uma vez
-  const ids=ocs.map(o=>o.id);
-  const{data:ckAll}=await sb.from('checklist_38').select('prefixo,dados').eq('garagem_id',gid).in('prefixo',ocs.map(o=>o.prefixo));
-  const ckMap={};
-  (ckAll||[]).forEach(k=>{
-    const dados=k.dados||{};
-    const tot=TOTAL_38;
-    const qual=Object.values(dados).filter(v=>v==='sim').length;
-    ckMap[k.prefixo]={tot,qual};
+  var agora=new Date();
+  var SC={em_manutencao:{c:'var(--amber)',l:'Manutenção'},aguardando_peca:{c:'var(--red)',l:'Ag. Peça'},aguardando_aprovacao:{c:'var(--purple)',l:'Ag. Aprovação'}};
+  var totalPessoas=ocs.reduce(function(s,o){return s+(parseInt(o.manutentores)||0);},0);
+  var html='<div class="sl">🔧 '+ocs.length+' OS'+(totalPessoas>0?' · 👷 '+totalPessoas+' na oficina':'')+'</div>';
+  ocs.forEach(function(o){
+    var st=SC[o.status]||{c:'var(--text3)',l:o.status};
+    var min=Math.round((agora-new Date(o.hora_entrada))/60000);
+    var h=Math.floor(min/60),m=min%60;
+    var pessoas=parseInt(o.manutentores)||0;
+    // usa data-ocid para evitar qualquer problema de aspas no onclick
+    html+='<div data-ocid="'+o.id+'" data-action="open-os" style="background:var(--surface);border:1px solid var(--border2);border-left:3px solid '+st.c+';border-radius:14px;padding:14px 16px;margin-bottom:10px;cursor:pointer">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'+
+        '<div style="font-size:20px;font-weight:900;font-family:monospace">'+o.prefixo+'</div>'+
+        '<span style="background:'+st.c+'18;border:1px solid '+st.c+'40;color:'+st.c+';border-radius:8px;padding:3px 10px;font-size:11px;font-weight:700">'+st.l+'</span>'+
+      '</div>'+
+      '<div style="font-size:11px;color:var(--text3);display:flex;gap:10px;flex-wrap:wrap">'+
+        '<span>'+(o.tipo||'').replace(/_/g,' ')+'</span>'+
+        '<span>⏱ '+(h>0?h+'h '+m+'min':m+'min')+'</span>'+
+        (pessoas>0?'<span style="color:var(--blue);font-weight:700">👷 '+pessoas+'p</span>':'')+
+      '</div>'+
+    '</div>';
   });
-
-  const totalPessoas=ocs.reduce((s,o)=>s+(parseInt(o.manutentores)||0),0);
-
-  const cards=ocs.map(o=>{
-    const st=SC[o.status]||{c:'var(--text3)',l:o.status};
-    const min=Math.round((agora-new Date(o.hora_entrada))/60000);
-    const h=Math.floor(min/60),m=min%60;
-    const venc=o.hora_previsao&&new Date(o.hora_previsao)<agora;
-    const ck=ckMap[o.prefixo];
-    const qual=ck?.qual||0;
-    const tot=ck?.tot||TOTAL_38;
-    const pct=Math.round(qual/tot*100);
-    const corPct=pct>=100?'var(--green)':pct>=60?'var(--amber)':'var(--blue)';
-    const pessoas=parseInt(o.manutentores)||0;
-    return(
-      '<div onclick="abrirOS(\''+o.id+'\')" style="background:var(--surface);border:1px solid var(--border2);border-left:3px solid '+st.c+';border-radius:14px;padding:14px 16px;margin-bottom:10px;cursor:pointer">'+
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'+
-          '<div style="font-family:\'DM Mono\',monospace;font-size:20px;font-weight:900;color:var(--text)">'+o.prefixo+'</div>'+
-          '<span style="background:'+st.c+'12;border:1px solid '+st.c+'40;color:'+st.c+';border-radius:8px;padding:3px 10px;font-size:11px;font-weight:700">'+st.l+'</span>'+
-        '</div>'+
-        '<div style="font-size:11px;color:var(--text3);display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">'+
-          '<span>'+(o.tipo?.replace(/_/g,' ')||'—')+'</span>'+
-          '<span>⏱ '+(h>0?h+'h '+m+'min':m+'min')+'</span>'+
-          (pessoas>0?'<span style="color:var(--blue);font-weight:700">👷 '+pessoas+' pessoa'+(pessoas>1?'s':'')+'</span>':'')+
-          (venc?'<span style="color:var(--red);font-weight:700">🔴 Vencida</span>':'')+
-        '</div>'+
-        '<div style="display:flex;align-items:center;gap:8px">'+
-          '<div style="flex:1;background:var(--surface2);border-radius:6px;height:5px;overflow:hidden">'+
-            '<div style="height:100%;width:'+pct+'%;background:'+corPct+';border-radius:6px"></div>'+
-          '</div>'+
-          '<div style="font-size:11px;font-weight:800;color:'+corPct+';min-width:55px;text-align:right">'+qual+'/'+tot+' Qual.</div>'+
-        '</div>'+
-      '</div>'
-    );
-  }).join('');
-
-  render(
-    '<div class="sl">🔧 '+ocs.length+' OS em aberto'+(totalPessoas>0?' <span style="font-size:11px;font-weight:400;color:var(--text3)">· 👷 '+totalPessoas+' na oficina</span>':'')+'  </div>'+
-    cards
-  );
+  render(html);
+  // Event delegation — um listener no content captura tudo
+  document.getElementById('content').addEventListener('click', function handler(e){
+    var el=e.target.closest('[data-action]');
+    if(!el) return;
+    document.getElementById('content').removeEventListener('click',handler);
+    if(el.dataset.action==='open-os') abrirOS_v2(el.dataset.ocid);
+  });
   if(['lider_pcm','assistente_pcm','lider_oficina'].includes(cargo()))
     document.getElementById('content').insertAdjacentHTML('beforeend','<button class="fab" onclick="abrirNovaOS()">＋</button>');
+}
+
+// ── Estado global da OS aberta ─────────────────────────────
+var _OS={id:'',aba:'qual',dados38:{},oc:null,ckl:[]};
+
+async function abrirOS_v2(ocId){
+  _OS.id=ocId; _OS.aba='qual';
+  if(!_OS.dados38[ocId]){
+    var gid=getGid();
+    var r=await sb.from('ocorrencias_22').select('prefixo').eq('id',ocId).single();
+    if(r.data){
+      var r2=await sb.from('checklist_38').select('dados').eq('garagem_id',gid).eq('prefixo',r.data.prefixo).order('criado_em',{ascending:false}).limit(1);
+      _OS.dados38[ocId]=(r2.data&&r2.data[0]&&r2.data[0].dados)||{};
+    }
+  }
+  await _renderOS();
+}
+
+async function _renderOS(){
+  var ocId=_OS.id;
+  var gid=getGid();
+  var r1=await sb.from('ocorrencias_22').select('*').eq('id',ocId).single();
+  _OS.oc=r1.data; if(!_OS.oc) return;
+  var r2=await sb.from('checklist_liberacao').select('id,verificado,trocado,nao_se_aplica,item').eq('ocorrencia_id',ocId);
+  _OS.ckl=r2.data||[];
+
+  var oc=_OS.oc, ckl=_OS.ckl, aba=_OS.aba, dados38=_OS.dados38[ocId]||{};
+  var totQ=ckl.length, qualQ=ckl.filter(function(i){return i.trocado||i.nao_se_aplica;}).length;
+  var pctQ=totQ>0?Math.round(qualQ/totQ*100):0;
+  var qual38=0;
+  SECS38.forEach(function(sec){sec.itens.forEach(function(it){if(dados38[sec.sec+'_'+it.id]==='sim')qual38++;});});
+  var pct38=Math.round(qual38/TOTAL_38*100);
+  var corQ=pctQ>=100?'var(--green)':pctQ>=60?'var(--amber)':'var(--blue)';
+  var cor38=pct38>=100?'var(--green)':pct38>=60?'var(--amber)':'var(--blue)';
+  var pessoas=parseInt(oc.manutentores)||0;
+  var ST={em_manutencao:'🔧 Manutenção',aguardando_peca:'📦 Ag. Peça',aguardando_aprovacao:'⏳ Ag. Aprovação',liberado:'✅ Liberado'};
+  var podeEd=['lider_oficina','lider_pcm','assistente_pcm'].includes(cargo());
+
+  // Abas — data-aba, sem onclick dinâmico
+  var tabs='<div style="display:flex;gap:6px;margin-bottom:12px">';
+  [{id:'qual',ic:'✅',l:'Qualificação',v:qualQ+'/'+totQ,c:corQ},{id:'ck38',ic:'📋',l:'3.8',v:qual38+'/'+TOTAL_38,c:cor38},{id:'export',ic:'📄',l:'PDF',v:'',c:'var(--text4)'}].forEach(function(a){
+    var sel=aba===a.id;
+    tabs+='<button data-aba="'+a.id+'" data-action="muda-aba" style="flex:1;padding:8px 4px;border-radius:10px;border:2px solid '+(sel?'var(--blue)':'var(--border)')+';background:'+(sel?'#3B82F618':'transparent')+';color:'+(sel?'var(--blue)':'var(--text3)')+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">'+a.ic+' '+a.l+'<br><span style="color:'+a.c+'">'+a.v+'</span></button>';
+  });
+  tabs+='</div>';
+
+  // Infobar — data-action para editar pessoas e status
+  var info='<div style="display:flex;gap:8px;margin-bottom:12px">'+
+    '<div style="flex:1;background:var(--surface2);border-radius:10px;padding:10px;text-align:center">'+
+      '<div style="font-size:10px;color:var(--text3);font-weight:700;margin-bottom:3px">STATUS</div>'+
+      '<div style="font-size:12px;font-weight:700">'+(ST[oc.status]||oc.status)+'</div>'+
+    '</div>'+
+    '<div data-action="editar-pessoas" style="flex:1;background:'+(pessoas>0?'#3B82F618':'var(--surface2)')+';border:1px solid '+(pessoas>0?'#3B82F640':'var(--border)')+';border-radius:10px;padding:10px;text-align:center;cursor:pointer">'+
+      '<div style="font-size:10px;color:var(--text3);font-weight:700;margin-bottom:3px">👷 NA OS</div>'+
+      '<div style="font-size:18px;font-weight:900;color:'+(pessoas>0?'var(--blue)':'var(--text4)')+'">'+( pessoas>0?pessoas:'—')+'</div>'+
+    '</div>'+
+    (podeEd?
+      '<div style="display:flex;flex-direction:column;gap:4px">'+
+        '<select id="sel-st-os" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 4px;color:var(--text);font-size:11px;font-family:inherit;outline:none">'+
+          '<option value="em_manutencao"'+(oc.status==='em_manutencao'?' selected':'')+'>🔧 Manut.</option>'+
+          '<option value="aguardando_peca"'+(oc.status==='aguardando_peca'?' selected':'')+'>📦 Ag.Peça</option>'+
+          '<option value="aguardando_aprovacao"'+(oc.status==='aguardando_aprovacao'?' selected':'')+'>⏳ Aprov.</option>'+
+          '<option value="liberado">✅ Liberado</option>'+
+        '</select>'+
+        '<button data-action="salvar-st" style="padding:7px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">OK</button>'+
+      '</div>'
+    :'')+
+  '</div>';
+
+  // Corpo por aba
+  var corpo='';
+  if(aba==='qual'){
+    var btns='';
+    SETORES_M.forEach(function(sg){
+      var its=ckl.filter(function(i){var m=i.item&&i.item.match(/^\[([^\]]+)\]/);return (sg.gr||[]).includes(m?m[1]:'GERAL');});
+      if(!its.length) return;
+      var tS=its.filter(function(i){return i.trocado||i.nao_se_aplica;}).length;
+      var ok=tS===its.length, part=tS>0&&tS<its.length;
+      btns+='<button data-setor="'+sg.key+'" data-action="abre-setor" style="display:inline-flex;align-items:center;gap:5px;background:'+(ok?'#00C48C12':part?'#F59E0B12':'var(--surface2)')+';border:1px solid '+(ok?'#00C48C40':part?'#F59E0B40':'var(--border)')+';border-radius:10px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;margin:3px;color:'+(ok?'var(--green)':part?'var(--amber)':'var(--text2)')+';font-family:inherit">'+
+        sg.ic+' '+sg.key+' '+(ok?'✅':tS+'/'+its.length)+
+      '</button>';
+    });
+    var barQ='<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase">Qualificação</span><span style="font-size:14px;font-weight:900;color:'+corQ+'">'+qualQ+'/'+totQ+'</span></div><div style="background:var(--border);border-radius:6px;height:5px;overflow:hidden"><div style="height:100%;width:'+pctQ+'%;background:'+corQ+';border-radius:6px"></div></div></div>';
+    corpo=barQ+btns;
+  }
+  else if(aba==='ck38'){
+    var bar38='<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase">Checklist 3.8</span><span style="font-size:14px;font-weight:900;color:'+cor38+'">'+qual38+'/'+TOTAL_38+'</span></div><div style="background:var(--border);border-radius:6px;height:5px;overflow:hidden"><div style="height:100%;width:'+pct38+'%;background:'+cor38+';border-radius:6px"></div></div></div>';
+    var secs='';
+    SECS38.forEach(function(sec){
+      var secQual=sec.itens.filter(function(it){return dados38[sec.sec+'_'+it.id]==='sim';}).length;
+      secs+='<div style="margin-bottom:14px"><div style="font-size:11px;font-weight:800;color:'+(secQual===sec.itens.length?'var(--green)':'var(--text3)')+';text-transform:uppercase;border-bottom:1px solid var(--border2);padding-bottom:5px;margin-bottom:4px;display:flex;justify-content:space-between"><span>'+sec.sec+'</span><span>'+(secQual===sec.itens.length?'✅':secQual+'/'+sec.itens.length)+'</span></div>';
+      sec.itens.forEach(function(it){
+        var key=sec.sec+'_'+it.id;
+        var val=dados38[key]||'';
+        secs+='<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border2)">'+
+          '<div style="flex:1;font-size:12px;line-height:1.4;color:'+(val==='sim'?'var(--green)':val==='nao'?'var(--red)':'var(--text)')+'">'+it.txt+'</div>';
+        if(podeEd){
+          secs+='<button data-action="set38" data-key="'+key+'" data-val="sim" style="padding:5px 11px;border-radius:7px;border:2px solid '+(val==='sim'?'var(--green)':'var(--border)')+';background:'+(val==='sim'?'#00C48C18':'transparent')+';color:'+(val==='sim'?'var(--green)':'var(--text3)')+';font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">SIM</button>'+
+                 '<button data-action="set38" data-key="'+key+'" data-val="nao" style="padding:5px 11px;border-radius:7px;border:2px solid '+(val==='nao'?'var(--red)':'var(--border)')+';background:'+(val==='nao'?'#EF444418':'transparent')+';color:'+(val==='nao'?'var(--red)':'var(--text3)')+';font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">NÃO</button>';
+        } else {
+          secs+='<span style="font-size:11px;font-weight:700;color:'+(val==='sim'?'var(--green)':val==='nao'?'var(--red)':'var(--text4)')+'">'+( val==='sim'?'✅':val==='nao'?'❌':'—')+'</span>';
+        }
+        secs+='</div>';
+      });
+      secs+='</div>';
+    });
+    var btnSalvar=podeEd?'<button data-action="salvar38" style="width:100%;padding:12px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;margin-top:8px">💾 Salvar 3.8</button>':'';
+    corpo=bar38+'<div style="max-height:52vh;overflow-y:auto">'+secs+'</div>'+btnSalvar;
+  }
+  else if(aba==='export'){
+    corpo='<div style="text-align:center;padding:8px 0 16px">'+
+      '<div style="display:flex;gap:10px;justify-content:center;margin-bottom:16px">'+
+        '<div style="flex:1;background:var(--surface2);border-radius:10px;padding:12px"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">Qualificação</div><div style="font-size:24px;font-weight:900;color:'+corQ+'">'+pctQ+'%</div><div style="font-size:11px;color:var(--text3)">'+qualQ+'/'+totQ+'</div></div>'+
+        '<div style="flex:1;background:var(--surface2);border-radius:10px;padding:12px"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">Check. 3.8</div><div style="font-size:24px;font-weight:900;color:'+cor38+'">'+pct38+'%</div><div style="font-size:11px;color:var(--text3)">'+qual38+'/'+TOTAL_38+'</div></div>'+
+      '</div>'+
+      '<button data-action="exportar" style="width:100%;padding:16px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer">📄 Gerar & Compartilhar PDF</button>'+
+    '</div>';
+  }
+
+  openSheet(oc.prefixo+' — '+(oc.tipo||'').replace(/_/g,' '), tabs+info+corpo);
+
+  // ── EVENT DELEGATION no sheet body ─────────────────────────
+  document.getElementById('shbody').addEventListener('click', async function handler(e){
+    var el=e.target.closest('[data-action]');
+    if(!el) return;
+    var action=el.dataset.action;
+
+    if(action==='muda-aba'){
+      _OS.aba=el.dataset.aba;
+      document.getElementById('shbody').removeEventListener('click',handler);
+      await _renderOS();
+    }
+    else if(action==='editar-pessoas'){
+      document.getElementById('shbody').removeEventListener('click',handler);
+      _editarPessoas(ocId, pessoas);
+    }
+    else if(action==='salvar-st'){
+      var st=document.getElementById('sel-st-os')&&document.getElementById('sel-st-os').value;
+      if(!st) return;
+      await sb.from('ocorrencias_22').update({status:st}).eq('id',ocId);
+      toast(st==='liberado'?'✅ Liberado!':'✅ Atualizado!');
+      if(st==='liberado'){closeSheet(true);telaOficina();return;}
+      document.getElementById('shbody').removeEventListener('click',handler);
+      await _renderOS();
+    }
+    else if(action==='abre-setor'){
+      document.getElementById('shbody').removeEventListener('click',handler);
+      await _renderSetor(ocId, el.dataset.setor);
+    }
+    else if(action==='set38'){
+      var key=el.dataset.key, val=el.dataset.val;
+      if(!_OS.dados38[ocId]) _OS.dados38[ocId]={};
+      _OS.dados38[ocId][key]=val;
+      document.getElementById('shbody').removeEventListener('click',handler);
+      await _renderOS();
+    }
+    else if(action==='salvar38'){
+      var gid=getGid();
+      var rp=await sb.from('ocorrencias_22').select('prefixo').eq('id',ocId).single();
+      if(!rp.data){toast('Erro','err');return;}
+      var res=await sb.from('checklist_38').upsert({garagem_id:gid,prefixo:rp.data.prefixo,dados:_OS.dados38[ocId]||{},criado_por:S.perfil&&S.perfil.nome,criado_em:new Date().toISOString()},{onConflict:'garagem_id,prefixo'});
+      if(res.error){toast('Erro: '+res.error.message,'err');return;}
+      toast('✅ 3.8 salvo!');
+    }
+    else if(action==='exportar'){
+      document.getElementById('shbody').removeEventListener('click',handler);
+      await _exportarOS(ocId);
+    }
+  });
+}
+
+async function _renderSetor(ocId,setor){
+  var shbody=document.getElementById('shbody');
+  var shttl=document.getElementById('shttl');
+  if(shbody) shbody.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3)">Carregando...</div>';
+
+  var sg=SETORES_M.find(function(s){return s.key===setor;});
+  var r1=await sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem');
+  var r2=await sb.from('ocorrencias_22').select('prefixo').eq('id',ocId).single();
+  var ckl=r1.data||[];
+  var itens=ckl.filter(function(i){var m=i.item&&i.item.match(/^\[([^\]]+)\]/);return (sg&&sg.gr||[]).includes(m?m[1]:'GERAL');});
+  var podeEd=['lider_oficina','lider_pcm','assistente_pcm'].includes(cargo());
+  var vTot=itens.filter(function(i){return i.verificado||i.nao_se_aplica;}).length;
+  var tTot=itens.filter(function(i){return i.trocado||i.nao_se_aplica;}).length;
+  var faseV=vTot<itens.length;
+
+  var rows='';
+  itens.forEach(function(it){
+    var nsa=it.nao_se_aplica;
+    var txt=(it.item||'').replace(/^\[[^\]]+\]\s*/,'');
+    var cor=it.trocado?'var(--green)':it.verificado?'var(--text)':'var(--text3)';
+    rows+='<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border2)">';
+    rows+='<div style="flex:1;font-size:12px;line-height:1.4;color:'+cor+'">'+txt+'</div>';
+    if(podeEd){
+      // data-itemid, data-tipo — sem nenhum valor dinâmico no atributo onclick
+      rows+='<button data-action="tog" data-itemid="'+it.id+'" data-tipo="v" data-setor="'+setor+'" '+(nsa?'disabled':'')+' class="ck-b '+(it.verificado?'von':'')+'" style="touch-action:manipulation">V</button>';
+      rows+='<button data-action="tog" data-itemid="'+it.id+'" data-tipo="t" data-setor="'+setor+'" '+(!it.verificado||nsa||faseV?'disabled':'')+' class="ck-b '+(it.trocado?'ton':'')+'" style="touch-action:manipulation">T</button>';
+      rows+='<button data-action="tog" data-itemid="'+it.id+'" data-tipo="nsa" data-setor="'+setor+'" class="ck-b '+(nsa?'na':'')+'" style="touch-action:manipulation">N/A</button>';
+    } else {
+      rows+='<span style="font-size:11px;color:'+(it.trocado?'var(--green)':it.verificado?'var(--blue)':'var(--text4)')+'">'+( it.trocado?'T✓':it.verificado?'V✓':nsa?'N/A':'—')+'</span>';
+    }
+    rows+='</div>';
+  });
+
+  if(shttl) shttl.textContent=(sg&&sg.ic||'')+' '+setor+' — '+(r2.data&&r2.data.prefixo||'');
+  if(shbody){
+    shbody.innerHTML=
+      '<button data-action="voltar-qual" style="background:transparent;border:none;color:var(--blue);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;padding:0 0 12px;display:block">← Voltar</button>'+
+      '<div style="background:var(--surface2);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;justify-content:space-between;font-size:12px">'+
+        '<span>V: <b style="color:var(--blue)">'+vTot+'/'+itens.length+'</b></span>'+
+        '<span>T: <b style="color:'+(tTot===itens.length?'var(--green)':'var(--amber)')+'">'+tTot+'/'+itens.length+'</b></span>'+
+      '</div>'+
+      '<div style="max-height:65vh;overflow-y:auto">'+rows+'</div>';
+
+    // Event delegation no setor
+    shbody.addEventListener('click', async function handler(e){
+      var el=e.target.closest('[data-action]');
+      if(!el) return;
+      shbody.removeEventListener('click',handler);
+
+      if(el.dataset.action==='voltar-qual'){
+        _OS.aba='qual';
+        await _renderOS();
+      }
+      else if(el.dataset.action==='tog'){
+        var itemId=el.dataset.itemid;
+        var tipo=el.dataset.tipo;
+        var setorTog=el.dataset.setor;
+        // Feedback visual imediato
+        el.style.opacity='0.5';
+        var r=await sb.from('checklist_liberacao').select('*').eq('id',itemId).single();
+        var it=r.data;
+        if(!it){toast('Erro: item não encontrado','err');await _renderSetor(ocId,setorTog);return;}
+        var p={};
+        if(tipo==='v'){var n=!it.verificado;p={verificado:n,verificado_por:n?(S.perfil&&S.perfil.nome):null,verificado_em:n?new Date().toISOString():null};if(!n)p.trocado=false;}
+        else if(tipo==='t'){if(!it.verificado) return;var n=!it.trocado;p={trocado:n,trocado_por:n?(S.perfil&&S.perfil.nome):null,trocado_em:n?new Date().toISOString():null};}
+        else if(tipo==='nsa'){var n=!it.nao_se_aplica;p={nao_se_aplica:n,verificado:n,trocado:n,verificado_por:n?(S.perfil&&S.perfil.nome):null,trocado_por:n?(S.perfil&&S.perfil.nome):null,verificado_em:n?new Date().toISOString():null,trocado_em:n?new Date().toISOString():null};}
+        var res=await sb.from('checklist_liberacao').update(p).eq('id',itemId);
+        if(res.error){toast('Erro: '+res.error.message,'err');}
+        await _renderSetor(ocId,setorTog);
+      }
+    });
+  }
+}
+
+function _editarPessoas(ocId,atual){
+  window._qtdPessoas=parseInt(atual)||0;
+  openSheet('👷 Pessoas na OS',
+    '<div style="text-align:center;margin:16px 0 20px">'+
+      '<div style="font-size:12px;color:var(--text3);margin-bottom:16px">Quantas pessoas estão trabalhando neste veículo?</div>'+
+      '<div style="display:flex;align-items:center;justify-content:center;gap:24px">'+
+        '<button data-action="adj" data-delta="-1" style="width:44px;height:44px;border-radius:50%;border:2px solid var(--border);background:var(--surface2);color:var(--text);font-size:22px;font-weight:700;cursor:pointer;font-family:inherit">−</button>'+
+        '<div id="qtd-pessoas" style="font-size:48px;font-weight:900;color:var(--blue);min-width:60px;text-align:center">'+(parseInt(atual)||0)+'</div>'+
+        '<button data-action="adj" data-delta="1" style="width:44px;height:44px;border-radius:50%;border:2px solid var(--border);background:var(--surface2);color:var(--text);font-size:22px;font-weight:700;cursor:pointer;font-family:inherit">＋</button>'+
+      '</div>'+
+    '</div>'+
+    '<button data-action="conf-pessoas" style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">✅ Confirmar</button>'
+  );
+  document.getElementById('shbody').addEventListener('click', async function handler(e){
+    var el=e.target.closest('[data-action]');
+    if(!el) return;
+    if(el.dataset.action==='adj'){
+      window._qtdPessoas=Math.max(0,(window._qtdPessoas||0)+parseInt(el.dataset.delta));
+      var d=document.getElementById('qtd-pessoas');
+      if(d) d.textContent=window._qtdPessoas;
+    } else if(el.dataset.action==='conf-pessoas'){
+      shbody.removeEventListener('click',handler);
+      var qtd=window._qtdPessoas||0;
+      await sb.from('ocorrencias_22').update({manutentores:qtd}).eq('id',ocId);
+      toast('✅ '+qtd+' pessoa'+(qtd!==1?'s':''));
+      await _renderOS();
+    }
+  });
+}
+
+async function _exportarOS(ocId){
+  var gid=getGid();
+  var r1=await sb.from('ocorrencias_22').select('*').eq('id',ocId).single();
+  var oc=r1.data; if(!oc) return;
+  var r2=await sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem');
+  var ckl=r2.data||[];
+  var dados38=_OS.dados38[ocId]||{};
+  if(!Object.keys(dados38).length){
+    var r3=await sb.from('checklist_38').select('dados').eq('garagem_id',gid).eq('prefixo',oc.prefixo).order('criado_em',{ascending:false}).limit(1);
+    dados38=(r3.data&&r3.data[0]&&r3.data[0].dados)||{};
+  }
+  var agora=new Date();
+  var dtFmt=agora.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'America/Manaus'});
+  var hrFmt=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'});
+  var gNome=(S.garagens&&S.garagens.find(function(g){return g.id===gid;})&&S.garagens.find(function(g){return g.id===gid;}).nome)||'Porto Velho';
+  var B='border:1px solid #333;';
+  var BH='border:1px solid #333;background:#555;color:#fff;font-weight:900;';
+  var totQ=ckl.length, qualQ=ckl.filter(function(i){return i.trocado||i.nao_se_aplica;}).length;
+  var pctQ=totQ>0?Math.round(qualQ/totQ*100):0;
+  var qual38=0,nao38=0, rows38='';
+  SECS38.forEach(function(sec){
+    var qS=sec.itens.filter(function(it){return dados38[sec.sec+'_'+it.id]==='sim';}).length;
+    rows38+='<tr style="background:#f1f5f9"><td colspan="2" style="'+B+'padding:5px 8px;font-size:11px;font-weight:800">'+sec.sec+'<span style="float:right">'+qS+'/'+sec.itens.length+'</span></td></tr>';
+    sec.itens.forEach(function(it){
+      var key=sec.sec+'_'+it.id, val=dados38[key]||'';
+      if(val==='sim') qual38++; if(val==='nao') nao38++;
+      var stTxt=val==='sim'?'✅ SIM':val==='nao'?'❌ NÃO':'—';
+      var stBg=val==='sim'?'#f0fdf4':val==='nao'?'#fef2f2':'#fff';
+      var stCor=val==='sim'?'#166534':val==='nao'?'#991b1b':'#94a3b8';
+      rows38+='<tr><td style="'+B+'padding:3px 5px;font-size:10px">'+it.txt+'</td><td style="'+B+'padding:3px 5px;text-align:center;background:'+stBg+';color:'+stCor+';font-size:10px;font-weight:700;width:65px">'+stTxt+'</td></tr>';
+    });
+  });
+  var pct38=Math.round(qual38/TOTAL_38*100);
+  var rowsQ=ckl.map(function(i){
+    var txt=(i.item||'').replace(/^\[[^\]]+\]\s*/,'');
+    var m=i.item&&i.item.match(/^\[([^\]]+)\]/), sec=m?m[1]:'GERAL';
+    var sg=SETORES_M.find(function(s){return s.gr.includes(sec);})||{key:'GERAL',ic:'🔧'};
+    var stTxt=i.nao_se_aplica?'N/A':i.trocado?'✅ QUALIF.':i.verificado?'👁 VERIF.':'—';
+    var stBg=i.nao_se_aplica?'#f8fafc':i.trocado?'#f0fdf4':i.verificado?'#eff6ff':'#fff';
+    var stCor=i.nao_se_aplica?'#64748b':i.trocado?'#166534':i.verificado?'#1d4ed8':'#94a3b8';
+    return '<tr><td style="'+B+'padding:3px 5px;font-size:9px;color:#555;width:80px">'+sg.ic+' '+sg.key+'</td><td style="'+B+'padding:3px 5px;font-size:10px">'+txt+'</td><td style="'+B+'padding:3px 5px;text-align:center;background:'+stBg+';color:'+stCor+';font-size:10px;font-weight:700;width:70px">'+stTxt+'</td></tr>';
+  }).join('');
+  var html='<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;font-size:10px;color:#000;margin:0;padding:10px}@media print{.no-print{display:none!important}body{padding:0}@page{margin:8mm;size:A4 portrait}}table{border-collapse:collapse;width:100%}tr:nth-child(even) td{background:#f9f9f9}</style></head><body>'+
+    '<div class="no-print" style="position:sticky;top:0;background:#1e293b;padding:8px 12px;display:flex;gap:8px;align-items:center;z-index:999;margin:-10px -10px 10px -10px"><span style="color:#fff;font-size:12px;font-weight:700">📋 JTP — OS '+oc.prefixo+'</span><button onclick="window.print()" style="margin-left:auto;padding:6px 16px;background:#3B82F6;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">🖨️ Salvar PDF</button></div>'+
+    '<div style="text-align:center;border:2.5px solid #000;padding:6px;margin-bottom:5px"><div style="font-size:13px;font-weight:900;letter-spacing:1px">GRUPO JTP  │  OPERAÇÃO GARAGEM  │  Qualificação & Checklist 3.8</div></div>'+
+    '<table style="margin-bottom:4px"><tr><td style="'+B+'padding:3px 6px"><strong>Prefixo:</strong> '+oc.prefixo+'</td><td style="'+B+'padding:3px 6px"><strong>Tipo:</strong> '+(oc.tipo||'').replace(/_/g,' ')+'</td><td style="'+B+'padding:3px 6px"><strong>Garagem:</strong> '+gNome+'</td><td style="'+B+'padding:3px 6px"><strong>Data:</strong> '+dtFmt+' '+hrFmt+'</td></tr>'+
+    '<tr><td style="'+B+'padding:3px 6px"><strong>Resp.:</strong> '+(oc.mecanico||'—')+'</td><td style="'+B+'padding:3px 6px"><strong>👷:</strong> '+(oc.manutentores||'—')+'</td><td style="'+B+'padding:3px 6px" colspan="2"></td></tr></table>'+
+    '<div style="font-weight:900;background:#1e3a5f;color:#fff;border:1.5px solid #111;padding:4px 8px;margin:8px 0 2px">■ PARTE 1 — QUALIFICAÇÃO</div>'+
+    '<table style="margin-bottom:4px"><tr><td style="'+B+'padding:4px 8px;background:#f0fdf4"><strong>✅ Qualificados:</strong> '+qualQ+'/'+totQ+' ('+pctQ+'%)</td></tr></table>'+
+    '<table><thead><tr><th style="'+BH+'padding:3px;width:80px">SETOR</th><th style="'+BH+'padding:3px">ITEM</th><th style="'+BH+'padding:3px;width:70px">STATUS</th></tr></thead><tbody>'+(rowsQ||'<tr><td colspan="3" style="padding:8px;color:#999;text-align:center">Sem dados</td></tr>')+'</tbody></table>'+
+    '<div style="font-weight:900;background:#1e3a5f;color:#fff;border:1.5px solid #111;padding:4px 8px;margin:12px 0 2px">■ PARTE 2 — CHECKLIST 3.8</div>'+
+    '<table style="margin-bottom:4px"><tr><td style="'+B+'padding:4px 8px;background:#f0fdf4"><strong>✅ SIM:</strong> '+qual38+'/'+TOTAL_38+' ('+pct38+'%)</td><td style="'+B+'padding:4px 8px;background:#fef2f2"><strong>❌ NÃO:</strong> '+nao38+'</td><td style="'+B+'padding:4px 8px"><strong>— Sem resp.:</strong> '+(TOTAL_38-qual38-nao38)+'</td></tr></table>'+
+    '<table><thead><tr><th style="'+BH+'padding:3px">ITEM</th><th style="'+BH+'padding:3px;width:65px">RESP.</th></tr></thead><tbody>'+rows38+'</tbody></table>'+
+    '<div style="margin-top:10px;display:flex;justify-content:space-between;font-size:9px;color:#666"><span>Gerado: '+agora.toLocaleString('pt-BR',{timeZone:'America/Manaus'})+' por '+((S.perfil&&S.perfil.nome)||'—')+'</span><span>JTP Transportes</span></div>'+
+    '</body></html>';
+  await downloadPDF(html,'JTP_OS_'+oc.prefixo.replace(/\./g,'')+'_'+dtFmt.replace(/\//g,'')+'_'+gNome.replace(/\s/g,'_')+'.pdf');
 }
 
 
@@ -1280,197 +1416,48 @@ const SETORES_M=[
   {key:'AR COND.',ic:'❄️',gr:['AR COND.']},
   {key:'FUNILARIA',ic:'🔨',gr:['CARROCERIA','PINTURA']},
 ];
-async function abrirOS(ocId, aba){
-  aba=aba||'qual';
+async function abrirOS(ocId){
   const{data:oc}=await sb.from('ocorrencias_22').select('*').eq('id',ocId).single();
   if(!oc) return;
-  const gid=getGid();
-
-  // Cache 3.8
-  if(!window._ck38Cache) window._ck38Cache={};
-  if(!window._ck38Cache[ocId]){
-    const{data:ck}=await sb.from('checklist_38').select('dados')
-      .eq('garagem_id',gid).eq('prefixo',oc.prefixo)
-      .order('criado_em',{ascending:false}).limit(1);
-    window._ck38Cache[ocId]=(ck&&ck[0]&&ck[0].dados)||{};
-  }
-  const dados38=window._ck38Cache[ocId];
-
-  // Busca checklist_liberacao
-  const{data:ckl}=await sb.from('checklist_liberacao')
-    .select('id,verificado,trocado,nao_se_aplica,item').eq('ocorrencia_id',ocId);
-  const totQ=(ckl||[]).length;
-  const qualQ=(ckl||[]).filter(i=>i.trocado||i.nao_se_aplica).length;
-  const pctQ=totQ>0?Math.round(qualQ/totQ*100):0;
-
-  // Progresso 3.8
-  const qual38=SECS38.reduce((s,sec)=>s+sec.itens.filter(it=>dados38[sec.sec+'_'+it.id]==='sim').length,0);
-  const pct38=Math.round(qual38/TOTAL_38*100);
-
-  const podeEd=['lider_oficina','lider_pcm','assistente_pcm'].includes(cargo());
+  const{data:ckl}=await sb.from('checklist_liberacao').select('id,verificado,trocado,nao_se_aplica,item').eq('ocorrencia_id',ocId);
+  const tot=(ckl||[]).length,v=(ckl||[]).filter(i=>i.verificado||i.nao_se_aplica).length,t=(ckl||[]).filter(i=>i.trocado||i.nao_se_aplica).length;
+  const pctV=tot>0?Math.round(v/tot*100):0,pctT=tot>0?Math.round(t/tot*100):0;
+  const subm=(ckl||[]).some(i=>i.submetido),aprov=(ckl||[]).some(i=>i.aprovado);
+  const podeEd=['lider_oficina','lider_pcm','assistente_pcm'].includes(cargo())&&!subm&&!aprov;
+  const setores=SETORES_M.map(sg=>{
+    const its=(ckl||[]).filter(i=>{const m=i.item?.match(/^\[([^\]]+)\]/);return sg.gr.includes(m?m[1]:'GERAL');});
+    if(!its.length) return '';
+    const vS=its.filter(i=>i.verificado||i.nao_se_aplica).length,tS=its.filter(i=>i.trocado||i.nao_se_aplica).length;
+    const ok=vS===its.length&&tS===its.length,part=vS===its.length&&tS<its.length;
+    return`<div onclick="abrirSetor('${ocId}','${sg.key}')" style="display:inline-flex;align-items:center;gap:4px;background:${ok?'#00C48C12':part?'#F59E0B12':'var(--surface2)'};border:1px solid ${ok?'#00C48C40':part?'#F59E0B40':'var(--border)'};border-radius:10px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;margin:3px;color:${ok?'var(--green)':part?'var(--amber)':'var(--text2)'}">${sg.ic} ${sg.key} ${ok?'✅':vS+'/'+its.length}</div>`;
+  }).join('');
   const ST={em_manutencao:'🔧 Manutenção',aguardando_peca:'📦 Ag. Peça',aguardando_aprovacao:'⏳ Ag. Aprovação',liberado:'✅ Liberado'};
-  const pessoas=parseInt(oc.manutentores)||0;
-  const corQ=pctQ>=100?'var(--green)':pctQ>=60?'var(--amber)':'var(--blue)';
-  const cor38=pct38>=100?'var(--green)':pct38>=60?'var(--amber)':'var(--blue)';
-
-  // ── ABAS ──────────────────────────────────────────────────
-  const tabs=`
-    <div style="display:flex;gap:6px;margin-bottom:14px">
-      <button onclick="abrirOS(${JSON.stringify(ocId)},'qual')"
-        style="flex:1;padding:9px 4px;border-radius:10px;border:2px solid ${aba==='qual'?'var(--blue)':'var(--border)'};background:${aba==='qual'?'#3B82F618':'transparent'};color:${aba==='qual'?'var(--blue)':'var(--text3)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
-        ✅ Qualificação<br><span style="font-size:11px;color:${corQ}">${qualQ}/${totQ}</span>
-      </button>
-      <button onclick="abrirOS(${JSON.stringify(ocId)},'ck38')"
-        style="flex:1;padding:9px 4px;border-radius:10px;border:2px solid ${aba==='ck38'?'var(--blue)':'var(--border)'};background:${aba==='ck38'?'#3B82F618':'transparent'};color:${aba==='ck38'?'var(--blue)':'var(--text3)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
-        📋 Check. 3.8<br><span style="font-size:11px;color:${cor38}">${qual38}/${TOTAL_38}</span>
-      </button>
-      <button onclick="abrirOS(${JSON.stringify(ocId)},'export')"
-        style="flex:1;padding:9px 4px;border-radius:10px;border:2px solid ${aba==='export'?'var(--blue)':'var(--border)'};background:${aba==='export'?'#3B82F618':'transparent'};color:${aba==='export'?'var(--blue)':'var(--text3)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
-        📄 Exportar<br><span style="font-size:11px;color:var(--text4)">PDF</span>
-      </button>
-    </div>`;
-
-  // ── STATUS + PESSOAS (sempre visível) ─────────────────────
-  const infoBar=`
+  openSheet(oc.prefixo+' — '+(oc.tipo?.replace('_',' ')||'—'),`
     <div style="display:flex;gap:8px;margin-bottom:12px">
       <div style="flex:1;background:var(--surface2);border-radius:10px;padding:10px;text-align:center">
-        <div style="font-size:10px;color:var(--text3);font-weight:700;margin-bottom:3px">STATUS</div>
-        <div style="font-size:12px;font-weight:700">${ST[oc.status]||oc.status}</div>
+        <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--blue)">${v}/${tot}</div>
+        <div style="font-size:10px;color:var(--text3);font-weight:700">V DIAGNÓSTICO</div>
+        <div class="prog" style="margin-top:4px"><div class="prog-f" style="width:${pctV}%;background:var(--blue)"></div></div>
       </div>
-      <div onclick="editarPessoas(${JSON.stringify(ocId)},${pessoas})"
-        style="flex:1;background:${pessoas>0?'#3B82F618':'var(--surface2)'};border:1px solid ${pessoas>0?'#3B82F640':'var(--border)'};border-radius:10px;padding:10px;text-align:center;cursor:pointer">
-        <div style="font-size:10px;color:var(--text3);font-weight:700;margin-bottom:3px">👷 NA OS</div>
-        <div style="font-size:18px;font-weight:900;color:${pessoas>0?'var(--blue)':'var(--text4)'}">${pessoas>0?pessoas:'—'}</div>
+      <div style="flex:1;background:var(--surface2);border-radius:10px;padding:10px;text-align:center">
+        <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--green)">${t}/${tot}</div>
+        <div style="font-size:10px;color:var(--text3);font-weight:700">T QUALIFICAÇÃO</div>
+        <div class="prog" style="margin-top:4px"><div class="prog-f" style="width:${pctT}%;background:var(--green)"></div></div>
       </div>
-      ${podeEd?`<div style="display:flex;flex-direction:column;gap:4px;justify-content:center">
-        <select id="sel-st" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 6px;color:var(--text);font-size:11px;font-family:inherit;outline:none">
-          <option value="em_manutencao" ${oc.status==='em_manutencao'?'selected':''}>🔧 Manut.</option>
-          <option value="aguardando_peca" ${oc.status==='aguardando_peca'?'selected':''}>📦 Ag. Peça</option>
-          <option value="aguardando_aprovacao" ${oc.status==='aguardando_aprovacao'?'selected':''}>⏳ Aprovação</option>
-          <option value="liberado">✅ Liberado</option>
-        </select>
-        <button onclick="salvarSt(${JSON.stringify(ocId)})"
-          style="padding:8px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">OK</button>
-      </div>`:''}
-    </div>`;
-
-  // ── ABA: QUALIFICAÇÃO ──────────────────────────────────────
-  let conteudo='';
-  if(aba==='qual'){
-    const setores=SETORES_M.map(sg=>{
-      const its=(ckl||[]).filter(i=>{const m=i.item?.match(/^\[([^\]]+)\]/);return sg.gr.includes(m?m[1]:'GERAL');});
-      if(!its.length) return '';
-      const tS=its.filter(i=>i.trocado||i.nao_se_aplica).length;
-      const ok=tS===its.length, part=tS>0&&tS<its.length;
-      return`<button onclick="abrirSetor(${JSON.stringify(ocId)},${JSON.stringify(sg.key)})"
-        style="display:inline-flex;align-items:center;gap:5px;background:${ok?'#00C48C12':part?'#F59E0B12':'var(--surface2)'};border:1px solid ${ok?'#00C48C40':part?'#F59E0B40':'var(--border)'};border-radius:10px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;margin:3px;color:${ok?'var(--green)':part?'var(--amber)':'var(--text2)'};font-family:inherit;-webkit-tap-highlight-color:transparent;touch-action:manipulation;user-select:none">
-        ${sg.ic} ${sg.key} ${ok?'✅':tS+'/'+its.length}
-      </button>`;
-    }).join('');
-    const barQ=`<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:5px">
-        <span style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase">Qualificação</span>
-        <span style="font-size:14px;font-weight:900;color:${corQ}">${qualQ}/${totQ}</span>
-      </div>
-      <div style="background:var(--border);border-radius:6px;height:5px;overflow:hidden">
-        <div style="height:100%;width:${pctQ}%;background:${corQ};border-radius:6px"></div>
-      </div>
-    </div>`;
-    conteudo=barQ+(setores||'<div style="color:var(--text4);font-size:12px;padding:8px 0">Checklist de qualificação não iniciado — crie no site.</div>');
-  }
-
-  // ── ABA: CHECKLIST 3.8 ─────────────────────────────────────
-  else if(aba==='ck38'){
-    const bar38=`<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:5px">
-        <span style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase">Checklist 3.8</span>
-        <span style="font-size:14px;font-weight:900;color:${cor38}">${qual38}/${TOTAL_38}</span>
-      </div>
-      <div style="background:var(--border);border-radius:6px;height:5px;overflow:hidden">
-        <div style="height:100%;width:${pct38}%;background:${cor38};border-radius:6px"></div>
-      </div>
-    </div>`;
-    let secsHtml='';
-    SECS38.forEach(sec=>{
-      const secQual=sec.itens.filter(it=>dados38[sec.sec+'_'+it.id]==='sim').length;
-      const secOk=secQual===sec.itens.length;
-      let rows='';
-      sec.itens.forEach(it=>{
-        const key=sec.sec+'_'+it.id;
-        const val=dados38[key]||'';
-        const simSel=val==='sim', naoSel=val==='nao';
-        rows+=`<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border2)">
-          <div style="flex:1;font-size:12px;line-height:1.4;color:${simSel?'var(--green)':naoSel?'var(--red)':'var(--text)'}">${it.txt}</div>
-          ${podeEd?`
-            <button onclick="setCk38(${JSON.stringify(ocId)},${JSON.stringify(key)},'sim')"
-              style="padding:6px 12px;border-radius:7px;border:2px solid ${simSel?'var(--green)':'var(--border)'};background:${simSel?'#00C48C18':'transparent'};color:${simSel?'var(--green)':'var(--text3)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">SIM</button>
-            <button onclick="setCk38(${JSON.stringify(ocId)},${JSON.stringify(key)},'nao')"
-              style="padding:6px 12px;border-radius:7px;border:2px solid ${naoSel?'var(--red)':'var(--border)'};background:${naoSel?'#EF444418':'transparent'};color:${naoSel?'var(--red)':'var(--text3)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">NÃO</button>`
-            :`<span style="font-size:11px;font-weight:700;color:${simSel?'var(--green)':naoSel?'var(--red)':'var(--text4)'}">${simSel?'✅':naoSel?'❌':'—'}</span>`}
-        </div>`;
-      });
-      secsHtml+=`<div style="margin-bottom:14px">
-        <div style="font-size:11px;font-weight:800;color:${secOk?'var(--green)':'var(--text3)'};text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border2);padding-bottom:6px;margin-bottom:2px;display:flex;justify-content:space-between">
-          <span>${sec.sec}</span><span>${secOk?'✅':secQual+'/'+sec.itens.length}</span>
-        </div>${rows}</div>`;
-    });
-    const btnSalvar=podeEd?`<button onclick="salvarCk38Mobile(${JSON.stringify(ocId)})"
-      style="width:100%;padding:12px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;margin-top:12px">💾 Salvar Checklist 3.8</button>`:'';
-    conteudo=bar38+`<div style="max-height:52vh;overflow-y:auto">${secsHtml}</div>`+btnSalvar;
-  }
-
-  // ── ABA: EXPORTAR ──────────────────────────────────────────
-  else if(aba==='export'){
-    const corFinal=pctQ>=100&&pct38>=100?'var(--green)':'var(--amber)';
-    conteudo=`
-      <div style="background:var(--surface2);border-radius:12px;padding:16px;margin-bottom:16px;text-align:center">
-        <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;margin-bottom:12px">Resumo para Exportação</div>
-        <div style="display:flex;gap:12px;justify-content:center;margin-bottom:16px">
-          <div style="flex:1;background:var(--bg);border-radius:10px;padding:12px">
-            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Qualificação</div>
-            <div style="font-size:22px;font-weight:900;color:${corQ}">${pctQ}%</div>
-            <div style="font-size:11px;color:var(--text3)">${qualQ}/${totQ} itens</div>
-          </div>
-          <div style="flex:1;background:var(--bg);border-radius:10px;padding:12px">
-            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Check. 3.8</div>
-            <div style="font-size:22px;font-weight:900;color:${cor38}">${pct38}%</div>
-            <div style="font-size:11px;color:var(--text3)">${qual38}/${TOTAL_38} itens</div>
-          </div>
-        </div>
-        ${pctQ<100||pct38<100?`<div style="font-size:11px;color:var(--amber);font-weight:700;margin-bottom:8px">⚠️ Há itens pendentes — você ainda pode exportar</div>`:'<div style="font-size:12px;color:var(--green);font-weight:700;margin-bottom:8px">✅ Checklist completo — pronto para liberar</div>'}
-      </div>
-      <button onclick="exportarRelOS(${JSON.stringify(ocId)})"
-        style="width:100%;padding:16px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer">
-        📄 Gerar & Compartilhar PDF
-      </button>`;
-  }
-
-  openSheet(oc.prefixo+' — '+(oc.tipo||'').replace(/_/g,' '), tabs+infoBar+conteudo);
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">${ST[oc.status]||oc.status} · ${oc.mecanico||'—'}</div>
+    <div style="margin-bottom:12px;line-height:1">${setores||'<div style="color:var(--text4);font-size:12px">Abra no desktop para criar o checklist.</div>'}</div>
+    ${podeEd?`<div style="display:flex;gap:8px">
+      <select id="sel-st" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+        <option value="em_manutencao" ${oc.status==='em_manutencao'?'selected':''}>🔧 Em Manutenção</option>
+        <option value="aguardando_peca" ${oc.status==='aguardando_peca'?'selected':''}>📦 Ag. Peça</option>
+        <option value="aguardando_aprovacao" ${oc.status==='aguardando_aprovacao'?'selected':''}>⏳ Ag. Aprovação</option>
+        <option value="liberado">✅ Liberado</option>
+      </select>
+      <button onclick="salvarSt('${ocId}')" style="padding:12px 16px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">OK</button>
+    </div>`:''}
+  `);
 }
-
-function setCk38(ocId,key,val){
-  if(!window._ck38Cache) window._ck38Cache={};
-  if(!window._ck38Cache[ocId]) window._ck38Cache[ocId]={};
-  window._ck38Cache[ocId][key]=val;
-  abrirOS(ocId,'ck38');
-}
-
-async function salvarCk38Mobile(ocId){
-  const gid=getGid();
-  const{data:oc}=await sb.from('ocorrencias_22').select('prefixo').eq('id',ocId).single();
-  if(!oc) return;
-  const dados=window._ck38Cache?.[ocId]||{};
-  const{error}=await sb.from('checklist_38').upsert({
-    garagem_id:gid,prefixo:oc.prefixo,dados,
-    criado_por:S.perfil?.nome||null,criado_em:new Date().toISOString(),
-  },{onConflict:'garagem_id,prefixo'});
-  if(error){toast('Erro: '+error.message,'err');return;}
-  toast('✅ Checklist 3.8 salvo!');
-  abrirOS(ocId,'ck38');
-}
-
-
-
 async function salvarSt(ocId){
   const st=document.getElementById('sel-st')?.value;
   if(!st) return;
@@ -1479,87 +1466,43 @@ async function salvarSt(ocId){
   closeSheet(true);toast(st==='liberado'?'✅ Liberado!':'✅ Atualizado!');telaOficina();
 }
 async function abrirSetor(ocId,setor){
-  dbg('abrirSetor setor='+setor+' ocId='+ocId.slice(-6));
-  const shbody=document.getElementById('shbody');
-  const shttl=document.getElementById('shttl');
-  if(shbody) shbody.innerHTML='<div style="padding:20px;text-align:center;color:#888">Carregando...</div>';
-
-  const sg=SETORES_M.find(s=>s.key===setor);
-  const[r1,r2]=await Promise.all([
-    sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem'),
-    sb.from('ocorrencias_22').select('prefixo,status').eq('id',ocId).single(),
-  ]);
-  const ckl=r1.data||[];
-  const oc=r2.data;
-  const itens=ckl.filter(function(i){
-    var m=i.item&&i.item.match(/^\[([^\]]+)\]/);
-    return (sg&&sg.gr||[]).includes(m?m[1]:'GERAL');
-  });
-  const podeEd=['lider_oficina','lider_pcm','assistente_pcm'].includes(cargo());
-  const vTot=itens.filter(function(i){return i.verificado||i.nao_se_aplica;}).length;
-  const tTot=itens.filter(function(i){return i.trocado||i.nao_se_aplica;}).length;
-  const faseV=vTot<itens.length;
-
-  dbg('itens='+itens.length+' podeEd='+podeEd);
-
-  var rows='';
-  itens.forEach(function(it){
-    var nsa=it.nao_se_aplica;
-    var txt=(it.item||'').replace(/^\[[^\]]+\]\s*/,'');
-    var corTxt=it.trocado?'var(--green)':it.verificado?'var(--text)':'var(--text3)';
-    var btns='';
-    if(podeEd){
-      // IMPORTANTE: usar aspas simples no onclick para não quebrar o atributo HTML
-      var vonCls=it.verificado?'von':'';
-      var tonCls=it.trocado?'ton':'';
-      var naCls=nsa?'na':'';
-      var disV=nsa?'disabled':'';
-      var disT=(!it.verificado||nsa||faseV)?'disabled':'';
-      // Passa os IDs como variáveis globais temporárias para evitar aspas no onclick
-      btns="<button onclick='togCk(\""+it.id+"\",\"v\",\""+ocId+"\",\""+setor+"\")' class='ck-b "+vonCls+"' "+disV+" style='touch-action:manipulation'>V</button>"+
-           "<button onclick='togCk(\""+it.id+"\",\"t\",\""+ocId+"\",\""+setor+"\")' class='ck-b "+tonCls+"' "+disT+" style='touch-action:manipulation'>T</button>"+
-           "<button onclick='togCk(\""+it.id+"\",\"nsa\",\""+ocId+"\",\""+setor+"\")' class='ck-b "+naCls+"' style='touch-action:manipulation'>N/A</button>";
-    } else {
-      btns='<span style="font-size:11px;color:'+(it.trocado?'var(--green)':it.verificado?'var(--blue)':'var(--text4)')+'">'+
-           (it.trocado?'T✓':it.verificado?'V✓':nsa?'N/A':'—')+'</span>';
-    }
-    rows+='<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border2)">'+
-          '<div style="flex:1;font-size:12px;line-height:1.4;color:'+corTxt+'">'+txt+'</div>'+
-          btns+
-          '</div>';
-  });
-
-  var corT=tTot===itens.length?'var(--green)':'var(--amber)';
-  if(shttl) shttl.textContent=(sg&&sg.ic||'')+' '+setor+' — '+(oc&&oc.prefixo||'');
-  if(shbody) shbody.innerHTML=
-    "<button onclick='abrirOS(\""+ocId+"\",\"qual\")' "+
-      "style='background:transparent;border:none;color:var(--blue);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;padding:0 0 12px 0;display:block;touch-action:manipulation'>"+
-      "← Voltar"+
-    "</button>"+
-    '<div style="background:var(--surface2);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;justify-content:space-between;font-size:12px">'+
-      '<span style="color:var(--text3)">V: <b style="color:var(--blue)">'+vTot+'/'+itens.length+'</b></span>'+
-      '<span style="color:var(--text3)">T: <b style="color:'+corT+'">'+tTot+'/'+itens.length+'</b></span>'+
-      '<span style="color:var(--text3)">'+itens.length+' itens</span>'+
-    '</div>'+
-    '<div style="max-height:65vh;overflow-y:auto">'+rows+'</div>';
+  closeSheet(true);
+  setTimeout(async()=>{
+    const sg=SETORES_M.find(s=>s.key===setor);
+    const{data:ckl}=await sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem');
+    const{data:oc}=await sb.from('ocorrencias_22').select('prefixo,status').eq('id',ocId).single();
+    const itens=(ckl||[]).filter(i=>{const m=i.item?.match(/^\[([^\]]+)\]/);return (sg?.gr||[]).includes(m?m[1]:'GERAL');});
+    const subm=(ckl||[]).some(i=>i.submetido),aprov=(ckl||[]).some(i=>i.aprovado);
+    const podeEd=['lider_oficina','lider_pcm','assistente_pcm'].includes(cargo())&&!subm&&!aprov;
+    const vTot=itens.filter(i=>i.verificado||i.nao_se_aplica).length;
+    const faseV=vTot<itens.length;
+    openSheet((sg?.ic||'')+' '+setor+' — '+oc?.prefixo,`
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">${itens.length} itens · V:${vTot}/${itens.length}</div>
+      <div style="max-height:58vh;overflow-y:auto">
+        ${itens.map(it=>{
+          const nsa=it.nao_se_aplica;
+          const txt=(it.item||'').replace(/^\[[^\]]+\]\s*/,'');
+          return`<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border2);opacity:${nsa?.5:1}">
+            <div style="flex:1;font-size:12px;line-height:1.4;color:${it.trocado?'var(--green)':it.verificado?'var(--text)':'var(--text3)'}">${txt}</div>
+            ${podeEd?`
+              <button onclick="togCk('${it.id}','v','${ocId}','${setor}')" class="ck-b ${it.verificado?'von':''}" ${nsa?'disabled':''}>V</button>
+              <button onclick="togCk('${it.id}','t','${ocId}','${setor}')" class="ck-b ${it.trocado?'ton':''}" ${!it.verificado||nsa||faseV?'disabled':''}>T</button>
+              <button onclick="togCk('${it.id}','nsa','${ocId}','${setor}')" class="ck-b ${nsa?'na':''}">N/A</button>
+            `:`<span style="font-size:11px;color:${it.trocado?'var(--green)':it.verificado?'var(--blue)':'var(--text4)'}">${it.trocado?'T✓':it.verificado?'V✓':nsa?'N/A':'—'}</span>`}
+          </div>`;
+        }).join('')}
+      </div>
+    `);
+  },200);
 }
-
 async function togCk(itemId,tipo,ocId,setor){
-  dbg('togCk chamado tipo='+tipo+' id='+itemId.slice(-6));
-  toast('⏳ Salvando...','ok',800);
-  const{data:it,error:e1}=await sb.from('checklist_liberacao').select('*').eq('id',itemId).single();
-  if(e1) dbg('ERRO busca: '+e1.message,'#f44');
-  if(!it){toast('❌ Item não encontrado','err');dbg('item null id='+itemId,'#f44');return;}
-  dbg('item ok verif='+it.verificado+' troc='+it.trocado);
+  const{data:it}=await sb.from('checklist_liberacao').select('*').eq('id',itemId).single();
+  if(!it) return;
   let p={};
   if(tipo==='v'){const n=!it.verificado;p={verificado:n,verificado_por:n?S.perfil?.nome:null,verificado_em:n?new Date().toISOString():null};if(!n)p={...p,trocado:false};}
-  else if(tipo==='t'){if(!it.verificado){toast('⚠️ Verifique antes de qualificar','err');return;}const n=!it.trocado;p={trocado:n,trocado_por:n?S.perfil?.nome:null,trocado_em:n?new Date().toISOString():null};}
+  else if(tipo==='t'){if(!it.verificado)return;const n=!it.trocado;p={trocado:n,trocado_por:n?S.perfil?.nome:null,trocado_em:n?new Date().toISOString():null};}
   else if(tipo==='nsa'){const n=!it.nao_se_aplica;p={nao_se_aplica:n,verificado:n,trocado:n,verificado_por:n?S.perfil?.nome:null,trocado_por:n?S.perfil?.nome:null,verificado_em:n?new Date().toISOString():null,trocado_em:n?new Date().toISOString():null};}
-  dbg('update p='+JSON.stringify(p).slice(0,60));
-  const{error:e2}=await sb.from('checklist_liberacao').update(p).eq('id',itemId);
-  if(e2){toast('❌ Erro: '+e2.message,'err');dbg('ERRO update: '+e2.message,'#f44');return;}
-  dbg('salvo! recarregando setor...','#0f0');
-  toast('✅ Salvo!','ok',600);
+  await sb.from('checklist_liberacao').update(p).eq('id',itemId);
   abrirSetor(ocId,setor);
 }
 function abrirNovaOS(){
@@ -4409,49 +4352,15 @@ ${noks.length>0?`
 
 
 
-// ── SECS38: conteúdo do Checklist 3.8 (igual ao site) ────────────────
 const SECS38=[
-  {sec:'Freio Dianteiro / Traseiro',itens:[
-    {id:'catraca',txt:'Freio com catracas reguladas?'},
-    {id:'cuicas',txt:'Cuicas sem vazamento?'},
-    {id:'flexiveis',txt:'Flexíveis sem vazamento?'},
-    {id:'lonas',txt:'Lonas em bom estado?'},
-  ]},
-  {sec:'Válvulas',itens:[
-    {id:'v_apu',txt:'Válvula APU sem vazamento?'},
-    {id:'v_rele',txt:'Válvula Relé sem vazamento?'},
-    {id:'v_6v',txt:'Válvula 6 Vias sem vazamento?'},
-    {id:'v_abs',txt:'Válvula ABS sem vazamento?'},
-    {id:'v_desc',txt:'Válvula Descarga Rápida sem vazamento?'},
-  ]},
-  {sec:'Correias',itens:[
-    {id:'c_mot',txt:'Correia do motor sem desgaste?'},
-    {id:'c_alt',txt:'Correia do alternador sem desgaste?'},
-    {id:'c_ac',txt:'Correia do A/C sem desgaste?'},
-  ]},
-  {sec:'A/C e Lubrificantes',itens:[
-    {id:'ac_gel',txt:'Ar condicionado gelando?'},
-    {id:'oleo_m',txt:'Nível de óleo do motor correto?'},
-    {id:'oleo_h',txt:'Nível de óleo hidráulico correto?'},
-    {id:'aditivo',txt:'Nível de aditivo correto?'},
-  ]},
-  {sec:'Iluminação / Pneus',itens:[
-    {id:'farois',txt:'Todos os faróis funcionando?'},
-    {id:'setas',txt:'Todas as setas funcionando?'},
-    {id:'vigias',txt:'Todos os vigias funcionando?'},
-    {id:'rodas',txt:'Rodas apertadas com porcas corretas?'},
-    {id:'pneus',txt:'Pneus calibrados?'},
-  ]},
-  {sec:'Motor / Suspensão',itens:[
-    {id:'vaz_ag',txt:'Motor sem vazamento de água?'},
-    {id:'vaz_ol',txt:'Motor sem vazamento de óleo?'},
-    {id:'vaz_ar',txt:'Motor sem vazamento de ar?'},
-    {id:'vaz_di',txt:'Motor sem vazamento diesel?'},
-    {id:'mola',txt:'Sem mola quebrada?'},
-    {id:'amort',txt:'Sem amortecedor quebrado?'},
-  ]},
+  {sec:'Freio Dianteiro / Traseiro',itens:[{id:'catraca',txt:'Freio com catracas reguladas?'},{id:'cuicas',txt:'Cuicas sem vazamento?'},{id:'flexiveis',txt:'Flexíveis sem vazamento?'},{id:'lonas',txt:'Lonas em bom estado?'}]},
+  {sec:'Válvulas',itens:[{id:'v_apu',txt:'Válvula APU sem vazamento?'},{id:'v_rele',txt:'Válvula Relé sem vazamento?'},{id:'v_6v',txt:'Válvula 6 Vias sem vazamento?'},{id:'v_abs',txt:'Válvula ABS sem vazamento?'},{id:'v_desc',txt:'Válvula Descarga Rápida sem vazamento?'}]},
+  {sec:'Correias',itens:[{id:'c_mot',txt:'Correia do motor sem desgaste?'},{id:'c_alt',txt:'Correia do alternador sem desgaste?'},{id:'c_ac',txt:'Correia do A/C sem desgaste?'}]},
+  {sec:'A/C e Lubrificantes',itens:[{id:'ac_gel',txt:'Ar condicionado gelando?'},{id:'oleo_m',txt:'Nível de óleo do motor correto?'},{id:'oleo_h',txt:'Nível de óleo hidráulico correto?'},{id:'aditivo',txt:'Nível de aditivo correto?'}]},
+  {sec:'Iluminação / Pneus',itens:[{id:'farois',txt:'Todos os faróis funcionando?'},{id:'setas',txt:'Todas as setas funcionando?'},{id:'vigias',txt:'Todos os vigias funcionando?'},{id:'rodas',txt:'Rodas apertadas com porcas corretas?'},{id:'pneus',txt:'Pneus calibrados?'}]},
+  {sec:'Motor / Suspensão',itens:[{id:'vaz_ag',txt:'Motor sem vazamento de água?'},{id:'vaz_ol',txt:'Motor sem vazamento de óleo?'},{id:'vaz_ar',txt:'Motor sem vazamento de ar?'},{id:'vaz_di',txt:'Motor sem vazamento diesel?'},{id:'mola',txt:'Sem mola quebrada?'},{id:'amort',txt:'Sem amortecedor quebrado?'}]},
 ];
-const TOTAL_38=SECS38.reduce((s,sec)=>s+sec.itens.length,0);
+const TOTAL_38=SECS38.reduce(function(s,sec){return s+sec.itens.length;},0);
 
 const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,prev26:telaPrev26,patio_man:telaPatioMan,recolha:telaRecolha,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip};
 
