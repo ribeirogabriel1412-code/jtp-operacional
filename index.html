@@ -3236,7 +3236,7 @@ async function abrirOrcamentoOS(ocId, prefixo){
           <div id="orc-resultado-estoque" style="margin-top:6px;max-height:160px;overflow-y:auto"></div>
         </div>
 
-        <!-- Ou adicionar manualmente -->
+        <!-- Adicionar manualmente -->
         <div style="border-top:1px solid var(--border2);padding-top:12px;margin-top:4px">
           <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;margin-bottom:8px">Ou adicionar manualmente</div>
           <div style="display:grid;grid-template-columns:1fr 80px 120px;gap:8px;margin-bottom:8px">
@@ -3254,6 +3254,53 @@ async function abrirOrcamentoOS(ocId, prefixo){
         </div>
       </div>
 
+      <!-- Requisição de Compra (peça sem estoque) -->
+      <div style="background:#EF444408;border:1px solid #EF444430;border-radius:12px;padding:16px;margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div>
+            <div style="font-size:12px;font-weight:800;color:var(--red)">🛒 Requisição de Compra — Peça Sem Estoque</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">Será enviada ao Líder PCM para aprovação → email ao almoxarifado</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;margin-bottom:8px">
+          <div>
+            <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">Código SAP</label>
+            <input id="req-sap" type="text" placeholder="Ex: 1000123"
+              style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">Descrição da Peça</label>
+            <input id="req-peca-os" type="text" placeholder="Ex: Filtro de óleo motor Mercedes"
+              style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:80px 140px 1fr;gap:8px;margin-bottom:8px">
+          <div>
+            <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">Qtd</label>
+            <input id="req-qtd-os" type="number" min="1" value="1"
+              style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box;text-align:center">
+          </div>
+          <div>
+            <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">Valor Est. (R$)</label>
+            <input id="req-valor-os" type="number" step="0.01" placeholder="0,00"
+              style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">Justificativa</label>
+            <input id="req-just-os" type="text" placeholder="Ex: Sem estoque, urgente para liberar veículo"
+              style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+          </div>
+        </div>
+        <button onclick="criarReqCompraOS('${ocId}','${prefixo}','${gid}','${oc?.numero||''}')"
+          style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
+          📧 Solicitar Compra (aguarda aprovação do Líder PCM)
+        </button>
+        ${/* Requisições já feitas para esta OS */itens.filter?`
+        <div id="reqs-os-${ocId}"></div>
+        <script>carregarReqsOS('${ocId}','${gid}')<\/script>
+        `:''}
+      </div>
+
       <!-- Ações -->
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button onclick="gerarRelatorioOS('${ocId}','${prefixo}')"
@@ -3268,6 +3315,121 @@ async function abrirOrcamentoOS(ocId, prefixo){
     </div>`;
   modal.onclick=e=>{ if(e.target===modal) modal.remove(); };
   document.body.appendChild(modal);
+}
+
+// ── Requisição de Compra dentro da OS ─────────────────────────────────────
+
+async function carregarReqsOS(ocId, gid){
+  const el=document.getElementById('reqs-os-'+ocId);
+  if(!el) return;
+  const{data:reqs}=await sb.from('requisicoes_compra')
+    .select('*').eq('ocorrencia_id',ocId).order('criado_em',{ascending:false});
+  if(!reqs?.length){ el.innerHTML=''; return; }
+  el.innerHTML=`<div style="margin-top:10px;border-top:1px solid #EF444420;padding-top:10px">
+    <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:6px">Requisições desta OS</div>
+    ${reqs.map(r=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:4px">
+        <div>
+          <div style="font-size:12px;font-weight:700">${r.cod_sap?`<span style="font-family:'DM Mono',monospace;color:var(--amber)">${r.cod_sap}</span> · `:''}${r.peca}</div>
+          <div style="font-size:10px;color:var(--text3)">Qtd: ${r.quantidade} · ${r.valor_estimado?'R$ '+parseFloat(r.valor_estimado).toFixed(2)+' · ':''} ${r.criado_por||'—'}</div>
+          ${r.justificativa?`<div style="font-size:10px;color:var(--text4)">${r.justificativa}</div>`:''}
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          <span style="font-size:11px;padding:2px 8px;border-radius:5px;font-weight:700;background:${r.status==='aprovado'?'#00C48C20':r.status==='reprovado'?'#EF444420':'#F59E0B20'};color:${r.status==='aprovado'?'var(--green)':r.status==='reprovado'?'var(--red)':'var(--amber)'}">
+            ${r.status==='aprovado'?'✅ Aprovado':r.status==='reprovado'?'❌ Reprovado':'⏳ Ag. Aprovação'}
+          </span>
+          ${r.status==='pendente'&&(S.perfil?.cargo==='lider_pcm'||S.perfil?.is_admin)?`
+            <div style="display:flex;gap:4px">
+              <button onclick="aprovarReqOS('${r.id}','aprovado','${ocId}','${gid}')"
+                style="padding:3px 8px;border-radius:5px;border:1px solid var(--green);background:transparent;color:var(--green);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">✅ Aprovar</button>
+              <button onclick="aprovarReqOS('${r.id}','reprovado','${ocId}','${gid}')"
+                style="padding:3px 8px;border-radius:5px;border:1px solid var(--red);background:transparent;color:var(--red);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">❌ Reprovar</button>
+            </div>
+          `:''}
+        </div>
+      </div>`).join('')}
+  </div>`;
+}
+
+async function criarReqCompraOS(ocId, prefixo, gid, osNum){
+  const sap=document.getElementById('req-sap')?.value?.trim();
+  const peca=document.getElementById('req-peca-os')?.value?.trim();
+  const qtd=parseInt(document.getElementById('req-qtd-os')?.value)||1;
+  const valor=parseFloat(document.getElementById('req-valor-os')?.value)||0;
+  const just=document.getElementById('req-just-os')?.value?.trim();
+
+  if(!peca){ toast('Informe a descrição da peça','err'); return; }
+
+  const{error}=await sb.from('requisicoes_compra').insert({
+    garagem_id:gid, ocorrencia_id:ocId, prefixo,
+    cod_sap:sap||null, peca, quantidade:qtd,
+    valor_estimado:valor||null, justificativa:just||null,
+    data:hoje(), status:'pendente', os_numero:osNum||null,
+    criado_por:S.perfil?.nome||null, criado_em:new Date().toISOString(),
+  });
+  if(error){ toast('Erro: '+error.message,'err'); return; }
+
+  // Notificar Líder PCM via WhatsApp
+  const gNome=S.garagens?.find(g=>g.id===gid)?.nome||'Garagem';
+  const msg=`🛒 *REQUISIÇÃO DE COMPRA — ${gNome}*\n`+
+    `📅 ${new Date().toLocaleDateString('pt-BR')} · OS ${osNum||'—'} · Prefixo ${prefixo}\n`+
+    `📦 ${sap?'SAP: '+sap+' · ':''}${peca}\n`+
+    `🔢 Quantidade: ${qtd}${valor?' · R$ '+valor.toFixed(2):''}\n`+
+    `📝 ${just||'Sem estoque'}\n`+
+    `👤 Solicitante: ${S.perfil?.nome||'—'}\n\n`+
+    `⏳ *Aguardando aprovação do Líder PCM*`;
+  try{
+    await fetch('https://evolution-api-production-8d56.up.railway.app/message/sendText/jtp-garagem',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':'4289AC11F437-43AD-96D7-9F27C2735696'},
+      body:JSON.stringify({number:'120363427489152994@g.us',text:msg})
+    });
+  }catch(e){}
+
+  toast('✅ Requisição criada — Líder PCM será notificado!');
+  // Limpar campos
+  ['req-sap','req-peca-os','req-just-os'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  document.getElementById('req-qtd-os').value='1';
+  document.getElementById('req-valor-os').value='';
+  await carregarReqsOS(ocId, gid);
+}
+
+async function aprovarReqOS(reqId, status, ocId, gid){
+  const{data:req}=await sb.from('requisicoes_compra').select('*').eq('id',reqId).single();
+  if(!req) return;
+
+  const{error}=await sb.from('requisicoes_compra').update({
+    status,
+    aprovado_por:S.perfil?.nome||null,
+    aprovado_em:new Date().toISOString(),
+  }).eq('id',reqId);
+  if(error){ toast('Erro: '+error.message,'err'); return; }
+
+  if(status==='aprovado'){
+    // Enviar email via WhatsApp para o grupo (simula notificação de email)
+    const gNome=S.garagens?.find(g=>g.id===gid)?.nome||'Garagem';
+    const dataHoje=new Date().toLocaleDateString('pt-BR');
+    const titulo=`REQ-COMPRA-${gNome.replace(/\s/g,'-').toUpperCase()}-${dataHoje.replace(/\//g,'')}-OS${req.os_numero||'000'}`;
+    const msg=`✅ *REQUISIÇÃO APROVADA — ${gNome}*\n`+
+      `📋 Ref: ${titulo}\n`+
+      `📅 ${dataHoje} · OS ${req.os_numero||'—'} · Prefixo ${req.prefixo||'—'}\n`+
+      `📦 ${req.cod_sap?'SAP: '+req.cod_sap+' · ':''}${req.peca}\n`+
+      `🔢 Quantidade: ${req.quantidade}${req.valor_estimado?' · R$ '+parseFloat(req.valor_estimado).toFixed(2):''}\n`+
+      `📝 ${req.justificativa||'—'}\n`+
+      `👤 Aprovado por: ${S.perfil?.nome||'—'}\n\n`+
+      `📧 *Email gerado — enviar para almoxarifado com título: ${titulo}*`;
+    try{
+      await fetch('https://evolution-api-production-8d56.up.railway.app/message/sendText/jtp-garagem',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','apikey':'4289AC11F437-43AD-96D7-9F27C2735696'},
+        body:JSON.stringify({number:'120363427489152994@g.us',text:msg})
+      });
+    }catch(e){}
+    toast('✅ Aprovado! Notificação enviada ao grupo');
+  } else {
+    toast('❌ Requisição reprovada');
+  }
+  await carregarReqsOS(ocId, gid);
 }
 
 // ── Buscar peças no estoque ────────────────────────────────────────────
