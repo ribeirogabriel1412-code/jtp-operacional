@@ -4443,9 +4443,11 @@ function abrirChecklist38FromOS(ocId, prefixo){
   S._ck38Dados={};
   S._ck38OcId=ocId; // guardar referência da OS
 
-  // Navegar para aba 3.8 do PCM
-  navToSub('ferr-pcm');
-  setTimeout(()=>renderFerrPCM('ck38'),100);
+  // Navegar direto para aba 3.8 do PCM (sem setTimeout — evita race condition)
+  S.subtela='ferr-pcm';
+  document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes('ferr-pcm'))b.classList.add('active')});
+  renderFerrPCM('ck38');
 }
 
 // ── MANUTENTORES ─────────────────────────────────────────────
@@ -5628,7 +5630,8 @@ async function salvarCk38Site(){
   const prefixo=document.getElementById('ck38-pref-site')?.value?.trim()||S._ck38Pref;
   const hora=document.getElementById('ck38-hora-site')?.value||'';
   if(!prefixo){toast('Informe o prefixo do veículo','err');return;}
-  const totalItens=18; // total de itens do 3.8
+  const SECS38c=[{itens:4},{itens:5},{itens:3},{itens:4},{itens:5},{itens:6}];
+  const totalItens=SECS38c.reduce((s,x)=>s+x.itens,0); // 27 itens reais
   const totalVerif=Object.values(S._ck38Dados||{}).filter(v=>v!=='').length;
   const{error}=await sb.from('checklist_38').insert({
     garagem_id:gid, prefixo, data:hoje(), hora_liberacao:hora,
