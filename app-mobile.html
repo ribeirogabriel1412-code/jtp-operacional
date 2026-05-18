@@ -1464,34 +1464,35 @@ async function salvarSt(ocId){
   closeSheet(true);toast(st==='liberado'?'✅ Liberado!':'✅ Atualizado!');telaOficina();
 }
 async function abrirSetor(ocId,setor){
-  closeSheet(true);
-  setTimeout(async()=>{
-    const sg=SETORES_M.find(s=>s.key===setor);
-    const{data:ckl}=await sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem');
-    const{data:oc}=await sb.from('ocorrencias_22').select('prefixo,status').eq('id',ocId).single();
-    const itens=(ckl||[]).filter(i=>{const m=i.item?.match(/^\[([^\]]+)\]/);return (sg?.gr||[]).includes(m?m[1]:'GERAL');});
-    const subm=(ckl||[]).some(i=>i.submetido),aprov=(ckl||[]).some(i=>i.aprovado);
-    const podeEd=['lider_oficina','lider_pcm','assistente_pcm'].includes(cargo())&&!subm&&!aprov;
-    const vTot=itens.filter(i=>i.verificado||i.nao_se_aplica).length;
-    const faseV=vTot<itens.length;
-    openSheet((sg?.ic||'')+' '+setor+' — '+oc?.prefixo,`
-      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">${itens.length} itens · V:${vTot}/${itens.length}</div>
-      <div style="max-height:58vh;overflow-y:auto">
-        ${itens.map(it=>{
-          const nsa=it.nao_se_aplica;
-          const txt=(it.item||'').replace(/^\[[^\]]+\]\s*/,'');
-          return`<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border2);opacity:${nsa?.5:1}">
-            <div style="flex:1;font-size:12px;line-height:1.4;color:${it.trocado?'var(--green)':it.verificado?'var(--text)':'var(--text3)'}">${txt}</div>
-            ${podeEd?`
-              <button onclick="togCk('${it.id}','v','${ocId}','${setor}')" class="ck-b ${it.verificado?'von':''}" ${nsa?'disabled':''}>V</button>
-              <button onclick="togCk('${it.id}','t','${ocId}','${setor}')" class="ck-b ${it.trocado?'ton':''}" ${!it.verificado||nsa||faseV?'disabled':''}>T</button>
-              <button onclick="togCk('${it.id}','nsa','${ocId}','${setor}')" class="ck-b ${nsa?'na':''}">N/A</button>
-            `:`<span style="font-size:11px;color:${it.trocado?'var(--green)':it.verificado?'var(--blue)':'var(--text4)'}">${it.trocado?'T✓':it.verificado?'V✓':nsa?'N/A':'—'}</span>`}
-          </div>`;
-        }).join('')}
-      </div>
-    `);
-  },200);
+  const sg=SETORES_M.find(s=>s.key===setor);
+  const{data:ckl}=await sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem');
+  const{data:oc}=await sb.from('ocorrencias_22').select('prefixo,status').eq('id',ocId).single();
+  const itens=(ckl||[]).filter(i=>{const m=i.item?.match(/^\[([^\]]+)\]/);return (sg?.gr||[]).includes(m?m[1]:'GERAL');});
+  const podeEd=['lider_oficina','lider_pcm','assistente_pcm'].includes(cargo());
+  const vTot=itens.filter(i=>i.verificado||i.nao_se_aplica).length;
+  const faseV=vTot<itens.length;
+
+  const rows=itens.map(it=>{
+    const nsa=it.nao_se_aplica;
+    const txt=(it.item||'').replace(/^\[[^\]]+\]\s*/,'');
+    return`<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border2);opacity:${nsa?'.5':'1'}">
+      <div style="flex:1;font-size:12px;line-height:1.4;color:${it.trocado?'var(--green)':it.verificado?'var(--text)':'var(--text3)'}">${txt}</div>
+      ${podeEd?`
+        <button onclick="togCk(${JSON.stringify(it.id)},'v',${JSON.stringify(ocId)},${JSON.stringify(setor)})" class="ck-b ${it.verificado?'von':''}" ${nsa?'disabled':''}>V</button>
+        <button onclick="togCk(${JSON.stringify(it.id)},'t',${JSON.stringify(ocId)},${JSON.stringify(setor)})" class="ck-b ${it.trocado?'ton':''}" ${!it.verificado||nsa||faseV?'disabled':''}>T</button>
+        <button onclick="togCk(${JSON.stringify(it.id)},'nsa',${JSON.stringify(ocId)},${JSON.stringify(setor)})" class="ck-b ${nsa?'na':''}">N/A</button>
+      `:`<span style="font-size:11px;color:${it.trocado?'var(--green)':it.verificado?'var(--blue)':'var(--text4)'}">${it.trocado?'T✓':it.verificado?'V✓':nsa?'N/A':'—'}</span>`}
+    </div>`;
+  }).join('');
+
+  openSheet(`${sg?.ic||''} ${setor} — ${oc?.prefixo}`,`
+    <button onclick="abrirOS(${JSON.stringify(ocId)},'qual')"
+      style="display:flex;align-items:center;gap:6px;background:transparent;border:none;color:var(--blue);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;padding:0;margin-bottom:12px">
+      ← Voltar
+    </button>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px">${itens.length} itens · T:${itens.filter(i=>i.trocado||i.nao_se_aplica).length}/${itens.length}</div>
+    <div style="max-height:60vh;overflow-y:auto">${rows}</div>
+  `);
 }
 async function togCk(itemId,tipo,ocId,setor){
   const{data:it}=await sb.from('checklist_liberacao').select('*').eq('id',itemId).single();
@@ -1501,7 +1502,7 @@ async function togCk(itemId,tipo,ocId,setor){
   else if(tipo==='t'){if(!it.verificado)return;const n=!it.trocado;p={trocado:n,trocado_por:n?S.perfil?.nome:null,trocado_em:n?new Date().toISOString():null};}
   else if(tipo==='nsa'){const n=!it.nao_se_aplica;p={nao_se_aplica:n,verificado:n,trocado:n,verificado_por:n?S.perfil?.nome:null,trocado_por:n?S.perfil?.nome:null,verificado_em:n?new Date().toISOString():null,trocado_em:n?new Date().toISOString():null};}
   await sb.from('checklist_liberacao').update(p).eq('id',itemId);
-  abrirSetor(ocId,setor);
+  abrirSetor(ocId,setor); // reload sem fechar sheet
 }
 function abrirNovaOS(){
   openSheet('＋ Nova OS',`
