@@ -4426,7 +4426,7 @@ async function abrirModal22(){
   document.getElementById('m22-desc').value='';
   document.getElementById('m22-mecanico').value='';
   document.getElementById('m22-tipo').value='corretiva';
-  document.getElementById('m22-status').value='em_manutencao';
+  const _m22st=document.getElementById('m22-status'); if(_m22st) _m22st.value='em_manutencao';
   document.getElementById('m22-entrada').value=dtLocal();
   document.getElementById('m22-previsao').value='';
   document.getElementById('m22-titulo').textContent='Nova Ocorrência';
