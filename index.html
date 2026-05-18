@@ -6788,75 +6788,80 @@ async function renderFerrPCM(aba='painel'){
 async function renderFech24(gid, back, tabs){
   const agora=new Date();
   const turno=S.turno||'dia';
-
-  // ── Faixa de horário do turno (igual ao resto do sistema) ──
   const hoje_=agora.toISOString().slice(0,10);
   const ontem=new Date(agora); ontem.setDate(ontem.getDate()-1);
   const ontemStr=ontem.toISOString().slice(0,10);
 
-  // Turno dia: 07:00-17:00 hoje | Turno noite: 21:00 ontem - 05:20 hoje
-  const ini=turno==='dia'?`${hoje_}T07:00`:`${ontemStr}T21:00`;
-  const fim=turno==='dia'?`${hoje_}T17:00`:`${hoje_}T07:20`;
-  const dataPrev=turno==='dia'?hoje_:ontemStr; // preventivas do dia correto
-
-  const turnos={dia:{l:'Diurno',h:'07:00–17:00'},tarde:{l:'Vespertino',h:'13:00–21:20'},noite:{l:'Noturno',h:'21:00–07:20'}};
-  const tInfo=turnos[turno]||turnos.dia;
+  // Faixas de horário por turno (igual ao padrão do sistema)
+  const faixas={
+    dia:  {ini:`${hoje_}T07:00`,  fim:`${hoje_}T17:00`,   l:'Diurno',    h:'07:00–17:00', dataPrev:hoje_},
+    tarde:{ini:`${hoje_}T13:00`,  fim:`${hoje_}T21:20`,   l:'Vespertino', h:'13:00–21:20', dataPrev:hoje_},
+    noite:{ini:`${ontemStr}T21:00`,fim:`${hoje_}T07:20`,  l:'Noturno',   h:'21:00–07:20', dataPrev:hoje_},
+  };
+  const fx=faixas[turno]||faixas.dia;
+  const dataPrev=fx.dataPrev; // todas preventivas são do dia de hoje
 
   setMain(`${back}${tabs}<div class="loading"><div class="spinner"></div></div>`);
 
-  const[r1,r2,r3,r4]=await Promise.all([
-    // OS da faixa horária do turno
+  const[r1,r2,r3,r4,r5]=await Promise.all([
+    // Todas OS abertas na faixa do turno
     sb.from('ocorrencias_22').select('*').eq('garagem_id',gid)
-      .gte('hora_entrada', new Date(ini).toISOString())
-      .lte('hora_entrada', new Date(fim).toISOString())
+      .gte('hora_entrada',new Date(fx.ini).toISOString())
+      .lte('hora_entrada',new Date(fx.fim).toISOString())
       .order('hora_entrada',{ascending:true}),
-    // Preventivas do dia correto do turno
+    // TODAS preventivas programadas do dia (não filtra por turno — PCM marca as suas)
     sb.from('preventivas_programadas').select('*').eq('garagem_id',gid)
-      .eq('data',dataPrev).order('prefixo'),
+      .eq('data',dataPrev).order('tipo').order('prefixo'),
     // Pneus do dia
-    sb.from('movimentacao_pneu').select('*').eq('garagem_id',gid)
-      .eq('data',hoje_).order('criado_em',{ascending:false}),
+    sb.from('movimentacao_pneu').select('*').eq('garagem_id',gid).eq('data',hoje_),
     // Fechamento salvo
-    sb.from('fechamento_24').select('*').eq('garagem_id',gid)
-      .eq('data',hoje_).eq('turno',turno).limit(1),
+    sb.from('fechamento_24').select('*').eq('garagem_id',gid).eq('data',hoje_).eq('turno',turno).limit(1),
+    // Marcações do PCM (quais preventivas ele selecionou para o turno)
+    sb.from('fech24_prev_turno').select('*').eq('garagem_id',gid).eq('data',hoje_).eq('turno',turno),
   ]);
 
   const ocs=r1.data||[];
-  const prevsProg=r2.data||[];
+  const todasPrevs=r2.data||[];
   const pneus=r3.data||[];
   const fech=r4.data&&r4.data[0]||null;
+  const marcacoes=r5.data||[];
+  const marcaMap={}; marcacoes.forEach(m=>marcaMap[m.prev_id]=m);
 
-  // Correlacionar preventivas com OS abertas
-  // Uma OS é "preventiva" se tipo contém 'preventiva' ou 'garantia'
-  const ocsPreventiva=ocs.filter(o=>o.tipo&&(o.tipo.includes('preventiva')||o.tipo.includes('garantia')));
-  const ocsCorretiva=ocs.filter(o=>o.tipo==='corretiva'||o.tipo==='corr'||(!o.tipo?.includes('preventiva')&&!o.tipo?.includes('garantia')));
-
-  // Enriquecer preventivas programadas com status da OS correspondente
-  const prevsEnrich=prevsProg.map(p=>{
-    const osCorr=ocsPreventiva.find(o=>o.prefixo===p.prefixo&&
-      (o.tipo===('preventiva_'+p.tipo)||o.tipo===p.tipo||
-       (p.tipo==='garantia'&&o.tipo==='preventiva_garantia')||
-       (p.tipo==='leve'&&o.tipo==='preventiva_leve')||
-       (p.tipo==='pesada'&&o.tipo==='preventiva_pesada')));
-    return{...p, _os:osCorr||null, _executada:osCorr?osCorr.status==='liberado':(p.executada||false)};
-  });
-
-  // OS corretivas + OS de prev sem match na programação
-  const prefixosProgr=prevsProg.map(p=>p.prefixo);
-  const osSemPrev=ocsPreventiva.filter(o=>!prefixosProgr.includes(o.prefixo));
-
-  const abertas=ocs.filter(o=>o.status!=='liberado');
-  const fechadas=ocs.filter(o=>o.status==='liberado');
-  const prevExec=prevsEnrich.filter(p=>p._executada).length;
-  const pendentes=abertas.filter(o=>!o.justificativa_pendencia);
-
-  // Requisições de compra atreladas às OS do turno
+  // Busca requisições das OS do turno
   const ocIds=ocs.map(o=>o.id);
   let reqs=[];
   if(ocIds.length){
-    const rReqs=await sb.from('requisicoes_compra').select('*').in('ocorrencia_id',ocIds).order('criado_em',{ascending:false});
-    reqs=rReqs.data||[];
+    const rr=await sb.from('requisicoes_compra').select('*').in('ocorrencia_id',ocIds).order('criado_em',{ascending:false});
+    reqs=rr.data||[];
   }
+
+  // ── ENRIQUECE PREVENTIVAS ──────────────────────────────────────────────
+  // Para cada preventiva, verifica se há OS correspondente no turno
+  const prevsEnrich=todasPrevs.map(p=>{
+    const tipoOS=['preventiva_'+p.tipo, p.tipo, p.tipo==='garantia'?'preventiva_garantia':null].filter(Boolean);
+    const osMatch=ocs.find(o=>o.prefixo===p.prefixo && tipoOS.includes(o.tipo));
+    const marc=marcaMap[p.id]||null;
+    const deste_turno=!!marc?.selecionado;
+
+    let statusPrev='nao_iniciada';
+    if(osMatch){
+      statusPrev=osMatch.status==='liberado'?'executada':'em_andamento';
+    } else if(marc?.executada_manual){
+      statusPrev='executada';
+    }
+
+    return{...p, _os:osMatch, _marc:marc, _deste_turno:deste_turno, _status:statusPrev};
+  });
+
+  // Preventivas deste turno (marcadas pelo PCM)
+  const prevsTurno=prevsEnrich.filter(p=>p._deste_turno);
+  const outrosTurnos=prevsEnrich.filter(p=>!p._deste_turno);
+
+  // KPIs
+  const abertas=ocs.filter(o=>o.status!=='liberado');
+  const fechadas=ocs.filter(o=>o.status==='liberado');
+  const prevExec=prevsTurno.filter(p=>p._status==='executada').length;
+  const pendSemJust=abertas.filter(o=>!o.justificativa_pendencia);
 
   setMain(`${back}${tabs}
     <!-- HEADER -->
@@ -6864,21 +6869,23 @@ async function renderFech24(gid, back, tabs){
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div>
           <div style="font-size:18px;font-weight:900">📋 Fechamento de Turno PCM — 2.4</div>
-          <div style="font-size:12px;color:var(--text3);margin-top:2px">${tInfo.l} · ${tInfo.h} · ${agora.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'})}${turno==='noite'?' (início '+ontemStr.split('-').reverse().join('/')+')'  :''}</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px">${fx.l} · ${fx.h} · ${agora.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'})}</div>
         </div>
-        <button onclick="gerarPDF24('${gid}','${hoje_}','${turno}')" style="padding:8px 16px;border-radius:9px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">📄 Exportar PDF</button>
+        <button onclick="gerarPDF24('${gid}','${hoje_}','${turno}')"
+          style="padding:8px 16px;border-radius:9px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">📄 Exportar PDF</button>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">
         <div class="kpi2"><div class="kpi2-v">${ocs.length}</div><div class="kpi2-l">Total OS</div></div>
-        <div class="kpi2"><div class="kpi2-v" style="color:${fechadas.length===ocs.length&&ocs.length>0?'var(--green)':'var(--amber)'}">${fechadas.length}/${ocs.length}</div><div class="kpi2-l">OS Fechadas</div></div>
-        <div class="kpi2"><div class="kpi2-v" style="color:${prevExec===prevsEnrich.length&&prevsEnrich.length>0?'var(--green)':'var(--amber)'}">${prevExec}/${prevsEnrich.length}</div><div class="kpi2-l">Prev. Exec.</div></div>
-        <div class="kpi2"><div class="kpi2-v" style="color:${pendentes.length===0?'var(--green)':'var(--red)'}">${pendentes.length}</div><div class="kpi2-l">Pend. s/ Just.</div></div>
+        <div class="kpi2"><div class="kpi2-v" style="color:var(--green)">${fechadas.length}</div><div class="kpi2-l">OS Fechadas</div></div>
+        <div class="kpi2"><div class="kpi2-v" style="color:${abertas.length>0?'var(--amber)':'var(--green)'}">${abertas.length}</div><div class="kpi2-l">OS Abertas</div></div>
+        <div class="kpi2"><div class="kpi2-v" style="color:${prevExec===prevsTurno.length&&prevsTurno.length>0?'var(--green)':'var(--amber)'}">${prevExec}/${prevsTurno.length}</div><div class="kpi2-l">Prev. Exec.</div></div>
+        <div class="kpi2"><div class="kpi2-v" style="color:${pendSemJust.length===0?'var(--green)':'var(--red)'}">${pendSemJust.length}</div><div class="kpi2-l">Pend. s/ Just.</div></div>
       </div>
     </div>
 
     <!-- SEÇÃO 1: CONTROLE DE OS -->
     ${secTitle('📋','Seção 1 — Controle de OS')}
-    ${ocs.length===0?'<div class="empty" style="margin-bottom:20px">Nenhuma OS no período do turno</div>':''}
+    ${ocs.length===0?'<div class="empty" style="margin-bottom:20px">Nenhuma OS no período deste turno</div>':''}
     ${ocs.length>0?`<div style="overflow-x:auto;margin-bottom:20px">
       <table style="width:100%;border-collapse:collapse;min-width:750px">
         <thead><tr style="background:var(--surface2)">
@@ -6889,7 +6896,7 @@ async function renderFech24(gid, back, tabs){
           <th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text3);font-weight:700">FECHAMENTO</th>
           <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">PEÇAS / CUSTO</th>
           <th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text3);font-weight:700">STATUS</th>
-          <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">JUSTIFICATIVA PENDÊNCIA</th>
+          <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">JUSTIFICATIVA</th>
         </tr></thead>
         <tbody>
           ${ocs.map(o=>{
@@ -6900,7 +6907,7 @@ async function renderFech24(gid, back, tabs){
             const tipo=tipoMap[o.tipo]||o.tipo||'—';
             const isPrev=o.tipo?.includes('preventiva')||o.tipo?.includes('garantia');
             const corTipo=isPrev?'var(--amber)':'var(--red)';
-            const custoReal=o.custo_real?'R$ '+parseFloat(o.custo_real).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—';
+            const custoReal=o.custo_real?'R$\xa0'+parseFloat(o.custo_real).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—';
             const ocReqs=reqs.filter(r=>r.ocorrencia_id===o.id);
             return`<tr style="border-bottom:1px solid var(--border2);${!isFechada?'background:rgba(239,68,68,0.03)':''}">
               <td style="padding:8px 10px;font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${o.prefixo}</td>
@@ -6909,20 +6916,17 @@ async function renderFech24(gid, back, tabs){
               <td style="padding:8px 10px;text-align:center;font-family:'DM Mono',monospace;font-size:12px">${hrAb}</td>
               <td style="padding:8px 10px;text-align:center;font-family:'DM Mono',monospace;font-size:12px;color:${isFechada?'var(--green)':'var(--text4)'}">${hrFch}</td>
               <td style="padding:8px 10px;font-size:11px;color:var(--text3)">
-                ${o.pecas_utilizadas?`<div>${o.pecas_utilizadas}</div>`:''}
-                ${custoReal!=='—'?`<div style="color:var(--blue);font-weight:700">${custoReal}</div>`:''}
-                ${ocReqs.length?`<div style="color:var(--purple);font-size:10px">🛒 ${ocReqs.length} req.</div>`:''}
-                ${!o.pecas_utilizadas&&custoReal==='—'&&!ocReqs.length?'—':''}
+                ${o.pecas_utilizadas||''}${custoReal!=='—'?`<span style="color:var(--blue);font-weight:700;display:block">${custoReal}</span>`:''}${ocReqs.length?`<span style="color:var(--purple);font-size:10px">🛒 ${ocReqs.length} req.</span>`:''}${!o.pecas_utilizadas&&custoReal==='—'&&!ocReqs.length?'—':''}
               </td>
               <td style="padding:8px 10px;text-align:center">
-                <span style="background:${isFechada?'var(--green)':'#EF4444'}18;border:1px solid ${isFechada?'var(--green)':'#EF4444'}40;color:${isFechada?'var(--green)':'#EF4444'};border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">
+                <span style="background:${isFechada?'#00C48C':'#EF4444'}18;border:1px solid ${isFechada?'#00C48C':'#EF4444'}40;color:${isFechada?'#00C48C':'#EF4444'};border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">
                   ${isFechada?'✅ Fechada':'⏳ Pendente'}
                 </span>
               </td>
               <td style="padding:8px 6px">
                 ${!isFechada?`<input type="text" placeholder="Justificativa obrigatória..." value="${o.justificativa_pendencia||''}"
-                  onblur="salvarJustPendencia('${o.id}',this.value)"
-                  style="width:180px;background:var(--surface2);border:1px solid ${!o.justificativa_pendencia?'var(--red)':'var(--border)'};border-radius:6px;padding:5px 8px;color:var(--text);font-size:11px;font-family:inherit">`:'—'}
+                  onblur="salvarJustPendencia24('${o.id}',this.value)"
+                  style="width:180px;background:var(--surface2);border:1px solid ${!o.justificativa_pendencia?'#EF4444':'var(--border)'};border-radius:6px;padding:5px 8px;color:var(--text);font-size:11px;font-family:inherit">`:'—'}
               </td>
             </tr>`;
           }).join('')}
@@ -6930,53 +6934,90 @@ async function renderFech24(gid, back, tabs){
       </table>
     </div>`:''}
 
-    <!-- SEÇÃO 2: PREVENTIVAS PROGRAMADAS vs. EXECUTADAS -->
-    ${secTitle('🔧','Seção 2 — Preventivas Programadas vs. Executadas')}
-    <div style="font-size:11px;color:var(--text3);margin:-8px 0 12px">
-      📅 Programadas para ${dataPrev.split('-').reverse().join('/')} · Leves (noite) e Pesadas (dia)
+    <!-- SEÇÃO 2: PREVENTIVAS DO DIA -->
+    ${secTitle('🔧','Seção 2 — Preventivas Programadas do Dia')}
+    <div style="background:var(--blue)0D;border:1px solid var(--blue)30;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--text3)">
+      💡 Marque <b style="color:var(--text)">✓ Deste turno</b> nas preventivas que fazem parte da sua responsabilidade. O sistema detecta automaticamente se a OS foi aberta/fechada.
     </div>
-    ${prevsEnrich.length===0?'<div class="empty" style="margin-bottom:20px">Nenhuma preventiva programada para este turno</div>':''}
-    ${prevsEnrich.length>0?`<div style="overflow-x:auto;margin-bottom:20px">
-      <table style="width:100%;border-collapse:collapse;min-width:650px">
+
+    <!-- Preventivas deste turno (já marcadas) -->
+    ${prevsTurno.length>0?`
+    <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">✅ Do Meu Turno (${prevsTurno.length})</div>
+    <div style="overflow-x:auto;margin-bottom:16px">
+      <table style="width:100%;border-collapse:collapse;min-width:700px">
+        <thead><tr style="background:var(--surface2)">
+          <th style="padding:8px 10px;width:32px"></th>
+          <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">PREFIXO</th>
+          <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">TIPO</th>
+          <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">STATUS</th>
+          <th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text3);font-weight:700">OS VINCULADA</th>
+          <th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text3);font-weight:700">ABERTURA</th>
+          <th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text3);font-weight:700">FECHAMENTO</th>
+          <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">REAGEND./OBS</th>
+        </tr></thead>
+        <tbody>
+          ${prevsTurno.map(p=>{
+            const stColors={executada:'#00C48C',em_andamento:'#F59E0B',nao_iniciada:'#EF4444'};
+            const stLabels={executada:'✅ Executada',em_andamento:'🔄 Em Andamento',nao_iniciada:'⏳ Não Iniciada'};
+            const stC=stColors[p._status]||'#94A3B8';
+            const stL=stLabels[p._status]||'—';
+            const tipoL=p.tipo==='pesada'?'🟠 Pesada':p.tipo==='garantia'?'🟢 Garantia':'🔵 Leve';
+            const hrOsAb=p._os?.hora_entrada?new Date(p._os.hora_entrada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
+            const hrOsFch=p._os?.hora_liberacao?new Date(p._os.hora_liberacao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
+            return`<tr style="border-bottom:1px solid var(--border2)">
+              <td style="padding:8px 10px;text-align:center">
+                <button onclick="togglePrevTurno24('${gid}','${p.id}','${hoje_}','${turno}',false)"
+                  style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:16px" title="Remover deste turno">✕</button>
+              </td>
+              <td style="padding:8px 10px;font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${p.prefixo}</td>
+              <td style="padding:8px 10px;font-size:12px">${tipoL}</td>
+              <td style="padding:8px 10px">
+                <span style="background:${stC}18;border:1px solid ${stC}40;color:${stC};border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700">${stL}</span>
+              </td>
+              <td style="padding:8px 10px;text-align:center;font-size:11px">
+                ${p._os?`<span style="color:var(--green);font-size:11px">✅ OS aberta</span>`:`<span style="color:var(--text4)">Sem OS</span>`}
+              </td>
+              <td style="padding:8px 10px;text-align:center">
+                ${p._os?`<span style="font-family:'DM Mono',monospace;font-size:12px">${hrOsAb}</span>`:`<input type="time" value="${p._marc?.hr_abertura||''}" onblur="salvarHrPrev24('${p.id}','abertura',this.value,'${gid}','${hoje_}','${turno}')" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 6px;color:var(--text);font-size:11px;font-family:'DM Mono',monospace;width:80px">`}
+              </td>
+              <td style="padding:8px 10px;text-align:center">
+                ${p._os&&p._status==='executada'?`<span style="font-family:'DM Mono',monospace;font-size:12px;color:var(--green)">${hrOsFch}</span>`:p._os?`<span style="color:var(--amber);font-size:11px">Em aberto</span>`:`<input type="time" value="${p._marc?.hr_fechamento||''}" onblur="salvarHrPrev24('${p.id}','fechamento',this.value,'${gid}','${hoje_}','${turno}')" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 6px;color:var(--text);font-size:11px;font-family:'DM Mono',monospace;width:80px">`}
+              </td>
+              <td style="padding:8px 10px">
+                ${p._status!=='executada'?`<input type="text" placeholder="Reagendamento ou obs..." value="${p.reagendamento||p._marc?.obs||''}" onblur="salvarReagend24('${p.id}',this.value)" style="width:180px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:11px;font-family:inherit">`:'—'}
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`:''}
+
+    <!-- Demais preventivas do dia para marcar -->
+    ${outrosTurnos.length>0?`
+    <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📋 Demais Preventivas do Dia (${outrosTurnos.length}) — Marque as do seu turno</div>
+    <div style="overflow-x:auto;margin-bottom:20px">
+      <table style="width:100%;border-collapse:collapse;min-width:500px">
         <thead><tr style="background:var(--surface2)">
           <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">PREFIXO</th>
           <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">TIPO</th>
-          <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">OS VINCULADA</th>
-          <th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text3);font-weight:700">PROGRAMADA</th>
-          <th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text3);font-weight:700">EXECUTADA</th>
-          <th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text3);font-weight:700">% CONCL.</th>
-          <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">REAGEND. / OBS</th>
+          <th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text3);font-weight:700">OS ABERTA?</th>
+          <th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text3);font-weight:700">AÇÃO</th>
         </tr></thead>
         <tbody>
-          ${prevsEnrich.map(p=>{
+          ${outrosTurnos.map(p=>{
             const tipoL=p.tipo==='pesada'?'🟠 Pesada':p.tipo==='garantia'?'🟢 Garantia':'🔵 Leve';
-            const osLink=p._os;
-            const hrOs=osLink?.hora_entrada?new Date(osLink.hora_entrada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):null;
+            const temOS=!!p._os;
             return`<tr style="border-bottom:1px solid var(--border2)">
               <td style="padding:8px 10px;font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${p.prefixo}</td>
               <td style="padding:8px 10px;font-size:12px">${tipoL}</td>
-              <td style="padding:8px 10px;font-size:11px">
-                ${osLink?`<span style="color:var(--green);font-weight:600">✅ OS aberta ${hrOs?'às '+hrOs:''}</span>`
-                :`<span style="color:var(--text4)">Sem OS vinculada</span>`}
+              <td style="padding:8px 10px;text-align:center;font-size:11px">
+                ${temOS?`<span style="color:var(--green)">✅ Sim</span>`:`<span style="color:var(--text4)">Não</span>`}
               </td>
               <td style="padding:8px 10px;text-align:center">
-                <span style="background:var(--green)18;border:1px solid var(--green)40;color:var(--green);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">✅ Sim</span>
-              </td>
-              <td style="padding:8px 10px;text-align:center">
-                <button onclick="togglePrevExec24('${p.id}',${!p._executada})" style="padding:4px 14px;border-radius:6px;border:1px solid ${p._executada?'var(--green)':'var(--red)'};background:${p._executada?'var(--green)':'var(--red)'}18;color:${p._executada?'var(--green)':'var(--red)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
-                  ${p._executada?'✅ Sim':'❌ Não'}
+                <button onclick="togglePrevTurno24('${gid}','${p.id}','${hoje_}','${turno}',true)"
+                  style="padding:5px 14px;border-radius:7px;border:1px solid var(--blue);background:#3B82F618;color:var(--blue);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
+                  ✓ Deste turno
                 </button>
-              </td>
-              <td style="padding:8px 10px;text-align:center">
-                ${!p._executada?`<input type="number" min="0" max="100" value="${p.pct_conclusao||0}"
-                  onblur="salvarPctPrev24('${p.id}',this.value)"
-                  style="width:55px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 6px;color:var(--text);font-size:12px;font-family:'DM Mono',monospace;text-align:center">%`
-                :`<span style="color:var(--green);font-weight:700">100%</span>`}
-              </td>
-              <td style="padding:8px 10px">
-                ${!p._executada?`<input type="text" placeholder="Nova data ou motivo..." value="${p.reagendamento||''}"
-                  onblur="salvarReagend24('${p.id}',this.value)"
-                  style="width:200px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:11px;font-family:inherit">`:'—'}
               </td>
             </tr>`;
           }).join('')}
@@ -6984,9 +7025,11 @@ async function renderFech24(gid, back, tabs){
       </table>
     </div>`:''}
 
-    <!-- SEÇÃO 3: REQUISIÇÕES DE COMPRA DO TURNO -->
+    ${todasPrevs.length===0?'<div class="empty" style="margin-bottom:20px">Nenhuma preventiva programada para hoje</div>':''}
+
+    <!-- SEÇÃO 3: REQUISIÇÕES -->
     ${secTitle('🛒','Seção 3 — Requisições de Compra do Turno')}
-    ${reqs.length===0?'<div class="empty" style="margin-bottom:20px">Nenhuma requisição gerada no turno</div>':''}
+    ${reqs.length===0?'<div class="empty" style="margin-bottom:20px">Nenhuma requisição gerada nas OS deste turno</div>':''}
     ${reqs.length>0?`<div style="overflow-x:auto;margin-bottom:20px">
       <table style="width:100%;border-collapse:collapse;min-width:600px">
         <thead><tr style="background:var(--surface2)">
@@ -6999,13 +7042,13 @@ async function renderFech24(gid, back, tabs){
         </tr></thead>
         <tbody>
           ${reqs.map(r=>{
-            const corSt=r.status==='aprovado'?'var(--green)':r.status==='reprovado'?'var(--red)':'var(--amber)';
+            const corSt=r.status==='aprovado'?'#00C48C':r.status==='reprovado'?'#EF4444':'#F59E0B';
             return`<tr style="border-bottom:1px solid var(--border2)">
               <td style="padding:8px 10px;font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${r.prefixo||'—'}</td>
               <td style="padding:8px 10px;font-size:12px">${r.peca||'—'}</td>
               <td style="padding:8px 10px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text3)">${r.cod_sap||'—'}</td>
               <td style="padding:8px 10px;text-align:center;font-size:12px">${r.quantidade||1}</td>
-              <td style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;color:var(--amber)">${r.valor_estimado?'R$ '+parseFloat(r.valor_estimado).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</td>
+              <td style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;color:var(--amber)">${r.valor_estimado?'R$\xa0'+parseFloat(r.valor_estimado).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</td>
               <td style="padding:8px 10px;text-align:center">
                 <span style="background:${corSt}18;border:1px solid ${corSt}40;color:${corSt};border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;text-transform:capitalize">${r.status||'pendente'}</span>
               </td>
@@ -7015,21 +7058,21 @@ async function renderFech24(gid, back, tabs){
       </table>
     </div>`:''}
 
-    <!-- SEÇÃO 4: MOVIMENTAÇÃO DE PNEUS -->
+    <!-- SEÇÃO 4: PNEUS -->
     ${secTitle('⚙️','Seção 4 — Movimentação de Pneus')}
-    ${pneus.length===0?'<div class="empty" style="margin-bottom:20px">Nenhuma movimentação registrada no turno</div>':''}
+    ${pneus.length===0?'<div class="empty" style="margin-bottom:20px">Nenhuma movimentação de pneu hoje</div>':''}
     ${pneus.length>0?`<div style="overflow-x:auto;margin-bottom:20px">
-      <table style="width:100%;border-collapse:collapse;min-width:500px">
+      <table style="width:100%;border-collapse:collapse;min-width:450px">
         <thead><tr style="background:var(--surface2)">
           <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">PREFIXO</th>
           <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">POSIÇÃO</th>
           <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">Nº PNEU</th>
           <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">AÇÃO</th>
-          <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">OBSERVAÇÃO</th>
+          <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">OBS</th>
         </tr></thead>
         <tbody>
           ${pneus.map(p=>{
-            const corAcao=p.tipo==='troca'?'var(--green)':p.tipo==='sucata'?'var(--red)':'var(--amber)';
+            const corAcao=p.tipo==='troca'?'#00C48C':p.tipo==='sucata'?'#EF4444':'#F59E0B';
             return`<tr style="border-bottom:1px solid var(--border2)">
               <td style="padding:8px 10px;font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${p.prefixo}</td>
               <td style="padding:8px 10px;font-size:12px">${p.posicao||'—'}</td>
@@ -7042,7 +7085,7 @@ async function renderFech24(gid, back, tabs){
       </table>
     </div>`:''}
 
-    <!-- SEÇÃO 5: FECHAMENTO E ASSINATURA -->
+    <!-- SEÇÃO 5: FECHAMENTO -->
     ${secTitle('✍️','Seção 5 — Fechamento e Passagem de Bastão')}
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:20px">
       <div class="campo-grid" style="margin-bottom:16px">
@@ -7056,12 +7099,12 @@ async function renderFech24(gid, back, tabs){
         </div>
       </div>
       <label class="campo-label">Pontos de Atenção — Passagem de Bastão</label>
-      <textarea class="fi" id="fech24-obs" rows="4" placeholder="Pendências críticas, alertas para o próximo turno, status de peças aguardando, veículos críticos..."
+      <textarea class="fi" id="fech24-obs" rows="4" placeholder="Pendências críticas, alertas para o próximo turno, peças aguardando, veículos críticos..."
         style="resize:vertical;min-height:90px;font-family:inherit;margin-bottom:16px">${fech?.observacoes||''}</textarea>
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-        ${fech?.fechado?`<div style="background:var(--green)18;border:1px solid var(--green)40;border-radius:10px;padding:10px 16px;font-size:13px;color:var(--green);font-weight:700">✅ Fechado por ${fech.responsavel||'—'} às ${fech.hora_fechamento||'—'}</div>`:''}
+        ${fech?.fechado?`<div style="background:#00C48C18;border:1px solid #00C48C40;border-radius:10px;padding:10px 16px;font-size:13px;color:#00C48C;font-weight:700">✅ Fechado por ${fech.responsavel||'—'} às ${fech.hora_fechamento||'—'}</div>`:''}
         <button onclick="fecharTurno24('${gid}','${hoje_}','${turno}')"
-          style="padding:12px 28px;border-radius:10px;border:none;background:${fech?.fechado?'var(--amber)':'var(--green)'};color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
+          style="padding:12px 28px;border-radius:10px;border:none;background:${fech?.fechado?'var(--amber)':'#00C48C'};color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
           ${fech?.fechado?'🔄 Reabrir / Editar':'✅ Fechar Turno'}
         </button>
         <button onclick="gerarPDF24('${gid}','${hoje_}','${turno}')"
@@ -7073,8 +7116,25 @@ async function renderFech24(gid, back, tabs){
   `);
 }
 
+async function togglePrevTurno24(gid, prevId, data, turno, selecionar){
+  const{error}=await sb.from('fech24_prev_turno').upsert({
+    garagem_id:gid, prev_id:prevId, data, turno,
+    selecionado:selecionar, atualizado_em:new Date().toISOString(),
+  },{onConflict:'garagem_id,prev_id,data,turno'});
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast(selecionar?'✅ Adicionada ao turno':'Removida do turno','ok',1200);
+  renderFerrPCM('fech24');
+}
+
+async function salvarHrPrev24(prevId, campo, valor, gid, data, turno){
+  const upd={atualizado_em:new Date().toISOString()};
+  if(campo==='abertura') upd.hr_abertura=valor;
+  else upd.hr_fechamento=valor;
+  await sb.from('fech24_prev_turno').update(upd).eq('prev_id',prevId).eq('garagem_id',gid).eq('data',data).eq('turno',turno);
+}
+
 // ── Helpers do 2.4 ───────────────────────────────────────────────────────────
-async function salvarJustPendencia(ocId, valor){
+async function salvarJustPendencia24(ocId, valor){
   await sb.from('ocorrencias_22').update({justificativa_pendencia:valor||null}).eq('id',ocId);
   toast('Justificativa salva','ok',1500);
 }
