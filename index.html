@@ -4430,7 +4430,8 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
           </div>
         </div>`;
     });
-  document.getElementById('modal-22-status').style.display='flex';
+  if(!S._navegandoPara38) document.getElementById('modal-22-status').style.display='flex';
+  S._navegandoPara38=false; // resetar flag
 }
 
 // Abrir checklist 3.8 a partir de uma OS — pré-preenche prefixo e abre modal
@@ -4442,6 +4443,7 @@ function abrirChecklist38FromOS(ocId, prefixo){
   S._ck38Pref=prefixo||'';
   S._ck38Dados={};
   S._ck38OcId=ocId; // guardar referência da OS
+  S._navegandoPara38=true; // flag: impede o modal de reabrir
 
   // Navegar direto para aba 3.8 do PCM (sem setTimeout — evita race condition)
   S.subtela='ferr-pcm';
@@ -5630,8 +5632,7 @@ async function salvarCk38Site(){
   const prefixo=document.getElementById('ck38-pref-site')?.value?.trim()||S._ck38Pref;
   const hora=document.getElementById('ck38-hora-site')?.value||'';
   if(!prefixo){toast('Informe o prefixo do veículo','err');return;}
-  const SECS38c=[{itens:4},{itens:5},{itens:3},{itens:4},{itens:5},{itens:6}];
-  const totalItens=SECS38c.reduce((s,x)=>s+x.itens,0); // 27 itens reais
+  const totalItens=18; // total de itens do 3.8
   const totalVerif=Object.values(S._ck38Dados||{}).filter(v=>v!=='').length;
   const{error}=await sb.from('checklist_38').insert({
     garagem_id:gid, prefixo, data:hoje(), hora_liberacao:hora,
