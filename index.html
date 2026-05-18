@@ -7755,8 +7755,18 @@ function filtrarSapPrecos(){
 
 async function importarSapPrecos(input){
   const file=input.files[0]; if(!file) return;
-  toast('⏳ Processando arquivo SAP...');
+  toast('⏳ Carregando biblioteca...');
   const gid=getGid();
+
+  // Garante SheetJS carregado (mesmo padrão do restante do sistema)
+  await new Promise(res=>{
+    if(window.XLSX){res();return;}
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload=res; document.head.appendChild(s);
+  });
+
+  toast('⏳ Processando arquivo SAP...');
 
   const lerArquivo=()=>new Promise((res,rej)=>{
     const r=new FileReader();
@@ -7833,7 +7843,7 @@ async function importarSapPrecos(input){
       }
 
     } else {
-      toast('⚠️ XLSX não disponível neste navegador — use o arquivo CSV','err');
+      toast('⚠️ Formato não reconhecido. Use .xlsx ou .csv','err');
       return;
     }
 
