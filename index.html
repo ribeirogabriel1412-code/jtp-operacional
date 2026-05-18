@@ -3539,10 +3539,12 @@ async function abrirOrcamentoOS(ocId, prefixo){
         <div id="req-lista-itens" style="margin-bottom:8px"></div>
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px">
           <div style="display:grid;grid-template-columns:130px 1fr;gap:8px;margin-bottom:8px">
-            <div>
+            <div style="position:relative">
               <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">Código SAP</label>
-              <input id="req-sap" type="text" placeholder="Ex: 1000123"
+              <input id="req-sap" type="text" placeholder="Ex: 30001134"
+                oninput="_sapLookup(this)"
                 style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+              <div id="sap-suggestions" style="position:absolute;z-index:999;background:var(--surface);border:1px solid var(--border);border-radius:8px;max-height:180px;overflow-y:auto;width:100%;display:none;box-shadow:0 4px 20px #0008"></div>
             </div>
             <div>
               <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">Descrição da Peça</label>
@@ -3554,11 +3556,13 @@ async function abrirOrcamentoOS(ocId, prefixo){
             <div>
               <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">Qtd</label>
               <input id="req-qtd-os" type="number" min="1" value="1"
+                oninput="_atualizarPrevisto()"
                 style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box;text-align:center">
             </div>
             <div>
               <label style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px">Valor Est. (R$)</label>
               <input id="req-valor-os" type="number" step="0.01" placeholder="0,00"
+                oninput="_atualizarPrevisto()"
                 style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
             </div>
             <div>
@@ -3594,6 +3598,75 @@ async function abrirOrcamentoOS(ocId, prefixo){
 // Lista temporária de itens da requisição (antes de enviar)
 if(!window._reqItensOS) window._reqItensOS=[];
 
+// ── SAP Autocomplete + Preço automático ──────────────────────────────────
+let _sapTimer=null, _sapCache={};
+async function _sapLookup(inputEl){
+  const q=inputEl.value?.trim();
+  const sug=document.getElementById('sap-suggestions');
+  if(!sug) return;
+  if(!q||q.length<4){sug.style.display='none';return;}
+  if(_sapTimer) clearTimeout(_sapTimer);
+  _sapTimer=setTimeout(async()=>{
+    const gid=getGid();
+    const cacheKey=gid+q;
+    let results=_sapCache[cacheKey];
+    if(!results){
+      const{data}=await sb.from('sap_precos').select('cod_sap,descricao,preco_unit,unidade')
+        .eq('garagem_id',gid)
+        .or(`cod_sap.ilike.%${q}%,descricao.ilike.%${q}%`)
+        .limit(8);
+      results=data||[];
+      _sapCache[cacheKey]=results;
+    }
+    if(!results.length){sug.style.display='none';return;}
+    sug.innerHTML=results.map(r=>
+      `<div onclick="_sapSelect(${JSON.stringify(r.cod_sap)},${JSON.stringify(r.descricao)},${r.preco_unit})"
+        style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border2);font-size:12px"
+        onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+        <span style="font-family:'DM Mono',monospace;color:var(--amber);font-size:11px">${r.cod_sap}</span>
+        <span style="margin-left:8px">${r.descricao}</span>
+        <span style="float:right;font-family:'DM Mono',monospace;color:var(--green);font-weight:700">
+          R$\u00a0${parseFloat(r.preco_unit||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}
+        </span>
+      </div>`
+    ).join('');
+    sug.style.display='block';
+  },300);
+}
+
+function _sapSelect(cod,desc,preco){
+  const sapEl=document.getElementById('req-sap');
+  const descEl=document.getElementById('req-peca-os');
+  const valorEl=document.getElementById('req-valor-os');
+  const sug=document.getElementById('sap-suggestions');
+  if(sapEl) sapEl.value=cod;
+  if(descEl&&!descEl.value) descEl.value=desc;
+  if(valorEl&&!valorEl.value) valorEl.value=parseFloat(preco||0).toFixed(2);
+  if(sug) sug.style.display='none';
+  toast('💲 '+desc.substring(0,30)+'... — R$\u00a0'+parseFloat(preco||0).toLocaleString('pt-BR',{minimumFractionDigits:2}),'ok',2500);
+  // Atualiza previsto automaticamente
+  _atualizarPrevisto();
+}
+
+function _atualizarPrevisto(){
+  // Soma itens já adicionados + item atual
+  const itensExist=window._reqItensOS||[];
+  const subtotalExist=itensExist.reduce((s,i)=>s+(parseFloat(i.valor||0)*parseInt(i.qtd||1)),0);
+  const qtdAtual=parseInt(document.getElementById('req-qtd-os')?.value)||1;
+  const valorAtual=parseFloat(document.getElementById('req-valor-os')?.value)||0;
+  const novoTotal=subtotalExist+(valorAtual*qtdAtual);
+  // Atualiza o campo custo previsto
+  const prevEl=document.getElementById('m22-custo-prev');
+  if(prevEl&&novoTotal>0) prevEl.value=novoTotal.toFixed(2);
+}
+
+// Fechar suggestions ao clicar fora
+document.addEventListener('click',function(e){
+  const sug=document.getElementById('sap-suggestions');
+  if(sug&&!sug.contains(e.target)&&e.target.id!=='req-sap') sug.style.display='none';
+});
+
+
 function adicionarItemReqOS(){
   const sap=document.getElementById('req-sap')?.value?.trim();
   const peca=document.getElementById('req-peca-os')?.value?.trim();
@@ -3605,6 +3678,10 @@ function adicionarItemReqOS(){
 
   if(!window._reqItensOS) window._reqItensOS=[];
   window._reqItensOS.push({sap,peca,qtd,valor,just});
+  // Atualiza custo previsto com total acumulado dos itens
+  const totalItens=window._reqItensOS.reduce((s,i)=>s+(parseFloat(i.valor||0)*parseInt(i.qtd||1)),0);
+  const prevEl=document.getElementById('m22-custo-prev');
+  if(prevEl&&totalItens>0) prevEl.value=totalItens.toFixed(2);
 
   // Limpar campos
   ['req-sap','req-peca-os','req-just-os'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
@@ -7678,67 +7755,106 @@ function filtrarSapPrecos(){
 
 async function importarSapPrecos(input){
   const file=input.files[0]; if(!file) return;
-  toast('⏳ Processando arquivo...');
+  toast('⏳ Processando arquivo SAP...');
   const gid=getGid();
+
   const lerArquivo=()=>new Promise((res,rej)=>{
     const r=new FileReader();
     r.onload=e=>res(e.target.result);
     r.onerror=rej;
-    if(file.name.endsWith('.csv')) r.readAsText(file,'utf-8');
+    if(file.name.toLowerCase().endsWith('.csv')) r.readAsText(file,'utf-8');
     else r.readAsArrayBuffer(file);
   });
+
   try{
     let rows=[];
-    if(file.name.endsWith('.csv')){
+
+    if(file.name.toLowerCase().endsWith('.csv')){
       const txt=await lerArquivo();
       const lines=txt.split('\n').filter(l=>l.trim());
       const sep=lines[0].includes(';')?';':',';
-      const header=lines[0].split(sep).map(h=>h.trim().toLowerCase().replace(/"/g,''));
-      const iCod=header.findIndex(h=>h.includes('cod')||h.includes('material')||h.includes('sap'));
-      const iDesc=header.findIndex(h=>h.includes('desc')||h.includes('nome'));
-      const iPreco=header.findIndex(h=>h.includes('pre')||h.includes('valor')||h.includes('unit'));
-      const iUnd=header.findIndex(h=>h.includes('und')||h.includes('unid'));
+      const header=lines[0].split(sep).map(h=>h.trim().replace(/"/g,'').toLowerCase());
+      // Mapeamento exato do relatório SAP PVH
+      // Colunas: "Nº do item" | "Descrição do item" | "Código de depósito" | "Preço médio"
+      const iCod=header.findIndex(h=>h.includes('item')||h.includes('nº')||h.includes('cod')||h.includes('material'));
+      const iDesc=header.findIndex(h=>h.includes('desc'));
+      const iPreco=header.findIndex(h=>h.includes('preço')||h.includes('preco')||h.includes('médio')||h.includes('medio')||h.includes('valor'));
       for(let i=1;i<lines.length;i++){
         const cols=lines[i].split(sep).map(c=>c.trim().replace(/"/g,''));
-        if(!cols[iCod>-1?iCod:0]) continue;
-        rows.push({garagem_id:gid,
-          cod_sap:String(cols[iCod>-1?iCod:0]).trim(),
+        const cod=String(cols[iCod>-1?iCod:0]||'').trim();
+        if(!cod||cod==='0') continue;
+        rows.push({
+          garagem_id:gid,
+          cod_sap:cod,
           descricao:String(cols[iDesc>-1?iDesc:1]||'').trim(),
-          preco_unit:parseFloat((cols[iPreco>-1?iPreco:2]||'0').replace(',','.'))||0,
-          unidade:String(cols[iUnd>-1?iUnd:3]||'UN').trim()||'UN',
-          atualizado_em:new Date().toISOString()});
+          preco_unit:parseFloat((cols[iPreco>-1?iPreco:3]||'0').replace(/\./g,'').replace(',','.'))||0,
+          unidade:'UN',
+          atualizado_em:new Date().toISOString(),
+        });
       }
+
     } else if(typeof XLSX!=='undefined'){
       const buf=await lerArquivo();
       const wb=XLSX.read(new Uint8Array(buf),{type:'array'});
       const ws=wb.Sheets[wb.SheetNames[0]];
-      const data=XLSX.utils.sheet_to_json(ws,{header:1});
-      const header=(data[0]||[]).map(h=>String(h).toLowerCase());
-      const iCod=header.findIndex(h=>h.includes('cod')||h.includes('material'));
-      const iDesc=header.findIndex(h=>h.includes('desc')||h.includes('nome'));
-      const iPreco=header.findIndex(h=>h.includes('pre')||h.includes('valor'));
-      const iUnd=header.findIndex(h=>h.includes('und')||h.includes('unid'));
+      // Lê como array para controlar o mapeamento
+      const data=XLSX.utils.sheet_to_json(ws,{header:1,raw:false});
+      if(!data.length){toast('Planilha vazia','err');return;}
+
+      const header=(data[0]||[]).map(h=>String(h||'').toLowerCase().trim());
+      // Mapeamento exato do relatório SAP exportado:
+      // Col 0: "Nº do item"       → cod_sap
+      // Col 1: "Descrição do item" → descricao
+      // Col 2: "Código de depósito"→ ignorar
+      // Col 3: "Preço médio"       → preco_unit
+      let iCod=0, iDesc=1, iPreco=3; // defaults para o formato SAP PVH
+
+      // Tenta detectar pelas colunas caso o formato mude
+      const iCodDet=header.findIndex(h=>h.includes('nº')||h.includes('item')||h.includes('material'));
+      const iDescDet=header.findIndex(h=>h.includes('descri'));
+      const iPrecoDet=header.findIndex(h=>h.includes('preço')||h.includes('preco')||h.includes('médio')||h.includes('medio'));
+      if(iCodDet>-1) iCod=iCodDet;
+      if(iDescDet>-1) iDesc=iDescDet;
+      if(iPrecoDet>-1) iPreco=iPrecoDet;
+
       for(let i=1;i<data.length;i++){
-        const r=data[i]; if(!r[iCod>-1?iCod:0]) continue;
-        rows.push({garagem_id:gid,
-          cod_sap:String(r[iCod>-1?iCod:0]).trim(),
-          descricao:String(r[iDesc>-1?iDesc:1]||'').trim(),
-          preco_unit:parseFloat(String(r[iPreco>-1?iPreco:2]||'0').replace(',','.'))||0,
-          unidade:String(r[iUnd>-1?iUnd:3]||'UN').trim()||'UN',
-          atualizado_em:new Date().toISOString()});
+        const r=data[i];
+        const cod=String(r[iCod]||'').trim();
+        if(!cod||cod==='0'||cod.toLowerCase()==='undefined') continue;
+        const precoRaw=String(r[iPreco]||'0').replace(/\./g,'').replace(',','.');
+        rows.push({
+          garagem_id:gid,
+          cod_sap:cod,
+          descricao:String(r[iDesc]||'').trim(),
+          preco_unit:parseFloat(precoRaw)||0,
+          unidade:'UN',
+          atualizado_em:new Date().toISOString(),
+        });
       }
-    } else { toast('Use arquivo CSV para este navegador','err'); return; }
-    if(!rows.length){toast('Nenhuma linha válida encontrada','err');return;}
+
+    } else {
+      toast('⚠️ XLSX não disponível neste navegador — use o arquivo CSV','err');
+      return;
+    }
+
+    if(!rows.length){toast('Nenhuma linha válida encontrada no arquivo','err');return;}
+
+    // Upsert em lotes de 100
     let total=0;
     for(let i=0;i<rows.length;i+=100){
-      const{error}=await sb.from('sap_precos').upsert(rows.slice(i,i+100),{onConflict:'garagem_id,cod_sap'});
-      if(error){toast('Erro: '+error.message,'err');return;}
-      total+=rows.slice(i,i+100).length;
+      const lote=rows.slice(i,i+100);
+      const{error}=await sb.from('sap_precos').upsert(lote,{onConflict:'garagem_id,cod_sap'});
+      if(error){toast('Erro no lote '+(i/100+1)+': '+error.message,'err');return;}
+      total+=lote.length;
     }
-    toast('✅ '+total+' itens importados!');
+    toast('✅ '+total+' itens do SAP importados com sucesso!');
     input.value='';
     renderFerrPCM('sap_precos');
-  }catch(e){toast('Erro: '+e.message,'err');}
+
+  }catch(e){
+    toast('Erro ao processar: '+e.message,'err');
+    console.error(e);
+  }
 }
 
 async function consultarPrecoSAP(codSap,gid){
