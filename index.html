@@ -4028,6 +4028,8 @@ async function abrirFechamentoCustoTurno(){
 }
 
 async function renderCustoTurno(gid, back, tabs){
+  setMain(`<div class="loading"><div class="spinner"></div></div>`);
+
   const agora=new Date();
   const hoje_=agora.toISOString().slice(0,10);
   const ontem=new Date(agora); ontem.setDate(ontem.getDate()-1);
@@ -4035,117 +4037,128 @@ async function renderCustoTurno(gid, back, tabs){
   const turno=S.turno||'dia';
   const ini=turno==='dia'?`${hoje_}T07:00`:`${ontemStr}T21:00`;
   const fim=turno==='dia'?`${hoje_}T17:00`:`${hoje_}T07:20`;
-  const tLabel=turno==='dia'?'☀️ Diurno (07:00–17:00)':'🌙 Noturno (21:00–07:20)';
+  const tLabel=turno==='dia'?'☀️ Diurno — 07:00 a 17:00':'🌙 Noturno — 21:00 a 07:20';
 
-  setMain(`${back}${tabs}<div class="loading"><div class="spinner"></div></div>`);
-
-  const{data:osHoje}=await sb.from('ocorrencias_22').select('*')
+  const{data:ocs}=await sb.from('ocorrencias_22').select('*')
     .eq('garagem_id',gid)
     .gte('hora_entrada',new Date(ini).toISOString())
     .lte('hora_entrada',new Date(fim).toISOString())
     .order('hora_entrada');
 
-  const lista=osHoje||[];
-  const totalPrev=lista.reduce((s,o)=>s+(o.custo_previsto||0),0);
-  const totalReal=lista.reduce((s,o)=>s+(o.custo_real||0),0);
+  const lista=ocs||[];
+  const totalPrev=lista.reduce((s,o)=>s+(parseFloat(o.custo_previsto)||0),0);
+  const totalReal=lista.reduce((s,o)=>s+(parseFloat(o.custo_real)||0),0);
   const liberadas=lista.filter(o=>o.status==='liberado').length;
   const pendentes=lista.filter(o=>o.status!=='liberado').length;
   const variacao=totalReal-totalPrev;
   const corVar=variacao>0?'var(--red)':variacao<0?'var(--green)':'var(--text3)';
+  const sinal=variacao>0?'▲ +':'▼ ';
+  const fmt=v=>'R$ '+parseFloat(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});
 
-  // Por tipo
+  // Resumo por tipo
   const porTipo={};
   lista.forEach(o=>{
-    if(!porTipo[o.tipo]) porTipo[o.tipo]={qtd:0,previsto:0,real:0};
-    porTipo[o.tipo].qtd++;
-    porTipo[o.tipo].previsto+=o.custo_previsto||0;
-    porTipo[o.tipo].real+=o.custo_real||0;
+    const t=o.tipo||'corretiva';
+    if(!porTipo[t]) porTipo[t]={qtd:0,prev:0,real:0};
+    porTipo[t].qtd++;
+    porTipo[t].prev+=parseFloat(o.custo_previsto)||0;
+    porTipo[t].real+=parseFloat(o.custo_real)||0;
   });
 
-  const rows=lista.map(o=>{
+  const kpis=[
+    {l:'OS no Turno',v:lista.length,c:'var(--blue)'},
+    {l:'Fechadas',v:liberadas,c:'var(--green)'},
+    {l:'Pendentes',v:pendentes,c:pendentes>0?'var(--red)':'var(--green)'},
+    {l:'Custo Previsto',v:fmt(totalPrev),c:'var(--text3)'},
+    {l:'Custo Real',v:fmt(totalReal),c:corVar},
+    {l:'Variação',v:(variacao!==0?sinal:'')+fmt(Math.abs(variacao)),c:corVar},
+  ].map(k=>`
+    <div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${k.c};border-radius:10px;padding:12px 14px">
+      <div style="color:var(--text3);font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">${k.l}</div>
+      <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:800;color:${k.c}">${k.v}</div>
+    </div>`).join('');
+
+  const tipoRows=Object.entries(porTipo).map(([t,v])=>{
+    const dif=v.real-v.prev;
+    const cor=dif>0?'var(--red)':dif<0?'var(--green)':'var(--text3)';
+    return`<tr style="border-bottom:1px solid var(--border2)">
+      <td style="padding:10px 14px;font-size:13px">${TIPO22[t]?.ic||'🔧'} ${TIPO22[t]?.l||t}</td>
+      <td style="padding:10px 14px;text-align:center;font-family:'DM Mono',monospace;font-size:13px">${v.qtd}</td>
+      <td style="padding:10px 14px;text-align:right;font-family:'DM Mono',monospace;font-size:13px;color:var(--text3)">${fmt(v.prev)}</td>
+      <td style="padding:10px 14px;text-align:right;font-family:'DM Mono',monospace;font-size:13px;font-weight:700">${fmt(v.real)}</td>
+      <td style="padding:10px 14px;text-align:right;font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:${cor}">${dif!==0?(dif>0?'▲ +':'▼ ')+fmt(Math.abs(dif)):'—'}</td>
+    </tr>`;
+  }).join('');
+
+  const osRows=lista.map(o=>{
     const isFech=o.status==='liberado';
     const hrAb=o.hora_entrada?new Date(o.hora_entrada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
+    const corReal=parseFloat(o.custo_real)>parseFloat(o.custo_previsto)?'var(--red)':o.custo_real?'var(--green)':'var(--text3)';
     return`<tr style="border-bottom:1px solid var(--border2)">
-      <td style="padding:8px 12px;font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${o.prefixo}</td>
-      <td style="padding:8px 12px;font-size:11px">${TIPO22[o.tipo]?.ic||''} ${TIPO22[o.tipo]?.l||o.tipo||'—'}</td>
-      <td style="padding:8px 12px;font-size:11px">${o.mecanico||'—'}</td>
-      <td style="padding:8px 12px;text-align:center;font-family:'DM Mono',monospace;font-size:11px">${hrAb}</td>
-      <td style="padding:8px 12px;text-align:center">
-        <span style="background:${isFech?'var(--green)':'var(--red)'}18;border:1px solid ${isFech?'var(--green)':'var(--red)'}40;color:${isFech?'var(--green)':'var(--red)'};border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">
-          ${isFech?'✅ Fechada':'⏳ Pendente'}
-        </span>
+      <td style="padding:8px 14px;font-family:'DM Mono',monospace;font-weight:700;font-size:14px;color:var(--blue)">${o.prefixo}</td>
+      <td style="padding:8px 14px;font-size:12px">${TIPO22[o.tipo]?.ic||''} ${TIPO22[o.tipo]?.l||o.tipo||'—'}</td>
+      <td style="padding:8px 14px;font-size:12px">${o.mecanico||'—'}</td>
+      <td style="padding:8px 14px;text-align:center;font-family:'DM Mono',monospace;font-size:12px">${hrAb}</td>
+      <td style="padding:8px 14px;text-align:center">
+        <span style="background:${isFech?'var(--green)':'var(--red)'}18;border:1px solid ${isFech?'var(--green)':'var(--red)'}40;color:${isFech?'var(--green)':'var(--red)'};border-radius:6px;padding:2px 9px;font-size:11px;font-weight:700">${isFech?'✅ Fechada':'⏳ Pendente'}</span>
       </td>
-      <td style="padding:8px 12px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;color:var(--text3)">${o.custo_previsto?'R$ '+Number(o.custo_previsto).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</td>
-      <td style="padding:8px 12px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:${o.custo_real>o.custo_previsto?'var(--red)':o.custo_real?'var(--green)':'var(--text3)'}">
-        ${o.custo_real?'R$ '+Number(o.custo_real).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}
-      </td>
-      <td style="padding:8px 12px;text-align:center">
+      <td style="padding:8px 14px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;color:var(--text3)">${o.custo_previsto?fmt(o.custo_previsto):'—'}</td>
+      <td style="padding:8px 14px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:${corReal}">${o.custo_real?fmt(o.custo_real):'—'}</td>
+      <td style="padding:8px 14px;text-align:center">
         ${!o.custo_real&&isFech?`<button onclick="lancarCustoReal('${o.id}',${o.custo_previsto||0},this)"
-          style="padding:4px 10px;border-radius:6px;border:1px solid var(--amber);background:transparent;color:var(--amber);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">+ Real</button>`:''}
+          style="padding:4px 10px;border-radius:6px;border:1px solid var(--amber);background:var(--amber)18;color:var(--amber);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">+ Real</button>`:''}
       </td>
     </tr>`;
   }).join('');
 
-  const tiposHtml=Object.entries(porTipo).map(([tipo,v])=>
-    `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border2)">
-      <span style="font-size:13px">${TIPO22[tipo]?.ic||'🔧'} ${TIPO22[tipo]?.l||tipo} <span style="color:var(--text3);font-size:11px">(${v.qtd} OS)</span></span>
-      <div style="text-align:right">
-        <div style="font-size:11px;color:var(--text3)">Prev: <span style="font-family:'DM Mono',monospace">R$ ${v.previsto.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
-        <div style="font-size:13px;font-weight:800;color:${v.real>v.previsto?'var(--red)':'var(--green)'}">Real: <span style="font-family:'DM Mono',monospace">R$ ${v.real.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
-      </div>
-    </div>`
-  ).join('');
+  setMain(`
+    ${secTitle('💰','Custo do Turno',back)}${tabs}
 
-  setMain(`${back}${tabs}
+    <div style="font-size:12px;color:var(--text3);margin:-8px 0 16px">${tLabel} · ${agora.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'})}</div>
 
     <!-- KPIs -->
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div>
-          <div style="font-size:18px;font-weight:900">💰 Custo do Turno</div>
-          <div style="font-size:12px;color:var(--text3);margin-top:2px">${tLabel} · ${agora.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'})}</div>
-        </div>
-        <button onclick="gerarRelatorioCustoTurno('${ini}','${fim}','${turno}')"
-          style="padding:8px 16px;border-radius:9px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">📄 Exportar PDF</button>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">
-        <div class="kpi2"><div class="kpi2-v">${lista.length}</div><div class="kpi2-l">OS no Turno</div></div>
-        <div class="kpi2"><div class="kpi2-v" style="color:var(--green)">${liberadas}</div><div class="kpi2-l">Fechadas</div></div>
-        <div class="kpi2"><div class="kpi2-v" style="color:${pendentes>0?'var(--red)':'var(--green)'}">${pendentes}</div><div class="kpi2-l">Pendentes</div></div>
-        <div class="kpi2"><div class="kpi2-v" style="color:var(--text3);font-size:13px">R$ ${totalPrev.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div><div class="kpi2-l">Previsto</div></div>
-        <div class="kpi2"><div class="kpi2-v" style="color:${corVar};font-size:13px">R$ ${totalReal.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div><div class="kpi2-l">Real${variacao!==0?` (${variacao>0?'+':''}${variacao.toLocaleString('pt-BR',{minimumFractionDigits:2})})`:''}</div></div>
-      </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:20px">
+      ${kpis}
     </div>
 
     <!-- Resumo por tipo -->
     ${secTitle('📊','Resumo por Tipo de Serviço')}
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:20px">
-      ${tiposHtml||'<div style="padding:16px;color:var(--text4);font-size:13px;text-align:center">Nenhuma OS neste turno</div>'}
-      <div style="padding:12px 14px;display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border-top:2px solid var(--border)">
-        <span style="font-size:14px;font-weight:800">TOTAL</span>
-        <div style="text-align:right">
-          <div style="font-size:11px;color:var(--text3)">Previsto: <span style="font-family:'DM Mono',monospace;font-weight:700">R$ ${totalPrev.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
-          <div style="font-size:15px;font-weight:900;color:${corVar}">Real: <span style="font-family:'DM Mono',monospace">R$ ${totalReal.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
-        </div>
-      </div>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:var(--surface2)">
+          <th style="padding:10px 14px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">TIPO</th>
+          <th style="padding:10px 14px;text-align:center;font-size:11px;color:var(--text3);font-weight:700">QTD</th>
+          <th style="padding:10px 14px;text-align:right;font-size:11px;color:var(--text3);font-weight:700">PREVISTO</th>
+          <th style="padding:10px 14px;text-align:right;font-size:11px;color:var(--text3);font-weight:700">REAL</th>
+          <th style="padding:10px 14px;text-align:right;font-size:11px;color:var(--text3);font-weight:700">VARIAÇÃO</th>
+        </tr></thead>
+        <tbody>${tipoRows||`<tr><td colspan="5" style="padding:16px;text-align:center;color:var(--text4)">Nenhuma OS neste turno</td></tr>`}</tbody>
+        <tfoot><tr style="background:var(--surface2);border-top:2px solid var(--border)">
+          <td style="padding:10px 14px;font-size:13px;font-weight:800">TOTAL</td>
+          <td style="padding:10px 14px;text-align:center;font-family:'DM Mono',monospace;font-size:13px;font-weight:700">${lista.length}</td>
+          <td style="padding:10px 14px;text-align:right;font-family:'DM Mono',monospace;font-size:13px;color:var(--text3)">${fmt(totalPrev)}</td>
+          <td style="padding:10px 14px;text-align:right;font-family:'DM Mono',monospace;font-size:13px;font-weight:800;color:${corVar}">${fmt(totalReal)}</td>
+          <td style="padding:10px 14px;text-align:right;font-family:'DM Mono',monospace;font-size:13px;font-weight:800;color:${corVar}">${variacao!==0?(variacao>0?'▲ +':'▼ ')+fmt(Math.abs(variacao)):'—'}</td>
+        </tfoot>
+      </table>
     </div>
 
     <!-- Detalhamento por OS -->
-    ${secTitle('📋','Detalhamento por OS')}
-    ${lista.length===0?'<div class="empty">Nenhuma OS no período deste turno</div>':''}
-    ${lista.length>0?`<div style="overflow-x:auto;margin-bottom:20px">
+    ${secTitle('📋','Detalhamento por OS',`<button onclick="gerarRelatorioCustoTurno('${ini}','${fim}','${turno}')" class="btn-add" style="background:var(--blue);border-color:var(--blue);color:#fff">📄 Exportar PDF</button>`)}
+    ${lista.length===0?'<div class="empty"><div style="font-size:36px">📭</div><div style="margin:12px 0;font-weight:600;color:var(--text2)">Nenhuma OS no período deste turno</div></div>':''}
+    ${lista.length>0?`<div style="overflow-x:auto">
       <table style="width:100%;border-collapse:collapse;min-width:700px">
         <thead><tr style="background:var(--surface2)">
-          <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">PREFIXO</th>
-          <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">TIPO</th>
-          <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">MECÂNICO</th>
-          <th style="padding:8px 12px;text-align:center;font-size:11px;color:var(--text3);font-weight:700">ABERTURA</th>
-          <th style="padding:8px 12px;text-align:center;font-size:11px;color:var(--text3);font-weight:700">STATUS</th>
-          <th style="padding:8px 12px;text-align:right;font-size:11px;color:var(--text3);font-weight:700">PREVISTO</th>
-          <th style="padding:8px 12px;text-align:right;font-size:11px;color:var(--text3);font-weight:700">REAL</th>
-          <th style="padding:8px 12px;width:80px"></th>
+          <th style="padding:8px 14px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">PREFIXO</th>
+          <th style="padding:8px 14px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">TIPO</th>
+          <th style="padding:8px 14px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">MECÂNICO</th>
+          <th style="padding:8px 14px;text-align:center;font-size:11px;color:var(--text3);font-weight:700">ABERTURA</th>
+          <th style="padding:8px 14px;text-align:center;font-size:11px;color:var(--text3);font-weight:700">STATUS</th>
+          <th style="padding:8px 14px;text-align:right;font-size:11px;color:var(--text3);font-weight:700">PREVISTO</th>
+          <th style="padding:8px 14px;text-align:right;font-size:11px;color:var(--text3);font-weight:700">REAL</th>
+          <th style="padding:8px 14px;width:70px"></th>
         </tr></thead>
-        <tbody>${rows}</tbody>
+        <tbody>${osRows}</tbody>
       </table>
     </div>`:''}
   `);
