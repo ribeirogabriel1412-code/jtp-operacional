@@ -365,6 +365,17 @@ tr:hover td{background:#0F172A80}
 </div>
 
 <!-- Modal Saída 2.10 -->
+<!-- Modal Almoxarifado genérico -->
+<div class="modal-ov" id="modal-alm" style="display:none" onclick="if(event.target===this)closeM('modal-alm')">
+  <div class="modal" style="max-width:560px;max-height:88vh;overflow-y:auto">
+    <div class="modal-title">
+      <span id="modal-alm-title">Almoxarifado</span>
+      <button class="btn-x" onclick="closeM('modal-alm')">✕</button>
+    </div>
+    <div id="modal-alm-body"></div>
+  </div>
+</div>
+
 <div class="modal-ov" id="modal-saida" style="display:none" onclick="if(event.target===this)closeM('modal-saida')">
   <div class="modal" style="max-width:440px">
     <div class="modal-title">
@@ -1366,7 +1377,636 @@ function toggleSolturaDetalhe(){
 }
 
 function renderManutencao(){setMain(`${secTitle('🔧','Ordens de Serviço')}<div class="empty"><div style="font-size:40px">🔧</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Em desenvolvimento</div></div><div class="info-blue info-banner">🔗 Fase 2: OS integradas ao banco + integração Praxio</div>`)}
-function renderAlmoxarifado(){setMain(`${secTitle('📦','Almoxarifado')}<div class="empty"><div style="font-size:40px">📦</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Em desenvolvimento</div></div><div class="info-blue info-banner">🔗 Fase 2: estoque, movimentações, inventário, Praxio/SAP</div>`)}
+function renderAlmoxarifado(aba){
+  // Detectar aba default por cargo
+  const c=S.perfil?.cargo;
+  if(!aba){
+    if(['almoxarifado','lider_suprimentos'].includes(c)) aba='kits';
+    else aba='compras';
+  }
+
+  const isAlm=['almoxarifado','lider_suprimentos','lider_pcm','gerente_garagem','diretoria'].includes(c)||S.perfil?.is_admin;
+  if(!isAlm){setMain(`${secTitle('📦','Almoxarifado')}<div class="empty">🔒 Acesso restrito</div>`);return;}
+
+  const tabs=`<div class="filtros" style="margin-bottom:20px">
+    <button class="filtro-btn${aba==='kits'?' active':''}" onclick="renderAlmoxarifado('kits')">🧺 Kits Preventivos</button>
+    <button class="filtro-btn${aba==='compras'?' active':''}" onclick="renderAlmoxarifado('compras')">📋 Compras & FUP</button>
+    <button class="filtro-btn${aba==='nf'?' active':''}" onclick="renderAlmoxarifado('nf')">📄 Notas Fiscais</button>
+  </div>`;
+
+  if(aba==='kits') renderAlmKits(tabs);
+  else if(aba==='compras') renderAlmCompras(tabs);
+  else if(aba==='nf') renderAlmNF(tabs);
+}
+
+// ── helpers ─────────────────────────────────────────────────────
+function formatDataBR(d){if(!d)return'—';const[y,m,dia]=d.split('-');return`${dia}/${m}/${y.slice(2)}`;}
+function almBadge(txt,cor){return`<span style="background:${cor}18;border:1px solid ${cor}40;color:${cor};border-radius:6px;padding:2px 9px;font-size:11px;font-weight:700">${txt}</span>`;}
+function almRow(ic,titulo,sub,badge,onclick){
+  const clk=onclick?`onclick="${onclick}" style="cursor:pointer"`:'';
+  return`<div ${clk} style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:center;gap:14px${onclick?';transition:border-color .15s" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'':''}">
+    <div style="font-size:24px;flex-shrink:0">${ic}</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:14px;font-weight:700;color:var(--text)">${titulo}</div>
+      <div style="font-size:12px;color:var(--text3);margin-top:2px">${sub}</div>
+    </div>
+    ${badge||''}
+  </div>`;
+}
+
+// ── ABA KITS ────────────────────────────────────────────────────
+async function renderAlmKits(tabs){
+  setMain(`${secTitle('📦','Almoxarifado')}${tabs}<div class="loading"><div class="spinner"></div></div>`);
+  const gid=getGid(); const data=hoje();
+  const amanha=new Date(); amanha.setDate(amanha.getDate()+1);
+  const amanhaStr=amanha.toISOString().slice(0,10);
+  const amanhaLabel=amanha.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'});
+
+  const[{data:prev},{data:kits}]=await Promise.all([
+    sb.from('preventivas_programadas').select('*').eq('garagem_id',gid).eq('data',amanhaStr).order('prefixo'),
+    sb.from('alm_kits').select('*').eq('garagem_id',gid).eq('data',amanhaStr),
+  ]);
+
+  const prevList=prev||[];
+  const kitsMap={}; (kits||[]).forEach(k=>kitsMap[k.prefixo]=k);
+  const pendentes=prevList.filter(p=>!kitsMap[p.prefixo]||kitsMap[p.prefixo]?.status==='pendente');
+  const separados=prevList.filter(p=>kitsMap[p.prefixo]?.status==='separado');
+  const entregues=prevList.filter(p=>kitsMap[p.prefixo]?.status==='entregue');
+
+  const tipoLabel=(t)=>t==='pesada'?almBadge('🟠 Pesada','#F97316'):t==='garantia'?almBadge('🟢 Garantia','#00C48C'):almBadge('🔵 Leve','#3B82F6');
+
+  setMain(`${secTitle('📦','Almoxarifado')}${tabs}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div style="font-size:13px;color:var(--text3)">D+1 — ${amanhaLabel}</div>
+      <div style="display:flex;gap:8px">
+        ${almBadge('⏳ '+pendentes.length+' pendentes','#EF4444')}
+        ${almBadge('✅ '+separados.length+' separados','#F59E0B')}
+        ${almBadge('🔵 '+entregues.length+' entregues','#00C48C')}
+      </div>
+    </div>
+
+    ${prevList.length===0?`<div class="empty"><div style="font-size:36px">📋</div><div style="margin:12px 0;font-weight:600;color:var(--text2)">Nenhuma preventiva programada para amanhã</div><p style="color:var(--text3)">Os kits aparecem aqui conforme a programação do Painel Preventivas.</p></div>`:''}
+
+    ${pendentes.length?`<div class="sec-title" style="margin-bottom:8px"><span>⏳</span><span class="st-text">Pendentes de Separação</span><div class="st-line"></div></div>`:'' }
+    ${pendentes.map(p=>`
+      ${almRow('🧺',p.prefixo,tipoLabel(p.tipo),
+        `<button onclick="abrirModalKitSite('${p.prefixo}','${p.tipo}','${amanhaStr}')" class="btn-add" style="font-size:12px;padding:6px 14px;background:#F59E0B;border-color:#F59E0B;color:#fff">Separar</button>`,'')}
+    `).join('')}
+
+    ${separados.length?`<div class="sec-title" style="margin:16px 0 8px"><span>📦</span><span class="st-text">Separados — Aguardando Entrega</span><div class="st-line"></div></div>`:''}
+    ${separados.map(p=>{
+      const k=kitsMap[p.prefixo];
+      return almRow('📦',p.prefixo,
+        `${tipoLabel(p.tipo)} · Cesto: <b>${k.cesto||'—'}</b> · por ${k.separado_por||'—'}`,
+        `<button onclick="marcarKitEntreguesite('${p.prefixo}','${amanhaStr}')" class="btn-add" style="font-size:12px;padding:6px 14px">Entregar →</button>`,'');
+    }).join('')}
+
+    ${entregues.length?`<div class="sec-title" style="margin:16px 0 8px"><span>✅</span><span class="st-text">Entregues à Oficina</span><div class="st-line"></div></div>`:''}
+    ${entregues.map(p=>{
+      const k=kitsMap[p.prefixo];
+      return almRow('✅',p.prefixo,
+        `${tipoLabel(p.tipo)} · Cesto: ${k.cesto||'—'} · Entregue às ${k.hora_entrega||'—'} por ${k.entregue_por||'—'}`,
+        almBadge('Entregue','#00C48C'),'');
+    }).join('')}
+  `);
+}
+
+// Modal separar kit — site
+function abrirModalKitSite(prefixo,tipo,data){
+  const tipoLabel=tipo==='pesada'?'🟠 Preventiva Pesada':tipo==='garantia'?'🟢 Garantia':'🔵 Preventiva Leve';
+  // Reusa modal genérico do site (modal-v)
+  const m=document.getElementById('modal-alm');
+  document.getElementById('modal-alm-title').textContent='🧺 Separar Kit';
+  document.getElementById('modal-alm-body').innerHTML=`
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="font-size:28px;font-weight:900;font-family:'DM Mono',monospace;color:var(--blue)">${prefixo}</div>
+      <div style="font-size:13px;color:var(--text3)">${tipoLabel}</div>
+    </div>
+    <label class="campo-label">Identificação do Cesto *</label>
+    <input class="campo-input fi" id="kit-cesto-site" placeholder="Ex: A-12, Prateleira 3, Cesto Vermelho..." style="margin-bottom:12px">
+    <label class="campo-label">Observação (opcional)</label>
+    <input class="campo-input fi" id="kit-obs-site" placeholder="Falta alguma peça? Divergência?">
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="btn-sec" onclick="closeM('modal-alm')">Cancelar</button>
+      <button class="btn-success" onclick="confirmarSepararKitSite('${prefixo}','${tipo}','${data}')">✅ Confirmar Separação</button>
+    </div>
+  `;
+  m.style.display='flex';
+}
+
+async function confirmarSepararKitSite(prefixo,tipo,data){
+  const cesto=document.getElementById('kit-cesto-site')?.value?.trim();
+  const obs=document.getElementById('kit-obs-site')?.value?.trim();
+  if(!cesto){toast('Informe o identificador do cesto','err');return;}
+  const gid=getGid();
+  const{error}=await sb.from('alm_kits').upsert({
+    garagem_id:gid,prefixo,data,tipo,cesto,status:'separado',observacao:obs||null,
+    separado_por:S.perfil?.nome||null,separado_em:new Date().toISOString(),
+  },{onConflict:'garagem_id,prefixo,data'});
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('✅ Kit separado — '+prefixo);
+  closeM('modal-alm');
+  renderAlmoxarifado('kits');
+}
+
+async function marcarKitEntreguesite(prefixo,data){
+  const gid=getGid();
+  const hora=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'});
+  const{error}=await sb.from('alm_kits').update({
+    status:'entregue',hora_entrega:hora,entregue_por:S.perfil?.nome||null,entregue_em:new Date().toISOString()
+  }).eq('garagem_id',gid).eq('prefixo',prefixo).eq('data',data);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('🔵 Kit entregue à oficina — '+prefixo);
+  renderAlmoxarifado('kits');
+}
+
+// ── ABA COMPRAS & FUP ───────────────────────────────────────────
+const COMP_ST={
+  aguardando:   {ic:'⏳',l:'Aguardando',  c:'#94A3B8'},
+  em_cotacao:   {ic:'🔍',l:'Em Cotação',  c:'#3B82F6'},
+  pedido_feito: {ic:'📤',l:'Pedido Feito',c:'#F59E0B'},
+  em_transito:  {ic:'🚚',l:'Em Trânsito', c:'#8B5CF6'},
+  recebido:     {ic:'✅',l:'Recebido',    c:'#00C48C'},
+  cancelado:    {ic:'❌',l:'Cancelado',   c:'#EF4444'},
+};
+
+async function renderAlmCompras(tabs){
+  setMain(`${secTitle('📦','Almoxarifado')}${tabs}<div class="loading"><div class="spinner"></div></div>`);
+  const gid=getGid(); const hoje_=hoje();
+
+  const{data:comps}=await sb.from('alm_compras').select('*')
+    .eq('garagem_id',gid).order('criado_em',{ascending:false}).limit(100);
+
+  const lista=comps||[];
+  const abertas=lista.filter(c=>!['recebido','cancelado'].includes(c.status));
+  const fechadas=lista.filter(c=>['recebido','cancelado'].includes(c.status)).slice(0,15);
+  const atrasadas=abertas.filter(c=>c.data_previsao&&c.data_previsao<hoje_);
+  const hojePrev=abertas.filter(c=>c.data_previsao===hoje_);
+
+  const urgBadge=(u)=>u==='critica'?almBadge('⚠️ Crítica','#EF4444'):u==='urgente'?almBadge('🔴 Urgente','#EF4444'):'';
+
+  setMain(`${secTitle('📦','Almoxarifado')}${tabs}
+    ${atrasadas.length?`<div style="background:#EF444415;border:1px solid #EF444430;border-radius:12px;padding:12px 16px;margin-bottom:10px;font-size:13px;color:#EF4444;font-weight:700">⚠️ ${atrasadas.length} solicitação(ões) com entrega atrasada</div>`:''}
+    ${hojePrev.length?`<div style="background:#F59E0B15;border:1px solid #F59E0B30;border-radius:12px;padding:12px 16px;margin-bottom:10px;font-size:13px;color:#F59E0B;font-weight:700">🕐 ${hojePrev.length} prevista(s) para hoje</div>`:''}
+
+    <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+      <button class="btn-add" onclick="abrirModalNovaCompraSite()">+ Nova Solicitação</button>
+    </div>
+
+    <div class="sec-title" style="margin-bottom:8px"><span>🔄</span><span class="st-text">Em Andamento (${abertas.length})</span><div class="st-line"></div></div>
+    ${abertas.length===0?'<div class="empty">Nenhuma solicitação em aberto</div>':''}
+    ${abertas.map(c=>{
+      const st=COMP_ST[c.status]||COMP_ST.aguardando;
+      const atras=c.data_previsao&&c.data_previsao<hoje_;
+      return`<div onclick="abrirFUPSite('${c.id}')" style="background:var(--surface);border:1px solid ${atras?'#EF444440':'var(--border)'};border-left:3px solid ${atras?'#EF4444':st.c};border-radius:12px;padding:14px 16px;margin-bottom:8px;cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='${atras?'#EF444440':'var(--border)'}'">
+        <div>
+          <div style="font-size:14px;font-weight:700;margin-bottom:4px">${c.peca||c.descricao}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            ${c.prefixo?almBadge(c.prefixo,'#3B82F6'):''}
+            ${c.fornecedor?`<span style="font-size:12px;color:var(--text3)">${c.fornecedor}</span>`:''}
+            ${c.cod_sap?`<span style="font-size:11px;font-family:'DM Mono',monospace;color:var(--text4)">SAP: ${c.cod_sap}</span>`:''}
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-top:4px">
+            Previsão: <b style="color:${atras?'#EF4444':'var(--text)'}">${c.data_previsao?formatDataBR(c.data_previsao):'—'}</b>
+            ${c.historico?.length?` · ${c.historico.length} FUP(s)`:''}
+          </div>
+        </div>
+        <div style="text-align:right">
+          ${almBadge(st.ic+' '+st.l, atras?'#EF4444':st.c)}
+          <div style="margin-top:4px">${urgBadge(c.urgencia)}</div>
+        </div>
+      </div>`;
+    }).join('')}
+
+    ${fechadas.length?`<div class="sec-title" style="margin:20px 0 8px"><span>📁</span><span class="st-text">Encerradas (últimas ${fechadas.length})</span><div class="st-line"></div></div>`:''}
+    ${fechadas.map(c=>{
+      const st=COMP_ST[c.status]||COMP_ST.recebido;
+      return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:6px;display:flex;align-items:center;gap:12px;opacity:.75">
+        <div style="font-size:20px">${st.ic}</div>
+        <div style="flex:1"><div style="font-size:13px;font-weight:600">${c.peca||c.descricao}</div>
+        <div style="font-size:11px;color:var(--text3)">${c.fornecedor||'—'} · ${formatDataBR(c.data_recebimento||c.criado_em?.slice(0,10))}</div></div>
+        ${almBadge(st.l,st.c)}
+      </div>`;
+    }).join('')}
+  `);
+}
+
+function abrirModalNovaCompraSite(){
+  const m=document.getElementById('modal-alm');
+  document.getElementById('modal-alm-title').textContent='+ Nova Solicitação de Compra';
+  document.getElementById('modal-alm-body').innerHTML=`
+    <div class="mgrid">
+      <div class="full">
+        <label class="campo-label">Peça / Material *</label>
+        <input class="fi" id="nc-peca" placeholder="Ex: Filtro de óleo, pastilha de freio...">
+      </div>
+      <div>
+        <label class="campo-label">Código SAP</label>
+        <input class="fi" id="nc-sap" placeholder="30000050" style="font-family:'DM Mono',monospace">
+      </div>
+      <div>
+        <label class="campo-label">Prefixo (veículo)</label>
+        <input class="fi" id="nc-prefixo" placeholder="02.250" style="font-family:'DM Mono',monospace">
+      </div>
+      <div>
+        <label class="campo-label">Quantidade</label>
+        <input class="fi" id="nc-qtd" type="number" min="1" value="1">
+      </div>
+      <div>
+        <label class="campo-label">Fornecedor</label>
+        <input class="fi" id="nc-forn" placeholder="Nome do fornecedor">
+      </div>
+      <div>
+        <label class="campo-label">Previsão de Entrega</label>
+        <input class="fi" id="nc-prev" type="date">
+      </div>
+      <div class="full">
+        <label class="campo-label">Urgência</label>
+        <select class="fs" id="nc-urg">
+          <option value="normal">🟢 Normal</option>
+          <option value="urgente">🔴 Urgente</option>
+          <option value="critica">⚠️ Crítica — veículo parado</option>
+        </select>
+      </div>
+      <div class="full">
+        <label class="campo-label">Observação</label>
+        <input class="fi" id="nc-obs" placeholder="Nº req Praxio, contexto...">
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="btn-sec" onclick="closeM('modal-alm')">Cancelar</button>
+      <button class="btn-success" onclick="salvarNovaCompraSite()">💾 Registrar</button>
+    </div>
+  `;
+  m.style.display='flex';
+}
+
+async function salvarNovaCompraSite(){
+  const peca=document.getElementById('nc-peca')?.value?.trim();
+  if(!peca){toast('Informe a peça/material','err');return;}
+  const gid=getGid();
+  const{error}=await sb.from('alm_compras').insert({
+    garagem_id:gid,peca,descricao:peca,
+    cod_sap:document.getElementById('nc-sap')?.value?.trim()||null,
+    prefixo:document.getElementById('nc-prefixo')?.value?.trim()||null,
+    quantidade:parseInt(document.getElementById('nc-qtd')?.value)||1,
+    fornecedor:document.getElementById('nc-forn')?.value?.trim()||null,
+    data_previsao:document.getElementById('nc-prev')?.value||null,
+    urgencia:document.getElementById('nc-urg')?.value||'normal',
+    observacao:document.getElementById('nc-obs')?.value?.trim()||null,
+    status:'aguardando',
+    criado_por:S.perfil?.nome||null,criado_em:new Date().toISOString(),
+    historico:[{acao:'Criado',por:S.perfil?.nome||'—',em:new Date().toISOString()}],
+  });
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('✅ Solicitação registrada!');
+  closeM('modal-alm');
+  renderAlmoxarifado('compras');
+}
+
+async function abrirFUPSite(id){
+  const{data:c}=await sb.from('alm_compras').select('*').eq('id',id).single();
+  if(!c){toast('Não encontrado','err');return;}
+  const st=COMP_ST[c.status]||COMP_ST.aguardando;
+  const hist=(c.historico||[]);
+  const m=document.getElementById('modal-alm');
+  document.getElementById('modal-alm-title').textContent='📋 FUP — '+c.peca;
+  document.getElementById('modal-alm-body').innerHTML=`
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      ${c.prefixo?almBadge(c.prefixo,'#3B82F6'):''}
+      ${almBadge(st.ic+' '+st.l,st.c)}
+      ${c.urgencia==='urgente'?almBadge('🔴 Urgente','#EF4444'):c.urgencia==='critica'?almBadge('⚠️ Crítica','#EF4444'):''}
+    </div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
+      <div><span style="color:var(--text3)">Qtd:</span> <b>${c.quantidade||1}</b></div>
+      <div><span style="color:var(--text3)">SAP:</span> <b style="font-family:'DM Mono',monospace">${c.cod_sap||'—'}</b></div>
+      <div><span style="color:var(--text3)">Fornecedor:</span> <b>${c.fornecedor||'—'}</b></div>
+      <div><span style="color:var(--text3)">Previsão:</span> <b>${formatDataBR(c.data_previsao)}</b></div>
+      ${c.observacao?`<div class="full" style="grid-column:1/-1"><span style="color:var(--text3)">Obs:</span> ${c.observacao}</div>`:''}
+    </div>
+
+    <label class="campo-label">Atualizar Status</label>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px">
+      ${Object.entries(COMP_ST).map(([k,v])=>`
+        <button id="cst-${k}" onclick="selStFUPSite('${k}')"
+          style="padding:8px 4px;border-radius:9px;border:2px solid ${c.status===k?v.c:'var(--border)'};background:${c.status===k?v.c+'18':'transparent'};color:${c.status===k?v.c:'var(--text3)'};font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;line-height:1.3">
+          ${v.ic}<br>${v.l}
+        </button>`).join('')}
+    </div>
+    <input type="hidden" id="fup-st-sel" value="${c.status}">
+
+    <div class="mgrid" style="margin-bottom:14px">
+      <div>
+        <label class="campo-label">Fornecedor</label>
+        <input class="fi" id="fup-forn" value="${c.fornecedor||''}" placeholder="Nome do fornecedor" style="margin-bottom:0">
+      </div>
+      <div>
+        <label class="campo-label">Nova Previsão</label>
+        <input class="fi" id="fup-prev" type="date" value="${c.data_previsao||''}" style="margin-bottom:0">
+      </div>
+    </div>
+
+    <label class="campo-label">Registro do FUP *</label>
+    <input class="fi" id="fup-obs" placeholder="O que aconteceu? Prazo confirmado, pedido feito, em rota...">
+
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button class="btn-sec" onclick="closeM('modal-alm')">Fechar</button>
+      <button class="btn-success" onclick="salvarFUPSite('${id}')">💾 Registrar FUP</button>
+    </div>
+
+    ${hist.length?`
+    <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:14px">
+      <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">📅 Histórico de FUPs</div>
+      ${hist.slice().reverse().map(h=>`
+        <div style="padding:10px 0;border-bottom:1px solid var(--border2)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+            <span style="font-size:12px;font-weight:700;color:var(--blue)">${h.acao||'Atualização'}</span>
+            <span style="font-size:10px;color:var(--text3)">${h.por||'—'} · ${h.em?new Date(h.em).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—'}</span>
+          </div>
+          <div style="font-size:12px;color:var(--text2)">${h.obs||'—'}</div>
+        </div>`).join('')}
+    </div>`:''}
+  `;
+  m.style.display='flex';
+}
+
+function selStFUPSite(k){
+  document.getElementById('fup-st-sel').value=k;
+  Object.entries(COMP_ST).forEach(([bk,v])=>{
+    const b=document.getElementById('cst-'+bk);
+    if(!b)return;
+    const sel=bk===k;
+    b.style.borderColor=sel?v.c:'var(--border)';
+    b.style.background=sel?v.c+'18':'transparent';
+    b.style.color=sel?v.c:'var(--text3)';
+  });
+}
+
+async function salvarFUPSite(id){
+  const obs=document.getElementById('fup-obs')?.value?.trim();
+  if(!obs){toast('Descreva o que aconteceu no FUP','err');return;}
+  const novoStatus=document.getElementById('fup-st-sel')?.value;
+  const forn=document.getElementById('fup-forn')?.value?.trim();
+  const prev=document.getElementById('fup-prev')?.value||null;
+
+  const{data:c}=await sb.from('alm_compras').select('historico,status').eq('id',id).single();
+  const hist=c?.historico||[];
+  const stNovo=COMP_ST[novoStatus]||COMP_ST.aguardando;
+  const novaEntrada={
+    acao:novoStatus!==c?.status?'Status → '+stNovo.l:'FUP',
+    obs,por:S.perfil?.nome||'—',em:new Date().toISOString(),
+  };
+  const updates={status:novoStatus,historico:[...hist,novaEntrada],atualizado_em:new Date().toISOString()};
+  if(forn) updates.fornecedor=forn;
+  if(prev) updates.data_previsao=prev;
+  if(novoStatus==='recebido') updates.data_recebimento=hoje();
+  const{error}=await sb.from('alm_compras').update(updates).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('✅ FUP registrado!');
+  closeM('modal-alm');
+  renderAlmoxarifado('compras');
+}
+
+// ── ABA NOTAS FISCAIS ───────────────────────────────────────────
+async function renderAlmNF(tabs){
+  setMain(`${secTitle('📦','Almoxarifado')}${tabs}<div class="loading"><div class="spinner"></div></div>`);
+  const gid=getGid();
+  const{data:nfs}=await sb.from('alm_notas_fiscais').select('*')
+    .eq('garagem_id',gid).order('criado_em',{ascending:false}).limit(50);
+
+  const lista=nfs||[];
+  const pendentes=lista.filter(n=>n.status!=='lancada_sap');
+  const lancadas=lista.filter(n=>n.status==='lancada_sap').slice(0,10);
+
+  setMain(`${secTitle('📦','Almoxarifado')}${tabs}
+    <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+      <button class="btn-add" onclick="abrirModalNovaNFSite()">+ Registrar Nota Fiscal</button>
+    </div>
+
+    <div class="sec-title" style="margin-bottom:8px"><span>⏳</span><span class="st-text">Aguardando Lançamento SAP (${pendentes.length})</span><div class="st-line"></div></div>
+    ${pendentes.length===0?'<div class="empty">Nenhuma NF pendente</div>':''}
+    ${pendentes.map(n=>{
+      const cor=n.status==='conferida'?'#00C48C':n.status==='recebida'?'#F59E0B':'#3B82F6';
+      const ic=n.status==='conferida'?'✅':'📦';
+      const stLabel=n.status==='conferida'?'Conferida — Pronta p/ SAP':'Recebida — Conferir';
+      return`<div onclick="abrirDetalheNFSite('${n.id}')" style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${cor};border-radius:12px;padding:14px 16px;margin-bottom:8px;cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'">
+        <div>
+          <div style="font-size:14px;font-weight:700">NF ${n.numero_nf} <span style="font-size:12px;color:var(--text3);font-weight:400">· ${n.fornecedor||'—'}</span></div>
+          <div style="font-size:12px;color:var(--text3);margin-top:3px">${n.itens_count||0} iten(s) · R$ ${parseFloat(n.valor_total||0).toLocaleString('pt-BR',{minimumFractionDigits:2})} · ${formatDataBR(n.data_nf)}</div>
+          ${n.tem_divergencia?'<div style="font-size:11px;color:#F59E0B;margin-top:3px;font-weight:700">⚠️ Divergência encontrada</div>':''}
+        </div>
+        ${almBadge(ic+' '+stLabel,cor)}
+      </div>`;
+    }).join('')}
+
+    ${lancadas.length?`<div class="sec-title" style="margin:20px 0 8px"><span>✅</span><span class="st-text">Lançadas no SAP (últimas ${lancadas.length})</span><div class="st-line"></div></div>`:''}
+    ${lancadas.map(n=>`
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:6px;display:flex;align-items:center;gap:12px;opacity:.7">
+        <div style="font-size:20px">✅</div>
+        <div style="flex:1"><div style="font-size:13px;font-weight:600">NF ${n.numero_nf} · ${n.fornecedor||'—'}</div>
+        <div style="font-size:11px;color:var(--text3)">R$ ${parseFloat(n.valor_total||0).toLocaleString('pt-BR',{minimumFractionDigits:2})} · Lançada em ${formatDataBR(n.lancada_em?.slice(0,10))}</div></div>
+        ${almBadge('SAP ✓','#00C48C')}
+      </div>`).join('')}
+  `);
+}
+
+// Modal nova NF site
+let _nfN=0;
+function abrirModalNovaNFSite(){
+  _nfN=0;
+  const m=document.getElementById('modal-alm');
+  document.getElementById('modal-alm-title').textContent='📄 Registrar Nota Fiscal';
+  document.getElementById('modal-alm-body').innerHTML=`
+    <div class="mgrid">
+      <div>
+        <label class="campo-label">Nº da NF *</label>
+        <input class="fi" id="nfs-num" placeholder="000000" style="font-family:'DM Mono',monospace;margin-bottom:0">
+      </div>
+      <div>
+        <label class="campo-label">Data da NF</label>
+        <input class="fi" id="nfs-data" type="date" value="${hoje()}" style="margin-bottom:0">
+      </div>
+      <div class="full">
+        <label class="campo-label">Fornecedor *</label>
+        <input class="fi" id="nfs-forn" placeholder="Nome do fornecedor" style="margin-bottom:0">
+      </div>
+      <div>
+        <label class="campo-label">Valor Total (R$)</label>
+        <input class="fi" id="nfs-valor" type="number" step="0.01" placeholder="0,00" style="margin-bottom:0;font-family:'DM Mono',monospace">
+      </div>
+      <div>
+        <label class="campo-label">Observação</label>
+        <input class="fi" id="nfs-obs" placeholder="Divergências, volumes..." style="margin-bottom:0">
+      </div>
+    </div>
+    <div style="font-size:12px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:18px 0 10px">📦 Itens Recebidos</div>
+    <div id="nfs-itens"></div>
+    <button onclick="addItemNFSite()" style="width:100%;padding:10px;border-radius:9px;border:1px dashed var(--border);background:transparent;color:var(--blue);font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;margin-bottom:14px">+ Adicionar Item</button>
+    <div style="display:flex;gap:10px;margin-top:4px">
+      <button class="btn-sec" onclick="closeM('modal-alm')">Cancelar</button>
+      <button class="btn-success" onclick="salvarNovaNFSite()">💾 Registrar NF</button>
+    </div>
+  `;
+  m.style.display='flex';
+  addItemNFSite();
+}
+
+function addItemNFSite(){
+  _nfN++;
+  const wrap=document.getElementById('nfs-itens');
+  if(!wrap)return;
+  const n=_nfN;
+  const div=document.createElement('div');
+  div.id='nfs-item-'+n;
+  div.style.cssText='background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;position:relative';
+  div.innerHTML=`
+    <button onclick="document.getElementById('nfs-item-${n}').remove()" style="position:absolute;top:8px;right:10px;background:none;border:none;color:var(--text3);font-size:16px;cursor:pointer;font-family:inherit">✕</button>
+    <label class="campo-label">Descrição *</label>
+    <input class="fi" id="nfsi-desc-${n}" placeholder="Nome da peça/material" style="margin-bottom:8px">
+    <div class="mgrid">
+      <div>
+        <label class="campo-label">Cód SAP</label>
+        <input class="fi" id="nfsi-sap-${n}" placeholder="30000050" style="margin-bottom:0;font-family:'DM Mono',monospace">
+      </div>
+      <div>
+        <label class="campo-label">Quantidade</label>
+        <input class="fi" id="nfsi-qtd-${n}" type="number" min="1" value="1" style="margin-bottom:0;font-family:'DM Mono',monospace">
+      </div>
+      <div>
+        <label class="campo-label">Valor Unit. (R$)</label>
+        <input class="fi" id="nfsi-vl-${n}" type="number" step="0.01" placeholder="0,00" style="margin-bottom:0;font-family:'DM Mono',monospace">
+      </div>
+      <div>
+        <label class="campo-label">Conferência</label>
+        <div style="display:flex;gap:6px;margin-top:4px">
+          <button id="nfs-ok-${n}" onclick="setConfNFSite(${n},'ok')"
+            style="flex:1;padding:7px;border-radius:8px;border:2px solid var(--green);background:#00C48C18;color:var(--green);font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">✅ OK</button>
+          <button id="nfs-nok-${n}" onclick="setConfNFSite(${n},'nok')"
+            style="flex:1;padding:7px;border-radius:8px;border:2px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">⚠️ NOK</button>
+        </div>
+        <input type="hidden" id="nfsi-conf-${n}" value="ok">
+      </div>
+    </div>
+    <input class="fi" id="nfsi-cobs-${n}" placeholder="Descreva a divergência..." style="display:none;margin-top:8px;margin-bottom:0;border-color:#F59E0B">
+  `;
+  wrap.appendChild(div);
+}
+
+function setConfNFSite(n,v){
+  document.getElementById('nfsi-conf-'+n).value=v;
+  const ok=document.getElementById('nfs-ok-'+n);
+  const nok=document.getElementById('nfs-nok-'+n);
+  const obs=document.getElementById('nfsi-cobs-'+n);
+  if(v==='ok'){
+    ok.style.cssText+=';border-color:var(--green);background:#00C48C18;color:var(--green)';
+    nok.style.cssText+=';border-color:var(--border);background:transparent;color:var(--text3)';
+    if(obs)obs.style.display='none';
+  }else{
+    nok.style.cssText+=';border-color:#F59E0B;background:#F59E0B18;color:#F59E0B';
+    ok.style.cssText+=';border-color:var(--border);background:transparent;color:var(--text3)';
+    if(obs)obs.style.display='block';
+  }
+}
+
+async function salvarNovaNFSite(){
+  const num=document.getElementById('nfs-num')?.value?.trim();
+  const forn=document.getElementById('nfs-forn')?.value?.trim();
+  if(!num){toast('Informe o número da NF','err');return;}
+  if(!forn){toast('Informe o fornecedor','err');return;}
+  const itens=[];
+  document.querySelectorAll('[id^="nfsi-desc-"]').forEach(el=>{
+    const n=el.id.replace('nfsi-desc-','');
+    const desc=el.value?.trim();
+    if(!desc)return;
+    itens.push({
+      descricao:desc,
+      cod_sap:document.getElementById('nfsi-sap-'+n)?.value?.trim()||null,
+      quantidade:parseInt(document.getElementById('nfsi-qtd-'+n)?.value)||1,
+      valor_unitario:parseFloat(document.getElementById('nfsi-vl-'+n)?.value)||0,
+      conferencia:document.getElementById('nfsi-conf-'+n)?.value||'ok',
+      obs_conferencia:document.getElementById('nfsi-cobs-'+n)?.value?.trim()||null,
+    });
+  });
+  if(!itens.length){toast('Adicione pelo menos 1 item','err');return;}
+  const gid=getGid();
+  const valor=parseFloat(document.getElementById('nfs-valor')?.value)||itens.reduce((s,i)=>s+(i.valor_unitario*i.quantidade),0);
+  const{error}=await sb.from('alm_notas_fiscais').insert({
+    garagem_id:gid,numero_nf:num,fornecedor:forn,
+    data_nf:document.getElementById('nfs-data')?.value||hoje(),
+    valor_total:valor,itens,itens_count:itens.length,
+    tem_divergencia:itens.some(i=>i.conferencia==='nok'),
+    observacao:document.getElementById('nfs-obs')?.value?.trim()||null,
+    status:'recebida',criado_por:S.perfil?.nome||null,criado_em:new Date().toISOString(),
+  });
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('✅ NF '+num+' registrada!');
+  _nfN=0; closeM('modal-alm');
+  renderAlmoxarifado('nf');
+}
+
+async function abrirDetalheNFSite(id){
+  const{data:n}=await sb.from('alm_notas_fiscais').select('*').eq('id',id).single();
+  if(!n)return;
+  const itens=n.itens||[];
+  const m=document.getElementById('modal-alm');
+  document.getElementById('modal-alm-title').textContent='📄 NF '+n.numero_nf;
+  document.getElementById('modal-alm-body').innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:16px;font-size:12px">
+      <div><span style="color:var(--text3)">Fornecedor</span><br><b>${n.fornecedor}</b></div>
+      <div><span style="color:var(--text3)">Data NF</span><br><b>${formatDataBR(n.data_nf)}</b></div>
+      <div><span style="color:var(--text3)">Valor Total</span><br><b style="color:var(--green)">R$ ${parseFloat(n.valor_total||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</b></div>
+      <div><span style="color:var(--text3)">Itens</span><br><b>${n.itens_count||itens.length}</b></div>
+    </div>
+
+    ${n.tem_divergencia?'<div style="background:#F59E0B15;border:1px solid #F59E0B30;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#F59E0B;font-weight:700">⚠️ Divergências encontradas — verifique os itens NOK</div>':''}
+
+    <div style="margin-bottom:16px">
+    ${itens.map(it=>`
+      <div style="padding:10px 12px;background:var(--surface);border:1px solid ${it.conferencia==='nok'?'#F59E0B40':'var(--border2)'};border-radius:10px;margin-bottom:6px">
+        <div style="font-size:13px;font-weight:700;margin-bottom:4px">${it.descricao}</div>
+        <div style="font-size:11px;color:var(--text3);display:flex;gap:12px;flex-wrap:wrap">
+          ${it.cod_sap?`<span>SAP: <b style="font-family:'DM Mono',monospace">${it.cod_sap}</b></span>`:''}
+          <span>Qtd: <b>${it.quantidade}</b></span>
+          <span>Vl unit.: <b>R$ ${parseFloat(it.valor_unitario||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</b></span>
+          <span style="font-weight:700;color:${it.conferencia==='nok'?'#F59E0B':'var(--green)'}">${it.conferencia==='nok'?'⚠️ NOK':'✅ OK'}</span>
+        </div>
+        ${it.obs_conferencia?`<div style="font-size:11px;color:#F59E0B;margin-top:4px">Obs: ${it.obs_conferencia}</div>`:''}
+      </div>`).join('')}
+    </div>
+
+    ${n.status!=='lancada_sap'?`
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px">
+      <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">📋 Resumo para Lançamento SAP</div>
+      <div style="background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:12px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text2);white-space:pre-wrap;max-height:180px;overflow-y:auto">NF: ${n.numero_nf}
+Fornecedor: ${n.fornecedor}
+Data: ${n.data_nf||''}
+${itens.map(i=>`
+[${i.cod_sap||'SAP ?'}] ${i.descricao}
+  Qtd: ${i.quantidade} × R$ ${parseFloat(i.valor_unitario||0).toFixed(2)} = R$ ${(i.quantidade*(i.valor_unitario||0)).toFixed(2)}`).join('')}
+
+TOTAL: R$ ${parseFloat(n.valor_total||0).toFixed(2)}</div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn-sec" onclick="closeM('modal-alm')">Fechar</button>
+      ${n.status==='recebida'?`<button class="btn-success" onclick="atualizarStatusNFSite('${id}','conferida')" style="background:#F59E0B;border-color:#F59E0B">✅ Marcar Conferida</button>`:''}
+      ${n.status==='conferida'?`<button class="btn-success" onclick="atualizarStatusNFSite('${id}','lancada_sap')">🖥️ Confirmar SAP</button>`:''}
+    </div>`:`
+    <div style="background:#00C48C15;border:1px solid #00C48C40;border-radius:10px;padding:14px;text-align:center;color:var(--green);font-weight:700">✅ Lançada no SAP</div>
+    <button class="btn-sec" style="width:100%;margin-top:12px" onclick="closeM('modal-alm')">Fechar</button>`}
+  `;
+  m.style.display='flex';
+}
+
+async function atualizarStatusNFSite(id,novoStatus){
+  const updates={status:novoStatus};
+  if(novoStatus==='lancada_sap') updates.lancada_em=new Date().toISOString();
+  const{error}=await sb.from('alm_notas_fiscais').update(updates).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast(novoStatus==='lancada_sap'?'✅ NF lançada no SAP!':'✅ NF conferida!');
+  closeM('modal-v');
+  renderAlmoxarifado('nf');
+}
+
 
 // ADMIN — GESTÃO DE USUÁRIOS
 // ══════════════════════════════════════════════════════════════
@@ -4430,8 +5070,7 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
           </div>
         </div>`;
     });
-  if(!S._navegandoPara38) document.getElementById('modal-22-status').style.display='flex';
-  S._navegandoPara38=false; // resetar flag
+  document.getElementById('modal-22-status').style.display='flex';
 }
 
 // Abrir checklist 3.8 a partir de uma OS — pré-preenche prefixo e abre modal
@@ -4443,13 +5082,10 @@ function abrirChecklist38FromOS(ocId, prefixo){
   S._ck38Pref=prefixo||'';
   S._ck38Dados={};
   S._ck38OcId=ocId; // guardar referência da OS
-  S._navegandoPara38=true; // flag: impede o modal de reabrir
 
-  // Navegar direto para aba 3.8 do PCM (sem setTimeout — evita race condition)
-  S.subtela='ferr-pcm';
-  document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
-  document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes('ferr-pcm'))b.classList.add('active')});
-  renderFerrPCM('ck38');
+  // Navegar para aba 3.8 do PCM
+  navToSub('ferr-pcm');
+  setTimeout(()=>renderFerrPCM('ck38'),100);
 }
 
 // ── MANUTENTORES ─────────────────────────────────────────────
