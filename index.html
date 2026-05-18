@@ -6032,6 +6032,7 @@ async function renderFerrPCM(aba='painel'){
     <button class="filtro-btn${aba==='mov_pneu'?' active':''}" onclick="renderFerrPCM('mov_pneu')">⚙️ Pneus</button>
     <button class="filtro-btn${aba==='fech24'?' active':''}" onclick="renderFerrPCM('fech24')">📋 2.4 Fechamento</button>
     <button class="filtro-btn${aba==='custo_turno'?' active':''}" onclick="renderFerrPCM('custo_turno')">💰 Custo do Turno</button>
+    <button class="filtro-btn${aba==='consolidado'?' active':''}" onclick="renderFerrPCM('consolidado')">📋 Consolidado</button>
     <button class="filtro-btn${aba==='conf_orc'?' active':''}" onclick="renderFerrPCM('conf_orc')">📊 Conferência</button>
     <button class="filtro-btn${aba==='sap_precos'?' active':''}" onclick="renderFerrPCM('sap_precos')">💲 Preços SAP</button>
     <button class="filtro-btn${aba==='historico'?' active':''}" onclick="renderFerrPCM('historico')">🗂️ Histórico</button>
@@ -6455,6 +6456,10 @@ async function renderFerrPCM(aba='painel'){
   if(aba==='custo_turno'){
     return await renderCustoTurno(gid, back, tabs);
   }
+  if(aba==='consolidado'){
+    return await renderConsolidado(gid, back, tabs);
+  }
+
   if(aba==='conf_orc'){
     return await renderConfOrc(gid, back, tabs);
   }
@@ -7752,6 +7757,297 @@ async function onSapCodInput(inputEl,precoEl,descEl,gid){
     inputEl.style.borderColor='var(--green)';
     toast('💲 Preço SAP: R$\u00a0'+parseFloat(item.preco_unit||0).toLocaleString('pt-BR',{minimumFractionDigits:2})+' / '+(item.unidade||'UN'),'ok',3000);
   }
+}
+
+
+async function renderConsolidado(gid, back, tabs){
+  setMain(back+tabs+'<div class="loading"><div class="spinner"></div></div>');
+
+  const agora=new Date();
+  const hoje_=agora.toISOString().slice(0,10);
+  const turno=S.turno||'dia';
+  const ontem=new Date(agora); ontem.setDate(ontem.getDate()-1);
+  const ontemStr=ontem.toISOString().slice(0,10);
+  const ini=turno==='dia'?`${hoje_}T07:00`:`${ontemStr}T21:00`;
+  const fim=turno==='dia'?`${hoje_}T17:00`:`${hoje_}T07:20`;
+  const tLabel=turno==='dia'?'☀️ Diurno 07:00–17:00':'🌙 Noturno 21:00–07:20';
+
+  const[r1,r2,r3,r4]=await Promise.all([
+    sb.from('ocorrencias_22').select('*').eq('garagem_id',gid)
+      .gte('hora_entrada',new Date(ini).toISOString())
+      .lte('hora_entrada',new Date(fim).toISOString())
+      .order('prefixo'),
+    sb.from('requisicoes_compra').select('*').eq('garagem_id',gid)
+      .gte('criado_em',new Date(ini).toISOString())
+      .lte('criado_em',new Date(fim).toISOString())
+      .order('criado_em'),
+    sb.from('pcm_orcamento').select('valor_disponivel').eq('garagem_id',gid).eq('data',hoje_).eq('turno',turno).limit(1),
+    sb.from('garagens').select('nome').eq('id',gid).single(),
+  ]);
+
+  const ocs=r1.data||[];
+  const reqs=r2.data||[];
+  const orcamento=parseFloat(r3.data?.[0]?.valor_disponivel||0);
+  const gNome=r4.data?.nome||'Porto Velho';
+
+  // Agrupa requisições por OS
+  const reqMap={};
+  reqs.forEach(r=>{
+    const key=r.ocorrencia_id||'avulso';
+    if(!reqMap[key]) reqMap[key]=[];
+    reqMap[key].push(r);
+  });
+
+  const fmtR=v=>v>0?'R$\u00a0'+parseFloat(v).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—';
+  const tipoMap={preventiva_leve:'Prev. Leve',preventiva_pesada:'Prev. Pesada',preventiva_garantia:'Garantia',corretiva:'Corretiva'};
+
+  let totalGeralPrev=0, totalGeralReal=0, totalPecas=0;
+
+  // Monta HTML de cada OS
+  const osCards=ocs.map(o=>{
+    const isFech=o.status==='liberado';
+    const prev=parseFloat(o.custo_previsto||0);
+    const real=parseFloat(o.custo_real||0);
+    const tipo=tipoMap[o.tipo]||o.tipo||'—';
+    const corTipo=o.tipo?.includes('preventiva')||o.tipo?.includes('garantia')?'var(--amber)':'var(--red)';
+    const isPrev=o.tipo?.includes('preventiva')||o.tipo?.includes('garantia');
+    const hrAb=o.hora_entrada?new Date(o.hora_entrada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
+    const hrFch=o.hora_liberacao?new Date(o.hora_liberacao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
+    totalGeralPrev+=prev;
+    totalGeralReal+=real;
+
+    // Peças/requisições desta OS
+    const osReqs=reqMap[o.id]||[];
+    const custoPecas=osReqs.reduce((s,r)=>s+(parseFloat(r.valor_estimado||0)*parseInt(r.quantidade||1)),0);
+    totalPecas+=custoPecas;
+
+    const pecasHtml=osReqs.length?
+      osReqs.map(r=>{
+        const vUnit=parseFloat(r.valor_estimado||0);
+        const qtd=parseInt(r.quantidade||1);
+        const total=vUnit*qtd;
+        const corSt=r.status==='aprovado'?'var(--green)':r.status==='reprovado'?'var(--red)':'var(--amber)';
+        return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border2);margin-left:20px">'+
+          '<div style="width:4px;height:4px;border-radius:50%;background:var(--text4);flex-shrink:0"></div>'+
+          '<div style="flex:1;min-width:0">'+
+            '<span style="font-size:12px">'+(r.peca||'—')+'</span>'+
+            (r.cod_sap?'<span style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--amber);margin-left:6px">'+r.cod_sap+'</span>':'')+
+          '</div>'+
+          '<span style="font-size:11px;color:var(--text3);white-space:nowrap">'+qtd+'x</span>'+
+          '<span style="font-family:\'DM Mono\',monospace;font-size:12px;font-weight:700;white-space:nowrap;min-width:90px;text-align:right;color:'+(total>0?'var(--text)':'var(--text4)')+'">'+fmtR(total)+'</span>'+
+          '<span style="background:'+corSt+'18;border:1px solid '+corSt+'40;color:'+corSt+';border-radius:5px;padding:1px 7px;font-size:10px;font-weight:700;white-space:nowrap">'+r.status+'</span>'+
+        '</div>';
+      }).join('')+
+      '<div style="display:flex;justify-content:flex-end;padding:6px 0 2px;margin-left:20px">'+
+        '<span style="font-size:11px;color:var(--text3);margin-right:8px">Total peças:</span>'+
+        '<span style="font-family:\'DM Mono\',monospace;font-size:12px;font-weight:700;color:var(--amber);min-width:90px;text-align:right">'+fmtR(custoPecas)+'</span>'+
+      '</div>':
+      '<div style="font-size:11px;color:var(--text4);padding:6px 0 2px;margin-left:20px">Sem requisições de peças</div>';
+
+    return '<div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid '+(isFech?'var(--green)':'var(--amber)')+';border-radius:12px;margin-bottom:10px;overflow:hidden">'+
+      // Cabeçalho OS
+      '<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer" onclick="this.parentElement.querySelector(\'.os-detail\').style.display=this.parentElement.querySelector(\'.os-detail\').style.display===\'none\'?\'block\':\'none\'">'+
+        '<div style="font-family:\'DM Mono\',monospace;font-size:18px;font-weight:900;color:var(--blue);min-width:64px">'+o.prefixo+'</div>'+
+        '<div style="flex:1">'+
+          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+            '<span style="font-size:12px;font-weight:700;color:'+corTipo+'">'+tipo+'</span>'+
+            (o.mecanico?'<span style="font-size:11px;color:var(--text3)">👤 '+o.mecanico+'</span>':'')+
+            '<span style="font-size:11px;color:var(--text3)">⏱ '+hrAb+' → '+hrFch+'</span>'+
+          '</div>'+
+        '</div>'+
+        '<div style="text-align:right;flex-shrink:0">'+
+          '<div style="font-family:\'DM Mono\',monospace;font-size:15px;font-weight:900;color:'+(real>prev&&prev>0?'var(--red)':real>0?'var(--green)':'var(--text3)')+'">'+fmtR(real)+'</div>'+
+          (prev>0?'<div style="font-size:10px;color:var(--text3)">prev: '+fmtR(prev)+'</div>':'')+
+        '</div>'+
+        '<span style="background:'+(isFech?'var(--green)':'var(--amber)')+'18;border:1px solid '+(isFech?'var(--green)':'var(--amber)')+'40;color:'+(isFech?'var(--green)':'var(--amber)')+';border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;flex-shrink:0">'+(isFech?'✅ Fechada':'⏳ Aberta')+'</span>'+
+        '<span style="color:var(--text4);font-size:12px;flex-shrink:0">▾</span>'+
+      '</div>'+
+      // Detalhe (peças)
+      '<div class="os-detail" style="padding:4px 16px 12px;border-top:1px solid var(--border2)">'+
+        pecasHtml+
+      '</div>'+
+    '</div>';
+  }).join('');
+
+  // Totais gerais
+  const varTotal=totalGeralReal-totalGeralPrev;
+  const pctOrc=orcamento>0?Math.round(totalGeralReal/orcamento*100):0;
+
+  setMain(
+    secTitle('📋','Consolidado do Turno',back)+tabs+
+    '<div style="font-size:12px;color:var(--text3);margin:-8px 0 16px">'+tLabel+' · '+
+      agora.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'})+
+    '</div>'+
+
+    // KPIs
+    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:20px">'+
+      [
+        {l:'OS no Turno',v:ocs.length+'',c:'var(--blue)'},
+        {l:'OS Fechadas',v:ocs.filter(o=>o.status==='liberado').length+'',c:'var(--green)'},
+        {l:'Custo Real Total',v:fmtR(totalGeralReal),c:totalGeralReal>orcamento&&orcamento>0?'var(--red)':'var(--green)'},
+        {l:'Custo em Peças',v:fmtR(totalPecas),c:'var(--amber)'},
+        orcamento>0?{l:'Orçamento Disponível',v:fmtR(orcamento),c:'var(--blue)'}:{l:'Custo Previsto',v:fmtR(totalGeralPrev),c:'var(--text3)'},
+        orcamento>0?{l:'Saldo',v:fmtR(orcamento-totalGeralReal),c:orcamento-totalGeralReal<0?'var(--red)':'var(--green)'}:{l:'Variação',v:(varTotal>0?'▲ +':'▼ ')+fmtR(Math.abs(varTotal)),c:varTotal>0?'var(--red)':'var(--green)'},
+      ].map(k=>
+        '<div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid '+k.c+';border-radius:10px;padding:12px 14px">'+
+          '<div style="color:var(--text3);font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">'+k.l+'</div>'+
+          '<div style="font-family:monospace;font-size:15px;font-weight:800;color:'+k.c+'">'+k.v+'</div>'+
+        '</div>'
+      ).join('')+
+    '</div>'+
+
+    // Lista de OS
+    secTitle('🔧','OS Trabalhadas no Turno',
+      '<button onclick="exportarConsolidadoPDF(\''+gid+'\',\''+ini+'\',\''+fim+'\',\''+turno+'\')" class="btn-add" style="background:var(--blue);border-color:var(--blue);color:#fff">📄 Exportar PDF</button>'
+    )+
+    (ocs.length===0?'<div class="empty"><div style="font-size:36px">📭</div><div style="margin:12px 0;font-weight:600;color:var(--text2)">Nenhuma OS no período deste turno</div></div>':
+      osCards+
+      '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;margin-top:4px">'+
+        '<span style="font-size:14px;font-weight:800">TOTAL GERAL</span>'+
+        '<div style="text-align:right">'+
+          (totalGeralPrev>0?'<div style="font-size:11px;color:var(--text3)">Previsto: '+fmtR(totalGeralPrev)+'</div>':'')+
+          '<div style="font-family:monospace;font-size:16px;font-weight:900;color:'+(totalGeralReal>totalGeralPrev&&totalGeralPrev>0?'var(--red)':'var(--green)')+'">Real: '+fmtR(totalGeralReal)+'</div>'+
+          (totalPecas>0?'<div style="font-size:11px;color:var(--amber)">Peças: '+fmtR(totalPecas)+'</div>':'')+
+        '</div>'+
+      '</div>'
+    )
+  );
+}
+
+async function exportarConsolidadoPDF(gid,ini,fim,turno){
+  const[r1,r2,r3,r4]=await Promise.all([
+    sb.from('ocorrencias_22').select('*').eq('garagem_id',gid)
+      .gte('hora_entrada',new Date(ini).toISOString())
+      .lte('hora_entrada',new Date(fim).toISOString())
+      .order('prefixo'),
+    sb.from('requisicoes_compra').select('*').eq('garagem_id',gid)
+      .gte('criado_em',new Date(ini).toISOString())
+      .lte('criado_em',new Date(fim).toISOString()),
+    sb.from('pcm_orcamento').select('valor_disponivel').eq('garagem_id',gid).eq('data',new Date().toISOString().slice(0,10)).eq('turno',turno).limit(1),
+    sb.from('garagens').select('nome').eq('id',gid).single(),
+  ]);
+
+  const ocs=r1.data||[], reqs=r2.data||[];
+  const orcamento=parseFloat(r3.data?.[0]?.valor_disponivel||0);
+  const gNome=r4.data?.nome||'Porto Velho';
+  const reqMap={};
+  reqs.forEach(r=>{const k=r.ocorrencia_id||'avulso';if(!reqMap[k])reqMap[k]=[];reqMap[k].push(r);});
+
+  const agora=new Date();
+  const dtFmt=agora.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
+  const hrFmt=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'});
+  const tLabel=turno==='dia'?'Diurno (07:00–17:00)':'Noturno (21:00–07:20)';
+  const fmtR=v=>v>0?'R$\u00a0'+parseFloat(v).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—';
+  const B='border:1px solid #ccc;';
+
+  let totalReal=0, totalPrev=0, totalPecas=0;
+
+  const osRows=ocs.map(o=>{
+    const prev=parseFloat(o.custo_previsto||0);
+    const real=parseFloat(o.custo_real||0);
+    const tipo={preventiva_leve:'Prev. Leve',preventiva_pesada:'Prev. Pesada',preventiva_garantia:'Garantia',corretiva:'Corretiva'}[o.tipo]||o.tipo||'—';
+    const isFech=o.status==='liberado';
+    const hrAb=o.hora_entrada?new Date(o.hora_entrada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
+    const hrFch2=o.hora_liberacao?new Date(o.hora_liberacao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
+    totalReal+=real; totalPrev+=prev;
+
+    const osReqs=reqMap[o.id]||[];
+    const custoPecas=osReqs.reduce((s,r)=>s+(parseFloat(r.valor_estimado||0)*parseInt(r.quantidade||1)),0);
+    totalPecas+=custoPecas;
+
+    const pecaRows=osReqs.map(r=>{
+      const vT=parseFloat(r.valor_estimado||0)*parseInt(r.quantidade||1);
+      return '<tr style="background:#fafafa">'+
+        '<td style="'+B+'padding:3px 8px;padding-left:24px;font-size:9px;color:#555">'+
+          (r.cod_sap?'<span style="font-family:monospace;color:#b45309">'+r.cod_sap+'</span> · ':'')+r.peca+'</td>'+
+        '<td style="'+B+'padding:3px 8px;font-size:9px;text-align:center">'+r.status+'</td>'+
+        '<td style="'+B+'padding:3px 8px;font-size:9px;text-align:center">'+r.quantidade+'x</td>'+
+        '<td style="'+B+'padding:3px 8px;font-size:9px;font-family:monospace;text-align:right">'+fmtR(parseFloat(r.valor_estimado||0))+'</td>'+
+        '<td style="'+B+'padding:3px 8px;font-size:9px;font-family:monospace;text-align:right;font-weight:700;color:#b45309">'+fmtR(vT)+'</td>'+
+      '</tr>';
+    }).join('');
+
+    const stBg=isFech?'#f0fdf4':'#fffbeb';
+    const stCor=isFech?'#166534':'#92400e';
+
+    return '<tr style="background:#f0f4ff">'+
+        '<td style="'+B+'padding:6px 8px;font-weight:900;font-family:monospace;font-size:13px;color:#1d4ed8">'+o.prefixo+'</td>'+
+        '<td style="'+B+'padding:6px 8px;font-size:11px;font-weight:700">'+tipo+'</td>'+
+        '<td style="'+B+'padding:6px 8px;font-size:10px">'+o.mecanico+'</td>'+
+        '<td style="'+B+'padding:6px 8px;font-family:monospace;font-size:10px;text-align:center">'+hrAb+'</td>'+
+        '<td style="'+B+'padding:6px 8px;font-family:monospace;font-size:10px;text-align:center">'+hrFch2+'</td>'+
+        '<td style="'+B+'padding:6px 8px;text-align:center;background:'+stBg+';color:'+stCor+';font-size:10px;font-weight:700">'+(isFech?'✅ Fechada':'⏳ Aberta')+'</td>'+
+        '<td style="'+B+'padding:6px 8px;font-family:monospace;font-size:10px;text-align:right">'+fmtR(prev)+'</td>'+
+        '<td style="'+B+'padding:6px 8px;font-family:monospace;font-size:11px;text-align:right;font-weight:900;color:'+(real>prev&&prev>0?'#991b1b':'#166534')+'">'+fmtR(real)+'</td>'+
+      '</tr>'+
+      (osReqs.length?
+        '<tr><td colspan="8" style="padding:0">'+
+          '<table style="width:100%;border-collapse:collapse">'+
+            '<tr style="background:#f8f8f8">'+
+              '<td style="'+B+'padding:3px 8px;font-size:9px;font-weight:700;color:#555;padding-left:24px">PEÇA</td>'+
+              '<td style="'+B+'padding:3px 8px;font-size:9px;font-weight:700;color:#555;text-align:center">STATUS</td>'+
+              '<td style="'+B+'padding:3px 8px;font-size:9px;font-weight:700;color:#555;text-align:center">QTD</td>'+
+              '<td style="'+B+'padding:3px 8px;font-size:9px;font-weight:700;color:#555;text-align:right">VL UNIT.</td>'+
+              '<td style="'+B+'padding:3px 8px;font-size:9px;font-weight:700;color:#555;text-align:right">TOTAL</td>'+
+            '</tr>'+
+            pecaRows+
+            '<tr style="background:#fff8e1">'+
+              '<td style="'+B+'padding:3px 8px;font-size:9px;font-weight:700;padding-left:24px" colspan="4">Subtotal Peças</td>'+
+              '<td style="'+B+'padding:3px 8px;font-family:monospace;font-size:10px;text-align:right;font-weight:900;color:#b45309">'+fmtR(custoPecas)+'</td>'+
+            '</tr>'+
+          '</table>'+
+        '</td></tr>':'');
+  }).join('');
+
+  const html='<!DOCTYPE html><html><head><meta charset="UTF-8">'+
+    '<style>body{font-family:Arial,sans-serif;font-size:10px;color:#000;margin:0;padding:10px}'+
+    '@media print{.np{display:none!important}body{padding:0}@page{margin:8mm;size:A4 portrait}}'+
+    'table{border-collapse:collapse;width:100%}</style></head><body>'+
+    '<div class="np" style="position:sticky;top:0;background:#1e293b;padding:8px 12px;display:flex;align-items:center;z-index:999;margin:-10px -10px 10px">'+
+      '<span style="color:#fff;font-size:12px;font-weight:700">📋 JTP — Consolidado do Turno</span>'+
+      '<button onclick="window.print()" style="margin-left:auto;padding:6px 16px;background:#3B82F6;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">🖨️ Salvar PDF</button>'+
+    '</div>'+
+    '<div style="text-align:center;border:2.5px solid #000;padding:6px;margin-bottom:5px">'+
+      '<div style="font-size:13px;font-weight:900">GRUPO JTP  │  OPERAÇÃO GARAGEM  │  Consolidado de Custo por Turno</div>'+
+    '</div>'+
+    '<table style="margin-bottom:4px"><tr>'+
+      '<td style="'+B+'padding:3px 8px"><strong>Garagem:</strong> '+gNome+'</td>'+
+      '<td style="'+B+'padding:3px 8px"><strong>Data:</strong> '+dtFmt+'</td>'+
+      '<td style="'+B+'padding:3px 8px"><strong>Turno:</strong> '+tLabel+'</td>'+
+      '<td style="'+B+'padding:3px 8px"><strong>Gerado:</strong> '+hrFmt+'</td>'+
+    '</tr><tr>'+
+      '<td style="'+B+'padding:3px 8px"><strong>Total OS:</strong> '+ocs.length+'</td>'+
+      '<td style="'+B+'padding:3px 8px"><strong>OS Fechadas:</strong> '+ocs.filter(o=>o.status==='liberado').length+'</td>'+
+      (orcamento>0?'<td style="'+B+'padding:3px 8px"><strong>Orçamento:</strong> '+fmtR(orcamento)+'</td><td style="'+B+'padding:3px 8px"><strong>Saldo:</strong> '+fmtR(orcamento-totalReal)+'</td>':
+       '<td style="'+B+'padding:3px 8px"><strong>Custo Previsto:</strong> '+fmtR(totalPrev)+'</td><td style="'+B+'padding:3px 8px"></td>')+
+    '</tr></table>'+
+    '<div style="font-weight:900;background:#1e3a5f;color:#fff;border:1.5px solid #111;padding:4px 8px;margin:6px 0 2px">■ DETALHAMENTO POR VEÍCULO</div>'+
+    '<table><thead><tr style="background:#374151;color:#fff">'+
+      '<th style="padding:5px 8px;text-align:left;font-size:10px">PREFIXO</th>'+
+      '<th style="padding:5px 8px;text-align:left;font-size:10px">TIPO</th>'+
+      '<th style="padding:5px 8px;text-align:left;font-size:10px">MECÂNICO</th>'+
+      '<th style="padding:5px 8px;text-align:center;font-size:10px">ENTRADA</th>'+
+      '<th style="padding:5px 8px;text-align:center;font-size:10px">SAÍDA</th>'+
+      '<th style="padding:5px 8px;text-align:center;font-size:10px">STATUS</th>'+
+      '<th style="padding:5px 8px;text-align:right;font-size:10px">PREVISTO</th>'+
+      '<th style="padding:5px 8px;text-align:right;font-size:10px">REAL</th>'+
+    '</tr></thead><tbody>'+osRows+'</tbody>'+
+    '<tfoot><tr style="background:#e2e8f0;font-weight:900">'+
+      '<td style="'+B+'padding:5px 8px;font-size:11px" colspan="6">TOTAL GERAL</td>'+
+      '<td style="'+B+'padding:5px 8px;font-family:monospace;font-size:11px;text-align:right">'+fmtR(totalPrev)+'</td>'+
+      '<td style="'+B+'padding:5px 8px;font-family:monospace;font-size:12px;text-align:right;font-weight:900;color:'+(totalReal>totalPrev&&totalPrev>0?'#991b1b':'#166534')+'">'+fmtR(totalReal)+'</td>'+
+    '</tr>'+
+    (totalPecas>0?'<tr style="background:#fff8e1"><td style="'+B+'padding:5px 8px;font-size:10px;color:#92400e" colspan="7">Total em Peças / Requisições</td>'+
+      '<td style="'+B+'padding:5px 8px;font-family:monospace;font-size:11px;text-align:right;font-weight:900;color:#b45309">'+fmtR(totalPecas)+'</td></tr>':'')+
+    '</tfoot></table>'+
+    '<div style="margin-top:10px;display:flex;justify-content:space-between;font-size:9px;color:#666">'+
+      '<span>Gerado em: '+agora.toLocaleString('pt-BR',{timeZone:'America/Manaus'})+' por '+(S.perfil?.nome||'—')+'</span>'+
+      '<span>JTP Transportes · Consolidado de Custo por Turno</span>'+
+    '</div></body></html>';
+
+  const w=window.open('','_blank');
+  if(w){w.document.write(html);w.document.close();}
+  else toast('Habilite pop-ups para exportar o PDF','err');
 }
 
 
