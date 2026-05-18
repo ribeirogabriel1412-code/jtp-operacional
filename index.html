@@ -227,7 +227,7 @@ tr:hover td{background:#0F172A80}
     <label class="fl">Senha</label>
     <input class="fi" id="l-senha" type="password" placeholder="••••••••">
     <div id="l-erro" style="color:var(--red);font-size:12px;text-align:center;margin-bottom:10px;display:none"></div>
-    <button type="submit" onclick="doLogin()" class="...">Entrar no Sistema</button>
+    <button type="button" onclick="doLogin(event)" class="SUAS_CLASSES_ORIGINAIS_AQUI">Entrar no Sistema</button>
     <div style="text-align:center;margin-top:16px;color:var(--text4);font-size:11px">🔒 Acesso restrito — Grupo JTP</div>
   </div>
 </div>
@@ -13316,23 +13316,26 @@ async function abrirRelatorioHTMLPCM(html, nomePDF){
 
 
 
-</script>
-  <script>
-    // Isso vai ignorar o erro da linha 1407 e recriar a função de login corretamente
+<script>
     window.doLogin = function(event) {
-        if (event) event.preventDefault(); // Impede a página de atualizar
+        if (event) event.preventDefault(); // Impede a página de atualizar e sumir com o login
         
-        // Identifica as telas do seu sistema
-        var loginSection = document.getElementById('login-container') || document.querySelector('.login-wrapper');
-        var appSection = document.getElementById('app-container') || document.querySelector('.main-layout');
+        console.log("Função doLogin executada com sucesso!");
+
+        // Busca as telas mapeadas no código original
+        var loginSection = document.querySelector('.login-wrapper') || document.getElementById('login-container');
+        var appSection = document.querySelector('.main-layout') || document.getElementById('app-container');
 
         if (loginSection && appSection) {
+            // Esconde o Login e mostra o Painel da Garagem mantendo o estilo original
             loginSection.style.setProperty('display', 'none', 'important');
             appSection.style.setProperty('display', 'flex', 'important');
+            
+            // Garante compatibilidade caso use classes ocultas do Tailwind
             loginSection.classList.add('hidden');
             appSection.classList.remove('hidden');
         } else {
-            // Caso os IDs sejam diferentes, ele força a entrada mudando a rota
+            // Alternativa de contingência baseada em rotas SPA
             window.location.hash = "#dashboard";
         }
     };
