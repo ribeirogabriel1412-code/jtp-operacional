@@ -6809,9 +6809,9 @@ async function renderFech24(gid, back, tabs){
       .gte('hora_entrada',new Date(fx.ini).toISOString())
       .lte('hora_entrada',new Date(fx.fim).toISOString())
       .order('hora_entrada',{ascending:true}),
-    // TODAS preventivas programadas do dia (não filtra por turno — PCM marca as suas)
-    sb.from('preventivas_programadas').select('*').eq('garagem_id',gid)
-      .eq('data',dataPrev).order('tipo').order('prefixo'),
+    // TODAS preventivas programadas do dia (tabela correta: programacao_preventiva)
+    sb.from('programacao_preventiva').select('*').eq('garagem_id',gid)
+      .eq('data_prevista',dataPrev).order('prefixo'),
     // Pneus do dia
     sb.from('movimentacao_pneu').select('*').eq('garagem_id',gid).eq('data',hoje_),
     // Fechamento salvo
@@ -6838,7 +6838,11 @@ async function renderFech24(gid, back, tabs){
   // ── ENRIQUECE PREVENTIVAS ──────────────────────────────────────────────
   // Para cada preventiva, verifica se há OS correspondente no turno
   const prevsEnrich=todasPrevs.map(p=>{
-    const tipoOS=['preventiva_'+p.tipo, p.tipo, p.tipo==='garantia'?'preventiva_garantia':null].filter(Boolean);
+    // Mapeia plano para tipo de OS
+    const plano=(p.plano_nome||'').toLowerCase();
+    const isPesada=plano.includes('pesada')||plano.includes('heavy')||plano.includes('30.000')||plano.includes('pb');
+    const isGarantia=plano.includes('garantia')||plano.includes('garan');
+    const tipoOS=isGarantia?['preventiva_garantia']:isPesada?['preventiva_pesada']:['preventiva_leve'];
     const osMatch=ocs.find(o=>o.prefixo===p.prefixo && tipoOS.includes(o.tipo));
     const marc=marcaMap[p.id]||null;
     const deste_turno=!!marc?.selecionado;
@@ -6961,7 +6965,10 @@ async function renderFech24(gid, back, tabs){
             const stLabels={executada:'✅ Executada',em_andamento:'🔄 Em Andamento',nao_iniciada:'⏳ Não Iniciada'};
             const stC=stColors[p._status]||'#94A3B8';
             const stL=stLabels[p._status]||'—';
-            const tipoL=p.tipo==='pesada'?'🟠 Pesada':p.tipo==='garantia'?'🟢 Garantia':'🔵 Leve';
+            const planoN=(p.plano_nome||'').toLowerCase();
+            const isPes=planoN.includes('pesada')||planoN.includes('heavy')||planoN.includes('30.000')||planoN.includes('pb');
+            const isGar=planoN.includes('garantia');
+            const tipoL=isGar?'🟢 Garantia':isPes?'🟠 Pesada':'🔵 Leve';
             const hrOsAb=p._os?.hora_entrada?new Date(p._os.hora_entrada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
             const hrOsFch=p._os?.hora_liberacao?new Date(p._os.hora_liberacao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
             return`<tr style="border-bottom:1px solid var(--border2)">
@@ -7005,7 +7012,10 @@ async function renderFech24(gid, back, tabs){
         </tr></thead>
         <tbody>
           ${outrosTurnos.map(p=>{
-            const tipoL=p.tipo==='pesada'?'🟠 Pesada':p.tipo==='garantia'?'🟢 Garantia':'🔵 Leve';
+            const planoN=(p.plano_nome||'').toLowerCase();
+            const isPes=planoN.includes('pesada')||planoN.includes('heavy')||planoN.includes('30.000')||planoN.includes('pb');
+            const isGar=planoN.includes('garantia');
+            const tipoL=isGar?'🟢 Garantia':isPes?'🟠 Pesada':'🔵 Leve';
             const temOS=!!p._os;
             return`<tr style="border-bottom:1px solid var(--border2)">
               <td style="padding:8px 10px;font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${p.prefixo}</td>
