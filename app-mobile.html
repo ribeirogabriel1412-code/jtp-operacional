@@ -55,7 +55,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 /* SHEET */
 .sheet-ov{position:fixed;inset:0;background:#00000088;z-index:300;display:none;align-items:flex-end}
 .sheet-ov.open{display:flex}
-.sheet{background:var(--surface);border-radius:24px 24px 0 0;width:100%;max-height:92vh;overflow-y:auto;padding-bottom:calc(var(--safe-bot) + 16px)}
+.sheet{background:var(--surface);border-radius:24px 24px 0 0;width:100%;max-height:92vh;overflow-y:auto;padding-bottom:calc(var(--safe-bot) + 16px);-webkit-tap-highlight-color:transparent}
+.sheet button{touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none}
 .sheet-handle{width:40px;height:4px;background:var(--border);border-radius:99px;margin:12px auto}
 .sheet-ttl{font-size:17px;font-weight:800;padding:4px 20px 14px;border-bottom:1px solid var(--border)}
 .sheet-body{padding:16px 20px}
@@ -1347,10 +1348,10 @@ async function abrirOS(ocId, aba){
       if(!its.length) return '';
       const tS=its.filter(i=>i.trocado||i.nao_se_aplica).length;
       const ok=tS===its.length, part=tS>0&&tS<its.length;
-      return`<div onclick="abrirSetor(${JSON.stringify(ocId)},${JSON.stringify(sg.key)})"
-        style="display:inline-flex;align-items:center;gap:5px;background:${ok?'#00C48C12':part?'#F59E0B12':'var(--surface2)'};border:1px solid ${ok?'#00C48C40':part?'#F59E0B40':'var(--border)'};border-radius:10px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;margin:3px;color:${ok?'var(--green)':part?'var(--amber)':'var(--text2)'}">
+      return`<button onclick="abrirSetor(${JSON.stringify(ocId)},${JSON.stringify(sg.key)})"
+        style="display:inline-flex;align-items:center;gap:5px;background:${ok?'#00C48C12':part?'#F59E0B12':'var(--surface2)'};border:1px solid ${ok?'#00C48C40':part?'#F59E0B40':'var(--border)'};border-radius:10px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;margin:3px;color:${ok?'var(--green)':part?'var(--amber)':'var(--text2)'};font-family:inherit;-webkit-tap-highlight-color:transparent;touch-action:manipulation;user-select:none">
         ${sg.ic} ${sg.key} ${ok?'✅':tS+'/'+its.length}
-      </div>`;
+      </button>`;
     }).join('');
     const barQ=`<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:12px">
       <div style="display:flex;justify-content:space-between;margin-bottom:5px">
