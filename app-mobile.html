@@ -105,6 +105,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 
 <!-- APP -->
 <div id="app" style="display:none">
+<div id="dbg" style="display:none;position:fixed;bottom:60px;left:0;right:0;background:#000e;color:#0f0;font-size:10px;font-family:monospace;padding:6px 8px;z-index:9999;max-height:160px;overflow-y:auto;border-top:1px solid #0f0"></div>
   <div id="topbar">
     <div style="display:flex;align-items:center;gap:10px">
       <span style="font-size:18px">🚌</span>
@@ -144,6 +145,19 @@ function cargo(){return S.perfil?.cargo}
 const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente',lider_pcm:'Líder PCM',assistente_pcm:'Ass. PCM',almoxarifado:'Almoxarifado',lider_operacional:'L. Operacional',lider_suprimentos:'L. Suprimentos',operacoes_seguras:'Op. Seguras',lider_oficina:'L. Oficina',lider_patio:'L. Pátio',lavador:'Lavador',manobrista:'Manobrista',frentista:'Frentista',plantao:'Plantão'};
 function toast(msg,tipo='ok',dur=2200){const t=document.getElementById('toast');t.textContent=msg;t.className='show'+(tipo==='err'?' err':'');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',dur);}
 function render(html){document.getElementById('content').innerHTML=html}
+function dbg(msg,cor){
+  var el=document.getElementById('dbg');
+  if(!el)return;
+  el.style.display='block';
+  var line=document.createElement('div');
+  line.style.color=cor||'#0f0';
+  line.textContent=new Date().toLocaleTimeString('pt-BR')+' '+msg;
+  el.appendChild(line);
+  el.scrollTop=el.scrollHeight;
+  // auto-hide after 15s of inactivity
+  clearTimeout(el._t);
+  el._t=setTimeout(function(){el.style.display='none';el.innerHTML='';},15000);
+}
 function setTela(t){S.tela=t;buildNav();render('<div class="loading"><div class="sp"></div></div>');TELAS[t]&&TELAS[t]()}
 function openSheet(ttl,html){document.getElementById('shttl').textContent=ttl;document.getElementById('shbody').innerHTML=html;document.getElementById('shov').classList.add('open')}
 function closeSheet(e){if(e===true||e.target===document.getElementById('shov'))document.getElementById('shov').classList.remove('open')}
@@ -1465,6 +1479,7 @@ async function salvarSt(ocId){
   closeSheet(true);toast(st==='liberado'?'✅ Liberado!':'✅ Atualizado!');telaOficina();
 }
 async function abrirSetor(ocId,setor){
+  dbg('abrirSetor setor='+setor+' ocId='+ocId.slice(-6));
   const shbody=document.getElementById('shbody');
   const shttl=document.getElementById('shttl');
   if(shbody) shbody.innerHTML='<div style="padding:20px;text-align:center;color:#888">Carregando...</div>';
@@ -1529,15 +1544,20 @@ async function abrirSetor(ocId,setor){
 }
 
 async function togCk(itemId,tipo,ocId,setor){
+  dbg('togCk chamado tipo='+tipo+' id='+itemId.slice(-6));
   toast('⏳ Salvando...','ok',800);
   const{data:it,error:e1}=await sb.from('checklist_liberacao').select('*').eq('id',itemId).single();
-  if(!it){toast('❌ Item não encontrado: '+itemId,'err');return;}
+  if(e1) dbg('ERRO busca: '+e1.message,'#f44');
+  if(!it){toast('❌ Item não encontrado','err');dbg('item null id='+itemId,'#f44');return;}
+  dbg('item ok verif='+it.verificado+' troc='+it.trocado);
   let p={};
   if(tipo==='v'){const n=!it.verificado;p={verificado:n,verificado_por:n?S.perfil?.nome:null,verificado_em:n?new Date().toISOString():null};if(!n)p={...p,trocado:false};}
   else if(tipo==='t'){if(!it.verificado){toast('⚠️ Verifique antes de qualificar','err');return;}const n=!it.trocado;p={trocado:n,trocado_por:n?S.perfil?.nome:null,trocado_em:n?new Date().toISOString():null};}
   else if(tipo==='nsa'){const n=!it.nao_se_aplica;p={nao_se_aplica:n,verificado:n,trocado:n,verificado_por:n?S.perfil?.nome:null,trocado_por:n?S.perfil?.nome:null,verificado_em:n?new Date().toISOString():null,trocado_em:n?new Date().toISOString():null};}
+  dbg('update p='+JSON.stringify(p).slice(0,60));
   const{error:e2}=await sb.from('checklist_liberacao').update(p).eq('id',itemId);
-  if(e2){toast('❌ Erro: '+e2.message,'err');return;}
+  if(e2){toast('❌ Erro: '+e2.message,'err');dbg('ERRO update: '+e2.message,'#f44');return;}
+  dbg('salvo! recarregando setor...','#0f0');
   toast('✅ Salvo!','ok',600);
   abrirSetor(ocId,setor);
 }
