@@ -1464,12 +1464,20 @@ async function salvarSt(ocId){
   closeSheet(true);toast(st==='liberado'?'✅ Liberado!':'✅ Atualizado!');telaOficina();
 }
 async function abrirSetor(ocId,setor){
+  // Atualiza o shbody diretamente — não recria o sheet (evita bug de propagação no Android)
+  const shbody=document.getElementById('shbody');
+  const shttl=document.getElementById('shttl');
+  if(shbody) shbody.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3)">Carregando...</div>';
+
   const sg=SETORES_M.find(s=>s.key===setor);
-  const{data:ckl}=await sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem');
-  const{data:oc}=await sb.from('ocorrencias_22').select('prefixo,status').eq('id',ocId).single();
+  const[{data:ckl},{data:oc}]=await Promise.all([
+    sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem'),
+    sb.from('ocorrencias_22').select('prefixo,status').eq('id',ocId).single(),
+  ]);
   const itens=(ckl||[]).filter(i=>{const m=i.item?.match(/^\[([^\]]+)\]/);return (sg?.gr||[]).includes(m?m[1]:'GERAL');});
   const podeEd=['lider_oficina','lider_pcm','assistente_pcm'].includes(cargo());
   const vTot=itens.filter(i=>i.verificado||i.nao_se_aplica).length;
+  const tTot=itens.filter(i=>i.trocado||i.nao_se_aplica).length;
   const faseV=vTot<itens.length;
 
   const rows=itens.map(it=>{
@@ -1485,14 +1493,19 @@ async function abrirSetor(ocId,setor){
     </div>`;
   }).join('');
 
-  openSheet(`${sg?.ic||''} ${setor} — ${oc?.prefixo}`,`
+  if(shttl) shttl.textContent=`${sg?.ic||''} ${setor} — ${oc?.prefixo||''}`;
+  if(shbody) shbody.innerHTML=`
     <button onclick="abrirOS(${JSON.stringify(ocId)},'qual')"
       style="display:flex;align-items:center;gap:6px;background:transparent;border:none;color:var(--blue);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;padding:0;margin-bottom:12px">
-      ← Voltar
+      ← Voltar à Qualificação
     </button>
-    <div style="font-size:11px;color:var(--text3);margin-bottom:10px">${itens.length} itens · T:${itens.filter(i=>i.trocado||i.nao_se_aplica).length}/${itens.length}</div>
-    <div style="max-height:60vh;overflow-y:auto">${rows}</div>
-  `);
+    <div style="background:var(--surface2);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;justify-content:space-between;font-size:12px">
+      <span style="color:var(--text3)">V: <b style="color:var(--blue)">${vTot}/${itens.length}</b></span>
+      <span style="color:var(--text3)">T: <b style="color:${tTot===itens.length?'var(--green)':'var(--amber)'}">${tTot}/${itens.length}</b></span>
+      <span style="color:var(--text3)">${itens.length} itens</span>
+    </div>
+    <div style="max-height:65vh;overflow-y:auto">${rows}</div>
+  `;
 }
 async function togCk(itemId,tipo,ocId,setor){
   const{data:it}=await sb.from('checklist_liberacao').select('*').eq('id',itemId).single();
