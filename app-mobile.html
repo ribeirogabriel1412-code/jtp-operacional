@@ -148,6 +148,159 @@ function openSheet(ttl,html){document.getElementById('shttl').textContent=ttl;do
 function closeSheet(e){if(e===true||e.target===document.getElementById('shov'))document.getElementById('shov').classList.remove('open')}
 
 // LOGIN
+async function exportarRelOS(ocId){
+  const gid=getGid();
+  const[{data:oc},{data:ckl}]=await Promise.all([
+    sb.from('ocorrencias_22').select('*').eq('id',ocId).single(),
+    sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem'),
+  ]);
+  if(!oc){toast('OS não encontrada','err');return;}
+
+  let dados38=(window._ck38Cache&&window._ck38Cache[ocId])||{};
+  if(!Object.keys(dados38).length){
+    const{data:ck}=await sb.from('checklist_38').select('dados')
+      .eq('garagem_id',gid).eq('prefixo',oc.prefixo)
+      .order('criado_em',{ascending:false}).limit(1);
+    dados38=(ck&&ck[0]&&ck[0].dados)||{};
+  }
+
+  const agora=new Date();
+  const dtFmt=agora.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'America/Manaus'});
+  const hrFmt=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'});
+  const garaGemNome=(S.garagens&&S.garagens.find(g=>g.id===gid)&&S.garagens.find(g=>g.id===gid).nome)||'Porto Velho';
+  const B='border:1px solid #333;';
+  const BH='border:1px solid #333;background:#555;color:#fff;font-weight:900;';
+
+  // ── QUALIFICAÇÃO ─────────────────────────────────────────
+  const totQ=(ckl||[]).length;
+  const qualQ=(ckl||[]).filter(i=>i.trocado||i.nao_se_aplica).length;
+  const pctQ=totQ>0?Math.round(qualQ/totQ*100):0;
+
+  const rowsQ=(ckl||[]).map(i=>{
+    const txt=(i.item||'').replace(/^\[[^\]]+\]\s*/,'');
+    const m=i.item?.match(/^\[([^\]]+)\]/);
+    const sec=m?m[1]:'GERAL';
+    const sg=SETORES_M.find(s=>s.gr.includes(sec))||{key:'GERAL',ic:'🔧'};
+    const statusTxt=i.nao_se_aplica?'N/A':i.trocado?'✅ QUALIF.':i.verificado?'👁 VERIF.':'—';
+    const stBg=i.nao_se_aplica?'#f8fafc':i.trocado?'#f0fdf4':i.verificado?'#eff6ff':'#fff';
+    const stCor=i.nao_se_aplica?'#64748b':i.trocado?'#166534':i.verificado?'#1d4ed8':'#94a3b8';
+    return`<tr><td style="${B}padding:3px 5px;font-size:9px;color:#555;width:80px">${sg.ic} ${sg.key}</td><td style="${B}padding:3px 5px;font-size:10px">${txt}</td><td style="${B}padding:3px 5px;text-align:center;background:${stBg};color:${stCor};font-size:10px;font-weight:700;width:70px">${statusTxt}</td></tr>`;
+  }).join('');
+
+  const resumoSetores=SETORES_M.map(sg=>{
+    const its=(ckl||[]).filter(i=>{const m=i.item?.match(/^\[([^\]]+)\]/);return sg.gr.includes(m?m[1]:'GERAL');});
+    if(!its.length) return '';
+    const qS=its.filter(i=>i.trocado||i.nao_se_aplica).length;
+    const pS=Math.round(qS/its.length*100);
+    const bg=pS===100?'#f0fdf4':pS>0?'#fffbeb':'#fef2f2';
+    const cor=pS===100?'#166534':pS>0?'#92400e':'#991b1b';
+    return`<td style="${B}padding:4px 6px;background:${bg};text-align:center"><div style="font-size:9px;font-weight:700">${sg.ic} ${sg.key}</div><div style="font-family:monospace;font-size:11px;font-weight:900;color:${cor}">${qS}/${its.length}</div></td>`;
+  }).join('');
+
+  // ── CHECKLIST 3.8 ────────────────────────────────────────
+  let qual38=0, nao38=0;
+  const rows38=SECS38.map(sec=>{
+    const qS=sec.itens.filter(it=>dados38[sec.sec+'_'+it.id]==='sim').length;
+    const pS=Math.round(qS/sec.itens.length*100);
+    const bg=pS===100?'#f0fdf4':pS>0?'#fffbeb':'#fef2f2';
+    const cor=pS===100?'#166534':pS>0?'#92400e':'#991b1b';
+    const header=`<tr style="background:#f1f5f9"><td colspan="2" style="${B}padding:5px 8px;font-size:11px;font-weight:800">${sec.sec}<span style="float:right;color:${cor};font-family:monospace">${qS}/${sec.itens.length}</span></td></tr>`;
+    const itens=sec.itens.map(it=>{
+      const key=sec.sec+'_'+it.id;
+      const val=dados38[key]||'';
+      if(val==='sim') qual38++;
+      if(val==='nao') nao38++;
+      const stTxt=val==='sim'?'✅ SIM':val==='nao'?'❌ NÃO':'—';
+      const stBg=val==='sim'?'#f0fdf4':val==='nao'?'#fef2f2':'#fff';
+      const stCor=val==='sim'?'#166534':val==='nao'?'#991b1b':'#94a3b8';
+      return`<tr><td style="${B}padding:3px 5px;font-size:10px">${it.txt}</td><td style="${B}padding:3px 5px;text-align:center;background:${stBg};color:${stCor};font-size:10px;font-weight:700;width:65px">${stTxt}</td></tr>`;
+    }).join('');
+    return header+itens;
+  }).join('');
+  const pct38=Math.round(qual38/TOTAL_38*100);
+
+  const entH=oc.hora_entrada?new Date(oc.hora_entrada).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
+
+  const html=`<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+  body{font-family:Arial,sans-serif;font-size:10px;color:#000;margin:0;padding:10px}
+  @media print{.no-print{display:none!important}body{padding:0;margin:0}@page{margin:8mm;size:A4 portrait}}
+  table{border-collapse:collapse;width:100%}
+  tr:nth-child(even) td{background:#f9f9f9}
+</style></head><body>
+
+<div class="no-print" style="position:sticky;top:0;background:#1e293b;padding:8px 12px;display:flex;gap:8px;align-items:center;z-index:999;margin:-10px -10px 10px -10px">
+  <span style="color:#fff;font-size:12px;font-weight:700">📋 JTP — Relatório OS ${oc.prefixo}</span>
+  <button onclick="window.print()" style="margin-left:auto;padding:6px 16px;background:#3B82F6;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">🖨️ Salvar PDF</button>
+</div>
+
+<div style="text-align:center;border:2.5px solid #000;padding:6px;margin-bottom:5px;background:#fff">
+  <div style="font-size:13px;font-weight:900;letter-spacing:1px">GRUPO JTP  │  OPERAÇÃO GARAGEM  │  Qualificação & Checklist 3.8</div>
+</div>
+
+<table style="margin-bottom:4px">
+  <tr>
+    <td style="${B}padding:3px 6px"><strong>Prefixo:</strong> <span style="font-family:monospace;font-weight:900">${oc.prefixo}</span></td>
+    <td style="${B}padding:3px 6px"><strong>Tipo OS:</strong> ${(oc.tipo||'').replace(/_/g,' ')}</td>
+    <td style="${B}padding:3px 6px"><strong>Garagem:</strong> ${garaGemNome}</td>
+    <td style="${B}padding:3px 6px"><strong>Data/Hora:</strong> ${dtFmt} ${hrFmt}</td>
+  </tr>
+  <tr>
+    <td style="${B}padding:3px 6px"><strong>Responsável:</strong> ${oc.mecanico||'—'}</td>
+    <td style="${B}padding:3px 6px"><strong>👷 Manutentores:</strong> ${oc.manutentores||'—'}</td>
+    <td style="${B}padding:3px 6px"><strong>OS Nº:</strong> ${oc.numero||'—'}</td>
+    <td style="${B}padding:3px 6px"><strong>Entrada:</strong> ${entH}</td>
+  </tr>
+</table>
+
+<!-- PARTE 1: QUALIFICAÇÃO -->
+<div style="font-weight:900;background:#1e3a5f;color:#fff;border:1.5px solid #111;padding:4px 8px;margin:8px 0 2px">■ PARTE 1 — QUALIFICAÇÃO DO CHECKLIST DE LIBERAÇÃO</div>
+<table style="margin-bottom:4px">
+  <tr>
+    <td style="${B}padding:4px 8px;background:#f0fdf4"><strong>✅ Qualificados:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900;color:#166534"> ${qualQ}/${totQ} (${pctQ}%)</span></td>
+    <td style="${B}padding:4px 8px;background:#fffbeb"><strong>👁 Verificados:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900;color:#92400e"> ${(ckl||[]).filter(i=>i.verificado||i.nao_se_aplica).length}/${totQ}</span></td>
+  </tr>
+</table>
+${resumoSetores?`<table style="margin-bottom:4px"><tr>${resumoSetores}</tr></table>`:''}
+<table>
+  <thead><tr>
+    <th style="${BH}padding:3px;width:80px">SETOR</th>
+    <th style="${BH}padding:3px;text-align:left">ITEM</th>
+    <th style="${BH}padding:3px;text-align:center;width:70px">STATUS</th>
+  </tr></thead>
+  <tbody>${rowsQ||'<tr><td colspan="3" style="padding:8px;color:#999;text-align:center">Checklist de qualificação não iniciado</td></tr>'}</tbody>
+  <tfoot><tr style="background:#ddd;font-weight:900"><td style="${B}padding:3px 5px" colspan="2">TOTAL QUALIFICAÇÃO</td><td style="${B}padding:3px 5px;text-align:center">✅ ${qualQ}/${totQ}</td></tr></tfoot>
+</table>
+
+<!-- PARTE 2: CHECKLIST 3.8 -->
+<div style="font-weight:900;background:#1e3a5f;color:#fff;border:1.5px solid #111;padding:4px 8px;margin:12px 0 2px">■ PARTE 2 — CHECKLIST 3.8 — LIBERAÇÃO DE VEÍCULO</div>
+<table style="margin-bottom:4px">
+  <tr>
+    <td style="${B}padding:4px 8px;background:#f0fdf4"><strong>✅ SIM:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900;color:#166534"> ${qual38}/${TOTAL_38} (${pct38}%)</span></td>
+    <td style="${B}padding:4px 8px;background:#fef2f2"><strong>❌ NÃO:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900;color:#991b1b"> ${nao38}</span></td>
+    <td style="${B}padding:4px 8px;background:#f8fafc"><strong>— Sem resp.:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900"> ${TOTAL_38-qual38-nao38}</span></td>
+  </tr>
+</table>
+<table>
+  <thead><tr>
+    <th style="${BH}padding:3px;text-align:left">ITEM</th>
+    <th style="${BH}padding:3px;text-align:center;width:65px">RESPOSTA</th>
+  </tr></thead>
+  <tbody>${rows38}</tbody>
+  <tfoot><tr style="background:#ddd;font-weight:900"><td style="${B}padding:3px 5px">TOTAL 3.8</td><td style="${B}padding:3px 5px;text-align:center">✅${qual38} / ❌${nao38} / —${TOTAL_38-qual38-nao38}</td></tr></tfoot>
+</table>
+
+<div style="margin-top:10px;display:flex;justify-content:space-between;font-size:9px;color:#666">
+  <span>Gerado em: ${agora.toLocaleString('pt-BR',{timeZone:'America/Manaus'})} por ${(S.perfil&&S.perfil.nome)||'—'}</span>
+  <span>JTP Transportes · Operação Garagem</span>
+</div>
+</body></html>`;
+
+  const nomeArq='JTP_OS_'+oc.prefixo.replace(/\./g,'')+'_'+dtFmt.replace(/\//g,'')+'_'+garaGemNome.replace(/\s/g,'_')+'.pdf';
+  await downloadPDF(html,nomeArq);
+}
+
 async function doLogin(){
   const input=document.getElementById('le').value.trim();
   const senha=document.getElementById('ls').value;
@@ -1112,105 +1265,179 @@ const SETORES_M=[
   {key:'AR COND.',ic:'❄️',gr:['AR COND.']},
   {key:'FUNILARIA',ic:'🔨',gr:['CARROCERIA','PINTURA']},
 ];
-async function abrirOS(ocId){
+async function abrirOS(ocId, aba){
+  aba=aba||'qual';
   const{data:oc}=await sb.from('ocorrencias_22').select('*').eq('id',ocId).single();
   if(!oc) return;
   const gid=getGid();
+
+  // Cache 3.8
   if(!window._ck38Cache) window._ck38Cache={};
-  let dados=window._ck38Cache[ocId];
-  if(!dados){
-    const{data:ck}=await sb.from('checklist_38').select('dados').eq('garagem_id',gid).eq('prefixo',oc.prefixo).order('criado_em',{ascending:false}).limit(1);
-    dados=(ck&&ck[0]&&ck[0].dados)||{};
-    window._ck38Cache[ocId]=dados;
+  if(!window._ck38Cache[ocId]){
+    const{data:ck}=await sb.from('checklist_38').select('dados')
+      .eq('garagem_id',gid).eq('prefixo',oc.prefixo)
+      .order('criado_em',{ascending:false}).limit(1);
+    window._ck38Cache[ocId]=(ck&&ck[0]&&ck[0].dados)||{};
   }
-  renderSheetOS(ocId, oc, dados);
-}
+  const dados38=window._ck38Cache[ocId];
 
-function renderSheetOS(ocId, oc, dados){
-  const qual=SECS38.reduce((s,sec)=>s+sec.itens.filter(it=>dados[sec.sec+'_'+it.id]==='sim').length,0);
-  const pct=Math.round(qual/TOTAL_38*100);
-  const corPct=pct>=100?'var(--green)':pct>=60?'var(--amber)':'var(--blue)';
-  const pessoas=parseInt(oc.manutentores)||0;
-  const ST={em_manutencao:'🔧 Manutenção',aguardando_peca:'📦 Ag. Peça',aguardando_aprovacao:'⏳ Ag. Aprovação',liberado:'✅ Liberado'};
+  // Busca checklist_liberacao
+  const{data:ckl}=await sb.from('checklist_liberacao')
+    .select('id,verificado,trocado,nao_se_aplica,item').eq('ocorrencia_id',ocId);
+  const totQ=(ckl||[]).length;
+  const qualQ=(ckl||[]).filter(i=>i.trocado||i.nao_se_aplica).length;
+  const pctQ=totQ>0?Math.round(qualQ/totQ*100):0;
+
+  // Progresso 3.8
+  const qual38=SECS38.reduce((s,sec)=>s+sec.itens.filter(it=>dados38[sec.sec+'_'+it.id]==='sim').length,0);
+  const pct38=Math.round(qual38/TOTAL_38*100);
+
   const podeEd=['lider_oficina','lider_pcm','assistente_pcm'].includes(cargo());
+  const ST={em_manutencao:'🔧 Manutenção',aguardando_peca:'📦 Ag. Peça',aguardando_aprovacao:'⏳ Ag. Aprovação',liberado:'✅ Liberado'};
+  const pessoas=parseInt(oc.manutentores)||0;
+  const corQ=pctQ>=100?'var(--green)':pctQ>=60?'var(--amber)':'var(--blue)';
+  const cor38=pct38>=100?'var(--green)':pct38>=60?'var(--amber)':'var(--blue)';
 
-  // Monta seções do checklist
-  let secoesHtml='';
-  SECS38.forEach(function(sec){
-    const secQual=sec.itens.filter(it=>dados[sec.sec+'_'+it.id]==='sim').length;
-    const secOk=secQual===sec.itens.length;
-    let rows='';
-    sec.itens.forEach(function(it){
-      const key=sec.sec+'_'+it.id;
-      const val=dados[key]||'';
-      const simSel=val==='sim', naoSel=val==='nao';
-      const txtCor=simSel?'var(--green)':naoSel?'var(--red)':'var(--text)';
-      rows+=`<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border2)">
-        <div style="flex:1;font-size:12px;line-height:1.4;color:${txtCor}">${it.txt}</div>
-        ${podeEd?`
-          <button onclick="setCk38(${JSON.stringify(ocId)},${JSON.stringify(key)},'sim')"
-            style="padding:6px 12px;border-radius:7px;border:2px solid ${simSel?'var(--green)':'var(--border)'};background:${simSel?'#00C48C18':'transparent'};color:${simSel?'var(--green)':'var(--text3)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">SIM</button>
-          <button onclick="setCk38(${JSON.stringify(ocId)},${JSON.stringify(key)},'nao')"
-            style="padding:6px 12px;border-radius:7px;border:2px solid ${naoSel?'var(--red)':'var(--border)'};background:${naoSel?'#EF444418':'transparent'};color:${naoSel?'var(--red)':'var(--text3)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">NÃO</button>`
-          :`<span style="font-size:11px;font-weight:700;color:${simSel?'var(--green)':naoSel?'var(--red)':'var(--text4)'}">${simSel?'✅ SIM':naoSel?'❌ NÃO':'—'}</span>`}
-      </div>`;
-    });
-    secoesHtml+=`<div style="margin-bottom:14px">
-      <div style="font-size:11px;font-weight:800;color:${secOk?'var(--green)':'var(--text3)'};text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border2);padding-bottom:6px;margin-bottom:2px;display:flex;justify-content:space-between">
-        <span>${sec.sec}</span><span>${secOk?'✅':secQual+'/'+sec.itens.length}</span>
-      </div>${rows}</div>`;
-  });
+  // ── ABAS ──────────────────────────────────────────────────
+  const tabs=`
+    <div style="display:flex;gap:6px;margin-bottom:14px">
+      <button onclick="abrirOS(${JSON.stringify(ocId)},'qual')"
+        style="flex:1;padding:9px 4px;border-radius:10px;border:2px solid ${aba==='qual'?'var(--blue)':'var(--border)'};background:${aba==='qual'?'#3B82F618':'transparent'};color:${aba==='qual'?'var(--blue)':'var(--text3)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
+        ✅ Qualificação<br><span style="font-size:11px;color:${corQ}">${qualQ}/${totQ}</span>
+      </button>
+      <button onclick="abrirOS(${JSON.stringify(ocId)},'ck38')"
+        style="flex:1;padding:9px 4px;border-radius:10px;border:2px solid ${aba==='ck38'?'var(--blue)':'var(--border)'};background:${aba==='ck38'?'#3B82F618':'transparent'};color:${aba==='ck38'?'var(--blue)':'var(--text3)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
+        📋 Check. 3.8<br><span style="font-size:11px;color:${cor38}">${qual38}/${TOTAL_38}</span>
+      </button>
+      <button onclick="abrirOS(${JSON.stringify(ocId)},'export')"
+        style="flex:1;padding:9px 4px;border-radius:10px;border:2px solid ${aba==='export'?'var(--blue)':'var(--border)'};background:${aba==='export'?'#3B82F618':'transparent'};color:${aba==='export'?'var(--blue)':'var(--text3)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
+        📄 Exportar<br><span style="font-size:11px;color:var(--text4)">PDF</span>
+      </button>
+    </div>`;
 
-  openSheet(oc.prefixo+' — '+(oc.tipo||'').replace(/_/g,' '),`
-    <div style="background:var(--surface2);border-radius:12px;padding:12px 14px;margin-bottom:12px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Qualificação</div>
-        <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:900;color:${corPct}">${qual}/${TOTAL_38}</div>
-      </div>
-      <div style="background:var(--border);border-radius:6px;height:6px;overflow:hidden">
-        <div style="height:100%;width:${pct}%;background:${corPct};border-radius:6px"></div>
-      </div>
-    </div>
-
-    <div style="display:flex;gap:8px;margin-bottom:14px">
+  // ── STATUS + PESSOAS (sempre visível) ─────────────────────
+  const infoBar=`
+    <div style="display:flex;gap:8px;margin-bottom:12px">
       <div style="flex:1;background:var(--surface2);border-radius:10px;padding:10px;text-align:center">
-        <div style="font-size:10px;color:var(--text3);font-weight:700;margin-bottom:4px">STATUS</div>
+        <div style="font-size:10px;color:var(--text3);font-weight:700;margin-bottom:3px">STATUS</div>
         <div style="font-size:12px;font-weight:700">${ST[oc.status]||oc.status}</div>
       </div>
       <div onclick="editarPessoas(${JSON.stringify(ocId)},${pessoas})"
         style="flex:1;background:${pessoas>0?'#3B82F618':'var(--surface2)'};border:1px solid ${pessoas>0?'#3B82F640':'var(--border)'};border-radius:10px;padding:10px;text-align:center;cursor:pointer">
-        <div style="font-size:10px;color:var(--text3);font-weight:700;margin-bottom:4px">👷 NA OS</div>
+        <div style="font-size:10px;color:var(--text3);font-weight:700;margin-bottom:3px">👷 NA OS</div>
         <div style="font-size:18px;font-weight:900;color:${pessoas>0?'var(--blue)':'var(--text4)'}">${pessoas>0?pessoas:'—'}</div>
       </div>
-    </div>
+      ${podeEd?`<div style="display:flex;flex-direction:column;gap:4px;justify-content:center">
+        <select id="sel-st" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 6px;color:var(--text);font-size:11px;font-family:inherit;outline:none">
+          <option value="em_manutencao" ${oc.status==='em_manutencao'?'selected':''}>🔧 Manut.</option>
+          <option value="aguardando_peca" ${oc.status==='aguardando_peca'?'selected':''}>📦 Ag. Peça</option>
+          <option value="aguardando_aprovacao" ${oc.status==='aguardando_aprovacao'?'selected':''}>⏳ Aprovação</option>
+          <option value="liberado">✅ Liberado</option>
+        </select>
+        <button onclick="salvarSt(${JSON.stringify(ocId)})"
+          style="padding:8px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">OK</button>
+      </div>`:''}
+    </div>`;
 
-    <div style="max-height:48vh;overflow-y:auto;margin-bottom:12px">${secoesHtml}</div>
+  // ── ABA: QUALIFICAÇÃO ──────────────────────────────────────
+  let conteudo='';
+  if(aba==='qual'){
+    const setores=SETORES_M.map(sg=>{
+      const its=(ckl||[]).filter(i=>{const m=i.item?.match(/^\[([^\]]+)\]/);return sg.gr.includes(m?m[1]:'GERAL');});
+      if(!its.length) return '';
+      const tS=its.filter(i=>i.trocado||i.nao_se_aplica).length;
+      const ok=tS===its.length, part=tS>0&&tS<its.length;
+      return`<div onclick="abrirSetor(${JSON.stringify(ocId)},${JSON.stringify(sg.key)})"
+        style="display:inline-flex;align-items:center;gap:5px;background:${ok?'#00C48C12':part?'#F59E0B12':'var(--surface2)'};border:1px solid ${ok?'#00C48C40':part?'#F59E0B40':'var(--border)'};border-radius:10px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;margin:3px;color:${ok?'var(--green)':part?'var(--amber)':'var(--text2)'}">
+        ${sg.ic} ${sg.key} ${ok?'✅':tS+'/'+its.length}
+      </div>`;
+    }).join('');
+    const barQ=`<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+        <span style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase">Qualificação</span>
+        <span style="font-size:14px;font-weight:900;color:${corQ}">${qualQ}/${totQ}</span>
+      </div>
+      <div style="background:var(--border);border-radius:6px;height:5px;overflow:hidden">
+        <div style="height:100%;width:${pctQ}%;background:${corQ};border-radius:6px"></div>
+      </div>
+    </div>`;
+    conteudo=barQ+(setores||'<div style="color:var(--text4);font-size:12px;padding:8px 0">Checklist de qualificação não iniciado — crie no site.</div>');
+  }
 
-    ${podeEd?`
-    <div style="display:flex;gap:8px;margin-bottom:8px">
-      <select id="sel-st" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
-        <option value="em_manutencao" ${oc.status==='em_manutencao'?'selected':''}>🔧 Em Manutenção</option>
-        <option value="aguardando_peca" ${oc.status==='aguardando_peca'?'selected':''}>📦 Ag. Peça</option>
-        <option value="aguardando_aprovacao" ${oc.status==='aguardando_aprovacao'?'selected':''}>⏳ Ag. Aprovação</option>
-        <option value="liberado">✅ Liberado</option>
-      </select>
-      <button onclick="salvarSt(${JSON.stringify(ocId)})"
-        style="padding:12px 16px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">OK</button>
-    </div>
-    <button onclick="salvarCk38Mobile(${JSON.stringify(ocId)})"
-      style="width:100%;padding:12px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;margin-bottom:8px">💾 Salvar Checklist 3.8</button>
-    `:''}
-    <button onclick="exportar38Mobile(${JSON.stringify(ocId)})"
-      style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">📋 Exportar Relatório 3.8</button>
-  `);
+  // ── ABA: CHECKLIST 3.8 ─────────────────────────────────────
+  else if(aba==='ck38'){
+    const bar38=`<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+        <span style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase">Checklist 3.8</span>
+        <span style="font-size:14px;font-weight:900;color:${cor38}">${qual38}/${TOTAL_38}</span>
+      </div>
+      <div style="background:var(--border);border-radius:6px;height:5px;overflow:hidden">
+        <div style="height:100%;width:${pct38}%;background:${cor38};border-radius:6px"></div>
+      </div>
+    </div>`;
+    let secsHtml='';
+    SECS38.forEach(sec=>{
+      const secQual=sec.itens.filter(it=>dados38[sec.sec+'_'+it.id]==='sim').length;
+      const secOk=secQual===sec.itens.length;
+      let rows='';
+      sec.itens.forEach(it=>{
+        const key=sec.sec+'_'+it.id;
+        const val=dados38[key]||'';
+        const simSel=val==='sim', naoSel=val==='nao';
+        rows+=`<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border2)">
+          <div style="flex:1;font-size:12px;line-height:1.4;color:${simSel?'var(--green)':naoSel?'var(--red)':'var(--text)'}">${it.txt}</div>
+          ${podeEd?`
+            <button onclick="setCk38(${JSON.stringify(ocId)},${JSON.stringify(key)},'sim')"
+              style="padding:6px 12px;border-radius:7px;border:2px solid ${simSel?'var(--green)':'var(--border)'};background:${simSel?'#00C48C18':'transparent'};color:${simSel?'var(--green)':'var(--text3)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">SIM</button>
+            <button onclick="setCk38(${JSON.stringify(ocId)},${JSON.stringify(key)},'nao')"
+              style="padding:6px 12px;border-radius:7px;border:2px solid ${naoSel?'var(--red)':'var(--border)'};background:${naoSel?'#EF444418':'transparent'};color:${naoSel?'var(--red)':'var(--text3)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">NÃO</button>`
+            :`<span style="font-size:11px;font-weight:700;color:${simSel?'var(--green)':naoSel?'var(--red)':'var(--text4)'}">${simSel?'✅':naoSel?'❌':'—'}</span>`}
+        </div>`;
+      });
+      secsHtml+=`<div style="margin-bottom:14px">
+        <div style="font-size:11px;font-weight:800;color:${secOk?'var(--green)':'var(--text3)'};text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border2);padding-bottom:6px;margin-bottom:2px;display:flex;justify-content:space-between">
+          <span>${sec.sec}</span><span>${secOk?'✅':secQual+'/'+sec.itens.length}</span>
+        </div>${rows}</div>`;
+    });
+    const btnSalvar=podeEd?`<button onclick="salvarCk38Mobile(${JSON.stringify(ocId)})"
+      style="width:100%;padding:12px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;margin-top:12px">💾 Salvar Checklist 3.8</button>`:'';
+    conteudo=bar38+`<div style="max-height:52vh;overflow-y:auto">${secsHtml}</div>`+btnSalvar;
+  }
+
+  // ── ABA: EXPORTAR ──────────────────────────────────────────
+  else if(aba==='export'){
+    const corFinal=pctQ>=100&&pct38>=100?'var(--green)':'var(--amber)';
+    conteudo=`
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;margin-bottom:16px;text-align:center">
+        <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;margin-bottom:12px">Resumo para Exportação</div>
+        <div style="display:flex;gap:12px;justify-content:center;margin-bottom:16px">
+          <div style="flex:1;background:var(--bg);border-radius:10px;padding:12px">
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Qualificação</div>
+            <div style="font-size:22px;font-weight:900;color:${corQ}">${pctQ}%</div>
+            <div style="font-size:11px;color:var(--text3)">${qualQ}/${totQ} itens</div>
+          </div>
+          <div style="flex:1;background:var(--bg);border-radius:10px;padding:12px">
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Check. 3.8</div>
+            <div style="font-size:22px;font-weight:900;color:${cor38}">${pct38}%</div>
+            <div style="font-size:11px;color:var(--text3)">${qual38}/${TOTAL_38} itens</div>
+          </div>
+        </div>
+        ${pctQ<100||pct38<100?`<div style="font-size:11px;color:var(--amber);font-weight:700;margin-bottom:8px">⚠️ Há itens pendentes — você ainda pode exportar</div>`:'<div style="font-size:12px;color:var(--green);font-weight:700;margin-bottom:8px">✅ Checklist completo — pronto para liberar</div>'}
+      </div>
+      <button onclick="exportarRelOS(${JSON.stringify(ocId)})"
+        style="width:100%;padding:16px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer">
+        📄 Gerar & Compartilhar PDF
+      </button>`;
+  }
+
+  openSheet(oc.prefixo+' — '+(oc.tipo||'').replace(/_/g,' '), tabs+infoBar+conteudo);
 }
-
 
 function setCk38(ocId,key,val){
   if(!window._ck38Cache) window._ck38Cache={};
   if(!window._ck38Cache[ocId]) window._ck38Cache[ocId]={};
   window._ck38Cache[ocId][key]=val;
-  abrirOS(ocId);
+  abrirOS(ocId,'ck38');
 }
 
 async function salvarCk38Mobile(ocId){
@@ -1224,118 +1451,9 @@ async function salvarCk38Mobile(ocId){
   },{onConflict:'garagem_id,prefixo'});
   if(error){toast('Erro: '+error.message,'err');return;}
   toast('✅ Checklist 3.8 salvo!');
-  abrirOS(ocId);
+  abrirOS(ocId,'ck38');
 }
 
-async function exportar38Mobile(ocId){
-  const{data:oc}=await sb.from('ocorrencias_22').select('*').eq('id',ocId).single();
-  if(!oc){toast('OS não encontrada','err');return;}
-  const gid=getGid();
-  let dadosFinal=(window._ck38Cache&&window._ck38Cache[ocId])||{};
-  if(!Object.keys(dadosFinal).length){
-    const{data:ck}=await sb.from('checklist_38').select('dados').eq('garagem_id',gid).eq('prefixo',oc.prefixo).order('criado_em',{ascending:false}).limit(1);
-    dadosFinal=(ck&&ck[0]&&ck[0].dados)||{};
-  }
-  const agora=new Date();
-  const dtFmt=agora.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'America/Manaus'});
-  const hrFmt=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'});
-  const garagem=S.garagens&&S.garagens.find(g=>g.id===gid);
-  const garaGemNome=(garagem&&garagem.nome)||'Porto Velho';
-  const B='border:1px solid #333;';
-  const BH='border:1px solid #333;background:#555;color:#fff;font-weight:900;';
-  let qual=0,naoC=0;
-  const tot=TOTAL_38;
-  SECS38.forEach(function(sec){sec.itens.forEach(function(it){
-    var v=dadosFinal[sec.sec+'_'+it.id];
-    if(v==='sim')qual++;
-    if(v==='nao')naoC++;
-  });});
-  const pct=tot>0?Math.round(qual/tot*100):0;
-  const resumoSecoes=SECS38.map(function(sec){
-    var qS=sec.itens.filter(function(it){return dadosFinal[sec.sec+'_'+it.id]==='sim';}).length;
-    var pS=Math.round(qS/sec.itens.length*100);
-    var bg=pS===100?'#f0fdf4':pS>0?'#fffbeb':'#fef2f2';
-    var cor=pS===100?'#166534':pS>0?'#92400e':'#991b1b';
-    return '<td style="'+B+'padding:4px 6px;background:'+bg+';text-align:center"><div style="font-size:9px;font-weight:700">'+sec.sec+'</div><div style="font-family:monospace;font-size:11px;font-weight:900;color:'+cor+'">'+qS+'/'+sec.itens.length+'</div></td>';
-  }).join('');
-  const rows=SECS38.map(function(sec){
-    return sec.itens.map(function(it){
-      var key=sec.sec+'_'+it.id;
-      var val=dadosFinal[key]||'';
-      var stTxt=val==='sim'?'✅ SIM':val==='nao'?'❌ NÃO':'—';
-      var stBg=val==='sim'?'#f0fdf4':val==='nao'?'#fef2f2':'#fff';
-      var stCor=val==='sim'?'#166534':val==='nao'?'#991b1b':'#94a3b8';
-      return '<tr><td style="'+B+'padding:3px 5px;font-size:9px;color:#555;width:120px">'+sec.sec+'</td><td style="'+B+'padding:3px 5px;font-size:10px">'+it.txt+'</td><td style="'+B+'padding:3px 5px;text-align:center;background:'+stBg+';color:'+stCor+';font-size:10px;font-weight:700;width:65px">'+stTxt+'</td></tr>';
-    }).join('');
-  }).join('');
-  var entH=oc.hora_entrada?new Date(oc.hora_entrada).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
-  var html='<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;font-size:10px;color:#000;margin:0;padding:10px}@media print{.no-print{display:none!important}body{padding:0;margin:0}@page{margin:8mm;size:A4 portrait}}table{border-collapse:collapse;width:100%}th,td{font-size:10px}tr:nth-child(even){background:#f9f9f9}</style></head><body>'+
-    '<div class="no-print" style="position:sticky;top:0;background:#1e293b;padding:8px 12px;display:flex;gap:8px;align-items:center;z-index:999;margin:-10px -10px 10px -10px"><span style="color:#fff;font-size:12px;font-weight:700">📋 JTP — Checklist 3.8 Liberação de Veículo</span><button onclick="window.print()" style="margin-left:auto;padding:6px 16px;background:#3B82F6;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">🖨️ Salvar PDF</button></div>'+
-    '<div style="text-align:center;border:2.5px solid #000;padding:6px;margin-bottom:5px;background:#fff"><div style="font-size:13px;font-weight:900;letter-spacing:1px">GRUPO JTP  │  OPERAÇÃO GARAGEM  │  Checklist 3.8 — Liberação de Veículo</div></div>'+
-    '<table style="margin-bottom:4px"><tr>'+
-      '<td style="'+B+'padding:3px 6px"><strong>Prefixo:</strong> <span style="font-family:monospace;font-weight:900">'+oc.prefixo+'</span></td>'+
-      '<td style="'+B+'padding:3px 6px"><strong>Tipo OS:</strong> '+((oc.tipo||'').replace(/_/g,' '))+'</td>'+
-      '<td style="'+B+'padding:3px 6px"><strong>Garagem:</strong> '+garaGemNome+'</td>'+
-      '<td style="'+B+'padding:3px 6px"><strong>Data/Hora:</strong> '+dtFmt+' '+hrFmt+'</td>'+
-    '</tr><tr>'+
-      '<td style="'+B+'padding:3px 6px"><strong>Responsável:</strong> '+(oc.mecanico||'—')+'</td>'+
-      '<td style="'+B+'padding:3px 6px"><strong>👷 Manutentores:</strong> '+(oc.manutentores||'—')+'</td>'+
-      '<td style="'+B+'padding:3px 6px"><strong>OS Nº:</strong> '+(oc.numero||'—')+'</td>'+
-      '<td style="'+B+'padding:3px 6px"><strong>Entrada:</strong> '+entH+'</td>'+
-    '</tr></table>'+
-    '<div style="font-weight:900;background:#555;color:#fff;border:1.5px solid #111;padding:3px 8px;margin-bottom:2px">■ RESUMO DE QUALIFICAÇÃO</div>'+
-    '<table style="margin-bottom:6px"><tr>'+
-      '<td style="'+B+'padding:4px 8px;background:#f0fdf4"><strong>✅ SIM:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900;color:#166534"> '+qual+'/'+tot+' ('+pct+'%)</span></td>'+
-      '<td style="'+B+'padding:4px 8px;background:#fef2f2"><strong>❌ NÃO:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900;color:#991b1b"> '+naoC+'</span></td>'+
-      '<td style="'+B+'padding:4px 8px;background:#f8fafc"><strong>— Sem resp.:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900"> '+(tot-qual-naoC)+'</span></td>'+
-    '</tr></table>'+
-    '<div style="font-weight:900;background:#555;color:#fff;border:1.5px solid #111;padding:3px 8px;margin-bottom:2px">■ QUALIFICAÇÃO POR SEÇÃO</div>'+
-    '<table style="margin-bottom:6px"><tr>'+resumoSecoes+'</tr></table>'+
-    '<div style="font-weight:900;background:#555;color:#fff;border:1.5px solid #111;padding:3px 8px;margin-bottom:2px">■ DETALHAMENTO POR ITEM</div>'+
-    '<table><thead><tr>'+
-      '<th style="'+BH+'padding:3px;width:120px">SEÇÃO</th>'+
-      '<th style="'+BH+'padding:3px;text-align:left">ITEM</th>'+
-      '<th style="'+BH+'padding:3px;text-align:center;width:65px">RESPOSTA</th>'+
-    '</tr></thead><tbody>'+rows+'</tbody>'+
-    '<tfoot><tr style="background:#ddd;font-weight:900"><td style="'+B+'padding:3px 5px;font-size:10px" colspan="2">TOTAL</td><td style="'+B+'padding:3px 5px;text-align:center;font-size:10px">✅'+qual+' / ❌'+naoC+' / —'+(tot-qual-naoC)+'</td></tr></tfoot>'+
-    '</table>'+
-    '<div style="margin-top:10px;display:flex;justify-content:space-between;font-size:9px;color:#666"><span>Gerado em: '+agora.toLocaleString('pt-BR',{timeZone:'America/Manaus'})+' por '+((S.perfil&&S.perfil.nome)||'—')+'</span><span>JTP Transportes · Operação Garagem</span></div>'+
-    '</body></html>';
-  var nomeArq='JTP_CK38_'+oc.prefixo.replace(/\./g,'')+'_'+dtFmt.replace(/\//g,'')+'_'+garaGemNome.replace(/\s/g,'_')+'.pdf';
-  await downloadPDF(html,nomeArq);
-}
-
-async function editarPessoas(ocId,atual){
-  closeSheet(true);
-  setTimeout(()=>{
-    window._qtdPessoas=parseInt(atual)||0;
-    openSheet('👷 Pessoas na OS',`
-      <div style="text-align:center;margin:8px 0 20px">
-        <div style="font-size:12px;color:var(--text3);margin-bottom:16px">Quantas pessoas estão trabalhando neste veículo?</div>
-        <div style="display:flex;align-items:center;justify-content:center;gap:24px">
-          <button onclick="ajustarPessoas(-1)" style="width:44px;height:44px;border-radius:50%;border:2px solid var(--border);background:var(--surface2);color:var(--text);font-size:22px;font-weight:700;cursor:pointer;font-family:inherit">−</button>
-          <div id="qtd-pessoas" style="font-size:48px;font-weight:900;color:var(--blue);min-width:60px;text-align:center">${parseInt(atual)||0}</div>
-          <button onclick="ajustarPessoas(1)" style="width:44px;height:44px;border-radius:50%;border:2px solid var(--border);background:var(--surface2);color:var(--text);font-size:22px;font-weight:700;cursor:pointer;font-family:inherit">＋</button>
-        </div>
-      </div>
-      <button onclick="confirmarPessoas(${JSON.stringify(ocId)})"
-        style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">✅ Confirmar</button>
-    `);
-  },200);
-}
-
-function ajustarPessoas(delta){
-  window._qtdPessoas=Math.max(0,(window._qtdPessoas||0)+delta);
-  const el=document.getElementById('qtd-pessoas');
-  if(el) el.textContent=window._qtdPessoas;
-}
-async function confirmarPessoas(ocId){
-  const qtd=window._qtdPessoas||0;
-  await sb.from('ocorrencias_22').update({manutentores:qtd}).eq('id',ocId);
-  toast('✅ Atualizado — '+qtd+' pessoa'+(qtd!==1?'s':''));
-  closeSheet(true);
-  setTimeout(()=>abrirOS(ocId),250);
-}
 
 
 async function salvarSt(ocId){
