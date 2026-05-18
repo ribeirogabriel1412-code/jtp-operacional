@@ -1500,6 +1500,8 @@ async function abrirSetor(ocId,setor){
   const tTot=itens.filter(function(i){return i.trocado||i.nao_se_aplica;}).length;
   const faseV=vTot<itens.length;
 
+  dbg('itens='+itens.length+' podeEd='+podeEd);
+
   var rows='';
   itens.forEach(function(it){
     var nsa=it.nao_se_aplica;
@@ -1507,22 +1509,21 @@ async function abrirSetor(ocId,setor){
     var corTxt=it.trocado?'var(--green)':it.verificado?'var(--text)':'var(--text3)';
     var btns='';
     if(podeEd){
-      var idQ=JSON.stringify(it.id);
-      var ocQ=JSON.stringify(ocId);
-      var stQ=JSON.stringify(setor);
+      // IMPORTANTE: usar aspas simples no onclick para não quebrar o atributo HTML
       var vonCls=it.verificado?'von':'';
       var tonCls=it.trocado?'ton':'';
       var naCls=nsa?'na':'';
       var disV=nsa?'disabled':'';
       var disT=(!it.verificado||nsa||faseV)?'disabled':'';
-      btns='<button onclick="togCk('+idQ+',\'v\','+ocQ+','+stQ+')" class="ck-b '+vonCls+'" '+disV+' style="touch-action:manipulation">V</button>'+
-           '<button onclick="togCk('+idQ+',\'t\','+ocQ+','+stQ+')" class="ck-b '+tonCls+'" '+disT+' style="touch-action:manipulation">T</button>'+
-           '<button onclick="togCk('+idQ+',\'nsa\','+ocQ+','+stQ+')" class="ck-b '+naCls+'" style="touch-action:manipulation">N/A</button>';
+      // Passa os IDs como variáveis globais temporárias para evitar aspas no onclick
+      btns="<button onclick='togCk(\""+it.id+"\",\"v\",\""+ocId+"\",\""+setor+"\")' class='ck-b "+vonCls+"' "+disV+" style='touch-action:manipulation'>V</button>"+
+           "<button onclick='togCk(\""+it.id+"\",\"t\",\""+ocId+"\",\""+setor+"\")' class='ck-b "+tonCls+"' "+disT+" style='touch-action:manipulation'>T</button>"+
+           "<button onclick='togCk(\""+it.id+"\",\"nsa\",\""+ocId+"\",\""+setor+"\")' class='ck-b "+naCls+"' style='touch-action:manipulation'>N/A</button>";
     } else {
       btns='<span style="font-size:11px;color:'+(it.trocado?'var(--green)':it.verificado?'var(--blue)':'var(--text4)')+'">'+
            (it.trocado?'T✓':it.verificado?'V✓':nsa?'N/A':'—')+'</span>';
     }
-    rows+='<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border2);opacity:'+(nsa?'.5':'1')+'">'+
+    rows+='<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border2)">'+
           '<div style="flex:1;font-size:12px;line-height:1.4;color:'+corTxt+'">'+txt+'</div>'+
           btns+
           '</div>';
@@ -1531,10 +1532,10 @@ async function abrirSetor(ocId,setor){
   var corT=tTot===itens.length?'var(--green)':'var(--amber)';
   if(shttl) shttl.textContent=(sg&&sg.ic||'')+' '+setor+' — '+(oc&&oc.prefixo||'');
   if(shbody) shbody.innerHTML=
-    '<button onclick="abrirOS('+JSON.stringify(ocId)+',\'qual\')" '+
-      'style="background:transparent;border:none;color:var(--blue);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;padding:0 0 12px 0;display:block;touch-action:manipulation">'+
-      '← Voltar'+
-    '</button>'+
+    "<button onclick='abrirOS(\""+ocId+"\",\"qual\")' "+
+      "style='background:transparent;border:none;color:var(--blue);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;padding:0 0 12px 0;display:block;touch-action:manipulation'>"+
+      "← Voltar"+
+    "</button>"+
     '<div style="background:var(--surface2);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;justify-content:space-between;font-size:12px">'+
       '<span style="color:var(--text3)">V: <b style="color:var(--blue)">'+vTot+'/'+itens.length+'</b></span>'+
       '<span style="color:var(--text3)">T: <b style="color:'+corT+'">'+tTot+'/'+itens.length+'</b></span>'+
