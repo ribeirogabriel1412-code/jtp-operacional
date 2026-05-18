@@ -7210,7 +7210,22 @@ async function gerarPDF24(gid, data, turno){
   const fechadas=ocs.filter(o=>o.status==='liberado');
   const prevExec=prevs.filter(p=>p.executada).length;
 
-  const rowsOS=ocs.map(o=>{
+  // Busca marcações do turno para o PDF (precisa vir ANTES de rowsOS para o filtro funcionar)
+  const{data:marcsPDF}=await sb.from('fech24_prev_turno').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno);
+  const marcMapPDF={}; (marcsPDF||[]).forEach(m=>marcMapPDF[m.prev_id]=m);
+  const prevsTurnoPDF=prevs.filter(p=>marcMapPDF[p.id]?.selecionado);
+
+  // IDs das OS de preventiva já marcadas na Seção 2 (para excluir da Seção 1)
+  const osIdsSec2=new Set(prevsTurnoPDF.map(p=>{
+    const planoN=(p.plano_nome||'').toLowerCase();
+    const isPes=planoN.includes('pesada')||planoN.includes('heavy')||planoN.includes('30.000')||planoN.includes('pb');
+    const isGar=planoN.includes('garantia');
+    const tipoOS=isGar?'preventiva_garantia':isPes?'preventiva_pesada':'preventiva_leve';
+    const osM=ocs.find(o=>o.prefixo===p.prefixo&&o.tipo===tipoOS);
+    return osM?.id;
+  }).filter(Boolean));
+
+  const rowsOS=ocs.filter(o=>!osIdsSec2.has(o.id)).map(o=>{
     const isFechada=o.status==='liberado';
     const hrAb=o.hora_entrada?new Date(o.hora_entrada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
     const hrFch=o.hora_liberacao?new Date(o.hora_liberacao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
@@ -7226,11 +7241,6 @@ async function gerarPDF24(gid, data, turno){
       <td style="${B}padding:3px 5px;font-size:9px;color:#666">${!isFechada?(o.justificativa_pendencia||'⚠️ Sem justificativa'):'—'}</td>
     </tr>`;
   }).join('');
-
-  // Busca marcações do turno para o PDF
-  const{data:marcsPDF}=await sb.from('fech24_prev_turno').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno);
-  const marcMapPDF={}; (marcsPDF||[]).forEach(m=>marcMapPDF[m.prev_id]=m);
-  const prevsTurnoPDF=prevs.filter(p=>marcMapPDF[p.id]?.selecionado);
 
   const rowsPrev=prevsTurnoPDF.map(p=>{
     const marc=marcMapPDF[p.id];
@@ -7299,7 +7309,7 @@ table{border-collapse:collapse;width:100%}tr:nth-child(even) td{background:#f9f9
 
 ${fech?.observacoes?`<div style="border:1px solid #333;padding:6px 8px;margin-bottom:4px;font-size:10px"><strong>📌 Passagem de Bastão:</strong> ${fech.observacoes}</div>`:''}
 
-<div class="sh">■ SEÇÃO 1 — CONTROLE DE OS (${ocs.length} OS)</div>
+<div class="sh">■ SEÇÃO 1 — CONTROLE DE OS (${ocs.length-osIdsSec2.size} OS — corretivas e prev. não marcadas)</div>
 <table>
   <thead><tr>
     <th style="${BH}padding:3px 5px">PREFIXO</th>
