@@ -1075,9 +1075,9 @@ async function telaOficina(){
     const corPct=pct>=100?'var(--green)':pct>=60?'var(--amber)':'var(--blue)';
     const pessoas=parseInt(o.manutentores)||0;
     return(
-      '<div onclick="abrirOS(''+o.id+'')" style="background:var(--surface);border:1px solid var(--border2);border-left:3px solid '+st.c+';border-radius:14px;padding:14px 16px;margin-bottom:10px;cursor:pointer">'+
+      '<div onclick="abrirOS(\''+o.id+'\')" style="background:var(--surface);border:1px solid var(--border2);border-left:3px solid '+st.c+';border-radius:14px;padding:14px 16px;margin-bottom:10px;cursor:pointer">'+
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'+
-          '<div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:900;color:var(--text)">'+o.prefixo+'</div>'+
+          '<div style="font-family:\'DM Mono\',monospace;font-size:20px;font-weight:900;color:var(--text)">'+o.prefixo+'</div>'+
           '<span style="background:'+st.c+'12;border:1px solid '+st.c+'40;color:'+st.c+';border-radius:8px;padding:3px 10px;font-size:11px;font-weight:700">'+st.l+'</span>'+
         '</div>'+
         '<div style="font-size:11px;color:var(--text3);display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">'+
@@ -1116,16 +1116,18 @@ async function abrirOS(ocId){
   const{data:oc}=await sb.from('ocorrencias_22').select('*').eq('id',ocId).single();
   if(!oc) return;
   const gid=getGid();
-  // Busca ou cria rascunho local do 3.8
   if(!window._ck38Cache) window._ck38Cache={};
-  let dadosCk=window._ck38Cache[ocId];
-  if(!dadosCk){
+  let dados=window._ck38Cache[ocId];
+  if(!dados){
     const{data:ck}=await sb.from('checklist_38').select('dados').eq('garagem_id',gid).eq('prefixo',oc.prefixo).order('criado_em',{ascending:false}).limit(1);
-    dadosCk=(ck&&ck[0]?.dados)||{};
-    window._ck38Cache[ocId]=dadosCk;
+    dados=(ck&&ck[0]&&ck[0].dados)||{};
+    window._ck38Cache[ocId]=dados;
   }
+  renderSheetOS(ocId, oc, dados);
+}
 
-  const qual=SECS38.reduce((s,sec)=>s+sec.itens.filter(it=>dadosCk[sec.sec+'_'+it.id]==='sim').length,0);
+function renderSheetOS(ocId, oc, dados){
+  const qual=SECS38.reduce((s,sec)=>s+sec.itens.filter(it=>dados[sec.sec+'_'+it.id]==='sim').length,0);
   const pct=Math.round(qual/TOTAL_38*100);
   const corPct=pct>=100?'var(--green)':pct>=60?'var(--amber)':'var(--blue)';
   const pessoas=parseInt(oc.manutentores)||0;
@@ -1133,82 +1135,76 @@ async function abrirOS(ocId){
   const podeEd=['lider_oficina','lider_pcm','assistente_pcm'].includes(cargo());
 
   // Monta seções do checklist
-  const secoesHtml=SECS38.map(sec=>{
-    const rows=sec.itens.map(it=>{
-      const key=sec.sec+'_'+it.id;
-      const val=dadosCk[key]||'';
-      const simSel=val==='sim';
-      const naoSel=val==='nao';
-      return(
-        '<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border2)">'+
-          '<div style="flex:1;font-size:12px;line-height:1.4;color:'+(simSel?'var(--green)':naoSel?'var(--red)':'var(--text)')+'">'+it.txt+'</div>'+
-          (podeEd?
-            '<button onclick="setCk38(''+ocId+'',''+key+'','sim')" style="padding:6px 12px;border-radius:7px;border:2px solid '+(simSel?'var(--green)':'var(--border)')+';background:'+(simSel?'#00C48C18':'transparent')+';color:'+(simSel?'var(--green)':'var(--text3)')+';font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">SIM</button>'+
-            '<button onclick="setCk38(''+ocId+'',''+key+'','nao')" style="padding:6px 12px;border-radius:7px;border:2px solid '+(naoSel?'var(--red)':'var(--border)')+';background:'+(naoSel?'#EF444418':'transparent')+';color:'+(naoSel?'var(--red)':'var(--text3)')+';font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">NÃO</button>'
-          :
-            '<span style="font-size:11px;font-weight:700;color:'+(simSel?'var(--green)':naoSel?'var(--red)':'var(--text4)')+'">'+(simSel?'✅ SIM':naoSel?'❌ NÃO':'—')+'</span>'
-          )+
-        '</div>'
-      );
-    }).join('');
-    const secQual=sec.itens.filter(it=>dadosCk[sec.sec+'_'+it.id]==='sim').length;
+  let secoesHtml='';
+  SECS38.forEach(function(sec){
+    const secQual=sec.itens.filter(it=>dados[sec.sec+'_'+it.id]==='sim').length;
     const secOk=secQual===sec.itens.length;
-    return(
-      '<div style="margin-bottom:14px">'+
-        '<div style="font-size:11px;font-weight:800;color:'+(secOk?'var(--green)':'var(--text3)')+';text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border2);padding-bottom:6px;margin-bottom:2px;display:flex;justify-content:space-between">'+
-          '<span>'+sec.sec+'</span>'+
-          '<span>'+(secOk?'✅':secQual+'/'+sec.itens.length)+'</span>'+
-        '</div>'+
-        rows+
-      '</div>'
-    );
-  }).join('');
+    let rows='';
+    sec.itens.forEach(function(it){
+      const key=sec.sec+'_'+it.id;
+      const val=dados[key]||'';
+      const simSel=val==='sim', naoSel=val==='nao';
+      const txtCor=simSel?'var(--green)':naoSel?'var(--red)':'var(--text)';
+      rows+=`<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border2)">
+        <div style="flex:1;font-size:12px;line-height:1.4;color:${txtCor}">${it.txt}</div>
+        ${podeEd?`
+          <button onclick="setCk38(${JSON.stringify(ocId)},${JSON.stringify(key)},'sim')"
+            style="padding:6px 12px;border-radius:7px;border:2px solid ${simSel?'var(--green)':'var(--border)'};background:${simSel?'#00C48C18':'transparent'};color:${simSel?'var(--green)':'var(--text3)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">SIM</button>
+          <button onclick="setCk38(${JSON.stringify(ocId)},${JSON.stringify(key)},'nao')"
+            style="padding:6px 12px;border-radius:7px;border:2px solid ${naoSel?'var(--red)':'var(--border)'};background:${naoSel?'#EF444418':'transparent'};color:${naoSel?'var(--red)':'var(--text3)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">NÃO</button>`
+          :`<span style="font-size:11px;font-weight:700;color:${simSel?'var(--green)':naoSel?'var(--red)':'var(--text4)'}">${simSel?'✅ SIM':naoSel?'❌ NÃO':'—'}</span>`}
+      </div>`;
+    });
+    secoesHtml+=`<div style="margin-bottom:14px">
+      <div style="font-size:11px;font-weight:800;color:${secOk?'var(--green)':'var(--text3)'};text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border2);padding-bottom:6px;margin-bottom:2px;display:flex;justify-content:space-between">
+        <span>${sec.sec}</span><span>${secOk?'✅':secQual+'/'+sec.itens.length}</span>
+      </div>${rows}</div>`;
+  });
 
-  openSheet(oc.prefixo+' — '+(oc.tipo?.replace(/_/g,' ')||'—'),
-    // Barra qualificação
-    '<div style="background:var(--surface2);border-radius:12px;padding:12px 14px;margin-bottom:12px">'+
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'+
-        '<div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Qualificação</div>'+
-        '<div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:900;color:'+corPct+'">'+qual+'/'+TOTAL_38+'</div>'+
-      '</div>'+
-      '<div style="background:var(--border);border-radius:6px;height:6px;overflow:hidden">'+
-        '<div style="height:100%;width:'+pct+'%;background:'+corPct+';border-radius:6px"></div>'+
-      '</div>'+
-    '</div>'+
+  openSheet(oc.prefixo+' — '+(oc.tipo||'').replace(/_/g,' '),`
+    <div style="background:var(--surface2);border-radius:12px;padding:12px 14px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Qualificação</div>
+        <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:900;color:${corPct}">${qual}/${TOTAL_38}</div>
+      </div>
+      <div style="background:var(--border);border-radius:6px;height:6px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${corPct};border-radius:6px"></div>
+      </div>
+    </div>
 
-    // Status + Pessoas
-    '<div style="display:flex;gap:8px;margin-bottom:14px">'+
-      '<div style="flex:1;background:var(--surface2);border-radius:10px;padding:10px;text-align:center">'+
-        '<div style="font-size:10px;color:var(--text3);font-weight:700;margin-bottom:4px">STATUS</div>'+
-        '<div style="font-size:12px;font-weight:700">'+(ST[oc.status]||oc.status)+'</div>'+
-      '</div>'+
-      '<div style="flex:1;background:'+(pessoas>0?'#3B82F618':'var(--surface2)')+';border:1px solid '+(pessoas>0?'#3B82F640':'var(--border)')+';border-radius:10px;padding:10px;text-align:center;cursor:pointer" onclick="editarPessoas(''+ocId+'','+pessoas+')">'+
-        '<div style="font-size:10px;color:var(--text3);font-weight:700;margin-bottom:4px">👷 NA OS</div>'+
-        '<div style="font-size:18px;font-weight:900;color:'+(pessoas>0?'var(--blue)':'var(--text4)')+'">'+( pessoas>0?pessoas:'—')+'</div>'+
-      '</div>'+
-    '</div>'+
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <div style="flex:1;background:var(--surface2);border-radius:10px;padding:10px;text-align:center">
+        <div style="font-size:10px;color:var(--text3);font-weight:700;margin-bottom:4px">STATUS</div>
+        <div style="font-size:12px;font-weight:700">${ST[oc.status]||oc.status}</div>
+      </div>
+      <div onclick="editarPessoas(${JSON.stringify(ocId)},${pessoas})"
+        style="flex:1;background:${pessoas>0?'#3B82F618':'var(--surface2)'};border:1px solid ${pessoas>0?'#3B82F640':'var(--border)'};border-radius:10px;padding:10px;text-align:center;cursor:pointer">
+        <div style="font-size:10px;color:var(--text3);font-weight:700;margin-bottom:4px">👷 NA OS</div>
+        <div style="font-size:18px;font-weight:900;color:${pessoas>0?'var(--blue)':'var(--text4)'}">${pessoas>0?pessoas:'—'}</div>
+      </div>
+    </div>
 
-    // Checklist 3.8
-    '<div style="max-height:50vh;overflow-y:auto;margin-bottom:12px">'+
-      secoesHtml+
-    '</div>'+
+    <div style="max-height:48vh;overflow-y:auto;margin-bottom:12px">${secoesHtml}</div>
 
-    // Botões de ação
-    (podeEd?
-      '<div style="display:flex;gap:8px;margin-bottom:10px">'+
-        '<select id="sel-st" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-size:13px;font-family:inherit;outline:none">'+
-          '<option value="em_manutencao"'+(oc.status==='em_manutencao'?' selected':'')+'>🔧 Em Manutenção</option>'+
-          '<option value="aguardando_peca"'+(oc.status==='aguardando_peca'?' selected':'')+'>📦 Ag. Peça</option>'+
-          '<option value="aguardando_aprovacao"'+(oc.status==='aguardando_aprovacao'?' selected':'')+'>⏳ Ag. Aprovação</option>'+
-          '<option value="liberado">✅ Liberado</option>'+
-        '</select>'+
-        '<button onclick="salvarSt(''+ocId+'')" style="padding:12px 16px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">OK</button>'+
-      '</div>'+
-      (podeEd?'<button onclick="salvarCk38Mobile(''+ocId+'')" style="width:100%;padding:12px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;margin-bottom:8px">💾 Salvar Checklist 3.8</button>':'')
-    :'')+
-    '<button onclick="exportar38Mobile(''+ocId+'')" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">📋 Exportar Relatório 3.8</button>'
-  );
+    ${podeEd?`
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <select id="sel-st" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+        <option value="em_manutencao" ${oc.status==='em_manutencao'?'selected':''}>🔧 Em Manutenção</option>
+        <option value="aguardando_peca" ${oc.status==='aguardando_peca'?'selected':''}>📦 Ag. Peça</option>
+        <option value="aguardando_aprovacao" ${oc.status==='aguardando_aprovacao'?'selected':''}>⏳ Ag. Aprovação</option>
+        <option value="liberado">✅ Liberado</option>
+      </select>
+      <button onclick="salvarSt(${JSON.stringify(ocId)})"
+        style="padding:12px 16px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">OK</button>
+    </div>
+    <button onclick="salvarCk38Mobile(${JSON.stringify(ocId)})"
+      style="width:100%;padding:12px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;margin-bottom:8px">💾 Salvar Checklist 3.8</button>
+    `:''}
+    <button onclick="exportar38Mobile(${JSON.stringify(ocId)})"
+      style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">📋 Exportar Relatório 3.8</button>
+  `);
 }
+
 
 function setCk38(ocId,key,val){
   if(!window._ck38Cache) window._ck38Cache={};
@@ -1313,19 +1309,21 @@ async function editarPessoas(ocId,atual){
   closeSheet(true);
   setTimeout(()=>{
     window._qtdPessoas=parseInt(atual)||0;
-    openSheet('👷 Pessoas na OS',
-      '<div style="text-align:center;margin:8px 0 20px">'+
-        '<div style="font-size:12px;color:var(--text3);margin-bottom:16px">Quantas pessoas estão trabalhando neste veículo?</div>'+
-        '<div style="display:flex;align-items:center;justify-content:center;gap:24px">'+
-          '<button onclick="ajustarPessoas(-1)" style="width:44px;height:44px;border-radius:50%;border:2px solid var(--border);background:var(--surface2);color:var(--text);font-size:22px;font-weight:700;cursor:pointer;font-family:inherit">−</button>'+
-          '<div id="qtd-pessoas" style="font-family:'DM Mono',monospace;font-size:48px;font-weight:900;color:var(--blue);min-width:60px;text-align:center">'+(parseInt(atual)||0)+'</div>'+
-          '<button onclick="ajustarPessoas(1)" style="width:44px;height:44px;border-radius:50%;border:2px solid var(--border);background:var(--surface2);color:var(--text);font-size:22px;font-weight:700;cursor:pointer;font-family:inherit">＋</button>'+
-        '</div>'+
-      '</div>'+
-      '<button onclick="confirmarPessoas(''+ocId+'')" style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">✅ Confirmar</button>'
-    );
+    openSheet('👷 Pessoas na OS',`
+      <div style="text-align:center;margin:8px 0 20px">
+        <div style="font-size:12px;color:var(--text3);margin-bottom:16px">Quantas pessoas estão trabalhando neste veículo?</div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:24px">
+          <button onclick="ajustarPessoas(-1)" style="width:44px;height:44px;border-radius:50%;border:2px solid var(--border);background:var(--surface2);color:var(--text);font-size:22px;font-weight:700;cursor:pointer;font-family:inherit">−</button>
+          <div id="qtd-pessoas" style="font-size:48px;font-weight:900;color:var(--blue);min-width:60px;text-align:center">${parseInt(atual)||0}</div>
+          <button onclick="ajustarPessoas(1)" style="width:44px;height:44px;border-radius:50%;border:2px solid var(--border);background:var(--surface2);color:var(--text);font-size:22px;font-weight:700;cursor:pointer;font-family:inherit">＋</button>
+        </div>
+      </div>
+      <button onclick="confirmarPessoas(${JSON.stringify(ocId)})"
+        style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">✅ Confirmar</button>
+    `);
   },200);
 }
+
 function ajustarPessoas(delta){
   window._qtdPessoas=Math.max(0,(window._qtdPessoas||0)+delta);
   const el=document.getElementById('qtd-pessoas');
