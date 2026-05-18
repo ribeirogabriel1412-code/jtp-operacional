@@ -1465,49 +1465,69 @@ async function salvarSt(ocId){
   closeSheet(true);toast(st==='liberado'?'✅ Liberado!':'✅ Atualizado!');telaOficina();
 }
 async function abrirSetor(ocId,setor){
-  // Atualiza o shbody diretamente — não recria o sheet (evita bug de propagação no Android)
   const shbody=document.getElementById('shbody');
   const shttl=document.getElementById('shttl');
-  if(shbody) shbody.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3)">Carregando...</div>';
+  if(shbody) shbody.innerHTML='<div style="padding:20px;text-align:center;color:#888">Carregando...</div>';
 
   const sg=SETORES_M.find(s=>s.key===setor);
-  const[{data:ckl},{data:oc}]=await Promise.all([
+  const[r1,r2]=await Promise.all([
     sb.from('checklist_liberacao').select('*').eq('ocorrencia_id',ocId).order('ordem'),
     sb.from('ocorrencias_22').select('prefixo,status').eq('id',ocId).single(),
   ]);
-  const itens=(ckl||[]).filter(i=>{const m=i.item?.match(/^\[([^\]]+)\]/);return (sg?.gr||[]).includes(m?m[1]:'GERAL');});
+  const ckl=r1.data||[];
+  const oc=r2.data;
+  const itens=ckl.filter(function(i){
+    var m=i.item&&i.item.match(/^\[([^\]]+)\]/);
+    return (sg&&sg.gr||[]).includes(m?m[1]:'GERAL');
+  });
   const podeEd=['lider_oficina','lider_pcm','assistente_pcm'].includes(cargo());
-  const vTot=itens.filter(i=>i.verificado||i.nao_se_aplica).length;
-  const tTot=itens.filter(i=>i.trocado||i.nao_se_aplica).length;
+  const vTot=itens.filter(function(i){return i.verificado||i.nao_se_aplica;}).length;
+  const tTot=itens.filter(function(i){return i.trocado||i.nao_se_aplica;}).length;
   const faseV=vTot<itens.length;
 
-  const rows=itens.map(it=>{
-    const nsa=it.nao_se_aplica;
-    const txt=(it.item||'').replace(/^\[[^\]]+\]\s*/,'');
-    return`<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border2);opacity:${nsa?'.5':'1'}">
-      <div style="flex:1;font-size:12px;line-height:1.4;color:${it.trocado?'var(--green)':it.verificado?'var(--text)':'var(--text3)'}">${txt}</div>
-      ${podeEd?`
-        <button onclick="togCk(${JSON.stringify(it.id)},'v',${JSON.stringify(ocId)},${JSON.stringify(setor)})" class="ck-b ${it.verificado?'von':''}" ${nsa?'disabled':''}>V</button>
-        <button onclick="togCk(${JSON.stringify(it.id)},'t',${JSON.stringify(ocId)},${JSON.stringify(setor)})" class="ck-b ${it.trocado?'ton':''}" ${!it.verificado||nsa||faseV?'disabled':''}>T</button>
-        <button onclick="togCk(${JSON.stringify(it.id)},'nsa',${JSON.stringify(ocId)},${JSON.stringify(setor)})" class="ck-b ${nsa?'na':''}">N/A</button>
-      `:`<span style="font-size:11px;color:${it.trocado?'var(--green)':it.verificado?'var(--blue)':'var(--text4)'}">${it.trocado?'T✓':it.verificado?'V✓':nsa?'N/A':'—'}</span>`}
-    </div>`;
-  }).join('');
+  var rows='';
+  itens.forEach(function(it){
+    var nsa=it.nao_se_aplica;
+    var txt=(it.item||'').replace(/^\[[^\]]+\]\s*/,'');
+    var corTxt=it.trocado?'var(--green)':it.verificado?'var(--text)':'var(--text3)';
+    var btns='';
+    if(podeEd){
+      var idQ=JSON.stringify(it.id);
+      var ocQ=JSON.stringify(ocId);
+      var stQ=JSON.stringify(setor);
+      var vonCls=it.verificado?'von':'';
+      var tonCls=it.trocado?'ton':'';
+      var naCls=nsa?'na':'';
+      var disV=nsa?'disabled':'';
+      var disT=(!it.verificado||nsa||faseV)?'disabled':'';
+      btns='<button onclick="togCk('+idQ+',\'v\','+ocQ+','+stQ+')" class="ck-b '+vonCls+'" '+disV+' style="touch-action:manipulation">V</button>'+
+           '<button onclick="togCk('+idQ+',\'t\','+ocQ+','+stQ+')" class="ck-b '+tonCls+'" '+disT+' style="touch-action:manipulation">T</button>'+
+           '<button onclick="togCk('+idQ+',\'nsa\','+ocQ+','+stQ+')" class="ck-b '+naCls+'" style="touch-action:manipulation">N/A</button>';
+    } else {
+      btns='<span style="font-size:11px;color:'+(it.trocado?'var(--green)':it.verificado?'var(--blue)':'var(--text4)')+'">'+
+           (it.trocado?'T✓':it.verificado?'V✓':nsa?'N/A':'—')+'</span>';
+    }
+    rows+='<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border2);opacity:'+(nsa?'.5':'1')+'">'+
+          '<div style="flex:1;font-size:12px;line-height:1.4;color:'+corTxt+'">'+txt+'</div>'+
+          btns+
+          '</div>';
+  });
 
-  if(shttl) shttl.textContent=`${sg?.ic||''} ${setor} — ${oc?.prefixo||''}`;
-  if(shbody) shbody.innerHTML=`
-    <button onclick="abrirOS(${JSON.stringify(ocId)},'qual')"
-      style="display:flex;align-items:center;gap:6px;background:transparent;border:none;color:var(--blue);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;padding:0;margin-bottom:12px">
-      ← Voltar à Qualificação
-    </button>
-    <div style="background:var(--surface2);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;justify-content:space-between;font-size:12px">
-      <span style="color:var(--text3)">V: <b style="color:var(--blue)">${vTot}/${itens.length}</b></span>
-      <span style="color:var(--text3)">T: <b style="color:${tTot===itens.length?'var(--green)':'var(--amber)'}">${tTot}/${itens.length}</b></span>
-      <span style="color:var(--text3)">${itens.length} itens</span>
-    </div>
-    <div style="max-height:65vh;overflow-y:auto">${rows}</div>
-  `;
+  var corT=tTot===itens.length?'var(--green)':'var(--amber)';
+  if(shttl) shttl.textContent=(sg&&sg.ic||'')+' '+setor+' — '+(oc&&oc.prefixo||'');
+  if(shbody) shbody.innerHTML=
+    '<button onclick="abrirOS('+JSON.stringify(ocId)+',\'qual\')" '+
+      'style="background:transparent;border:none;color:var(--blue);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;padding:0 0 12px 0;display:block;touch-action:manipulation">'+
+      '← Voltar'+
+    '</button>'+
+    '<div style="background:var(--surface2);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;justify-content:space-between;font-size:12px">'+
+      '<span style="color:var(--text3)">V: <b style="color:var(--blue)">'+vTot+'/'+itens.length+'</b></span>'+
+      '<span style="color:var(--text3)">T: <b style="color:'+corT+'">'+tTot+'/'+itens.length+'</b></span>'+
+      '<span style="color:var(--text3)">'+itens.length+' itens</span>'+
+    '</div>'+
+    '<div style="max-height:65vh;overflow-y:auto">'+rows+'</div>';
 }
+
 async function togCk(itemId,tipo,ocId,setor){
   toast('⏳ Salvando...','ok',800);
   const{data:it,error:e1}=await sb.from('checklist_liberacao').select('*').eq('id',itemId).single();
