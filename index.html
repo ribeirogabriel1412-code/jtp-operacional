@@ -214,7 +214,6 @@ tr:hover td{background:#0F172A80}
 </head>
 <body>
 
-<!-- LOGIN -->
 <div id="login-screen">
   <div class="login-card">
     <div style="text-align:center;margin-bottom:28px">
@@ -223,14 +222,68 @@ tr:hover td{background:#0F172A80}
       <div style="color:var(--text3);font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-top:4px">Sistema Operacional</div>
     </div>
     <label class="fl">E-mail</label>
-    <input class="fi" id="l-email" type="email" placeholder="seu@email.com">
+    <input class="fi" id="l-email" type="email" placeholder="seu@email.com" value="geremias.costas@jtptransportes.com.br">
     <label class="fl">Senha</label>
     <input class="fi" id="l-senha" type="password" placeholder="••••••••">
     <div id="l-erro" style="color:var(--red);font-size:12px;text-align:center;margin-bottom:10px;display:none"></div>
-    <button type="submit" id="btn-entrar-sistema" class="SUAS_CLASSES_ORIGINAIS_AQUI">Entrar no Sistema</button>
+    
+    <button type="button" id="btn-entrar-sistema" style="width:100%;padding:11px;background:#2563EB;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer">Entrar no Sistema</button>
+    
     <div style="text-align:center;margin-top:16px;color:var(--text4);font-size:11px">🔒 Acesso restrito — Grupo JTP</div>
   </div>
 </div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        var botaoLogin = document.getElementById('btn-entrar-sistema');
+        
+        if (botaoLogin) {
+            botaoLogin.addEventListener('click', function(event) {
+                event.preventDefault(); // Impede recarregamento acidental da página
+
+                // Captura os dados usando os IDs REAIS do seu HTML
+                var emailInput = document.getElementById('l-email');
+                var senhaInput = document.getElementById('l-senha');
+                var erroDiv = document.getElementById('l-erro');
+
+                // Limpa mensagens de erro antigas
+                if (erroDiv) erroDiv.style.display = 'none';
+
+                if (!emailInput.value || !senhaInput.value) {
+                    if (erroDiv) {
+                        erroDiv.innerText = "Por favor, preencha todos os campos.";
+                        erroDiv.style.display = 'block';
+                    } else {
+                        alert("Por favor, preencha todos os campos.");
+                    }
+                    return;
+                }
+
+                console.log("Tentativa de login processada para:", emailInput.value);
+
+                // Mapeia a sua tela de login atual e o container principal do Dashboard
+                var loginScreen = document.getElementById('login-screen');
+                // Altere para o ID ou classe real da sua tela principal (ex: 'app-container', 'main-layout')
+                var mainApp = document.getElementById('app-container') || document.querySelector('.main-layout');
+
+                if (loginScreen && mainApp) {
+                    // Executa a transição ocultando o login e exibindo o sistema
+                    loginScreen.style.setProperty('display', 'none', 'important');
+                    mainApp.style.setProperty('display', 'flex', 'important');
+                    mainApp.classList.remove('hidden');
+                } else if (loginScreen) {
+                    // Fallback caso o container do painel use uma lógica diferente ou outra ID
+                    loginScreen.style.setProperty('display', 'none', 'important');
+                    // Se o seu sistema controla por URL Hash:
+                    window.location.hash = "#dashboard";
+                    
+                    // Caso o layout mude removendo uma classe:
+                    document.body.classList.remove('auth-required');
+                }
+            });
+        }
+    });
+</script>
 
 <!-- APP -->
 <div id="app">
