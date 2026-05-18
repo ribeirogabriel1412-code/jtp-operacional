@@ -5445,6 +5445,97 @@ async function enviarResumoWpp(){
 // PAINEL PCM — Reformulado
 // Fluxo: Orçamento → Abrir OS → Acompanhar → Fechar OS
 // ══════════════════════════════════════════════════════════════
+// ── Funções de salvar — módulos PCM no site ─────────────────────────────
+
+async function salvarCk37Site(){
+  const gid=getGid();
+  const turnoId=S._ck37Turno||'manha';
+  const pontos=document.getElementById('ck37-pontos-site')?.value||'';
+  const hora=document.getElementById('ck37-hora-site')?.value||'';
+  S._ck37Pontos=pontos; S._ck37Hora=hora;
+  const SECOES_37_IDS=['pcm_rodada1','pcm_rodada2','almoxarifado','patio_op'];
+  const ITENS_COUNT={'pcm_rodada1':5,'pcm_rodada2':7,'almoxarifado':2,'patio_op':7};
+  const totalOk=Object.values(S._ck37Dados||{}).filter(v=>v==='ok').length;
+  const totalNok=Object.values(S._ck37Dados||{}).filter(v=>v==='nok').length;
+  const{error}=await sb.from('checklist_37').upsert({
+    garagem_id:gid, data:hoje(), turno:turnoId,
+    dados:S._ck37Dados||{}, pontos_criticos:pontos,
+    hora_fechamento:hora, supervisor:S.perfil?.nome||null,
+    total_ok:totalOk, total_nok:totalNok,
+    criado_por:S.perfil?.nome||null, criado_em:new Date().toISOString(),
+  },{onConflict:'garagem_id,data,turno'});
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('✅ Checklist 3.7 salvo!');
+  S._ck37Dados={}; S._ck37Pontos=''; S._ck37Hora='';
+  renderFerrPCM('ck37');
+}
+
+async function salvarCk38Site(){
+  const gid=getGid();
+  const prefixo=document.getElementById('ck38-pref-site')?.value?.trim()||S._ck38Pref;
+  const hora=document.getElementById('ck38-hora-site')?.value||'';
+  if(!prefixo){toast('Informe o prefixo do veículo','err');return;}
+  const totalItens=18; // total de itens do 3.8
+  const totalVerif=Object.values(S._ck38Dados||{}).filter(v=>v!=='').length;
+  const{error}=await sb.from('checklist_38').insert({
+    garagem_id:gid, prefixo, data:hoje(), hora_liberacao:hora,
+    dados:S._ck38Dados||{}, total_itens:totalItens, total_verificados:totalVerif,
+    criado_por:S.perfil?.nome||null, criado_em:new Date().toISOString(),
+  });
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('✅ Veículo '+prefixo+' liberado!');
+  S._ck38Dados={}; S._ck38Pref='';
+  renderFerrPCM('ck38');
+}
+
+async function salvarReqCompraSite(){
+  const gid=getGid();
+  const peca=document.getElementById('req-peca-site')?.value?.trim();
+  const prefixo=document.getElementById('req-pref-site')?.value?.trim();
+  const qtd=parseInt(document.getElementById('req-qtd-site')?.value)||1;
+  const valor=parseFloat(document.getElementById('req-valor-site')?.value)||0;
+  const just=document.getElementById('req-just-site')?.value?.trim();
+  if(!peca){toast('Informe a descrição da peça','err');return;}
+  const{error}=await sb.from('requisicoes_compra').insert({
+    garagem_id:gid, peca, prefixo:prefixo||null, quantidade:qtd,
+    valor_estimado:valor||null, justificativa:just||null,
+    data:hoje(), status:'pendente',
+    criado_por:S.perfil?.nome||null, criado_em:new Date().toISOString(),
+  });
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('✅ Solicitação registrada!');
+  renderFerrPCM('req_compra');
+}
+
+async function atualizarReqCompra(id, status){
+  const{error}=await sb.from('requisicoes_compra').update({
+    status, atualizado_por:S.perfil?.nome||null, atualizado_em:new Date().toISOString()
+  }).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast(status==='aprovado'?'✅ Aprovado!':'❌ Reprovado');
+  renderFerrPCM('req_compra');
+}
+
+async function salvarMovPneuSite(){
+  const gid=getGid();
+  const prefixo=document.getElementById('pneu-pref-site')?.value?.trim();
+  const posicao=document.getElementById('pneu-pos-site')?.value?.trim();
+  const tipo=S._pneuTipoSite;
+  const serie=document.getElementById('pneu-serie-site')?.value?.trim();
+  const obs=document.getElementById('pneu-obs-site')?.value?.trim();
+  if(!prefixo||!tipo){toast('Informe o prefixo e selecione o tipo','err');return;}
+  const{error}=await sb.from('movimentacao_pneu').insert({
+    garagem_id:gid, prefixo, posicao:posicao||null, tipo,
+    numero_serie:serie||null, observacao:obs||null,
+    data:hoje(), criado_por:S.perfil?.nome||null,
+    criado_em:new Date().toISOString(),
+  });
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('✅ Movimentação registrada!');
+  S._pneuTipoSite=null;
+  renderFerrPCM('mov_pneu');
+}
+
 async function renderFerrPCM(aba='painel'){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
   const gid=getGid();
@@ -5454,10 +5545,422 @@ async function renderFerrPCM(aba='painel'){
   const tabs=`<div class="filtros">
     <button class="filtro-btn${aba==='painel'?' active':''}" onclick="renderFerrPCM('painel')">📊 Painel</button>
     <button class="filtro-btn${aba==='resumo'?' active':''}" onclick="renderFerrPCM('resumo')">📋 Resumo do Turno</button>
+    <button class="filtro-btn${aba==='ck37'?' active':''}" onclick="renderFerrPCM('ck37')">✅ 3.7 Supervisão</button>
+    <button class="filtro-btn${aba==='ck38'?' active':''}" onclick="renderFerrPCM('ck38')">🚌 3.8 Liberação</button>
+    <button class="filtro-btn${aba==='req_compra'?' active':''}" onclick="renderFerrPCM('req_compra')">🛒 Req. Compra</button>
+    <button class="filtro-btn${aba==='mov_pneu'?' active':''}" onclick="renderFerrPCM('mov_pneu')">⚙️ Pneus</button>
     <button class="filtro-btn${aba==='historico'?' active':''}" onclick="renderFerrPCM('historico')">🗂️ Histórico</button>
   </div>`;
 
   setMain(`<div class="loading"><div class="spinner"></div></div>`);
+
+  // ── ABA 3.7 SUPERVISÃO ──────────────────────────────────────────────────
+  if(aba==='ck37'){
+    const TURNOS_SITE=[
+      {id:'manha',label:'☀️ Manhã',ini:'05:00',fim:'13:20'},
+      {id:'tarde',label:'🌤️ Tarde',ini:'13:00',fim:'20:20'},
+      {id:'noite',label:'🌙 Noite',ini:'20:00',fim:'04:20'},
+    ];
+    const turnoId=S._ck37Turno||'manha';
+    const turnoObj=TURNOS_SITE.find(t=>t.id===turnoId)||TURNOS_SITE[0];
+
+    // Buscar registros do dia
+    const{data:regs37}=await sb.from('checklist_37')
+      .select('*').eq('garagem_id',gid).eq('data',data)
+      .order('criado_em',{ascending:false});
+
+    const SECOES_37=[
+      {id:'pcm_rodada1',label:'🔵 PCM — Rodada 1',cor:'#3B82F6',itens:[
+        {id:'os_abertas',     txt:'Todas as OS do turno foram abertas?'},
+        {id:'os_fechadas',    txt:'Todas as OS foram fechadas corretamente no Praxio?'},
+        {id:'distrib_dem',    txt:'A distribuição de demandas para o turno foi realizada?'},
+        {id:'prev_organizada',txt:'Manutenção está Organizada SS?'},
+        {id:'carros_trab',    txt:'Os carros para Preventiva estão alocados para trabalho?'},
+      ]},
+      {id:'pcm_rodada2',label:'🟢 PCM — Rodada 2',cor:'#22C55E',itens:[
+        {id:'veic_criticos',  txt:'Veículos críticos foram comunicados ao próximo turno?'},
+        {id:'reprogramacao',  txt:'Foi realizada reprogramação nos veículos que não realizaram preventiva?'},
+        {id:'mov_pneus_ok',   txt:'Movimentações de pneus foram lançadas no Praxio?'},
+        {id:'fech_relatorio', txt:'Foi realizado o fechamento do relatório de inspeção de abastecimento?'},
+        {id:'inventario',     txt:'Inventário rotativo do turno foi realizado e desvios justificados?'},
+        {id:'nfs_baixadas',   txt:'NFs do turno foram lançadas corretamente no SAP?'},
+        {id:'itens_entregues',txt:'Todos os itens entregues no turno foram baixados no SAP?'},
+      ]},
+      {id:'almoxarifado',label:'📦 Almoxarifado',cor:'#F59E0B',itens:[
+        {id:'garantia_ok',    txt:'Processo GARANTIA está em dia (peças identificadas e com fluxo)?'},
+        {id:'diesel_ctrl',    txt:'Foi realizado entrada e saída de Diesel — SAP?'},
+      ]},
+      {id:'patio_op',label:'🚌 Pátio / Operação',cor:'#8B5CF6',itens:[
+        {id:'prog_soltura',   txt:'A programação de soltura do turno foi cumprida?'},
+        {id:'veic_escalados', txt:'Todos os veículos escalados para a próxima soltura foram recolhidos?'},
+        {id:'cl_saida',       txt:'Checklist de saída dos veículos liberados foi realizado?'},
+        {id:'cl_entrada',     txt:'Checklist de entrada dos veículos recolhidos foi realizado?'},
+        {id:'meta_lavagem',   txt:'Meta de lavagem ≥ 60% do planejado foi atingida?'},
+        {id:'gargalos',       txt:'Gargalos no abastecimento/manobra foram resolvidos?'},
+        {id:'lavados',        txt:'Todos os veículos escalados para lavagem foram lavados?'},
+      ]},
+    ];
+
+    if(!S._ck37Dados) S._ck37Dados={};
+
+    function card37Site(secId, item){
+      const val=S._ck37Dados[secId+'_'+item.id]||'';
+      const okSel=val==='ok',nokSel=val==='nok',naSel=val==='na';
+      const borda=nokSel?'var(--red)':okSel?'var(--green)':'var(--border2)';
+      return`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surface);border:1px solid ${borda};border-radius:10px;margin-bottom:6px">
+        <span style="font-size:13px;color:var(--text);flex:1;margin-right:16px">${item.txt}</span>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button onclick="S._ck37Dados['${secId}_${item.id}']='ok';renderFerrPCM('ck37')"
+            style="padding:6px 14px;border-radius:7px;border:2px solid ${okSel?'var(--green)':'var(--border)'};background:${okSel?'#00C48C18':'transparent'};color:${okSel?'var(--green)':'var(--text3)'};font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">✅ OK</button>
+          <button onclick="S._ck37Dados['${secId}_${item.id}']='nok';renderFerrPCM('ck37')"
+            style="padding:6px 14px;border-radius:7px;border:2px solid ${nokSel?'var(--red)':'var(--border)'};background:${nokSel?'#EF444418':'transparent'};color:${nokSel?'var(--red)':'var(--text3)'};font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">❌ NOK</button>
+          <button onclick="S._ck37Dados['${secId}_${item.id}']='na';renderFerrPCM('ck37')"
+            style="padding:6px 14px;border-radius:7px;border:2px solid ${naSel?'var(--amber)':'var(--border)'};background:${naSel?'#F59E0B18':'transparent'};color:${naSel?'var(--amber)':'var(--text3)'};font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">N/A</button>
+        </div>
+      </div>`;
+    }
+
+    const totalItens=SECOES_37.reduce((s,sec)=>s+sec.itens.length,0);
+    const preenchidos=Object.values(S._ck37Dados).filter(v=>v!=='').length;
+    const noksCk37=Object.values(S._ck37Dados).filter(v=>v==='nok').length;
+    const pct=Math.round(preenchidos/totalItens*100);
+
+    const regsHTML=(regs37||[]).map(r=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface2);border-radius:8px;margin-bottom:4px">
+        <div style="font-size:12px"><strong>${r.turno}</strong> · ${r.criado_por||'—'} · ${new Date(r.criado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>
+        <div style="font-size:11px;color:var(--text3)">✅ ${r.total_ok||0} · ❌ ${r.total_nok||0} · Fech. ${r.hora_fechamento||'—'}</div>
+      </div>`).join('');
+
+    setMain(`${back}${tabs}
+      <div style="display:grid;grid-template-columns:1fr 300px;gap:16px;align-items:start">
+        <!-- Formulário -->
+        <div>
+          ${secTitle('✅','Checklist 3.7 — Supervisão de Turno')}
+          <!-- Seletor de turno -->
+          <div style="display:flex;gap:8px;margin-bottom:16px">
+            ${TURNOS_SITE.map(t=>`<button onclick="S._ck37Turno='${t.id}';S._ck37Dados={};renderFerrPCM('ck37')"
+              style="padding:8px 16px;border-radius:8px;border:2px solid ${t.id===turnoId?'var(--blue)':'var(--border)'};background:${t.id===turnoId?'#2563EB18':'transparent'};color:${t.id===turnoId?'var(--blue)':'var(--text3)'};font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
+              ${t.label} <span style="font-size:11px;opacity:0.7">${t.ini}–${t.fim}</span>
+            </button>`).join('')}
+          </div>
+          <!-- Progresso -->
+          <div style="background:var(--border);border-radius:99px;height:8px;overflow:hidden;margin-bottom:16px">
+            <div style="height:100%;width:${pct}%;background:${noksCk37>0?'var(--red)':pct===100?'var(--green)':'var(--blue)'};border-radius:99px;transition:width .3s"></div>
+          </div>
+          ${SECOES_37.map(sec=>`
+            <div style="font-size:11px;font-weight:800;color:${sec.cor};text-transform:uppercase;letter-spacing:1px;padding:8px 12px;background:${sec.cor}10;border-radius:8px;border-left:3px solid ${sec.cor};margin-bottom:10px;margin-top:16px">${sec.label}</div>
+            ${sec.itens.map(it=>card37Site(sec.id,it)).join('')}
+          `).join('')}
+          <!-- Pontos críticos + hora fechamento -->
+          <div style="display:grid;grid-template-columns:1fr 200px;gap:12px;margin-top:16px">
+            <div>
+              <label class="campo-label">⚠️ Pontos Críticos — Próximo Turno</label>
+              <textarea id="ck37-pontos-site" rows="3" placeholder="Pendências e alertas para o próximo turno..."
+                style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;resize:none;box-sizing:border-box">${S._ck37Pontos||''}</textarea>
+            </div>
+            <div>
+              <label class="campo-label">🕐 Hora Fechamento</label>
+              <input type="time" id="ck37-hora-site" value="${S._ck37Hora||''}"
+                style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;color:var(--text);font-size:15px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+            </div>
+          </div>
+          <button onclick="salvarCk37Site()" style="margin-top:12px;padding:12px 32px;border-radius:10px;border:none;background:${pct===100?'var(--green)':noksCk37>0?'var(--red)':'var(--blue)'};color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
+            ${pct===100?'✅ Finalizar Turno':noksCk37>0?'⚠️ Salvar com '+noksCk37+' NOK':'💾 Salvar ('+pct+'%)'}
+          </button>
+        </div>
+        <!-- Painel lateral — registros do dia -->
+        <div>
+          ${secTitle('📋','Registros de Hoje')}
+          ${regsHTML||'<div class="empty">Nenhum registro hoje</div>'}
+        </div>
+      </div>
+    `);
+    return;
+  }
+
+  // ── ABA 3.8 LIBERAÇÃO DE VEÍCULO ────────────────────────────────────────
+  if(aba==='ck38'){
+    const{data:libs38}=await sb.from('checklist_38')
+      .select('*').eq('garagem_id',gid).eq('data',data)
+      .order('criado_em',{ascending:false});
+
+    const SECS38=[
+      {sec:'Freio Dianteiro / Traseiro',itens:[
+        {id:'catraca',txt:'Freio com catracas reguladas?'},
+        {id:'cuicas',txt:'Cuicas sem vazamento?'},
+        {id:'flexiveis',txt:'Flexíveis sem vazamento?'},
+        {id:'lonas',txt:'Lonas em bom estado?'},
+      ]},
+      {sec:'Válvulas',itens:[
+        {id:'v_apu',txt:'Válvula APU sem vazamento?'},
+        {id:'v_rele',txt:'Válvula Relé sem vazamento?'},
+        {id:'v_6v',txt:'Válvula 6 Vias sem vazamento?'},
+        {id:'v_abs',txt:'Válvula ABS sem vazamento?'},
+        {id:'v_desc',txt:'Válvula Descarga Rápida sem vazamento?'},
+      ]},
+      {sec:'Correias',itens:[
+        {id:'c_mot',txt:'Correia do motor sem desgaste?'},
+        {id:'c_alt',txt:'Correia do alternador sem desgaste?'},
+        {id:'c_ac',txt:'Correia do A/C sem desgaste?'},
+      ]},
+      {sec:'A/C e Lubrificantes',itens:[
+        {id:'ac_gel',txt:'Ar condicionado gelando?'},
+        {id:'oleo_m',txt:'Nível de óleo do motor correto?'},
+        {id:'oleo_h',txt:'Nível de óleo hidráulico correto?'},
+        {id:'aditivo',txt:'Nível de aditivo correto?'},
+      ]},
+      {sec:'Iluminação / Pneus',itens:[
+        {id:'farois',txt:'Todos os faróis funcionando?'},
+        {id:'setas',txt:'Todas as setas funcionando?'},
+        {id:'vigias',txt:'Todos os vigias funcionando?'},
+        {id:'rodas',txt:'Rodas apertadas com porcas corretas?'},
+        {id:'pneus',txt:'Pneus calibrados?'},
+      ]},
+      {sec:'Motor / Suspensão',itens:[
+        {id:'vaz_ag',txt:'Motor sem vazamento de água?'},
+        {id:'vaz_ol',txt:'Motor sem vazamento de óleo?'},
+        {id:'vaz_ar',txt:'Motor sem vazamento de ar?'},
+        {id:'vaz_di',txt:'Motor sem vazamento diesel?'},
+        {id:'mola',txt:'Sem mola quebrada?'},
+        {id:'amort',txt:'Sem amortecedor quebrado?'},
+      ]},
+    ];
+
+    if(!S._ck38Dados) S._ck38Dados={};
+    if(!S._ck38Pref) S._ck38Pref='';
+
+    function card38Site(secId, item){
+      const val=S._ck38Dados[secId+'_'+item.id]||'';
+      const simSel=val==='sim',naoSel=val==='nao';
+      return`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface);border:1px solid var(--border2);border-radius:8px;margin-bottom:4px">
+        <span style="font-size:12px;color:var(--text);flex:1">${item.txt}</span>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button onclick="S._ck38Dados['${secId}_${item.id}']='sim';renderFerrPCM('ck38')"
+            style="padding:5px 12px;border-radius:6px;border:2px solid ${simSel?'var(--green)':'var(--border)'};background:${simSel?'#00C48C18':'transparent'};color:${simSel?'var(--green)':'var(--text3)'};font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">SIM</button>
+          <button onclick="S._ck38Dados['${secId}_${item.id}']='nao';renderFerrPCM('ck38')"
+            style="padding:5px 12px;border-radius:6px;border:2px solid ${naoSel?'var(--red)':'var(--border)'};background:${naoSel?'#EF444418':'transparent'};color:${naoSel?'var(--red)':'var(--text3)'};font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">NÃO</button>
+        </div>
+      </div>`;
+    }
+
+    const totalItens38=SECS38.reduce((s,sec)=>s+sec.itens.length,0);
+    const preench38=Object.values(S._ck38Dados).filter(v=>v!=='').length;
+    const pct38=Math.round(preench38/totalItens38*100);
+
+    setMain(`${back}${tabs}
+      <div style="display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start">
+        <div>
+          ${secTitle('🚌','Checklist 3.8 — Liberação de Veículo')}
+          <div style="display:grid;grid-template-columns:160px 160px 1fr;gap:10px;margin-bottom:16px">
+            <div>
+              <label class="campo-label">🚌 Prefixo</label>
+              <input type="text" id="ck38-pref-site" placeholder="02.250" value="${S._ck38Pref}"
+                oninput="S._ck38Pref=this.value"
+                style="width:100%;background:var(--surface);border:2px solid var(--blue);border-radius:8px;padding:10px;color:var(--text);font-size:16px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box;text-align:center;font-weight:800">
+            </div>
+            <div>
+              <label class="campo-label">🕐 Hora Liberação</label>
+              <input type="time" id="ck38-hora-site"
+                style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:14px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+            </div>
+            <div style="display:flex;align-items:flex-end">
+              <div style="background:var(--border);border-radius:99px;height:8px;overflow:hidden;flex:1">
+                <div style="height:100%;width:${pct38}%;background:${pct38===100?'var(--green)':'var(--blue)'};border-radius:99px"></div>
+              </div>
+              <span style="font-size:12px;font-weight:700;color:var(--text3);margin-left:8px;flex-shrink:0">${pct38}%</span>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px">
+            ${SECS38.map(sec=>`<div>
+              <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;border-bottom:1px solid var(--border2);padding-bottom:6px;margin-bottom:8px">${sec.sec}</div>
+              ${sec.itens.map(it=>card38Site(sec.sec.replace(/ /g,'_'),it)).join('')}
+            </div>`).join('')}
+          </div>
+          <button onclick="salvarCk38Site()" style="margin-top:16px;padding:12px 32px;border-radius:10px;border:none;background:${pct38===100?'var(--green)':'var(--blue)'};color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
+            ${pct38===100?'✅ Liberar Veículo':'💾 Salvar ('+pct38+'%)'}
+          </button>
+        </div>
+        <!-- Liberações do dia -->
+        <div>
+          ${secTitle('📋','Liberações de Hoje')}
+          ${(libs38||[]).length?libs38.map(l=>`
+            <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:6px">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <span style="font-family:'DM Mono',monospace;font-size:14px;font-weight:800;color:var(--blue)">${l.prefixo}</span>
+                <span style="font-size:12px;color:var(--green);font-weight:700">🕐 ${l.hora_liberacao||'—'}</span>
+              </div>
+              <div style="font-size:11px;color:var(--text3);margin-top:4px">${l.criado_por||'—'} · ${l.total_verificados||0}/${l.total_itens||0} itens</div>
+            </div>
+          `).join(''):'<div class="empty">Nenhuma liberação hoje</div>'}
+        </div>
+      </div>
+    `);
+    return;
+  }
+
+  // ── ABA REQUISIÇÃO DE COMPRA ─────────────────────────────────────────────
+  if(aba==='req_compra'){
+    const{data:reqs}=await sb.from('requisicoes_compra')
+      .select('*').eq('garagem_id',gid).eq('data',data)
+      .order('criado_em',{ascending:false});
+
+    const totalVal=(reqs||[]).reduce((s,r)=>s+parseFloat(r.valor_estimado||0),0);
+    const pendentes=(reqs||[]).filter(r=>r.status==='pendente').length;
+
+    setMain(`${back}${tabs}
+      <div style="display:grid;grid-template-columns:420px 1fr;gap:16px;align-items:start">
+        <!-- Formulário -->
+        <div>
+          ${secTitle('🛒','Nova Requisição de Compra')}
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+              <div>
+                <label class="campo-label">🚌 Prefixo / OS</label>
+                <input type="text" id="req-pref-site" placeholder="02.250"
+                  style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:14px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+              </div>
+              <div>
+                <label class="campo-label">🔢 Quantidade</label>
+                <input type="number" id="req-qtd-site" value="1" min="1"
+                  style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:14px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+              </div>
+            </div>
+            <div style="margin-bottom:10px">
+              <label class="campo-label">📦 Descrição da Peça</label>
+              <input type="text" id="req-peca-site" placeholder="Ex: Filtro de óleo motor"
+                style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+              <div>
+                <label class="campo-label">💰 Valor Estimado (R$)</label>
+                <input type="number" id="req-valor-site" placeholder="0,00" step="0.01"
+                  style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:14px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+              </div>
+              <div>
+                <label class="campo-label">📝 Justificativa</label>
+                <input type="text" id="req-just-site" placeholder="Sem estoque"
+                  style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+              </div>
+            </div>
+            <button onclick="salvarReqCompraSite()" style="width:100%;padding:12px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
+              ➕ Adicionar Solicitação
+            </button>
+          </div>
+        </div>
+        <!-- Lista -->
+        <div>
+          ${secTitle('📋','Solicitações de Hoje',`<div style="font-size:12px;color:var(--text3)">${pendentes} pendentes · R$ ${totalVal.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`)}
+          ${(reqs||[]).length?`<div class="tbl-wrap"><table style="width:100%;border-collapse:collapse">
+            <thead><tr style="background:var(--surface2)">
+              <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3)">Prefixo</th>
+              <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3)">Peça</th>
+              <th style="padding:8px 12px;text-align:center;font-size:11px;color:var(--text3)">Qtd</th>
+              <th style="padding:8px 12px;text-align:right;font-size:11px;color:var(--text3)">Valor Est.</th>
+              <th style="padding:8px 12px;text-align:center;font-size:11px;color:var(--text3)">Status</th>
+              <th style="padding:8px 12px;text-align:center;font-size:11px;color:var(--text3)">Ação</th>
+            </tr></thead>
+            <tbody>${(reqs||[]).map(r=>`<tr style="border-bottom:1px solid var(--border2)">
+              <td style="padding:8px 12px;font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${r.prefixo||'—'}</td>
+              <td style="padding:8px 12px;font-size:12px">${r.peca}</td>
+              <td style="padding:8px 12px;text-align:center;font-size:12px">${r.quantidade}</td>
+              <td style="padding:8px 12px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;color:var(--amber)">${r.valor_estimado?'R$ '+parseFloat(r.valor_estimado).toFixed(2):'—'}</td>
+              <td style="padding:8px 12px;text-align:center">
+                <span style="font-size:11px;padding:2px 8px;border-radius:5px;font-weight:700;background:${r.status==='aprovado'?'#00C48C20':r.status==='reprovado'?'#EF444420':'#F59E0B20'};color:${r.status==='aprovado'?'var(--green)':r.status==='reprovado'?'var(--red)':'var(--amber)'}">
+                  ${r.status==='aprovado'?'✅ Aprovado':r.status==='reprovado'?'❌ Reprovado':'⏳ Pendente'}
+                </span>
+              </td>
+              <td style="padding:8px 12px;text-align:center">
+                ${r.status==='pendente'?`
+                  <button onclick="atualizarReqCompra('${r.id}','aprovado')" style="padding:4px 10px;border-radius:6px;border:1px solid var(--green);background:transparent;color:var(--green);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;margin-right:4px">✅</button>
+                  <button onclick="atualizarReqCompra('${r.id}','reprovado')" style="padding:4px 10px;border-radius:6px;border:1px solid var(--red);background:transparent;color:var(--red);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">❌</button>
+                `:'—'}
+              </td>
+            </tr>`).join('')}</tbody>
+          </table></div>`:'<div class="empty">Nenhuma solicitação hoje</div>'}
+        </div>
+      </div>
+    `);
+    return;
+  }
+
+  // ── ABA MOVIMENTAÇÃO DE PNEU ─────────────────────────────────────────────
+  if(aba==='mov_pneu'){
+    const{data:movs}=await sb.from('movimentacao_pneu')
+      .select('*').eq('garagem_id',gid).eq('data',data)
+      .order('criado_em',{ascending:false});
+
+    setMain(`${back}${tabs}
+      <div style="display:grid;grid-template-columns:380px 1fr;gap:16px;align-items:start">
+        <!-- Formulário -->
+        <div>
+          ${secTitle('⚙️','Registrar Movimentação de Pneu')}
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+              <div>
+                <label class="campo-label">🚌 Prefixo</label>
+                <input type="text" id="pneu-pref-site" placeholder="02.250"
+                  style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:14px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+              </div>
+              <div>
+                <label class="campo-label">📍 Posição</label>
+                <input type="text" id="pneu-pos-site" placeholder="Ex: Dianteiro D"
+                  style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+              </div>
+            </div>
+            <div style="margin-bottom:10px">
+              <label class="campo-label">🔄 Tipo de Movimentação</label>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+                ${['rodizio','troca','sucata','recapagem'].map(t=>`
+                  <button onclick="S._pneuTipoSite='${t}';document.querySelectorAll('.btn-pneu-site').forEach(b=>{b.style.borderColor='var(--border)';b.style.background='transparent';b.style.color='var(--text3)'});this.style.borderColor='var(--blue)';this.style.background='#2563EB18';this.style.color='var(--blue)'"
+                    class="btn-pneu-site"
+                    style="padding:8px;border-radius:8px;border:2px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-transform:capitalize">
+                    ${t==='rodizio'?'🔄':t==='troca'?'🔧':t==='sucata'?'🗑️':'♻️'} ${t}
+                  </button>`).join('')}
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+              <div>
+                <label class="campo-label">🔢 Nº Fogo / Série</label>
+                <input type="text" id="pneu-serie-site" placeholder="Número do pneu"
+                  style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+              </div>
+              <div>
+                <label class="campo-label">📝 Observação</label>
+                <input type="text" id="pneu-obs-site" placeholder="Detalhes da movimentação"
+                  style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+              </div>
+            </div>
+            <button onclick="salvarMovPneuSite()" style="width:100%;padding:12px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
+              ➕ Registrar Movimentação
+            </button>
+          </div>
+        </div>
+        <!-- Lista -->
+        <div>
+          ${secTitle('📋','Movimentações de Hoje',`<span style="font-size:12px;color:var(--text3)">${(movs||[]).length} registros</span>`)}
+          ${(movs||[]).length?`<div class="tbl-wrap"><table style="width:100%;border-collapse:collapse">
+            <thead><tr style="background:var(--surface2)">
+              <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3)">Prefixo</th>
+              <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3)">Tipo</th>
+              <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3)">Posição</th>
+              <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3)">Nº Série</th>
+              <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3)">Observação</th>
+              <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3)">Por</th>
+            </tr></thead>
+            <tbody>${(movs||[]).map(m=>`<tr style="border-bottom:1px solid var(--border2)">
+              <td style="padding:8px 12px;font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${m.prefixo}</td>
+              <td style="padding:8px 12px;font-size:12px;font-weight:700;color:var(--amber);text-transform:capitalize">${m.tipo||'—'}</td>
+              <td style="padding:8px 12px;font-size:12px;color:var(--text3)">${m.posicao||'—'}</td>
+              <td style="padding:8px 12px;font-family:'DM Mono',monospace;font-size:11px">${m.numero_serie||'—'}</td>
+              <td style="padding:8px 12px;font-size:11px;color:var(--text3)">${m.observacao||'—'}</td>
+              <td style="padding:8px 12px;font-size:11px;color:var(--text3)">${m.criado_por||'—'}</td>
+            </tr>`).join('')}</tbody>
+          </table></div>`:'<div class="empty">Nenhuma movimentação hoje</div>'}
+        </div>
+      </div>
+    `);
+    return;
+  }
 
   // ── ABA HISTÓRICO ─────────────────────────────────────────
   if(aba==='historico'){
