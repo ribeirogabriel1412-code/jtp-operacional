@@ -6009,9 +6009,9 @@ async function renderFerrPCM(aba='painel'){
     <button class="filtro-btn${aba==='resumo'?' active':''}" onclick="renderFerrPCM('resumo')">📋 Resumo do Turno</button>
     <button class="filtro-btn${aba==='ck37'?' active':''}" onclick="renderFerrPCM('ck37')">✅ 3.7 Supervisão</button>
     <button class="filtro-btn${aba==='ck38'?' active':''}" onclick="renderFerrPCM('ck38')">🚌 3.8 Liberação</button>
-    <button class="filtro-btn${aba==='req_compra'?' active':''}" onclick="renderFerrPCM('req_compra')">🛒 Req. Compra</button>
     <button class="filtro-btn${aba==='mov_pneu'?' active':''}" onclick="renderFerrPCM('mov_pneu')">⚙️ Pneus</button>
     <button class="filtro-btn${aba==='fech24'?' active':''}" onclick="renderFerrPCM('fech24')">📋 2.4 Fechamento</button>
+    <button class="filtro-btn${aba==='custo_turno'?' active':''}" onclick="renderFerrPCM('custo_turno')">💰 Custo do Turno</button>
     <button class="filtro-btn${aba==='historico'?' active':''}" onclick="renderFerrPCM('historico')">🗂️ Histórico</button>
   </div>`;
 
@@ -6430,6 +6430,11 @@ async function renderFerrPCM(aba='painel'){
     return await renderFech24(gid, back, tabs);
   }
 
+  if(aba==='custo_turno'){
+    abrirFechamentoCustoTurno();
+    return;
+  }
+
   if(aba==='historico'){
     const{data:hist}=await sb.from('ocorrencias_22').select('*')
       .eq('garagem_id',gid).eq('status','liberado')
@@ -6760,13 +6765,8 @@ async function renderFerrPCM(aba='painel'){
         <button onclick="abrirNovaOcorrencia()" class="btn-add">+ Nova OS</button>
       </div>
     </div>
-    <!-- BARRA DE RELATÓRIOS PCM — bem visível -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
-      <button onclick="abrirFechamentoPCM()" style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px 16px;border-radius:12px;border:1px solid #3B82F640;background:#3B82F610;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:left">
-        <span style="font-size:18px">📋</span>
-        <span style="font-size:13px;font-weight:800;color:var(--blue)">Fechamento 2.4</span>
-        <span style="font-size:11px;color:var(--text3)">Gerar relatório de turno PCM</span>
-      </button>
+    <!-- BARRA DE RELATÓRIOS PCM -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
       <button onclick="abrirFechamentoCustoTurno()" style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px 16px;border-radius:12px;border:1px solid #F59E0B40;background:#F59E0B10;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:left">
         <span style="font-size:18px">💰</span>
         <span style="font-size:13px;font-weight:800;color:var(--amber)">Custo do Turno</span>
