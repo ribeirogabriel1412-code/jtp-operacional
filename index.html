@@ -899,7 +899,7 @@ function _sapUpdRender(){
         '<span style="font-family:monospace;font-size:13px;font-weight:700;min-width:20px;text-align:center">'+it.qtd+'</span>'+
         '<button data-action="upd-qtd" data-cod="'+it.cod+'" data-delta="1" style="width:22px;height:22px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-size:14px">+</button>'+
       '</div>'+
-      '<span style="font-family:monospace;font-size:13px;font-weight:700;color:var(--green);min-width:80px;text-align:right">R$\u00a0'+sub.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</span>'+
+      '<span style="font-family:monospace;font-size:13px;font-weight:700;color:var(--green);min-width:80px;text-align:right">R$\u00a0'+subtotal.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</span>'+
       '<button data-action="upd-rem" data-cod="'+it.cod+'" style="width:22px;height:22px;border-radius:5px;border:none;background:transparent;color:var(--text3);cursor:pointer;font-size:14px">✕</button>'+
     '</div>';
   }).join('');
@@ -3817,7 +3817,7 @@ function _sapOsRenderLista(){
         '<span style="font-family:monospace;font-size:13px;font-weight:700;min-width:20px;text-align:center">'+it.qtd+'</span>'+
         '<button data-action="os-qtd" data-cod="'+it.cod+'" data-delta="1" style="width:22px;height:22px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-size:14px">+</button>'+
       '</div>'+
-      '<span style="font-family:monospace;font-size:13px;font-weight:700;color:var(--green);min-width:80px;text-align:right">R$ '+sub.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</span>'+
+      '<span style="font-family:monospace;font-size:13px;font-weight:700;color:var(--green);min-width:80px;text-align:right">R$ '+subtotal.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</span>'+
       '<button data-action="os-rem" data-cod="'+it.cod+'" style="width:22px;height:22px;border-radius:5px;border:none;background:transparent;color:var(--text3);cursor:pointer;font-size:14px">✕</button>'+
     '</div>';
   }).join('');
@@ -3833,3 +3833,7 @@ function _sapOsRenderLista(){
     if(bQ) _sapOsQtd(bQ.dataset.cod,parseInt(bQ.dataset.delta));
     if(bR) _sapOsRem(bR.dataset.cod);
   };}
+}
+</script>
+</body>
+</html>
