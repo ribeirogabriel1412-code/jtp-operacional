@@ -4312,6 +4312,7 @@ function selecionarPrefixo22(vid, prefixo){
 
 // Nova OS — abre o modal-22 existente já limpo
 function abrirNovaOcorrencia(){
+  _sapOsItens=[];
   document.getElementById('m22-titulo').textContent='+ Nova OS';
   document.getElementById('m22-busca-pref').value='';
   document.getElementById('m22-prefixo').value='';
@@ -4325,6 +4326,7 @@ function abrirNovaOcorrencia(){
   document.getElementById('m22-previsao').value='';
   if(document.getElementById('m22-custo-prev')) document.getElementById('m22-custo-prev').value='';
   if(document.getElementById('m22-pecas-nec')) document.getElementById('m22-pecas-nec').value='';
+  _sapOsRenderLista();
   const agora=new Date();
   agora.setMinutes(agora.getMinutes()-agora.getTimezoneOffset());
   document.getElementById('m22-entrada').value=agora.toISOString().slice(0,16);
@@ -4361,6 +4363,7 @@ async function salvarNovaOcorrencia(gid){
 
 function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
   S.editId22=id;
+  _sapUpdItens=[];
   document.getElementById('m22s-info').textContent=prefixo;
   document.getElementById('mh-info').textContent=prefixo;
   document.getElementById('m22s-status').value=statusAtual;
@@ -4370,6 +4373,7 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
   document.getElementById('m22s-previsao').value='';
   document.getElementById('m22s-hora-lib').value=dtLocal();
   document.getElementById('m22s-lib-wrap').style.display=statusAtual==='liberado'?'block':'none';
+  _sapUpdRender();
 
   // Mostra botão checklist liberação
   const btnCklib=document.getElementById('btn-cklib');
@@ -6763,7 +6767,7 @@ function _sapUpdRender(){
   }).join('');
   if(totalEl) totalEl.style.display='flex';
   if(totalValEl) totalValEl.textContent='R$\u00a0'+total.toLocaleString('pt-BR',{minimumFractionDigits:2});
-  var prevEl=document.getElementById('m22-custo-prev');
+  var prevEl=document.getElementById('m22s-custo-prev');
   if(prevEl&&total>0) prevEl.value=total.toFixed(2);
   var necEl=document.getElementById('m22s-pecas-nec');
   if(necEl) necEl.value=_sapUpdItens.map(function(i){return i.cod+' - '+i.desc+' ('+i.qtd+'x R$'+i.preco.toFixed(2)+')';}).join('\n');
