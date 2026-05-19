@@ -819,6 +819,106 @@ function kpi(label,val,meta,unit='%',inv=false,dec=1){
 }
 
 // AUTH — LOGIN REAL
+// ── SAP Seletor para modal de ATUALIZAÇÃO ─────────────────────────────────
+let _sapUpdItens=[], _sapUpdTimer=null;
+
+async function _sapUpdBusca(inputEl){
+  const q=(inputEl.value||'').trim();
+  const drop=document.getElementById('sap-upd-drop');
+  if(!drop) return;
+  if(q.length<2){drop.style.display='none';return;}
+  if(_sapUpdTimer) clearTimeout(_sapUpdTimer);
+  _sapUpdTimer=setTimeout(async()=>{
+    const gid=getGid();
+    const{data}=await sb.from('sap_precos').select('cod_sap,descricao,preco_unit,unidade')
+      .eq('garagem_id',gid).or('cod_sap.ilike.%'+q+'%,descricao.ilike.%'+q+'%').limit(10);
+    const res=data||[];
+    if(!res.length){drop.innerHTML='<div style="padding:10px 12px;font-size:12px;color:var(--text3)">Nenhum item encontrado</div>';drop.style.display='block';return;}
+    window._sapDropMap=window._sapDropMap||{};
+    res.forEach(r=>{ window._sapDropMap[r.cod_sap]={cod:r.cod_sap,desc:r.descricao,preco:parseFloat(r.preco_unit||0),und:r.unidade||'UN'}; });
+    drop.innerHTML=res.map(r=>{
+      const p=parseFloat(r.preco_unit||0);
+      return '<div data-sapkey="'+r.cod_sap+'" style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border2);display:flex;align-items:center;gap:10px">'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-family:monospace;font-size:11px;color:var(--amber)">'+r.cod_sap+'</div>'+
+          '<div style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.descricao+'</div>'+
+        '</div>'+
+        '<span style="font-family:monospace;font-size:13px;font-weight:700;color:var(--green);white-space:nowrap">R$\u00a0'+p.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</span>'+
+      '</div>';
+    }).join('');
+    drop.onclick=function(e){
+      const el=e.target.closest('[data-sapkey]');
+      if(!el) return;
+      const item=window._sapDropMap[el.dataset.sapkey];
+      if(item){ drop.style.display='none'; _sapUpdAdd(item.cod,item.desc,item.preco,item.und); }
+    };
+    drop.style.display='block';
+  },250);
+}
+
+function _sapUpdAdd(cod,desc,preco,und){
+  const drop=document.getElementById('sap-upd-drop');
+  const inp=document.getElementById('sap-upd-busca');
+  if(drop) drop.style.display='none';
+  if(inp) inp.value='';
+  const exist=_sapUpdItens.find(i=>i.cod===cod);
+  if(exist) exist.qtd++; else _sapUpdItens.push({cod,desc,preco:parseFloat(preco)||0,und:und||'UN',qtd:1});
+  _sapUpdRender();
+}
+
+function _sapUpdQtd(cod,delta){
+  const item=_sapUpdItens.find(i=>i.cod===cod);
+  if(item){item.qtd=Math.max(1,item.qtd+parseInt(delta));_sapUpdRender();}
+}
+
+function _sapUpdRem(cod){
+  _sapUpdItens=_sapUpdItens.filter(i=>i.cod!==cod);
+  _sapUpdRender();
+}
+
+function _sapUpdRender(){
+  const lista=document.getElementById('sap-upd-lista');
+  const totalEl=document.getElementById('sap-upd-total');
+  const totalValEl=document.getElementById('sap-upd-total-val');
+  if(!lista) return;
+  if(!_sapUpdItens.length){
+    lista.innerHTML='<div style="font-size:11px;color:var(--text4);padding:2px 0">Nenhuma peça adicionada</div>';
+    if(totalEl) totalEl.style.display='none';
+    return;
+  }
+  let total=0;
+  lista.innerHTML=_sapUpdItens.map(it=>{
+    const sub=it.preco*it.qtd; total+=sub;
+    return '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface2);border-radius:8px;margin-bottom:4px">'+
+      '<div style="flex:1;min-width:0;overflow:hidden">'+
+        '<span style="font-family:monospace;font-size:10px;color:var(--amber)">'+it.cod+'</span>'+
+        '<span style="font-size:12px;margin-left:6px">'+it.desc+'</span>'+
+      '</div>'+
+      '<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">'+
+        '<button data-action="upd-qtd" data-cod="'+it.cod+'" data-delta="-1" style="width:22px;height:22px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-size:14px">−</button>'+
+        '<span style="font-family:monospace;font-size:13px;font-weight:700;min-width:20px;text-align:center">'+it.qtd+'</span>'+
+        '<button data-action="upd-qtd" data-cod="'+it.cod+'" data-delta="1" style="width:22px;height:22px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-size:14px">+</button>'+
+      '</div>'+
+      '<span style="font-family:monospace;font-size:13px;font-weight:700;color:var(--green);min-width:80px;text-align:right">R$\u00a0'+sub.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</span>'+
+      '<button data-action="upd-rem" data-cod="'+it.cod+'" style="width:22px;height:22px;border-radius:5px;border:none;background:transparent;color:var(--text3);cursor:pointer;font-size:14px">✕</button>'+
+    '</div>';
+  }).join('');
+  if(totalEl) totalEl.style.display='flex';
+  if(totalValEl) totalValEl.textContent='R$\u00a0'+total.toLocaleString('pt-BR',{minimumFractionDigits:2});
+  // Atualiza custo previsto
+  const prevEl=document.getElementById('m22-custo-prev');
+  if(prevEl&&total>0) prevEl.value=total.toFixed(2);
+  const necEl=document.getElementById('m22s-pecas-nec');
+  if(necEl) necEl.value=_sapUpdItens.map(i=>i.cod+' - '+i.desc+' ('+i.qtd+'x R$'+i.preco.toFixed(2)+')').join('\n');
+  // Event delegation
+  lista.onclick=function(e){
+    const bQ=e.target.closest('[data-action="upd-qtd"]'),bR=e.target.closest('[data-action="upd-rem"]');
+    if(bQ) _sapUpdQtd(bQ.dataset.cod,bQ.dataset.delta);
+    if(bR) _sapUpdRem(bR.dataset.cod);
+  };
+}
+
+
 async function doLogin(){
   const email=document.getElementById('l-email').value.trim();
   const senha=document.getElementById('l-senha').value;
@@ -3644,10 +3744,11 @@ async function _sapOsBusca(inputEl){
       .limit(10);
     const res=data||[];
     if(!res.length){drop.innerHTML='<div style="padding:10px 12px;font-size:12px;color:var(--text3)">Nenhum item encontrado</div>';drop.style.display='block';return;}
+    window._sapDropMap=window._sapDropMap||{};
+    res.forEach(r=>{ window._sapDropMap[r.cod_sap]={cod:r.cod_sap,desc:r.descricao,preco:parseFloat(r.preco_unit||0),und:r.unidade||'UN'}; });
     drop.innerHTML=res.map(r=>{
       const preco=parseFloat(r.preco_unit||0);
-      return '<div data-action="sap-os-add" data-cod="'+r.cod_sap+'" data-desc="'+r.descricao.replace(/"/g,'&quot;')+'" data-preco="'+preco+'" data-und="'+(r.unidade||'UN')+'"'+
-        ' style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border2);display:flex;align-items:center;gap:10px">'+
+      return '<div data-sapkey="'+r.cod_sap+'" style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border2);display:flex;align-items:center;gap:10px">'+
         '<div style="flex:1;min-width:0">'+
           '<div style="font-family:monospace;font-size:11px;color:var(--amber)">'+r.cod_sap+'</div>'+
           '<div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+r.descricao+'</div>'+
@@ -3655,13 +3756,12 @@ async function _sapOsBusca(inputEl){
         '<div style="font-family:monospace;font-size:13px;font-weight:700;color:var(--green);white-space:nowrap">R$ '+preco.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</div>'+
       '</div>';
     }).join('');
-    // Event delegation no dropdown
-    drop.addEventListener('click',function hdl(e){
-      const el=e.target.closest('[data-action="sap-os-add"]');
+    drop.onclick=function(e){
+      const el=e.target.closest('[data-sapkey]');
       if(!el) return;
-      drop.removeEventListener('click',hdl);
-      _sapOsAdd(el.dataset.cod, el.dataset.desc, parseFloat(el.dataset.preco), el.dataset.und);
-    });
+      const item=window._sapDropMap[el.dataset.sapkey];
+      if(item){ drop.style.display='none'; _sapOsAdd(item.cod,item.desc,item.preco,item.und); }
+    };
     drop.style.display='block';
   },250);
 }
