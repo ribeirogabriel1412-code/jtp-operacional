@@ -6939,7 +6939,100 @@ async function renderCustoTurno(gid,back,tabs){
   );
 }
 
-async function gerarRelatorioCustoTurno(ini,fim,turno){}
+async function gerarRelatorioCustoTurno(ini,fim,turno){
+  const gid=getGid();
+  const garagem=S.garagens?.find(g=>g.id===gid);
+  const fmtR=v=>'R$ '+(parseFloat(v||0)).toLocaleString('pt-BR',{minimumFractionDigits:2});
+  const esc=v=>String(v??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const fmtDT=v=>v?new Date(v).toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+  const tipoLabel={preventiva_leve:'Preventiva Leve',preventiva_pesada:'Preventiva Pesada',preventiva_garantia:'Garantia',corretiva:'Corretiva'};
+
+  const{data:lista,error}=await sb.from('ocorrencias_22').select('*')
+    .eq('garagem_id',gid)
+    .gte('hora_entrada',new Date(ini).toISOString())
+    .lte('hora_entrada',new Date(fim).toISOString())
+    .order('hora_entrada');
+  if(error){toast('Erro ao gerar relatório: '+error.message,'err');return;}
+
+  const os=lista||[];
+  const totalPrev=os.reduce((s,o)=>s+parseFloat(o.custo_previsto||0),0);
+  const totalReal=os.reduce((s,o)=>s+parseFloat(o.custo_real||0),0);
+  const delta=totalReal-totalPrev;
+  const fechadas=os.filter(o=>o.status==='liberado').length;
+  const abertas=os.length-fechadas;
+  const tLabel=turno==='dia'?'Turno Dia':'Turno Noite';
+
+  const porTipo={};
+  os.forEach(o=>{
+    const t=o.tipo||'corretiva';
+    if(!porTipo[t]) porTipo[t]={qtd:0,prev:0,real:0};
+    porTipo[t].qtd++;
+    porTipo[t].prev+=parseFloat(o.custo_previsto||0);
+    porTipo[t].real+=parseFloat(o.custo_real||0);
+  });
+
+  const resumoRows=Object.entries(porTipo).map(([tipo,v])=>{
+    const d=v.real-v.prev;
+    return `<tr>
+      <td>${esc(tipoLabel[tipo]||tipo)}</td>
+      <td style="text-align:center;font-weight:700">${v.qtd}</td>
+      <td style="text-align:right">${fmtR(v.prev)}</td>
+      <td style="text-align:right;font-weight:700">${fmtR(v.real)}</td>
+      <td style="text-align:right;font-weight:700;color:${d>0?'#dc2626':'#059669'}">${d===0?'—':(d>0?'+':'-')+fmtR(Math.abs(d))}</td>
+    </tr>`;
+  }).join('');
+
+  const rows=os.map(o=>{
+    const prev=parseFloat(o.custo_previsto||0);
+    const real=parseFloat(o.custo_real||0);
+    const d=real-prev;
+    const badge=o.status==='liberado'
+      ? '<span class="badge ok">Fechada</span>'
+      : '<span class="badge pend">Aberta</span>';
+    return `<tr>
+      <td style="font-family:monospace;font-weight:800;color:#1d4ed8">${esc(o.prefixo)}</td>
+      <td>${esc(tipoLabel[o.tipo]||o.tipo)}</td>
+      <td>${esc(o.mecanico||'—')}</td>
+      <td>${fmtDT(o.hora_entrada)}</td>
+      <td>${fmtDT(o.hora_liberacao||o.hora_previsao)}</td>
+      <td>${badge}</td>
+      <td style="text-align:right">${fmtR(prev)}</td>
+      <td style="text-align:right;font-weight:700">${real?fmtR(real):'—'}</td>
+      <td style="text-align:right;font-weight:700;color:${d>0?'#dc2626':'#059669'}">${real?fmtR(d):'—'}</td>
+    </tr>`;
+  }).join('');
+
+  abrirJanelaPDF(`
+    <div class="header">
+      <div>
+        <div class="logo">JTP Transportes</div>
+        <h1>Consolidado de Custo da Manutenção</h1>
+        <div style="font-size:10px;color:#555">${esc(garagem?.nome||'—')} · ${tLabel} · ${fmtDT(ini)} até ${fmtDT(fim)}</div>
+      </div>
+      <div class="meta">
+        <div style="font-size:18px;font-weight:800;color:${delta>0?'#dc2626':'#059669'}">${fmtR(totalReal)}</div>
+        <div>Custo real do turno</div>
+      </div>
+    </div>
+    <div class="kpi-row">
+      <div class="kpi"><div class="kpi-val">${os.length}</div><div class="kpi-lab">OS no turno</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#059669">${fechadas}</div><div class="kpi-lab">Fechadas</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#d97706">${fmtR(totalPrev)}</div><div class="kpi-lab">Previsto</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:${delta>0?'#dc2626':'#059669'}">${delta===0?'—':(delta>0?'+':'-')+fmtR(Math.abs(delta))}</div><div class="kpi-lab">Variação</div></div>
+    </div>
+    <h2>Resumo por Tipo</h2>
+    <table>
+      <thead><tr><th>Tipo</th><th>Qtd OS</th><th>Previsto</th><th>Real</th><th>Variação</th></tr></thead>
+      <tbody>${resumoRows||'<tr><td colspan="5" style="text-align:center;color:#777">Sem OS no período</td></tr>'}</tbody>
+    </table>
+    <h2>Detalhamento por OS</h2>
+    <table>
+      <thead><tr><th>Prefixo</th><th>Tipo</th><th>Mecânico</th><th>Entrada</th><th>Lib./Prev.</th><th>Status</th><th>Previsto</th><th>Real</th><th>Delta</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="9" style="text-align:center;color:#777">Sem OS no período</td></tr>'}</tbody>
+    </table>
+    <div style="margin-top:14px;font-size:10px;color:#555">Abertas no fim do período: <strong>${abertas}</strong></div>
+  `,'Consolidado de Custo da Manutenção');
+}
 
 // ── Consolidado do Dia Operacional ────────────────────────────────
 async function renderConsolidado(gid,back,tabs){
@@ -7014,8 +7107,118 @@ async function renderConsolidado(gid,back,tabs){
 
 async function exportarConsolidadoPDF(gid,ini,fim){
   toast('Gerando PDF...');
-  var w=window.open('','_blank');
-  if(w){w.document.write('<html><body><h2>Consolidado do Dia</h2><p>Em breve...</p></body></html>');w.document.close();}
+  const garagem=S.garagens?.find(g=>g.id===gid);
+  const fmtR=v=>'R$ '+(parseFloat(v||0)).toLocaleString('pt-BR',{minimumFractionDigits:2});
+  const esc=v=>String(v??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const fmtDT=v=>v?new Date(v).toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+  const tipoLabel={preventiva_leve:'Preventiva Leve',preventiva_pesada:'Preventiva Pesada',preventiva_garantia:'Garantia',corretiva:'Corretiva'};
+
+  const[{data:ocs,error:e1},{data:reqs,error:e2},{data:orcRows}]=await Promise.all([
+    sb.from('ocorrencias_22').select('*').eq('garagem_id',gid)
+      .gte('hora_entrada',new Date(ini).toISOString()).lte('hora_entrada',new Date(fim).toISOString()).order('prefixo'),
+    sb.from('requisicoes_compra').select('*').eq('garagem_id',gid)
+      .gte('criado_em',new Date(ini).toISOString()).lte('criado_em',new Date(fim).toISOString()),
+    sb.from('pcm_orcamento').select('valor_disponivel').eq('garagem_id',gid).eq('data',new Date(fim).toISOString().slice(0,10)).limit(1),
+  ]);
+  if(e1||e2){toast('Erro ao gerar relatório: '+(e1?.message||e2?.message),'err');return;}
+
+  const lista=ocs||[];
+  const compras=reqs||[];
+  const orcamento=parseFloat(orcRows?.[0]?.valor_disponivel||0);
+  const reqMap={};
+  compras.forEach(r=>{const k=r.ocorrencia_id||'avulso'; if(!reqMap[k]) reqMap[k]=[]; reqMap[k].push(r);});
+
+  const totalPrev=lista.reduce((s,o)=>s+parseFloat(o.custo_previsto||0),0);
+  const totalReal=lista.reduce((s,o)=>s+parseFloat(o.custo_real||0),0);
+  const totalPecas=compras.reduce((s,r)=>s+(parseFloat(r.valor_estimado||0)*parseInt(r.quantidade||1)),0);
+  const fechadas=lista.filter(o=>o.status==='liberado').length;
+  const abertas=lista.length-fechadas;
+  const saldo=orcamento-totalReal;
+  const pctOrc=orcamento>0?Math.round(totalReal/orcamento*100):0;
+
+  const porTipo={};
+  lista.forEach(o=>{
+    const t=o.tipo||'corretiva';
+    if(!porTipo[t]) porTipo[t]={qtd:0,prev:0,real:0,pecas:0};
+    porTipo[t].qtd++;
+    porTipo[t].prev+=parseFloat(o.custo_previsto||0);
+    porTipo[t].real+=parseFloat(o.custo_real||0);
+    porTipo[t].pecas+=(reqMap[o.id]||[]).reduce((s,r)=>s+(parseFloat(r.valor_estimado||0)*parseInt(r.quantidade||1)),0);
+  });
+
+  const resumoRows=Object.entries(porTipo).map(([tipo,v])=>{
+    const delta=v.real-v.prev;
+    return `<tr>
+      <td>${esc(tipoLabel[tipo]||tipo)}</td>
+      <td style="text-align:center;font-weight:700">${v.qtd}</td>
+      <td style="text-align:right">${fmtR(v.prev)}</td>
+      <td style="text-align:right;font-weight:700">${fmtR(v.real)}</td>
+      <td style="text-align:right">${fmtR(v.pecas)}</td>
+      <td style="text-align:right;font-weight:700;color:${delta>0?'#dc2626':'#059669'}">${delta===0?'—':(delta>0?'+':'-')+fmtR(Math.abs(delta))}</td>
+    </tr>`;
+  }).join('');
+
+  const rows=lista.map(o=>{
+    const prev=parseFloat(o.custo_previsto||0);
+    const real=parseFloat(o.custo_real||0);
+    const pecas=(reqMap[o.id]||[]).reduce((s,r)=>s+(parseFloat(r.valor_estimado||0)*parseInt(r.quantidade||1)),0);
+    const delta=real-prev;
+    const badge=o.status==='liberado'?'<span class="badge ok">Fechada</span>':'<span class="badge pend">Aberta</span>';
+    return `<tr>
+      <td style="font-family:monospace;font-weight:800;color:#1d4ed8">${esc(o.prefixo)}</td>
+      <td>${esc(tipoLabel[o.tipo]||o.tipo)}</td>
+      <td>${esc(o.mecanico||'—')}</td>
+      <td>${fmtDT(o.hora_entrada)}</td>
+      <td>${fmtDT(o.hora_liberacao||o.hora_previsao)}</td>
+      <td>${badge}</td>
+      <td style="text-align:right">${fmtR(prev)}</td>
+      <td style="text-align:right;font-weight:700">${real?fmtR(real):'—'}</td>
+      <td style="text-align:right">${pecas?fmtR(pecas):'—'}</td>
+      <td style="text-align:right;font-weight:700;color:${delta>0?'#dc2626':'#059669'}">${real?fmtR(delta):'—'}</td>
+    </tr>`;
+  }).join('');
+
+  const comprasAvulsas=compras.filter(r=>!r.ocorrencia_id);
+  const comprasRows=comprasAvulsas.map(r=>{
+    const vt=parseFloat(r.valor_estimado||0)*parseInt(r.quantidade||1);
+    return `<tr><td>${esc(r.cod_sap||'—')}</td><td>${esc(r.peca||'—')}</td><td style="text-align:center">${r.quantidade||1}</td><td style="text-align:right">${fmtR(vt)}</td><td>${esc(r.status||'—')}</td></tr>`;
+  }).join('');
+
+  abrirJanelaPDF(`
+    <div class="header">
+      <div>
+        <div class="logo">JTP Transportes</div>
+        <h1>Consolidado da Manutenção do Turno</h1>
+        <div style="font-size:10px;color:#555">${esc(garagem?.nome||'—')} · ${fmtDT(ini)} até ${fmtDT(fim)}</div>
+      </div>
+      <div class="meta">
+        <div style="font-size:18px;font-weight:800;color:${orcamento>0&&totalReal>orcamento?'#dc2626':'#059669'}">${fmtR(totalReal)}</div>
+        <div>${orcamento>0?'Orçamento: '+fmtR(orcamento):'Custo real consolidado'}</div>
+      </div>
+    </div>
+    <div class="kpi-row">
+      <div class="kpi"><div class="kpi-val">${lista.length}</div><div class="kpi-lab">OS no período</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#059669">${fechadas}</div><div class="kpi-lab">Fechadas</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#d97706">${fmtR(totalPrev)}</div><div class="kpi-lab">Previsto</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:${saldo<0?'#dc2626':'#059669'}">${orcamento>0?fmtR(saldo):fmtR(totalPecas)}</div><div class="kpi-lab">${orcamento>0?'Saldo':'Peças'}</div></div>
+    </div>
+    ${orcamento>0?`<div style="border:1px solid #ddd;border-radius:6px;padding:8px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:4px"><strong>Uso do orçamento</strong><span>${pctOrc}%</span></div>
+      <div style="height:8px;background:#e5e7eb;border-radius:99px;overflow:hidden"><div style="height:100%;width:${Math.min(pctOrc,100)}%;background:${pctOrc>100?'#dc2626':pctOrc>=80?'#d97706':'#059669'}"></div></div>
+    </div>`:''}
+    <h2>Resumo por Tipo</h2>
+    <table>
+      <thead><tr><th>Tipo</th><th>Qtd OS</th><th>Previsto</th><th>Real</th><th>Peças</th><th>Variação</th></tr></thead>
+      <tbody>${resumoRows||'<tr><td colspan="6" style="text-align:center;color:#777">Sem OS no período</td></tr>'}</tbody>
+    </table>
+    <h2>Detalhamento por OS</h2>
+    <table>
+      <thead><tr><th>Prefixo</th><th>Tipo</th><th>Mecânico</th><th>Entrada</th><th>Lib./Prev.</th><th>Status</th><th>Previsto</th><th>Real</th><th>Peças</th><th>Delta</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="10" style="text-align:center;color:#777">Sem OS no período</td></tr>'}</tbody>
+    </table>
+    ${comprasRows?`<h2>Requisições Avulsas</h2><table><thead><tr><th>SAP</th><th>Peça</th><th>Qtd</th><th>Valor</th><th>Status</th></tr></thead><tbody>${comprasRows}</tbody></table>`:''}
+    <div style="margin-top:14px;font-size:10px;color:#555">Abertas no fim do período: <strong>${abertas}</strong> · Requisições consideradas: <strong>${compras.length}</strong></div>
+  `,'Consolidado da Manutenção');
 }
 
 // ── 2.4 Fechamento de Turno ───────────────────────────────────────
