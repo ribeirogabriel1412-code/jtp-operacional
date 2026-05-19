@@ -7095,7 +7095,7 @@ async function renderConsolidado(gid,back,tabs){
         '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3)"><span>Utilizado: <b style="color:'+(estourou?'var(--red)':'var(--text)')+'">'+pctOrc+'%</b></span><span>Saldo: <b style="color:'+(estourou?'var(--red)':'var(--green)')+'">'+fmtR(saldo)+'</b></span></div>'+
       '</div>':'') +
     '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:16px">'+breakdownHtml+'</div>'+
-    secTitle('🔧','OS do Dia Operacional','<button onclick="exportarConsolidadoPDF(\''+gid+'\',\''+ini+'\',\''+fim+'\')" class="btn-add" style="background:var(--blue);border-color:var(--blue);color:#fff">📄 Exportar PDF</button>')+
+    secTitle('🔧','OS do Dia Operacional','<div style="display:flex;gap:8px;flex-wrap:wrap"><button onclick="limparOsTestePeriodo(\''+gid+'\',\''+ini+'\',\''+fim+'\')" class="btn-sec" style="border:1px solid #EF444440;background:#EF444418;color:var(--red);font-weight:800">🧹 Limpar OS teste</button><button onclick="exportarConsolidadoPDF(\''+gid+'\',\''+ini+'\',\''+fim+'\')" class="btn-add" style="background:var(--blue);border-color:var(--blue);color:#fff">📄 Exportar PDF</button></div>')+
     (ocs.length===0?'<div class="empty"><div style="font-size:36px">📭</div><div style="margin:12px 0;font-weight:600;color:var(--text2)">Nenhuma OS no período</div></div>':
       osCards+
       '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;margin-top:4px">'+
@@ -7103,6 +7103,56 @@ async function renderConsolidado(gid,back,tabs){
         '<div style="text-align:right">'+(totalGeralPrev>0?'<div style="font-size:11px;color:var(--text3)">Previsto: '+fmtR(totalGeralPrev)+'</div>':'')+'<div style="font-family:monospace;font-size:16px;font-weight:900;color:'+(totalGeralReal>totalGeralPrev&&totalGeralPrev>0?'var(--red)':'var(--green)')+'">Real: '+fmtR(totalGeralReal)+'</div>'+(totalPecas>0?'<div style="font-size:11px;color:var(--amber)">Peças: '+fmtR(totalPecas)+'</div>':'')+'</div>'+
       '</div>')
   );
+}
+
+async function limparOsTestePeriodo(gid,ini,fim){
+  const inicioIso=new Date(ini).toISOString();
+  const fimIso=new Date(fim).toISOString();
+  const{data:ocs,error}=await sb.from('ocorrencias_22').select('id,prefixo,numero,tipo,status,hora_entrada,custo_previsto,custo_real')
+    .eq('garagem_id',gid)
+    .gte('hora_entrada',inicioIso)
+    .lte('hora_entrada',fimIso)
+    .order('hora_entrada');
+  if(error){toast('Erro ao buscar OS: '+error.message,'err');return;}
+  const lista=ocs||[];
+  if(!lista.length){toast('Nenhuma OS encontrada no período');return;}
+
+  const resumo=lista.map(o=>{
+    const entrada=o.hora_entrada?new Date(o.hora_entrada).toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'sem data';
+    return `${o.prefixo} · ${o.tipo||'—'} · ${entrada} · ${o.status||'—'}`;
+  }).join('\n');
+
+  const msg='ATENÇÃO: isso vai APAGAR do banco '+lista.length+' OS deste período e seus vínculos (histórico, checklist, peças e previsibilidade).\\n\\n'+resumo+'\\n\\nDigite LIMPAR para confirmar.';
+  const conf=prompt(msg);
+  if(conf!=='LIMPAR'){toast('Limpeza cancelada');return;}
+
+  const btns=[...document.querySelectorAll('button')].filter(b=>b.textContent.includes('Limpar OS teste'));
+  btns.forEach(b=>{b.disabled=true;b.textContent='Limpando...';});
+
+  const ids=lista.map(o=>o.id);
+  const tabelasVinculadas=[
+    'previsibilidade_26',
+    'requisicoes_compra',
+    'ordens_servico_pecas',
+    'checklist_liberacao',
+    'checklist_22',
+    'historico_22',
+  ];
+
+  try{
+    for(const tabela of tabelasVinculadas){
+      const{error:e}=await sb.from(tabela).delete().in('ocorrencia_id',ids);
+      if(e) console.warn('Falha ao limpar '+tabela,e.message);
+    }
+    const{error:eDel}=await sb.from('ocorrencias_22').delete().in('id',ids);
+    if(eDel){toast('Erro ao apagar OS: '+eDel.message,'err');return;}
+    toast('✅ '+ids.length+' OS de teste removidas do banco');
+    await renderFerrPCM('consolidado');
+  }catch(e){
+    toast('Erro na limpeza: '+e.message,'err');
+  }finally{
+    btns.forEach(b=>{b.disabled=false;b.textContent='🧹 Limpar OS teste';});
+  }
 }
 
 async function exportarConsolidadoPDF(gid,ini,fim){
