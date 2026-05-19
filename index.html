@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8"><!-- JTP v2.3 LOGIN-FIX - 2026-05-19 -->
+<meta charset="UTF-8"><!-- JTP v2.2 -->
 <script>
 // Limpar Service Workers e caches antigos
 if('serviceWorker' in navigator){
@@ -214,11 +214,6 @@ tr:hover td{background:#0F172A80}
 </head>
 <body>
 
-<script>
-window.__JTP_LOGIN_FIX_VERSION__ = 'v2.3-login-fix';
-console.log('✅ JTP LOGIN-FIX v2.4 carregado. Se esta mensagem não aparecer, o navegador ainda está abrindo arquivo antigo/cache.');
-</script>
-
 <!-- LOGIN -->
 <div id="login-screen">
   <div class="login-card">
@@ -232,7 +227,7 @@ console.log('✅ JTP LOGIN-FIX v2.4 carregado. Se esta mensagem não aparecer, o
     <label class="fl">Senha</label>
     <input class="fi" id="l-senha" type="password" placeholder="••••••••">
     <div id="l-erro" style="color:var(--red);font-size:12px;text-align:center;margin-bottom:10px;display:none"></div>
-    <button class="btn-login" id="btn-login" onclick="window.doLogin()">Entrar no Sistema</button>
+    <button class="btn-login" id="btn-login" onclick="doLogin()">Entrar no Sistema</button>
     <div style="text-align:center;margin-top:16px;color:var(--text4);font-size:11px">🔒 Acesso restrito — Grupo JTP</div>
   </div>
 </div>
@@ -904,7 +899,7 @@ function _sapUpdRender(){
         '<span style="font-family:monospace;font-size:13px;font-weight:700;min-width:20px;text-align:center">'+it.qtd+'</span>'+
         '<button data-action="upd-qtd" data-cod="'+it.cod+'" data-delta="1" style="width:22px;height:22px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-size:14px">+</button>'+
       '</div>'+
-      '<span style="font-family:monospace;font-size:13px;font-weight:700;color:var(--green);min-width:80px;text-align:right">R$\u00a0'+subtotal.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</span>'+
+      '<span style="font-family:monospace;font-size:13px;font-weight:700;color:var(--green);min-width:80px;text-align:right">R$\u00a0'+sub.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</span>'+
       '<button data-action="upd-rem" data-cod="'+it.cod+'" style="width:22px;height:22px;border-radius:5px;border:none;background:transparent;color:var(--text3);cursor:pointer;font-size:14px">✕</button>'+
     '</div>';
   }).join('');
@@ -3822,7 +3817,7 @@ function _sapOsRenderLista(){
         '<span style="font-family:monospace;font-size:13px;font-weight:700;min-width:20px;text-align:center">'+it.qtd+'</span>'+
         '<button data-action="os-qtd" data-cod="'+it.cod+'" data-delta="1" style="width:22px;height:22px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-size:14px">+</button>'+
       '</div>'+
-      '<span style="font-family:monospace;font-size:13px;font-weight:700;color:var(--green);min-width:80px;text-align:right">R$ '+subtotal.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</span>'+
+      '<span style="font-family:monospace;font-size:13px;font-weight:700;color:var(--green);min-width:80px;text-align:right">R$ '+sub.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</span>'+
       '<button data-action="os-rem" data-cod="'+it.cod+'" style="width:22px;height:22px;border-radius:5px;border:none;background:transparent;color:var(--text3);cursor:pointer;font-size:14px">✕</button>'+
     '</div>';
   }).join('');
@@ -3838,157 +3833,3 @@ function _sapOsRenderLista(){
     if(bQ) _sapOsQtd(bQ.dataset.cod,parseInt(bQ.dataset.delta));
     if(bR) _sapOsRem(bR.dataset.cod);
   };}
-}
-
-
-
-
-// ── HOTFIX v2.4: ROTAS/TELAS AUSENTES E GARAGEM ATIVA ─────────────────────
-// Motivo: após o login, o código chegava em navTo('painel'), mas o objeto de
-// navegação citava funções que não existiam no arquivo base, como renderDiretoria.
-// Em JavaScript, só citar uma função inexistente dentro do map já quebra a tela.
-console.log('✅ JTP LOGIN-FIX v2.4 render-fix carregado.');
-
-function getGid(){
-  return S?.gidAtivo || S?.perfil?.garagem_id || S?.garagens?.[0]?.id || null;
-}
-
-async function setGidAtivo(gid){
-  S.gidAtivo = gid;
-  try { await loadFrota(); } catch(e){ console.warn('Falha ao recarregar frota:', e); }
-  try {
-    if(S.tela==='painel') return renderPainel();
-    if(S.tela==='frota') return renderFrota();
-    if(S.tela==='indicadores') return renderIndicadores();
-    if(S.tela==='manutencao') return renderManutencao();
-    if(S.tela==='almoxarifado') return renderAlmoxarifado();
-    if(S.tela==='supervisao') return renderSupervisao();
-  } catch(e){
-    console.error('Erro ao trocar garagem ativa:', e);
-    toast('Erro ao trocar garagem ativa. Veja o console.', 'err');
-  }
-}
-
-function telaEmBreve(titulo, detalhe){
-  setMain(`
-    <div class="empty">
-      <div style="font-size:44px;margin-bottom:12px">🚧</div>
-      <div style="color:var(--text);font-size:18px;font-weight:800;margin-bottom:6px">${titulo}</div>
-      <div style="color:var(--text3);font-size:13px;max-width:620px;margin:0 auto;line-height:1.5">
-        ${detalhe || 'Esta tela foi chamada pelo menu, mas a função correspondente não existe no arquivo HTML base. O hotfix impediu a quebra do sistema para manter o restante do app utilizável.'}
-      </div>
-      <button class="btn-add" style="margin-top:18px" onclick="navTo('painel',document.querySelector('.nav-btn'))">Voltar ao Painel</button>
-    </div>`);
-}
-
-// Telas referenciadas pelo menu, mas ausentes no arquivo base.
-function renderDiretoria(){ return telaEmBreve('Diretoria', 'A função renderDiretoria() não estava presente no código original recebido.'); }
-function renderFerr22(){ return telaEmBreve('Painel do Manutentor / 2.2', 'A função renderFerr22() não estava presente no código original recebido.'); }
-function renderFerrPCM(){ return telaEmBreve('Painel PCM', 'A função renderFerrPCM() não estava presente no código original recebido.'); }
-function renderFerrPrev(){ return telaEmBreve('Painel Preventivas', 'A função renderFerrPrev() não estava presente no código original recebido.'); }
-function renderFerr211(){ return telaEmBreve('2.11 Carros Indisponíveis', 'A função renderFerr211() não estava presente no código original recebido.'); }
-function renderFerr212(){ return telaEmBreve('2.12 Indicadores Técnicos', 'A função renderFerr212() não estava presente no código original recebido.'); }
-function renderFerrLav(){ return telaEmBreve('3.2 Checklist Lavagem', 'A função renderFerrLav() não estava presente no código original recebido.'); }
-function renderFerrLavLavador(){ return telaEmBreve('Minha Lista de Lavagem', 'A função renderFerrLavLavador() não estava presente no código original recebido.'); }
-function renderFerrCtrl(){ return telaEmBreve('Controle Soltura', 'A função renderFerrCtrl() não estava presente no código original recebido.'); }
-function renderFerr21(){ return telaEmBreve('2.1 Fechamento Garagem', 'A função renderFerr21() não estava presente no código original recebido.'); }
-function renderFerr26(){ return telaEmBreve('2.6 Previsibilidade', 'A função renderFerr26() não estava presente no código original recebido.'); }
-function renderFerrRotina(cargoAtual){ return telaEmBreve('Minha Rotina', 'A rotina por cargo ainda não foi encontrada no arquivo HTML base. Cargo atual: '+(CARGOS?.[cargoAtual]||cargoAtual||'—')); }
-function renderRelatorios(){ return telaEmBreve('Relatórios', 'A função renderRelatorios() não estava presente no código original recebido.'); }
-
-// Modal básico de status do veículo — evita quebra ao clicar em cards da frota.
-function openModalV(id,prefixo,status){
-  S.editVId=id;
-  const pref=document.getElementById('mv-pref'); if(pref) pref.textContent=prefixo||'';
-  const st=document.getElementById('mv-status'); if(st) st.value=status||'disponivel';
-  const obs=document.getElementById('mv-obs'); if(obs) obs.value='';
-  const modal=document.getElementById('modal-v'); if(modal) modal.style.display='flex';
-}
-
-async function confirmarStatusV(){
-  if(!S.editVId){ toast('Veículo não identificado.', 'err'); return; }
-  const status=document.getElementById('mv-status')?.value;
-  const obs=document.getElementById('mv-obs')?.value || '';
-  const payload={status};
-  // Só tenta salvar observação se o banco aceitar; se não aceitar, refaz sem o campo.
-  if(obs) payload.observacao=obs;
-  let resp=await sb.from('frota').update(payload).eq('id',S.editVId);
-  if(resp.error && obs){ resp=await sb.from('frota').update({status}).eq('id',S.editVId); }
-  if(resp.error){ console.error(resp.error); toast('Erro ao atualizar status do veículo.', 'err'); return; }
-  closeM('modal-v'); toast('Status atualizado.');
-  await loadFrota();
-  if(S.tela==='frota') renderFrota(); else renderPainel();
-}
-
-function openModalCad(){
-  ['cad-pref','cad-modelo','cad-ano','cad-placa'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
-  const st=document.getElementById('cad-status'); if(st) st.value='disponivel';
-  const modal=document.getElementById('modal-cad'); if(modal) modal.style.display='flex';
-}
-
-async function salvarVeiculo(){
-  const prefixo=document.getElementById('cad-pref')?.value?.trim();
-  if(!prefixo){ toast('Informe o prefixo do veículo.', 'err'); return; }
-  const payload={
-    prefixo,
-    status:document.getElementById('cad-status')?.value || 'disponivel',
-    modelo:document.getElementById('cad-modelo')?.value?.trim() || null,
-    ano:document.getElementById('cad-ano')?.value ? Number(document.getElementById('cad-ano').value) : null,
-    placa:document.getElementById('cad-placa')?.value?.trim() || null,
-    garagem_id:getGid()
-  };
-  const {error}=await sb.from('frota').insert(payload);
-  if(error){ console.error(error); toast('Erro ao cadastrar veículo.', 'err'); return; }
-  closeM('modal-cad'); toast('Veículo cadastrado.');
-  await loadFrota(); renderFrota();
-}
-
-function avisoFuncaoAusente(nome){
-  console.warn('Função ausente no arquivo base:', nome);
-  toast('Função ainda não implementada neste arquivo: '+nome, 'err');
-}
-
-// Funções chamadas por botões existentes, mas ausentes no arquivo base.
-function filtrarPrefixos22(){ avisoFuncaoAusente('filtrarPrefixos22'); }
-function salvarOcorrencia22(){ avisoFuncaoAusente('salvarOcorrencia22'); }
-function atualizarStatus22(){ avisoFuncaoAusente('atualizarStatus22'); }
-function toggleLib22(){ /* controle visual opcional; sem ação no hotfix */ }
-function verChecklistLib(){ avisoFuncaoAusente('verChecklistLib'); }
-function verHistorico22(){ avisoFuncaoAusente('verHistorico22'); }
-function openModalSaida(){ avisoFuncaoAusente('openModalSaida'); }
-function confirmarSaida(){ avisoFuncaoAusente('confirmarSaida'); }
-function imprimir210(){ avisoFuncaoAusente('imprimir210'); }
-function handle210(){ avisoFuncaoAusente('handle210'); }
-function excluirEscala(){ avisoFuncaoAusente('excluirEscala'); }
-function _atualizarPrevisto(){ avisoFuncaoAusente('_atualizarPrevisto'); }
-function _sapLookup(){ avisoFuncaoAusente('_sapLookup'); }
-function adicionarItemReqOS(){ avisoFuncaoAusente('adicionarItemReqOS'); }
-function removerPecaOS(){ avisoFuncaoAusente('removerPecaOS'); }
-function baixarPecaOS(){ avisoFuncaoAusente('baixarPecaOS'); }
-function criarReqCompraOS(){ avisoFuncaoAusente('criarReqCompraOS'); }
-function gerarRelatorioOS(){ avisoFuncaoAusente('gerarRelatorioOS'); }
-
-// Reforço explícito para onclick inline.
-try {
-  ['getGid','setGidAtivo','renderDiretoria','renderFerr22','renderFerrPCM','renderFerrPrev','renderFerr211','renderFerr212','renderFerrLav','renderFerrLavLavador','renderFerrCtrl','renderFerr21','renderFerr26','renderFerrRotina','renderRelatorios','openModalV','confirmarStatusV','openModalCad','salvarVeiculo','filtrarPrefixos22','salvarOcorrencia22','atualizarStatus22','toggleLib22','verChecklistLib','verHistorico22','openModalSaida','confirmarSaida','imprimir210','handle210','excluirEscala','_atualizarPrevisto','_sapLookup','adicionarItemReqOS','removerPecaOS','baixarPecaOS','criarReqCompraOS','gerarRelatorioOS'].forEach(function(nome){
-    try { window[nome]=eval(nome); } catch(e){}
-  });
-  console.log('✅ Hotfix v2.4 aplicado. renderDiretoria =', typeof window.renderDiretoria, '| getGid =', typeof window.getGid);
-} catch(e){ console.error('Falha ao aplicar hotfix v2.4:', e); }
-
-// ── EXPOSIÇÃO GLOBAL PARA ONCLICK DO HTML ───────────────────────────────
-// Garante compatibilidade com ambientes que não expõem FunctionDeclaration no objeto window.
-try {
-  ['isEscalante', 'isLiderPatio', 'isSupervisao', 'isLavadorOuPatio', 'toggleReserva', 'carregarReservasDisponiveis', 'getPermsFerr', 'setPermsFerr', 'papelFerr', 'podeExecutar', 'podeValidar', 'podeVisualizar', 'temAcessoFerr', 'hoje', 'hojeF', 'fmt', 'badge', 'toast', 'setMain', 'closeM', 'secTitle', 'kpi', '_sapUpdBusca', '_sapUpdAdd', '_sapUpdQtd', '_sapUpdRem', '_sapUpdRender', 'doLogin', 'doLogout', 'navTo', 'navToSub', 'toggleSub', 'setTurno', 'loadFrota', 'renderPainel', 'renderFrota', 'renderIndicadores', 'toggleSolturaDetalhe', 'renderManutencao', 'renderAlmoxarifado', 'formatDataBR', 'almBadge', 'renderAlmKits', 'abrirModalKitSite', 'confirmarSepararKitSite', 'marcarKitEntreguesite', 'renderAlmCompras', 'abrirModalNovaCompraSite', 'salvarNovaCompraSite', 'abrirFUPSite', 'selStFUPSite', 'salvarFUPSite', 'renderAlmNF', 'abrirModalNovaNFSite', 'addItemNFSite', 'setConfNFSite', 'salvarNovaNFSite', 'abrirDetalheNFSite', 'atualizarStatusNFSite', 'renderSupervisao', 'renderAdmin', 'ciclarPermFerr', 'resetPermsFerr', 'abrirModalUser', 'editarUsuario', 'toggleGaraModal', 'salvarUsuario', 'toggleAtivo', 'renderFerramentas', 'atualizarSubmenuFerramentas', 'amanha', 'formatData', 'siglaGaragem', 'gerarNumeroDoc', 'podeVerRelatorios', 'renderFerr210', 'escalaCard', 'gerarBlocoReservas', 'fecharRelatorio210', 'sigla22', 'gerarNum22', 'dtLocal', 'formatDT', 'tempoDecorrido', 'abrirOrcamentoOS', 'rowPeca', '_sapOsAbrir', '_sapOsBusca', '_sapOsAdd', '_sapOsQtd', '_sapOsRem', '_sapOsRenderLista'].forEach(function(nome){
-    try {
-      var fn = eval(nome);
-      if (typeof fn === 'function') window[nome] = fn;
-    } catch(_e){}
-  });
-  console.log('✅ Funções globais JTP expostas. doLogin =', typeof window.doLogin);
-} catch (e) {
-  console.error('❌ Falha ao expor funções globais JTP:', e);
-}
-</script>
-</body>
-</html>
