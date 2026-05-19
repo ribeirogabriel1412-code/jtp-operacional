@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8"><!-- JTP v2.2 -->
+<meta charset="UTF-8"><!-- JTP v2.3 LOGIN-FIX - 2026-05-19 -->
 <script>
 // Limpar Service Workers e caches antigos
 if('serviceWorker' in navigator){
@@ -214,6 +214,11 @@ tr:hover td{background:#0F172A80}
 </head>
 <body>
 
+<script>
+window.__JTP_LOGIN_FIX_VERSION__ = 'v2.3-login-fix';
+console.log('✅ JTP LOGIN-FIX v2.3 carregado. Se esta mensagem não aparecer, o navegador ainda está abrindo arquivo antigo/cache.');
+</script>
+
 <!-- LOGIN -->
 <div id="login-screen">
   <div class="login-card">
@@ -227,7 +232,7 @@ tr:hover td{background:#0F172A80}
     <label class="fl">Senha</label>
     <input class="fi" id="l-senha" type="password" placeholder="••••••••">
     <div id="l-erro" style="color:var(--red);font-size:12px;text-align:center;margin-bottom:10px;display:none"></div>
-    <button class="btn-login" id="btn-login" onclick="doLogin()">Entrar no Sistema</button>
+    <button class="btn-login" id="btn-login" onclick="window.doLogin()">Entrar no Sistema</button>
     <div style="text-align:center;margin-top:16px;color:var(--text4);font-size:11px">🔒 Acesso restrito — Grupo JTP</div>
   </div>
 </div>
@@ -3833,6 +3838,21 @@ function _sapOsRenderLista(){
     if(bQ) _sapOsQtd(bQ.dataset.cod,parseInt(bQ.dataset.delta));
     if(bR) _sapOsRem(bR.dataset.cod);
   };}
+}
+
+
+// ── EXPOSIÇÃO GLOBAL PARA ONCLICK DO HTML ───────────────────────────────
+// Garante compatibilidade com ambientes que não expõem FunctionDeclaration no objeto window.
+try {
+  ['isEscalante', 'isLiderPatio', 'isSupervisao', 'isLavadorOuPatio', 'toggleReserva', 'carregarReservasDisponiveis', 'getPermsFerr', 'setPermsFerr', 'papelFerr', 'podeExecutar', 'podeValidar', 'podeVisualizar', 'temAcessoFerr', 'hoje', 'hojeF', 'fmt', 'badge', 'toast', 'setMain', 'closeM', 'secTitle', 'kpi', '_sapUpdBusca', '_sapUpdAdd', '_sapUpdQtd', '_sapUpdRem', '_sapUpdRender', 'doLogin', 'doLogout', 'navTo', 'navToSub', 'toggleSub', 'setTurno', 'loadFrota', 'renderPainel', 'renderFrota', 'renderIndicadores', 'toggleSolturaDetalhe', 'renderManutencao', 'renderAlmoxarifado', 'formatDataBR', 'almBadge', 'renderAlmKits', 'abrirModalKitSite', 'confirmarSepararKitSite', 'marcarKitEntreguesite', 'renderAlmCompras', 'abrirModalNovaCompraSite', 'salvarNovaCompraSite', 'abrirFUPSite', 'selStFUPSite', 'salvarFUPSite', 'renderAlmNF', 'abrirModalNovaNFSite', 'addItemNFSite', 'setConfNFSite', 'salvarNovaNFSite', 'abrirDetalheNFSite', 'atualizarStatusNFSite', 'renderSupervisao', 'renderAdmin', 'ciclarPermFerr', 'resetPermsFerr', 'abrirModalUser', 'editarUsuario', 'toggleGaraModal', 'salvarUsuario', 'toggleAtivo', 'renderFerramentas', 'atualizarSubmenuFerramentas', 'amanha', 'formatData', 'siglaGaragem', 'gerarNumeroDoc', 'podeVerRelatorios', 'renderFerr210', 'escalaCard', 'gerarBlocoReservas', 'fecharRelatorio210', 'sigla22', 'gerarNum22', 'dtLocal', 'formatDT', 'tempoDecorrido', 'abrirOrcamentoOS', 'rowPeca', '_sapOsAbrir', '_sapOsBusca', '_sapOsAdd', '_sapOsQtd', '_sapOsRem', '_sapOsRenderLista'].forEach(function(nome){
+    try {
+      var fn = eval(nome);
+      if (typeof fn === 'function') window[nome] = fn;
+    } catch(_e){}
+  });
+  console.log('✅ Funções globais JTP expostas. doLogin =', typeof window.doLogin);
+} catch (e) {
+  console.error('❌ Falha ao expor funções globais JTP:', e);
 }
 </script>
 </body>
