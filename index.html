@@ -491,8 +491,19 @@ tr:hover td{background:#0F172A80}
         <input class="fi" id="m22-custo-prev" type="number" placeholder="0,00" step="0.01" min="0" style="margin-bottom:0;font-family:'DM Mono',monospace">
       </div>
       <div class="full">
-        <label class="fl">Peças Necessárias</label>
-        <textarea class="fi" id="m22-pecas-nec" rows="2" placeholder="Liste as peças necessárias..." style="margin-bottom:0;resize:vertical"></textarea>
+        <label class="fl">🔍 Buscar Peças SAP</label>
+        <div style="position:relative;margin-bottom:6px">
+          <input id="sap-os-busca" placeholder="Código SAP ou descrição..." oninput="_sapOsBusca(this)"
+            class="fi" style="margin-bottom:0;padding-right:36px">
+          <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none">🔍</span>
+          <div id="sap-os-drop" style="position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:999;background:var(--surface);border:1px solid var(--border);border-radius:8px;max-height:200px;overflow-y:auto;display:none;box-shadow:0 4px 20px #0008"></div>
+        </div>
+        <div id="sap-os-lista"><div style="font-size:11px;color:var(--text4);padding:2px 0">Nenhuma peça adicionada</div></div>
+        <div id="sap-os-total" style="display:none;background:var(--surface2);border-radius:8px;padding:7px 12px;margin-top:6px;display:flex;justify-content:space-between;align-items:center;font-size:12px">
+          <span style="color:var(--text3)">Total estimado:</span>
+          <span id="sap-os-total-val" style="font-family:'DM Mono',monospace;font-weight:700;color:var(--amber)">R$ 0,00</span>
+        </div>
+        <input type="hidden" id="m22-pecas-nec">
       </div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
@@ -575,11 +586,22 @@ tr:hover td{background:#0F172A80}
         </div>
       </div>
       <div style="margin-bottom:8px">
-        <label class="fl">Peças Necessárias</label>
-        <textarea class="fi" id="m22s-pecas-nec" rows="2" placeholder="Peças necessárias para execução..." style="margin-bottom:0;resize:vertical"></textarea>
+        <label class="fl">🔍 Buscar Peças SAP (Necessárias)</label>
+        <div style="position:relative;margin-bottom:6px">
+          <input id="sap-upd-busca" placeholder="Código SAP ou descrição..." oninput="_sapUpdBusca(this)"
+            class="fi" style="margin-bottom:0;padding-right:36px">
+          <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none">🔍</span>
+          <div id="sap-upd-drop" style="position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:999;background:var(--surface);border:1px solid var(--border);border-radius:8px;max-height:200px;overflow-y:auto;display:none;box-shadow:0 4px 20px #0008"></div>
+        </div>
+        <div id="sap-upd-lista"><div style="font-size:11px;color:var(--text4);padding:2px 0">Nenhuma peça adicionada</div></div>
+        <div id="sap-upd-total" style="display:none;background:var(--surface2);border-radius:8px;padding:7px 12px;margin-top:6px;display:flex;justify-content:space-between;font-size:12px">
+          <span style="color:var(--text3)">Total estimado:</span>
+          <span id="sap-upd-total-val" style="font-family:'DM Mono',monospace;font-weight:700;color:var(--amber)">R$ 0,00</span>
+        </div>
+        <input type="hidden" id="m22s-pecas-nec">
       </div>
       <div>
-        <label class="fl">Peças Utilizadas</label>
+        <label class="fl">Peças Utilizadas (Custo Real)</label>
         <textarea class="fi" id="m22s-pecas-util" rows="2" placeholder="Peças efetivamente utilizadas..." style="margin-bottom:0;resize:vertical"></textarea>
       </div>
     </div>
@@ -3597,6 +3619,209 @@ async function abrirOrcamentoOS(ocId, prefixo){
 
 // Lista temporária de itens da requisição (antes de enviar)
 if(!window._reqItensOS) window._reqItensOS=[];
+
+// ── Seletor de Peças SAP na OS ─────────────────────────────────────────
+let _sapOsItens=[]; // lista de peças adicionadas na OS atual
+let _sapOsTimer=null;
+
+function _sapOsAbrir(ocId){
+  // Inicializa lista ao abrir a OS
+  _sapOsItens=[];
+  _sapOsRenderLista();
+}
+
+async function _sapOsBusca(inputEl){
+  const q=(inputEl.value||'').trim();
+  const drop=document.getElementById('sap-os-drop');
+  if(!drop) return;
+  if(q.length<2){drop.style.display='none';return;}
+  if(_sapOsTimer) clearTimeout(_sapOsTimer);
+  _sapOsTimer=setTimeout(async()=>{
+    const gid=getGid();
+    const{data}=await sb.from('sap_precos').select('cod_sap,descricao,preco_unit,unidade')
+      .eq('garagem_id',gid)
+      .or(`cod_sap.ilike.%${q}%,descricao.ilike.%${q}%`)
+      .limit(10);
+    const res=data||[];
+    if(!res.length){drop.innerHTML='<div style="padding:10px 12px;font-size:12px;color:var(--text3)">Nenhum item encontrado</div>';drop.style.display='block';return;}
+    drop.innerHTML=res.map(r=>{
+      const preco=parseFloat(r.preco_unit||0);
+      return `<div onclick="_sapOsAdd(${JSON.stringify(r.cod_sap)},${JSON.stringify(r.descricao)},${preco},${JSON.stringify(r.unidade||'UN')})"
+        style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border2);display:flex;align-items:center;gap:10px"
+        onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+        <div style="flex:1;min-width:0">
+          <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--amber)">${r.cod_sap}</div>
+          <div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.descricao}</div>
+        </div>
+        <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--green);white-space:nowrap">
+          R$\u00a0${preco.toLocaleString('pt-BR',{minimumFractionDigits:2})}
+        </div>
+      </div>`;
+    }).join('');
+    drop.style.display='block';
+  },250);
+}
+
+function _sapOsAdd(cod,desc,preco,und){
+  // Fecha dropdown
+  const drop=document.getElementById('sap-os-drop');
+  const inp=document.getElementById('sap-os-busca');
+  if(drop) drop.style.display='none';
+  if(inp) inp.value='';
+
+  // Verifica se já existe — incrementa qtd
+  const exist=_sapOsItens.find(i=>i.cod===cod);
+  if(exist){exist.qtd++;} else {_sapOsItens.push({cod,desc,preco,und,qtd:1});}
+  _sapOsRenderLista();
+}
+
+function _sapOsQtd(cod,delta){
+  const item=_sapOsItens.find(i=>i.cod===cod);
+  if(!item) return;
+  item.qtd=Math.max(1,item.qtd+delta);
+  _sapOsRenderLista();
+}
+
+function _sapOsRem(cod){
+  _sapOsItens=_sapOsItens.filter(i=>i.cod!==cod);
+  _sapOsRenderLista();
+}
+
+function _sapOsRenderLista(){
+  const lista=document.getElementById('sap-os-lista');
+  const totalEl=document.getElementById('sap-os-total');
+  const totalValEl=document.getElementById('sap-os-total-val');
+  if(!lista) return;
+
+  if(!_sapOsItens.length){
+    lista.innerHTML='<div style="font-size:11px;color:var(--text4);padding:4px 0">Nenhuma peça adicionada ainda</div>';
+    if(totalEl) totalEl.style.display='none';
+    return;
+  }
+
+  let total=0;
+  lista.innerHTML=_sapOsItens.map(it=>{
+    const subtotal=it.preco*it.qtd;
+    total+=subtotal;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface2);border-radius:8px;margin-bottom:4px">
+      <div style="flex:1;min-width:0">
+        <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber)">${it.cod}</span>
+        <span style="font-size:12px;margin-left:6px">${it.desc}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+        <button onclick="_sapOsQtd('${it.cod}',-1)" style="width:22px;height:22px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-size:14px;line-height:1">−</button>
+        <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;min-width:20px;text-align:center">${it.qtd}</span>
+        <button onclick="_sapOsQtd('${it.cod}',1)" style="width:22px;height:22px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-size:14px;line-height:1">+</button>
+      </div>
+      <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--green);min-width:80px;text-align:right">
+        R$\u00a0${subtotal.toLocaleString('pt-BR',{minimumFractionDigits:2})}
+      </span>
+      <button onclick="_sapOsRem('${it.cod}')" style="width:22px;height:22px;border-radius:5px;border:none;background:transparent;color:var(--text3);cursor:pointer;font-size:14px">✕</button>
+    </div>`;
+  }).join('');
+
+  if(totalEl) totalEl.style.display='flex';
+  if(totalValEl) totalValEl.textContent='R$\u00a0'+total.toLocaleString('pt-BR',{minimumFractionDigits:2});
+
+  // Atualiza custo previsto automaticamente
+  const prevEl=document.getElementById('m22-custo-prev');
+  if(prevEl&&total>0) prevEl.value=total.toFixed(2);
+
+  // Salva em hidden fields para compatibilidade
+  const necEl=document.getElementById('m22-pecas-nec');
+  const utilEl=document.getElementById('m22-pecas-util');
+  const textoLista=_sapOsItens.map(i=>`${i.cod} - ${i.desc} (${i.qtd}x R$${i.preco.toFixed(2)})`).join('\n');
+  if(necEl) necEl.value=textoLista;
+  if(utilEl) utilEl.value=textoLista;
+}
+
+// Seletor de peças no modal de ATUALIZAÇÃO (espelho do _sapOs mas com prefixo 'upd')
+let _sapUpdItens=[], _sapUpdTimer=null;
+async function _sapUpdBusca(inputEl){
+  const q=(inputEl.value||'').trim();
+  const drop=document.getElementById('sap-upd-drop');
+  if(!drop) return;
+  if(q.length<2){drop.style.display='none';return;}
+  if(_sapUpdTimer) clearTimeout(_sapUpdTimer);
+  _sapUpdTimer=setTimeout(async()=>{
+    const gid=getGid();
+    const{data}=await sb.from('sap_precos').select('cod_sap,descricao,preco_unit,unidade')
+      .eq('garagem_id',gid).or(`cod_sap.ilike.%${q}%,descricao.ilike.%${q}%`).limit(10);
+    const res=data||[];
+    if(!res.length){drop.innerHTML='<div style="padding:10px 12px;font-size:12px;color:var(--text3)">Nenhum item encontrado</div>';drop.style.display='block';return;}
+    drop.innerHTML=res.map(r=>{
+      const p=parseFloat(r.preco_unit||0);
+      return `<div onclick="_sapUpdAdd(${JSON.stringify(r.cod_sap)},${JSON.stringify(r.descricao)},${p},${JSON.stringify(r.unidade||'UN')})"
+        style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border2);display:flex;align-items:center;gap:10px"
+        onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+        <div style="flex:1;min-width:0">
+          <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--amber)">${r.cod_sap}</div>
+          <div style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.descricao}</div>
+        </div>
+        <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--green);white-space:nowrap">R$ ${p.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
+      </div>`;
+    }).join('');
+    drop.style.display='block';
+  },250);
+}
+function _sapUpdAdd(cod,desc,preco,und){
+  const drop=document.getElementById('sap-upd-drop');
+  const inp=document.getElementById('sap-upd-busca');
+  if(drop) drop.style.display='none';
+  if(inp) inp.value='';
+  const exist=_sapUpdItens.find(i=>i.cod===cod);
+  if(exist) exist.qtd++; else _sapUpdItens.push({cod,desc,preco,und,qtd:1});
+  _sapUpdRender();
+}
+function _sapUpdQtd(cod,delta){const i=_sapUpdItens.find(i=>i.cod===cod);if(i){i.qtd=Math.max(1,i.qtd+delta);_sapUpdRender();}}
+function _sapUpdRem(cod){_sapUpdItens=_sapUpdItens.filter(i=>i.cod!==cod);_sapUpdRender();}
+function _sapUpdRender(){
+  const lista=document.getElementById('sap-upd-lista');
+  const totalEl=document.getElementById('sap-upd-total');
+  const totalValEl=document.getElementById('sap-upd-total-val');
+  if(!lista) return;
+  if(!_sapUpdItens.length){lista.innerHTML='<div style="font-size:11px;color:var(--text4);padding:2px 0">Nenhuma peça adicionada</div>';if(totalEl)totalEl.style.display='none';return;}
+  let total=0;
+  lista.innerHTML=_sapUpdItens.map(it=>{
+    const sub=it.preco*it.qtd; total+=sub;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface2);border-radius:8px;margin-bottom:4px">
+      <div style="flex:1;min-width:0;overflow:hidden">
+        <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber)">${it.cod}</span>
+        <span style="font-size:12px;margin-left:6px">${it.desc}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+        <button onclick="_sapUpdQtd('${it.cod}',-1)" style="width:22px;height:22px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-size:14px">−</button>
+        <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;min-width:20px;text-align:center">${it.qtd}</span>
+        <button onclick="_sapUpdQtd('${it.cod}',1)" style="width:22px;height:22px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-size:14px">+</button>
+      </div>
+      <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--green);min-width:80px;text-align:right">R$ ${sub.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
+      <button onclick="_sapUpdRem('${it.cod}')" style="width:22px;height:22px;border-radius:5px;border:none;background:transparent;color:var(--text3);cursor:pointer;font-size:14px">✕</button>
+    </div>`;
+  }).join('');
+  if(totalEl){totalEl.style.display='flex';}
+  if(totalValEl) totalValEl.textContent='R$ '+total.toLocaleString('pt-BR',{minimumFractionDigits:2});
+  // Atualiza custo previsto
+  const prevEl=document.getElementById('m22-custo-prev');
+  if(prevEl&&total>0) prevEl.value=total.toFixed(2);
+  const necEl=document.getElementById('m22s-pecas-nec');
+  if(necEl) necEl.value=_sapUpdItens.map(i=>`${i.cod} - ${i.desc} (${i.qtd}x R$${i.preco.toFixed(2)})`).join('\n');
+}
+
+// Fecha dropdowns ao clicar fora
+document.addEventListener('click',function(e){
+  const drop=document.getElementById('sap-upd-drop');
+  const inp=document.getElementById('sap-upd-busca');
+  if(drop&&inp&&!drop.contains(e.target)&&e.target!==inp) drop.style.display='none';
+});
+
+
+// Fecha dropdown ao clicar fora
+document.addEventListener('click',function(e){
+  const drop=document.getElementById('sap-os-drop');
+  const inp=document.getElementById('sap-os-busca');
+  if(drop&&inp&&!drop.contains(e.target)&&e.target!==inp) drop.style.display='none';
+});
+
 
 // ── SAP Autocomplete + Preço automático ──────────────────────────────────
 let _sapTimer=null, _sapCache={};
@@ -7808,7 +8033,7 @@ async function importarSapPrecos(input){
       const wb=XLSX.read(new Uint8Array(buf),{type:'array'});
       const ws=wb.Sheets[wb.SheetNames[0]];
       // Lê como array para controlar o mapeamento
-      const data=XLSX.utils.sheet_to_json(ws,{header:1,raw:false});
+      const data=XLSX.utils.sheet_to_json(ws,{header:1,raw:true});
       if(!data.length){toast('Planilha vazia','err');return;}
 
       const header=(data[0]||[]).map(h=>String(h||'').toLowerCase().trim());
@@ -7831,12 +8056,20 @@ async function importarSapPrecos(input){
         const r=data[i];
         const cod=String(r[iCod]||'').trim();
         if(!cod||cod==='0'||cod.toLowerCase()==='undefined') continue;
-        const precoRaw=String(r[iPreco]||'0').replace(/\./g,'').replace(',','.');
+        // XLSX.js com raw:false retorna string com locale brasileiro "1.234,56"
+        // raw:true retorna number direto — usamos raw:true para números
+        let precoVal=r[iPreco];
+        if(typeof precoVal==='string'){
+          // Remove pontos de milhar, troca vírgula por ponto
+          precoVal=parseFloat(precoVal.replace(/\./g,'').replace(',','.'))||0;
+        } else {
+          precoVal=parseFloat(precoVal)||0;
+        }
         rows.push({
           garagem_id:gid,
           cod_sap:cod,
           descricao:String(r[iDesc]||'').trim(),
-          preco_unit:parseFloat(precoRaw)||0,
+          preco_unit:precoVal,
           unidade:'UN',
           atualizado_em:new Date().toISOString(),
         });
