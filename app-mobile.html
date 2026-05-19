@@ -1854,6 +1854,17 @@ function _faixaLabel(){
   const fim=new Date(d.toISOString().slice(0,10)+'T07:20:00').toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
   return ini+' → '+fim;
 }
+function _mergePorPrefixo(...listas){
+  const map={};
+  listas.flat().filter(Boolean).forEach(r=>{
+    if(!r.prefixo) return;
+    const atual=map[r.prefixo];
+    const dtR=new Date(r.created_at||r.horario||0).getTime()||0;
+    const dtA=atual?new Date(atual.created_at||atual.horario||0).getTime()||0:-1;
+    if(!atual||dtR>=dtA) map[r.prefixo]=r;
+  });
+  return Object.values(map);
+}
 // Compatibilidade com código legado que usa window._faixa
 if(!window._faixa) window._faixa={
   get dIni(){ return window._diaRef; },
@@ -1948,22 +1959,29 @@ async function telaRecolha(dataFiltro=null){
   // Recolhas dentro da faixa horária
   let recolhas=[];
   try{
+    const{data:rDia}=await sb.from('recolha_checklist').select('*')
+      .eq('garagem_id',gid)
+      .eq('data_recolha',window._diaRef)
+      .order('created_at',{ascending:false});
     const{data:r}=await sb.from('recolha_checklist').select('*')
       .eq('garagem_id',gid)
       .gte('created_at',iniISO)
       .lte('created_at',fimISO)
       .order('created_at',{ascending:false});
-    if(r) recolhas=r;
+    recolhas=_mergePorPrefixo(rDia||[],r||[]);
   }catch(e){}
 
   // Abastecimentos dentro da faixa
   let abastMap={};
   try{
-    const{data:ab}=await sb.from('abastecimento_checklist').select('prefixo,litros,arla_litros,horario')
+    const{data:abDia}=await sb.from('abastecimento_checklist').select('prefixo,litros,arla_litros,horario,created_at,data')
+      .eq('garagem_id',gid)
+      .eq('data',window._diaRef);
+    const{data:ab}=await sb.from('abastecimento_checklist').select('prefixo,litros,arla_litros,horario,created_at,data')
       .eq('garagem_id',gid)
       .gte('created_at',iniISO)
       .lte('created_at',fimISO);
-    if(ab) ab.forEach(a=>{abastMap[a.prefixo]=a;});
+    _mergePorPrefixo(abDia||[],ab||[]).forEach(a=>{abastMap[a.prefixo]=a;});
   }catch(e){}
 
   const recMap={};recolhas.forEach(r=>{recMap[r.prefixo]=r;});
@@ -2141,7 +2159,8 @@ async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
   const status=externo==='avaria'||interno==='avaria'?'avaria':'recebido';
   // Usa sempre _rcEscalaData como referência — data da escala que está sendo visualizada
   // Isso garante consistência quando vários plantonistas usam o app ao mesmo tempo
-  const dataGravar=_rcEscalaData||hoje();
+  const dataGravar=window._diaRef||hoje();
+  const dataSoltura=_diaSoltura();
 
   // Busca veiculo_id
   let veiId=null;
@@ -2183,7 +2202,7 @@ async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
       recolhido_em:agora.toISOString(),
       recolhido_por:S.perfil?.nome,
       km_recolha:km||null,
-    }).eq('garagem_id',gid).eq('prefixo',prefixo).eq('data',dataGravar);
+    }).eq('garagem_id',gid).eq('prefixo',prefixo).eq('data',dataSoltura);
   }
 
   closeSheet(true);
@@ -2228,12 +2247,16 @@ async function telaAbastecimento(){
   const iniISO=_faixaIniISO(), fimISO=_faixaFimISO();
   let abastMap={};
   try{
+    const{data:abDia}=await sb.from('abastecimento_checklist').select('*')
+      .eq('garagem_id',gid)
+      .eq('data',window._diaRef)
+      .order('created_at',{ascending:false});
     const{data:abast}=await sb.from('abastecimento_checklist').select('*')
       .eq('garagem_id',gid)
       .gte('created_at',iniISO)
       .lte('created_at',fimISO)
       .order('created_at',{ascending:false});
-    if(abast) abast.forEach(a=>{if(!abastMap[a.prefixo])abastMap[a.prefixo]=a;});
+    _mergePorPrefixo(abDia||[],abast||[]).forEach(a=>{if(!abastMap[a.prefixo])abastMap[a.prefixo]=a;});
   }catch(e){}
 
   const tot=Object.keys(abastMap).length;
@@ -2383,7 +2406,7 @@ async function salvarAbastecimento(){
 
   const agora=new Date();
   const horario=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-  const dataGravar=hoje();
+  const dataGravar=window._diaRef||hoje();
 
   // Busca veiculo_id (não bloqueia se não achar)
   let veiId=null;
@@ -2419,9 +2442,8 @@ async function salvarAbastecimento(){
   // Turno noturno: abastecimento do dia 14 abastece carros que saem no dia 15.
   // Buscamos a escala MAIS PRÓXIMA: hoje ou amanhã (janela de 2 dias).
   try{
-    const d0=hoje(); // hoje
-    const d1=new Date();d1.setDate(d1.getDate()+1);
-    const d1str=d1.toISOString().split('T')[0]; // amanhã
+    const d0=window._diaRef||hoje(); // dia do plantão
+    const d1str=_diaSoltura(); // escala D+1
     const datasAlvo=[d0,d1str];
     const{data:proxSoltura}=await sb.from('soltura_2_10').select('data')
       .eq('garagem_id',gid).eq('prefixo',prefixo).in('data',datasAlvo)
