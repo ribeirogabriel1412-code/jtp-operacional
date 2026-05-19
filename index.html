@@ -559,6 +559,8 @@ tr:hover td{background:#0F172A80}
       </div>
     </div>
 
+    <div id="m22s-conf-pecas-wrap" style="display:none;margin-top:12px"></div>
+
     <div style="margin-top:12px">
       <label class="fl">Observação / Atualização</label>
       <input class="fi" id="m22s-obs" placeholder="Ex: Aguardando chegada da peça, prazo 2 dias..." style="margin-bottom:0">
@@ -4275,6 +4277,7 @@ async function salvarOcorrencia22(){
 function toggleLib22(){
   const v=document.getElementById('m22s-status').value;
   document.getElementById('m22s-lib-wrap').style.display=v==='liberado'?'block':'none';
+  if(typeof _renderConfirmacaoFechamento22==='function') _renderConfirmacaoFechamento22();
 }
 
 async function setPrioridadeOS(ocId, prioridade){
@@ -4364,6 +4367,8 @@ async function salvarNovaOcorrencia(gid){
 function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
   S.editId22=id;
   _sapUpdItens=[];
+  _sapUpdBasePrev=0;
+  _sapUpdBasePecas='';
   document.getElementById('m22s-info').textContent=prefixo;
   document.getElementById('mh-info').textContent=prefixo;
   document.getElementById('m22s-status').value=statusAtual;
@@ -4373,6 +4378,7 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
   document.getElementById('m22s-previsao').value='';
   document.getElementById('m22s-hora-lib').value=dtLocal();
   document.getElementById('m22s-lib-wrap').style.display=statusAtual==='liberado'?'block':'none';
+  _renderConfirmacaoFechamento22();
   _sapUpdRender();
 
   // Mostra botão checklist liberação
@@ -4388,6 +4394,8 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
     document.getElementById('m22s-desc-atual').textContent=oc.descricao||'—';
     if(oc.praxio_os_id) document.getElementById('m22s-os').value=oc.praxio_os_id;
     if(oc.mecanico) document.getElementById('m22s-mecanico').value=oc.mecanico;
+    _sapUpdBasePrev=parseFloat(oc.custo_previsto||0)||0;
+    _sapUpdBasePecas=oc.pecas_necessarias||'';
     // Preenche campos de custo e peças se existirem no modal
     const cpEl=document.getElementById('m22s-custo-prev');
     const crEl=document.getElementById('m22s-custo-real');
@@ -4397,6 +4405,7 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
     if(crEl) crEl.value=oc.custo_real||'';
     if(puEl) puEl.value=oc.pecas_utilizadas||'';
     if(pnEl) pnEl.value=oc.pecas_necessarias||'';
+    _sapUpdRender();
   });
 
   // Carrega checklist de liberação para mostrar progresso e botões
@@ -5038,8 +5047,17 @@ async function atualizarStatus22(){
 
   const custoPrev=parseFloat(document.getElementById('m22s-custo-prev')?.value||0)||null;
   const custoReal=parseFloat(document.getElementById('m22s-custo-real')?.value||0)||null;
-  const pecasNec=document.getElementById('m22s-pecas-nec')?.value?.trim()||null;
+  const pecasNec=(typeof _sapUpdTextoFinal==='function'?_sapUpdTextoFinal():document.getElementById('m22s-pecas-nec')?.value)?.trim()||null;
   const pecasUtil=document.getElementById('m22s-pecas-util')?.value?.trim()||null;
+
+  if(isLib&&pecasNec){
+    const okPecas=document.getElementById('m22s-conf-pecas-ok');
+    if(!okPecas||!okPecas.checked){
+      toast('Confirme o checklist de peças solicitadas antes de fechar a OS','err');
+      _renderConfirmacaoFechamento22();
+      return;
+    }
+  }
 
   const payload={
     status:novoStatus,
@@ -6701,6 +6719,38 @@ function _sapOsRenderLista(){
 
 // ── SAP para modal atualização ────────────────────────────────────
 var _sapUpdItens=[];
+var _sapUpdBasePrev=0;
+var _sapUpdBasePecas='';
+function _sapUpdTotalNovos(){
+  return (_sapUpdItens||[]).reduce(function(s,i){return s+(parseFloat(i.preco||0)*parseInt(i.qtd||1));},0);
+}
+function _sapUpdNovosTexto(){
+  return (_sapUpdItens||[]).map(function(i){return i.cod+' - '+i.desc+' ('+i.qtd+'x R$'+parseFloat(i.preco||0).toFixed(2)+')';}).join('\n');
+}
+function _sapUpdTextoFinal(){
+  var partes=[];
+  if((_sapUpdBasePecas||'').trim()) partes.push(_sapUpdBasePecas.trim());
+  var novos=_sapUpdNovosTexto();
+  if(novos.trim()) partes.push(novos.trim());
+  return partes.join('\n');
+}
+function _renderConfirmacaoFechamento22(){
+  var wrap=document.getElementById('m22s-conf-pecas-wrap');
+  if(!wrap) return;
+  var status=document.getElementById('m22s-status')&&document.getElementById('m22s-status').value;
+  var pecas=_sapUpdTextoFinal();
+  if(status!=='liberado'||!pecas.trim()){wrap.style.display='none';wrap.innerHTML='';return;}
+  var linhas=pecas.split('\n').filter(function(l){return l.trim();}).map(function(l){return '<div style="padding:4px 0;border-bottom:1px solid var(--border2);font-size:11px;color:var(--text2)">'+l+'</div>';}).join('');
+  wrap.style.display='block';
+  wrap.innerHTML='<div style="background:#F59E0B12;border:1px solid #F59E0B40;border-radius:10px;padding:12px">'+
+    '<div style="font-size:11px;font-weight:800;color:var(--amber);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Checklist de peças solicitadas</div>'+
+    '<div style="max-height:120px;overflow:auto;margin-bottom:10px">'+linhas+'</div>'+
+    '<label style="display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text);cursor:pointer">'+
+      '<input type="checkbox" id="m22s-conf-pecas-ok" style="margin-top:2px">'+
+      '<span>Confirmo que revisei todas as peças solicitadas antes de fechar a OS.</span>'+
+    '</label>'+
+  '</div>';
+}
 async function _sapUpdBusca(inputEl){
   var q=(inputEl.value||'').trim();
   var drop=document.getElementById('sap-upd-drop');
@@ -6744,7 +6794,17 @@ function _sapUpdRender(){
   var totalEl=document.getElementById('sap-upd-total');
   var totalValEl=document.getElementById('sap-upd-total-val');
   if(!lista) return;
-  if(!_sapUpdItens.length){lista.innerHTML='<div style="font-size:11px;color:var(--text4);padding:2px 0">Nenhuma peça adicionada</div>';if(totalEl)totalEl.style.display='none';return;}
+  if(!_sapUpdItens.length){
+    lista.innerHTML=(_sapUpdBasePecas||'').trim()?'<div style="font-size:11px;color:var(--text3);padding:7px 10px;background:var(--surface2);border-radius:8px;white-space:pre-wrap"><strong>Já solicitado:</strong>\n'+_sapUpdBasePecas.trim()+'</div>':'<div style="font-size:11px;color:var(--text4);padding:2px 0">Nenhuma peça adicionada</div>';
+    if(totalEl)totalEl.style.display=_sapUpdBasePrev>0?'flex':'none';
+    if(totalValEl) totalValEl.textContent='R$\u00a0'+_sapUpdBasePrev.toLocaleString('pt-BR',{minimumFractionDigits:2});
+    var prevBaseEl=document.getElementById('m22s-custo-prev');
+    if(prevBaseEl&&_sapUpdBasePrev>0) prevBaseEl.value=_sapUpdBasePrev.toFixed(2);
+    var necBaseEl=document.getElementById('m22s-pecas-nec');
+    if(necBaseEl) necBaseEl.value=(_sapUpdBasePecas||'').trim();
+    _renderConfirmacaoFechamento22();
+    return;
+  }
   var total=0;
   lista.innerHTML=_sapUpdItens.map(function(it){
     var sub=it.preco*it.qtd; total+=sub;
@@ -6760,11 +6820,13 @@ function _sapUpdRender(){
     '</div>';
   }).join('');
   if(totalEl) totalEl.style.display='flex';
-  if(totalValEl) totalValEl.textContent='R$\u00a0'+total.toLocaleString('pt-BR',{minimumFractionDigits:2});
+  var totalFinal=_sapUpdBasePrev+total;
+  if(totalValEl) totalValEl.textContent='R$\u00a0'+totalFinal.toLocaleString('pt-BR',{minimumFractionDigits:2});
   var prevEl=document.getElementById('m22s-custo-prev');
-  if(prevEl&&total>0) prevEl.value=total.toFixed(2);
+  if(prevEl&&totalFinal>0) prevEl.value=totalFinal.toFixed(2);
   var necEl=document.getElementById('m22s-pecas-nec');
-  if(necEl) necEl.value=_sapUpdItens.map(function(i){return i.cod+' - '+i.desc+' ('+i.qtd+'x R$'+i.preco.toFixed(2)+')';}).join('\n');
+  if(necEl) necEl.value=_sapUpdTextoFinal();
+  _renderConfirmacaoFechamento22();
   lista.onclick=function(e){
     var bQ=e.target.closest('[data-action="upd-qtd"]'),bR=e.target.closest('[data-action="upd-rem"]');
     if(bQ) _sapUpdQtd(bQ.dataset.cod,bQ.dataset.delta);
@@ -13658,73 +13720,4 @@ ${barraPrint('📋 3.4 · Checklist de Equipamentos · '+garagem?.nome,'JTP_34_C
     <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px">Equipamento / Item</th>
     <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px">Critério de Verificação</th>
     <th style="border:1px solid #333;background:#555;color:#fff;text-align:center;width:80px;font-size:9px">Status</th>
-    <th style="border:1px solid #333;background:#555;color:#fff;text-align:center;width:90px;font-size:9px">Manutenção Necessária?</th>
-  </tr></thead>
-  <tbody>${EQUIP_OFICINA.map((it,i)=>rowEquip(it,i,'of')).join('')}</tbody>
-</table>
-
-<div style="background:#333;color:#fff;font-weight:900;padding:4px 8px;font-size:10px;margin-top:6px">■ EQUIPAMENTOS DE PÁTIO</div>
-<table>
-  <thead><tr>
-    <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px">Equipamento / Item</th>
-    <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px">Critério de Verificação</th>
-    <th style="border:1px solid #333;background:#555;color:#fff;text-align:center;width:80px;font-size:9px">Status</th>
-    <th style="border:1px solid #333;background:#555;color:#fff;text-align:center;width:90px;font-size:9px">Manutenção Necessária?</th>
-  </tr></thead>
-  <tbody>${EQUIP_PATIO.map((it,i)=>rowEquip(it,i,'pt')).join('')}</tbody>
-</table>
-
-<div style="background:#333;color:#fff;font-weight:900;padding:4px 8px;font-size:10px;margin-top:6px">■ EQUIPAMENTOS COM NOK – AÇÃO IMEDIATA</div>
-<table>
-  <thead><tr>
-    <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px">Equipamento</th>
-    <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px">Descrição do Problema</th>
-    <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px;width:100px">Responsável</th>
-    <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px;width:100px">Prazo para Resolução</th>
-  </tr></thead>
-  <tbody>${Array.from({length:4},()=>`<tr>
-    <td style="border:1px solid #333;height:18px"></td>
-    <td style="border:1px solid #333;"></td>
-    <td style="border:1px solid #333;"></td>
-    <td style="border:1px solid #333;"></td>
-  </tr>`).join('')}</tbody>
-</table>
-
-<div style="margin-top:12px;display:flex;justify-content:space-between;align-items:flex-end">
-  <div style="font-size:9px">Verificado por (Assist. PCM): <span style="display:inline-block;min-width:200px;border-bottom:1px solid #333">&nbsp;</span></div>
-  <div style="font-size:9px">Horário de Verificação: <span style="font-weight:700">${hrFmt}</span></div>
-</div>
-<div style="margin-top:8px;font-size:8px;color:#555">GRUPO JTP | OPERAÇÃO GARAGEM</div>
-<div style="margin-top:4px;font-size:8px;color:#888;text-align:right">Gerado automaticamente · ${dtFmt} · JTP Transportes</div>
-</body></html>`;
-
-  abrirRelatorioHTMLPCM(html, `JTP_34_ChecklistEquip_${agora.toISOString().slice(0,10).replace(/-/g,"")}.pdf`);
-}
-
-// ── Helper: abrir relatório HTML como PDF ─────────────────────────────────
-async function abrirRelatorioHTMLPCM(html, nomePDF){
-  const blob=new Blob([html],{type:'text/html;charset=utf-8'});
-  if(navigator.share&&navigator.canShare){
-    try{
-      const file=new File([blob],nomePDF.replace('.pdf','.html'),{type:'text/html'});
-      if(navigator.canShare({files:[file]})){
-        await navigator.share({title:nomePDF,files:[file]});
-        return;
-      }
-    }catch(e){ if(e.name==='AbortError') return; }
-  }
-  const url=URL.createObjectURL(blob);
-  const w=window.open(url,'_blank');
-  if(w) setTimeout(()=>URL.revokeObjectURL(url),60000);
-  else{
-    const a=document.createElement('a'); a.href=url; a.download=nomePDF.replace('.pdf','.html');
-    a.click(); setTimeout(()=>URL.revokeObjectURL(url),3000);
-  }
-}
-
-
-
-
-</script>
-</body>
-</html>
+    <th style="border:1px solid #333;background:#555;color:#fff;text-align:center;width:90px;font-size:9px">Manutenção Ne
