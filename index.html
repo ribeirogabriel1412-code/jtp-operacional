@@ -5725,8 +5725,6 @@ async function renderFerrPCM(aba='painel'){
     <button class="filtro-btn${aba==='painel'?' active':''}" onclick="renderFerrPCM('painel')">📊 Painel</button>
     <button class="filtro-btn${aba==='resumo'?' active':''}" onclick="renderFerrPCM('resumo')">📋 Resumo do Turno</button>
     <button class="filtro-btn${aba==='ck37'?' active':''}" onclick="renderFerrPCM('ck37')">✅ 3.7 Supervisão</button>
-    <button class="filtro-btn${aba==='ck38'?' active':''}" onclick="renderFerrPCM('ck38')">🚌 3.8 Liberação</button>
-    <button class="filtro-btn${aba==='req_compra'?' active':''}" onclick="renderFerrPCM('req_compra')">🛒 Req. Compra</button>
     <button class="filtro-btn${aba==='mov_pneu'?' active':''}" onclick="renderFerrPCM('mov_pneu')">⚙️ Pneus</button>
     <button class="filtro-btn${aba==='consolidado'?' active':''}" onclick="renderFerrPCM('consolidado')">📋 Consolidado</button>
     <button class="filtro-btn${aba==='fech24'?' active':''}" onclick="renderFerrPCM('fech24')">📋 2.4 Fechamento</button>
@@ -6483,23 +6481,6 @@ async function renderFerrPCM(aba='painel'){
       </div>
     </div>
     <!-- BARRA DE RELATÓRIOS PCM — bem visível -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
-      <button onclick="abrirFechamentoPCM()" style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px 16px;border-radius:12px;border:1px solid #3B82F640;background:#3B82F610;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:left">
-        <span style="font-size:18px">📋</span>
-        <span style="font-size:13px;font-weight:800;color:var(--blue)">Fechamento 2.4</span>
-        <span style="font-size:11px;color:var(--text3)">Gerar relatório de turno PCM</span>
-      </button>
-      <button onclick="abrirFechamentoCustoTurno()" style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px 16px;border-radius:12px;border:1px solid #F59E0B40;background:#F59E0B10;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:left">
-        <span style="font-size:18px">💰</span>
-        <span style="font-size:13px;font-weight:800;color:var(--amber)">Custo do Turno</span>
-        <span style="font-size:11px;color:var(--text3)">Previsto × real por OS</span>
-      </button>
-      <button onclick="gerarRelatorio34()" style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px 16px;border-radius:12px;border:1px solid #06B6D440;background:#06B6D410;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:left">
-        <span style="font-size:18px">🔧</span>
-        <span style="font-size:13px;font-weight:800;color:#06B6D4">Checklist 3.4</span>
-        <span style="font-size:11px;color:var(--text3)">Equipamentos da oficina</span>
-      </button>
-    </div>
     ${!parados
       ?`<div class="empty"><div style="font-size:40px">✅</div><div style="color:var(--green);font-weight:600;margin:12px 0">Nenhum veículo parado!</div></div>`
       :cards}
