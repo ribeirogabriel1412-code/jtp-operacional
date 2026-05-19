@@ -7184,41 +7184,99 @@ async function exportarConsolidadoPDF(gid,ini,fim){
     return `<tr><td>${esc(r.cod_sap||'—')}</td><td>${esc(r.peca||'—')}</td><td style="text-align:center">${r.quantidade||1}</td><td style="text-align:right">${fmtR(vt)}</td><td>${esc(r.status||'—')}</td></tr>`;
   }).join('');
 
-  abrirJanelaPDF(`
-    <div class="header">
-      <div>
-        <div class="logo">JTP Transportes</div>
-        <h1>Consolidado da Manutenção do Turno</h1>
-        <div style="font-size:10px;color:#555">${esc(garagem?.nome||'—')} · ${fmtDT(ini)} até ${fmtDT(fim)}</div>
-      </div>
-      <div class="meta">
-        <div style="font-size:18px;font-weight:800;color:${orcamento>0&&totalReal>orcamento?'#dc2626':'#059669'}">${fmtR(totalReal)}</div>
-        <div>${orcamento>0?'Orçamento: '+fmtR(orcamento):'Custo real consolidado'}</div>
-      </div>
-    </div>
-    <div class="kpi-row">
-      <div class="kpi"><div class="kpi-val">${lista.length}</div><div class="kpi-lab">OS no período</div></div>
-      <div class="kpi"><div class="kpi-val" style="color:#059669">${fechadas}</div><div class="kpi-lab">Fechadas</div></div>
-      <div class="kpi"><div class="kpi-val" style="color:#d97706">${fmtR(totalPrev)}</div><div class="kpi-lab">Previsto</div></div>
-      <div class="kpi"><div class="kpi-val" style="color:${saldo<0?'#dc2626':'#059669'}">${orcamento>0?fmtR(saldo):fmtR(totalPecas)}</div><div class="kpi-lab">${orcamento>0?'Saldo':'Peças'}</div></div>
-    </div>
-    ${orcamento>0?`<div style="border:1px solid #ddd;border-radius:6px;padding:8px;margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:4px"><strong>Uso do orçamento</strong><span>${pctOrc}%</span></div>
-      <div style="height:8px;background:#e5e7eb;border-radius:99px;overflow:hidden"><div style="height:100%;width:${Math.min(pctOrc,100)}%;background:${pctOrc>100?'#dc2626':pctOrc>=80?'#d97706':'#059669'}"></div></div>
-    </div>`:''}
-    <h2>Resumo por Tipo</h2>
-    <table>
-      <thead><tr><th>Tipo</th><th>Qtd OS</th><th>Previsto</th><th>Real</th><th>Peças</th><th>Variação</th></tr></thead>
-      <tbody>${resumoRows||'<tr><td colspan="6" style="text-align:center;color:#777">Sem OS no período</td></tr>'}</tbody>
-    </table>
-    <h2>Detalhamento por OS</h2>
-    <table>
-      <thead><tr><th>Prefixo</th><th>Tipo</th><th>Mecânico</th><th>Entrada</th><th>Lib./Prev.</th><th>Status</th><th>Previsto</th><th>Real</th><th>Peças</th><th>Delta</th></tr></thead>
-      <tbody>${rows||'<tr><td colspan="10" style="text-align:center;color:#777">Sem OS no período</td></tr>'}</tbody>
-    </table>
-    ${comprasRows?`<h2>Requisições Avulsas</h2><table><thead><tr><th>SAP</th><th>Peça</th><th>Qtd</th><th>Valor</th><th>Status</th></tr></thead><tbody>${comprasRows}</tbody></table>`:''}
-    <div style="margin-top:14px;font-size:10px;color:#555">Abertas no fim do período: <strong>${abertas}</strong> · Requisições consideradas: <strong>${compras.length}</strong></div>
-  `,'Consolidado da Manutenção');
+  const periodoIni=fmtDT(ini), periodoFim=fmtDT(fim);
+  const nomeGaragem=esc(garagem?.nome||'—');
+  const responsavel=esc(S.perfil?.nome||'—');
+  const geradoEm=new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'});
+  const w=window.open('','_blank','width=980,height=720');
+  if(!w){toast('Pop-up bloqueado pelo navegador','err');return;}
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Consolidado da Manutenção</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:Arial,sans-serif;font-size:10px;color:#000;background:#fff;margin:0;padding:8px}
+  @media print{.no-print{display:none!important}body{padding:0}@page{margin:7mm;size:A4 landscape}}
+  table{width:100%;border-collapse:collapse}
+  th,td{border:1.4px solid #222;padding:3px 5px;vertical-align:middle}
+  th{background:#f2f2f2;color:#000;font-size:9px;font-weight:900;text-align:left;text-transform:uppercase}
+  .top-print{position:sticky;top:0;background:#1e293b;padding:8px 10px;display:flex;gap:8px;align-items:center;margin:-8px -8px 8px;z-index:9}
+  .top-print button{border:none;border-radius:6px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer}
+  .cabecalho{text-align:center;border:2.5px solid #000;padding:6px;margin-bottom:5px}
+  .cabecalho .titulo{font-size:13px;font-weight:900;letter-spacing:1px}
+  .info td{height:20px;font-size:9px}
+  .sec{border:1.6px solid #222;background:#f7f7f7;color:#999;font-size:9px;font-weight:900;text-transform:uppercase;padding:4px 8px;margin:5px 0 2px}
+  .resumo td{height:24px;font-size:10px;font-weight:700}
+  .resumo strong{font-size:12px}
+  .ok{color:#059669;font-weight:900}
+  .nok{color:#dc2626;font-weight:900}
+  .warn{color:#d97706;font-weight:900}
+  .mono{font-family:monospace;font-weight:900}
+  .right{text-align:right}
+  .center{text-align:center}
+  .badge{display:inline-block;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:900}
+  .badge.ok{background:#d1fae5;color:#065f46}
+  .badge.pend{background:#fef3c7;color:#92400e}
+  .zebra tbody tr:nth-child(even){background:#f6f6f6}
+  .rodape{margin-top:8px;display:flex;justify-content:space-between;font-size:8px;color:#555}
+</style></head><body>
+<div class="top-print no-print">
+  <button onclick="window.print()" style="background:#2563eb;color:#fff">Imprimir / Salvar PDF</button>
+  <button onclick="window.close()" style="background:#e5e7eb;color:#111">Fechar</button>
+  <span style="color:#cbd5e1;font-size:11px">Padrao operacional JTP</span>
+</div>
+
+<div class="cabecalho">
+  <div class="titulo">GRUPO JTP | OPERACAO GARAGEM | Consolidado da Manutencao do Turno</div>
+</div>
+
+<table class="info" style="margin-bottom:4px">
+  <tr>
+    <td style="width:20%"><strong>Data:</strong> ${periodoIni} ate ${periodoFim}</td>
+    <td style="width:24%"><strong>Garagem:</strong> ${nomeGaragem}</td>
+    <td style="width:18%"><strong>Total OS:</strong> ${lista.length}</td>
+    <td style="width:18%"><strong>Responsavel:</strong> ${responsavel}</td>
+    <td style="width:20%"><strong>Gerado em:</strong> ${geradoEm}</td>
+  </tr>
+</table>
+
+<div class="sec">■ RESUMO DO TURNO</div>
+<table class="resumo" style="margin-bottom:5px">
+  <tr>
+    <td><span class="ok">■ Fechadas:</span> <strong>${fechadas}</strong></td>
+    <td><span class="warn">■ Abertas:</span> <strong>${abertas}</strong></td>
+    <td><span class="warn">■ Previsto:</span> <strong>${fmtR(totalPrev)}</strong></td>
+    <td><span class="${orcamento>0&&totalReal>orcamento?'nok':'ok'}">■ Real:</span> <strong>${fmtR(totalReal)}</strong></td>
+    <td><span class="${saldo<0?'nok':'ok'}">■ ${orcamento>0?'Saldo':'Pecas'}:</span> <strong>${orcamento>0?fmtR(saldo):fmtR(totalPecas)}</strong></td>
+  </tr>
+</table>
+
+${orcamento>0?`<table class="info" style="margin-bottom:5px"><tr>
+  <td><strong>Orcamento disponivel:</strong> ${fmtR(orcamento)}</td>
+  <td><strong>Uso do orcamento:</strong> ${pctOrc}%</td>
+  <td><strong>Requisicoes consideradas:</strong> ${compras.length}</td>
+</tr></table>`:''}
+
+<div class="sec">■ RESUMO POR TIPO</div>
+<table class="zebra" style="margin-bottom:5px">
+  <thead><tr><th>Tipo</th><th class="center">Qtd OS</th><th class="right">Previsto</th><th class="right">Real</th><th class="right">Pecas</th><th class="right">Variacao</th></tr></thead>
+  <tbody>${resumoRows||'<tr><td colspan="6" class="center">Sem OS no periodo</td></tr>'}</tbody>
+</table>
+
+<div class="sec">■ DETALHAMENTO POR OS</div>
+<table class="zebra">
+  <thead><tr><th style="width:7%">Prefixo</th><th style="width:12%">Tipo</th><th style="width:15%">Mecanico</th><th style="width:10%">Entrada</th><th style="width:10%">Lib./Prev.</th><th style="width:8%">Status</th><th class="right" style="width:10%">Previsto</th><th class="right" style="width:10%">Real</th><th class="right" style="width:9%">Pecas</th><th class="right" style="width:9%">Delta</th></tr></thead>
+  <tbody>${rows||'<tr><td colspan="10" class="center">Sem OS no periodo</td></tr>'}</tbody>
+</table>
+
+${comprasRows?`<div class="sec">■ REQUISICOES AVULSAS</div>
+<table class="zebra"><thead><tr><th>SAP</th><th>Peca</th><th class="center">Qtd</th><th class="right">Valor</th><th>Status</th></tr></thead><tbody>${comprasRows}</tbody></table>`:''}
+
+<div class="rodape">
+  <span>JTP Transportes | Sistema Operacional</span>
+  <span>Consolidado automatico do periodo operacional</span>
+</div>
+</body></html>`);
+  w.document.close();
 }
 
 // ── 2.4 Fechamento de Turno ───────────────────────────────────────
