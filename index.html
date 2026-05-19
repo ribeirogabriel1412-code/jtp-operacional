@@ -653,7 +653,9 @@ tr:hover td{background:#0F172A80}
 <div id="print-210"></div>
 
 <script>
-pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+if(window.pdfjsLib&&pdfjsLib.GlobalWorkerOptions){
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
 const {createClient}=supabase;
 const SUPABASE_URL='https://jboclubugfxmurvhcxgr.supabase.co';
 // Publishable Key para auth + Anon Key JWT para operações RLS
@@ -13360,6 +13362,7 @@ function extractData(rows){const data=[];let linha='';const rP=/^\d\d[AB]$/,rV=/
 
 // INIT
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none')doLogin()});
+window.doLogin=doLogin;
 
 // Verifica sessão ativa
 (async()=>{
@@ -13720,4 +13723,73 @@ ${barraPrint('📋 3.4 · Checklist de Equipamentos · '+garagem?.nome,'JTP_34_C
     <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px">Equipamento / Item</th>
     <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px">Critério de Verificação</th>
     <th style="border:1px solid #333;background:#555;color:#fff;text-align:center;width:80px;font-size:9px">Status</th>
-    <th style="border:1px solid #333;background:#555;color:#fff;text-align:center;width:90px;font-size:9px">Manutenção Ne
+    <th style="border:1px solid #333;background:#555;color:#fff;text-align:center;width:90px;font-size:9px">Manutenção Necessária?</th>
+  </tr></thead>
+  <tbody>${EQUIP_OFICINA.map((it,i)=>rowEquip(it,i,'of')).join('')}</tbody>
+</table>
+
+<div style="background:#333;color:#fff;font-weight:900;padding:4px 8px;font-size:10px;margin-top:6px">■ EQUIPAMENTOS DE PÁTIO</div>
+<table>
+  <thead><tr>
+    <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px">Equipamento / Item</th>
+    <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px">Critério de Verificação</th>
+    <th style="border:1px solid #333;background:#555;color:#fff;text-align:center;width:80px;font-size:9px">Status</th>
+    <th style="border:1px solid #333;background:#555;color:#fff;text-align:center;width:90px;font-size:9px">Manutenção Necessária?</th>
+  </tr></thead>
+  <tbody>${EQUIP_PATIO.map((it,i)=>rowEquip(it,i,'pt')).join('')}</tbody>
+</table>
+
+<div style="background:#333;color:#fff;font-weight:900;padding:4px 8px;font-size:10px;margin-top:6px">■ EQUIPAMENTOS COM NOK – AÇÃO IMEDIATA</div>
+<table>
+  <thead><tr>
+    <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px">Equipamento</th>
+    <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px">Descrição do Problema</th>
+    <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px;width:100px">Responsável</th>
+    <th style="border:1px solid #333;background:#555;color:#fff;font-size:9px;width:100px">Prazo para Resolução</th>
+  </tr></thead>
+  <tbody>${Array.from({length:4},()=>`<tr>
+    <td style="border:1px solid #333;height:18px"></td>
+    <td style="border:1px solid #333;"></td>
+    <td style="border:1px solid #333;"></td>
+    <td style="border:1px solid #333;"></td>
+  </tr>`).join('')}</tbody>
+</table>
+
+<div style="margin-top:12px;display:flex;justify-content:space-between;align-items:flex-end">
+  <div style="font-size:9px">Verificado por (Assist. PCM): <span style="display:inline-block;min-width:200px;border-bottom:1px solid #333">&nbsp;</span></div>
+  <div style="font-size:9px">Horário de Verificação: <span style="font-weight:700">${hrFmt}</span></div>
+</div>
+<div style="margin-top:8px;font-size:8px;color:#555">GRUPO JTP | OPERAÇÃO GARAGEM</div>
+<div style="margin-top:4px;font-size:8px;color:#888;text-align:right">Gerado automaticamente · ${dtFmt} · JTP Transportes</div>
+</body></html>`;
+
+  abrirRelatorioHTMLPCM(html, `JTP_34_ChecklistEquip_${agora.toISOString().slice(0,10).replace(/-/g,"")}.pdf`);
+}
+
+// ── Helper: abrir relatório HTML como PDF ─────────────────────────────────
+async function abrirRelatorioHTMLPCM(html, nomePDF){
+  const blob=new Blob([html],{type:'text/html;charset=utf-8'});
+  if(navigator.share&&navigator.canShare){
+    try{
+      const file=new File([blob],nomePDF.replace('.pdf','.html'),{type:'text/html'});
+      if(navigator.canShare({files:[file]})){
+        await navigator.share({title:nomePDF,files:[file]});
+        return;
+      }
+    }catch(e){ if(e.name==='AbortError') return; }
+  }
+  const url=URL.createObjectURL(blob);
+  const w=window.open(url,'_blank');
+  if(w) setTimeout(()=>URL.revokeObjectURL(url),60000);
+  else{
+    const a=document.createElement('a'); a.href=url; a.download=nomePDF.replace('.pdf','.html');
+    a.click(); setTimeout(()=>URL.revokeObjectURL(url),3000);
+  }
+}
+
+
+
+
+</script>
+</body>
+</html>
