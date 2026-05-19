@@ -2244,12 +2244,12 @@ async function telaAbastecimento(){
   _abFrotaLista=frotaRaw;
 
   // Abastecimentos dentro da faixa horária definida pelo operador
-  const iniISO=_faixaIniISO(), fimISO=_faixaFimISO();
+  const iniISO=hojeStrAb+'T00:00:00', fimISO=hojeStrAb+'T23:59:59';
   let abastMap={};
   try{
     const{data:abDia}=await sb.from('abastecimento_checklist').select('*')
       .eq('garagem_id',gid)
-      .eq('data',window._diaRef)
+      .eq('data',hojeStrAb)
       .order('created_at',{ascending:false});
     const{data:abast}=await sb.from('abastecimento_checklist').select('*')
       .eq('garagem_id',gid)
@@ -2284,19 +2284,18 @@ async function telaAbastecimento(){
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div>
           <div style="font-weight:800;font-size:17px">⛽ Abastecimento</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">Toda a frota · ${tot} na faixa</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Toda a frota · ${tot} abastecidos hoje</div>
         </div>
         <button onclick="telaAbastecimento()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>
       </div>
       <!-- Dia de referência -->
-      <div onclick="abrirSeletorFaixa(()=>telaAbastecimento())"
-        style="background:var(--surface2);border:1px solid var(--blue);border-radius:10px;padding:10px 14px;margin-bottom:10px;cursor:pointer;display:flex;align-items:center;justify-content:space-between">
+      <div style="background:var(--surface2);border:1px solid var(--blue);border-radius:10px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">
         <div>
-          <div style="font-size:9px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:1px">📅 Dia de Referência</div>
-          <div style="font-size:14px;font-weight:800;color:var(--text);margin-top:2px">${_diaRefLabel()}</div>
-          <div style="font-size:10px;color:var(--text4);margin-top:1px">${_faixaLabel()}</div>
+          <div style="font-size:9px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:1px">📅 Abastecimento de Hoje</div>
+          <div style="font-size:14px;font-weight:800;color:var(--text);margin-top:2px">${dataFmt}</div>
+          <div style="font-size:10px;color:var(--text4);margin-top:1px">Somente lançamentos feitos hoje</div>
         </div>
-        <span style="font-size:11px;color:var(--blue);font-weight:700">Alterar →</span>
+        <span style="font-size:11px;color:var(--blue);font-weight:700">Hoje</span>
       </div>
       <div class="prog"><div class="prog-f" style="width:${pct}%;background:${pct===100?'var(--green)':'var(--blue)'}"></div></div>
       <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:11px;color:var(--text3);margin-bottom:10px">
@@ -2406,7 +2405,7 @@ async function salvarAbastecimento(){
 
   const agora=new Date();
   const horario=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-  const dataGravar=window._diaRef||hoje();
+  const dataGravar=hoje();
 
   // Busca veiculo_id (não bloqueia se não achar)
   let veiId=null;
@@ -2442,8 +2441,9 @@ async function salvarAbastecimento(){
   // Turno noturno: abastecimento do dia 14 abastece carros que saem no dia 15.
   // Buscamos a escala MAIS PRÓXIMA: hoje ou amanhã (janela de 2 dias).
   try{
-    const d0=window._diaRef||hoje(); // dia do plantão
-    const d1str=_diaSoltura(); // escala D+1
+    const d0=hoje(); // hoje
+    const d1=new Date();d1.setDate(d1.getDate()+1);
+    const d1str=d1.toISOString().split('T')[0]; // amanhã
     const datasAlvo=[d0,d1str];
     const{data:proxSoltura}=await sb.from('soltura_2_10').select('data')
       .eq('garagem_id',gid).eq('prefixo',prefixo).in('data',datasAlvo)
