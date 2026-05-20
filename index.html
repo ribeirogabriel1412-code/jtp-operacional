@@ -7661,7 +7661,7 @@ async function salvarCustoRapido(ocId, gid, data){
 // ══════════════════════════════════════════════════════════════
 // PAINEL PREVENTIVAS — IMPORTAÇÃO MAN V1
 // ══════════════════════════════════════════════════════════════
-let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='propostas', _prevImportId=null, _prevBuscaPrefixo='';
+let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='propostas', _prevImportId=null, _prevBuscaPrefixo='', _prevEscalaAlteracoes={}, _prevValidados={};
 
 const PREV_CAP={pesadaDia:2,pesadaSemana:10,leveDia:6,leveSemana:30};
 const prevEsc=v=>String(v??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -7679,6 +7679,36 @@ const prevIsLeve=r=>String(r.planoNum)==='001' || /PREVENTIVA\s+LEVE/i.test(r.pl
 const prevIsGarantia=r=>['003','029'].includes(String(r.planoNum)) || /GARANTIA/i.test(r.planoNome||'');
 const prevPlanoPeso=r=>prevIsPesada(r)?4:prevIsGarantia(r)?3:prevIsLeve(r)?2:1;
 const prevIntervaloGarantia=r=>String(r.planoNum)==='029'?30000:20000;
+const prevSlotKey=(tipo,dia,slot)=>`${tipo}:${dia}:${slot}`;
+const prevSlotValuePrefixo=v=>typeof v==='string'?v:(v&&v.prefixo)||'';
+const prevSlotValueTipo=v=>typeof v==='string'?'':(v&&v.tipo)||'';
+
+function prevServicosDoCarro(c,tipoPreferido=''){
+  if(!c) return [];
+  const itens=[];
+  const push=r=>{ if(r && !itens.some(x=>x.planoNum===r.planoNum && x.planoNome===r.planoNome)) itens.push(r); };
+  if(tipoPreferido==='garantia'){
+    push(c.garantia);
+    push(c.pesada);
+    push(c.leve);
+  }else if(tipoPreferido==='pesada'){
+    push(c.pesada||c.base);
+    push(c.garantia);
+  }else if(tipoPreferido==='leve'){
+    push(c.leve||c.base);
+    push(c.garantia);
+  }else{
+    push(c.base);
+  }
+  c.itens.filter(r=>!prevIsPesada(r)&&!prevIsLeve(r)&&!prevIsGarantia(r)&&((r.excessoKm||0)>0||r.pendente))
+    .sort((a,b)=>(b.excessoKm||0)-(a.excessoKm||0))
+    .forEach(push);
+  return itens.map(r=>`${r.planoNum} ${r.planoNome.replace(/^\(KM\)\s*/i,'')}`);
+}
+
+function prevResumoServicos(c,tipoPreferido=''){
+  return prevServicosDoCarro(c,tipoPreferido).slice(0,4).join(' · ');
+}
 
 function renderFerrPrev(){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
@@ -7695,7 +7725,7 @@ function renderFerrPrev(){
         <label class="btn primary" style="cursor:pointer;margin:0">📄 Importar PDF
           <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="processarPrevPDF(this.files[0]);this.value=''">
         </label>
-        ${total?`<button class="btn" onclick="_prevDados=[];_prevGrupoAtivo='propostas';_prevBuscaPrefixo='';renderFerrPrev()">Limpar lista</button>`:''}
+        ${total?`<button class="btn" onclick="_prevDados=[];_prevGrupoAtivo='propostas';_prevBuscaPrefixo='';_prevEscalaAlteracoes={};_prevValidados={};renderFerrPrev()">Limpar lista</button>`:''}
       </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:10px;margin-bottom:12px">
@@ -7780,24 +7810,26 @@ function prevGerarPropostas(){
     if(prevIsGarantia(r)) c.garantias.push(r);
     c.maiorExcesso=Math.max(c.maiorExcesso,r.excessoKm||0);
   });
-  const pesadas=[], leves=[], garantias=[];
+  const pesadas=[], leves=[], garantias=[], todos=[];
   [...porCarro.values()].forEach(c=>{
     c.itens.sort((a,b)=>prevPlanoPeso(b)-prevPlanoPeso(a) || (b.excessoKm||0)-(a.excessoKm||0));
     c.planos=c.itens.map(r=>r.planoNum).filter((v,i,a)=>a.indexOf(v)===i).join(', ');
-    c.descricoes=c.itens.slice(0,6).map(r=>r.planoNome.replace(/^\(KM\)\s*/i,'')).filter((v,i,a)=>a.indexOf(v)===i);
-    const pesada=c.itens.find(prevIsPesada);
-    const leve=c.itens.find(prevIsLeve);
-    const garantia=c.garantias.sort((a,b)=>(b.excessoKm||0)-(a.excessoKm||0))[0];
-    if(pesada) pesadas.push({...c,tipo:'pesada',prioridade:pesada.excessoKm||0,base:pesada});
-    if(leve) leves.push({...c,tipo:'leve',prioridade:leve.excessoKm||0,base:leve});
-    if(garantia) garantias.push({...c,tipo:'garantia',prioridade:garantia.excessoKm||0,base:garantia,intervaloGarantia:prevIntervaloGarantia(garantia)});
+    c.pesada=c.itens.find(prevIsPesada);
+    c.leve=c.itens.find(prevIsLeve);
+    c.garantia=c.garantias.sort((a,b)=>(b.excessoKm||0)-(a.excessoKm||0))[0];
+    c.base=c.itens[0];
+    c.descricoes=prevServicosDoCarro(c,'').map(s=>s.replace(/^\d+\s+/,''));
+    todos.push(c);
+    if(c.pesada) pesadas.push({...c,tipo:'pesada',prioridade:c.pesada.excessoKm||0,base:c.pesada,descricoes:prevServicosDoCarro(c,'pesada')});
+    if(c.leve) leves.push({...c,tipo:'leve',prioridade:c.leve.excessoKm||0,base:c.leve,descricoes:prevServicosDoCarro(c,'leve')});
+    if(c.garantia) garantias.push({...c,tipo:'garantia',prioridade:c.garantia.excessoKm||0,base:c.garantia,intervaloGarantia:prevIntervaloGarantia(c.garantia),descricoes:prevServicosDoCarro(c,'garantia')});
   });
   pesadas.sort((a,b)=>(b.prioridade||0)-(a.prioridade||0) || a.prefixo.localeCompare(b.prefixo));
   leves.sort((a,b)=>(b.prioridade||0)-(a.prioridade||0) || a.prefixo.localeCompare(b.prefixo));
   garantias.sort((a,b)=>(b.prioridade||0)-(a.prioridade||0) || a.prefixo.localeCompare(b.prefixo));
-  return {pesadas,leves,garantias};
+  const porPrefixo=new Map(todos.map(c=>[c.prefixo,c]));
+  return {pesadas,leves,garantias,todos,porPrefixo};
 }
-
 function prevSelecionarSemana(p){
   const pesadasSemana=p.pesadas.slice(0,PREV_CAP.pesadaSemana);
   const heavySet=new Set(pesadasSemana.map(c=>c.prefixo));
@@ -7815,15 +7847,38 @@ function prevDiasSemana(){
   });
 }
 
+function prevCandidatoPorPrefixo(p,prefixo,tipoPreferido){
+  if(!prefixo) return null;
+  const listas=tipoPreferido==='garantia'?[p.garantias,p.pesadas,p.leves]:tipoPreferido==='leve'?[p.leves,p.garantias,p.pesadas]:[p.pesadas,p.garantias,p.leves];
+  for(const lista of listas){
+    const found=lista.find(c=>c.prefixo===prefixo);
+    if(found) return {...found,tipo:tipoPreferido||found.tipo,descricoes:prevServicosDoCarro(found,tipoPreferido||found.tipo)};
+  }
+  const base=p.porPrefixo?.get(prefixo);
+  return base?{...base,tipo:tipoPreferido||'manual',prioridade:base.maiorExcesso,base:base.itens[0],descricoes:prevServicosDoCarro(base,tipoPreferido)}:null;
+}
+
 function prevMontarEscala(p){
   const dias=prevDiasSemana();
   const semana=prevSelecionarSemana(p);
-  const pesadas=semana.pesadasSemana;
-  const leves=semana.levesSemana;
+  const basePesadas=semana.pesadasSemana;
+  const baseLeves=semana.levesSemana;
+  const manualPrefixes=new Set(Object.entries(_prevEscalaAlteracoes).filter(([,v])=>v).map(([,v])=>prevSlotValuePrefixo(v)));
+  const slot=(tipo,dia,idx,autoItem)=>{
+    const key=prevSlotKey(tipo,dia,idx);
+    if(Object.prototype.hasOwnProperty.call(_prevEscalaAlteracoes,key)){
+      const val=_prevEscalaAlteracoes[key];
+      if(val===null) return {slotKey:key,tipoSlot:tipo,item:null,validado:false,origem:'vazio'};
+      const item=prevCandidatoPorPrefixo(p,prevSlotValuePrefixo(val),prevSlotValueTipo(val)||tipo);
+      return {slotKey:key,tipoSlot:tipo,item,validado:!!_prevValidados[key],origem:'manual'};
+    }
+    if(autoItem && manualPrefixes.has(autoItem.prefixo)) return {slotKey:key,tipoSlot:tipo,item:null,validado:false,origem:'vazio'};
+    return {slotKey:key,tipoSlot:tipo,item:autoItem||null,validado:!!_prevValidados[key],origem:autoItem?'auto':'vazio'};
+  };
   return dias.map((d,i)=>({
     ...d,
-    pesadas:pesadas.slice(i*PREV_CAP.pesadaDia,(i+1)*PREV_CAP.pesadaDia),
-    leves:leves.slice(i*PREV_CAP.leveDia,(i+1)*PREV_CAP.leveDia)
+    pesadas:Array.from({length:PREV_CAP.pesadaDia},(_,s)=>slot('pesada',i,s,basePesadas[i*PREV_CAP.pesadaDia+s])),
+    leves:Array.from({length:PREV_CAP.leveDia},(_,s)=>slot('leve',i,s,baseLeves[i*PREV_CAP.leveDia+s]))
   }));
 }
 function prevHtmlPropostasEscala(){
@@ -7841,14 +7896,29 @@ function prevBadgeTipo(tipo){
   return `<span style="font-size:10px;color:${cor};border:1px solid ${cor};border-radius:5px;padding:2px 5px;font-weight:900;text-transform:uppercase">${tipo}</span>`;
 }
 
-function prevHtmlCarroMini(c){
-  return `<div style="background:rgba(2,6,23,.35);border:1px solid var(--border);border-radius:8px;padding:9px;min-height:82px">
-    <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="color:var(--blue);font-size:15px">${prevEsc(c.prefixo)}</b>${prevBadgeTipo(c.tipo)}</div>
-    <div style="color:${(c.prioridade||0)>0?'var(--red)':'var(--green)'};font-size:12px;font-weight:900;margin-top:5px">${prevFmtKm(c.prioridade)}</div>
-    <div style="color:var(--amber);font-size:11px;line-height:1.35;margin-top:4px">${prevEsc(c.descricoes.slice(0,2).join(' · '))}</div>
+function prevHtmlCarroMini(slot){
+  const c=slot.item;
+  if(!c){
+    return `<div style="background:rgba(2,6,23,.22);border:1px dashed var(--border2);border-radius:8px;padding:9px;min-height:94px;display:flex;align-items:center;justify-content:center;text-align:center">
+      <button class="btn" onclick="prevAbrirSeletorSlot('${slot.slotKey}','${slot.tipoSlot}')">+ Selecionar carro</button>
+    </div>`;
+  }
+  const tipo=c.tipo||slot.tipoSlot;
+  const border=slot.validado?'var(--green)':slot.origem==='manual'?'var(--amber)':'var(--border)';
+  const status=slot.validado?'VALIDADO':slot.origem==='manual'?'ALTERADO':'SUGERIDO';
+  return `<div style="background:rgba(2,6,23,.35);border:1px solid ${border};border-radius:8px;padding:9px;min-height:112px">
+    <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+      <div><b style="color:var(--blue);font-size:15px">${prevEsc(c.prefixo)}</b><div style="color:${(c.prioridade||0)>0?'var(--red)':'var(--green)'};font-size:12px;font-weight:900;margin-top:4px">${prevFmtKm(c.prioridade)}</div></div>
+      <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${prevBadgeTipo(tipo)}<span style="font-size:9px;color:${slot.validado?'var(--green)':'var(--text3)'};font-weight:900">${status}</span></div>
+    </div>
+    <div style="color:var(--amber);font-size:11px;line-height:1.35;margin-top:6px">${prevEsc(prevResumoServicos(c,tipo))}</div>
+    <div style="display:flex;gap:5px;margin-top:8px;justify-content:flex-end;flex-wrap:wrap">
+      <button class="btn" style="font-size:10px;padding:4px 7px" onclick="prevValidarSlot('${slot.slotKey}')">✓ Validar</button>
+      <button class="btn" style="font-size:10px;padding:4px 7px" onclick="prevAbrirSeletorSlot('${slot.slotKey}','${slot.tipoSlot}')">Trocar</button>
+      <button class="btn" style="font-size:10px;padding:4px 7px;color:var(--red);border-color:rgba(239,68,68,.45)" onclick="prevRemoverSlot('${slot.slotKey}')">×</button>
+    </div>
   </div>`;
 }
-
 function prevHtmlEscalaSemanal(escala){
   return `<section style="margin-bottom:12px">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin:4px 0 8px">
@@ -7859,19 +7929,86 @@ function prevHtmlEscalaSemanal(escala){
       ${escala.map(d=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;min-width:220px;overflow:hidden">
         <div style="padding:10px 12px;background:rgba(15,23,42,.45);border-bottom:1px solid var(--border);text-align:center">
           <div style="font-weight:900;color:var(--text);text-transform:capitalize">${prevEsc(d.label)}</div>
-          <div style="font-size:11px;color:var(--text3)">${prevEsc(d.data)} • ${d.pesadas.length+d.leves.length} carro(s)</div>
+          <div style="font-size:11px;color:var(--text3)">${prevEsc(d.data)} • ${d.pesadas.filter(s=>s.item).length+d.leves.filter(s=>s.item).length} carro(s)</div>
         </div>
         <div style="padding:10px;display:grid;gap:8px">
-          <div style="font-size:10px;color:var(--orange);font-weight:900;letter-spacing:1.5px;text-transform:uppercase">Pesadas manhã (${d.pesadas.length}/${PREV_CAP.pesadaDia})</div>
-          ${d.pesadas.length?d.pesadas.map(prevHtmlCarroMini).join(''):`<div style="color:var(--text3);font-size:12px;padding:8px">Sem pesada sugerida</div>`}
-          <div style="font-size:10px;color:var(--green);font-weight:900;letter-spacing:1.5px;text-transform:uppercase;margin-top:4px">Leves (${d.leves.length}/${PREV_CAP.leveDia})</div>
-          ${d.leves.length?d.leves.map(prevHtmlCarroMini).join(''):`<div style="color:var(--text3);font-size:12px;padding:8px">Sem leve sugerida</div>`}
+          <div style="font-size:10px;color:var(--orange);font-weight:900;letter-spacing:1.5px;text-transform:uppercase">Pesadas manhã (${d.pesadas.filter(s=>s.item).length}/${PREV_CAP.pesadaDia})</div>
+          ${d.pesadas.map(prevHtmlCarroMini).join('')}
+          <div style="font-size:10px;color:var(--green);font-weight:900;letter-spacing:1.5px;text-transform:uppercase;margin-top:4px">Leves (${d.leves.filter(s=>s.item).length}/${PREV_CAP.leveDia})</div>
+          ${d.leves.map(prevHtmlCarroMini).join('')}
         </div>
       </div>`).join('')}
     </div>
   </section>`;
 }
 
+function prevValidarSlot(key){
+  _prevValidados[key]=true;
+  prevRenderGrupos();
+  toast('Slot validado');
+}
+
+function prevRemoverSlot(key){
+  _prevEscalaAlteracoes[key]=null;
+  delete _prevValidados[key];
+  prevRenderGrupos();
+  toast('Slot removido. A vaga ficou aberta.');
+}
+
+function prevUsadosNaEscala(p,excetoKey=''){
+  const usados=new Set();
+  prevMontarEscala(p).forEach(d=>[...d.pesadas,...d.leves].forEach(s=>{ if(s.slotKey!==excetoKey && s.item) usados.add(s.item.prefixo); }));
+  return usados;
+}
+
+function prevAbrirSeletorSlot(key,tipoSlot){
+  const p=prevGerarPropostas();
+  const usados=prevUsadosNaEscala(p,key);
+  const listas=tipoSlot==='pesada'?[...p.pesadas,...p.garantias]:[...p.leves,...p.garantias];
+  const candidatos=[];
+  listas.forEach(c=>{
+    const tipo=c.tipo||tipoSlot;
+    const id=`${tipo}:${c.prefixo}`;
+    if(candidatos.some(x=>x.id===id)) return;
+    if(usados.has(c.prefixo)) return;
+    candidatos.push({...c,id,tipo,descricoes:prevServicosDoCarro(c,tipo)});
+  });
+  candidatos.sort((a,b)=>(b.prioridade||0)-(a.prioridade||0) || a.prefixo.localeCompare(b.prefixo));
+  let modal=document.getElementById('modal-prev-slot');
+  if(!modal){
+    modal=document.createElement('div');
+    modal.id='modal-prev-slot';
+    modal.className='modal-ov';
+    modal.onclick=e=>{if(e.target===modal)modal.style.display='none'};
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML=`<div class="modal" style="max-width:620px;max-height:86vh;overflow:hidden;display:flex;flex-direction:column">
+    <div class="modal-title"><span>Selecionar carro — slot ${tipoSlot}</span><button class="btn-x" onclick="document.getElementById('modal-prev-slot').style.display='none'">✕</button></div>
+    <div style="position:relative;margin-bottom:10px"><span style="position:absolute;left:12px;top:10px;color:var(--text3)">🔎</span><input id="prev-slot-busca" oninput="prevFiltrarModalSlot(this.value)" placeholder="Pesquisar prefixo ou plano..." style="width:100%;padding:10px 12px 10px 36px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-weight:700"></div>
+    <div id="prev-slot-list" style="overflow:auto;display:grid;gap:7px;padding-right:4px">
+      ${candidatos.map(c=>`<button data-prev-candidato="${prevEsc(`${c.prefixo} ${c.tipo} ${c.descricoes.join(' ')}`).toLowerCase()}" onclick="prevSelecionarSlot('${key}','${c.tipo}','${c.prefixo}')" style="text-align:left;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;cursor:pointer;color:var(--text)">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><b style="color:var(--blue);font-size:15px">${prevEsc(c.prefixo)}</b>${prevBadgeTipo(c.tipo)}</div>
+        <div style="color:${(c.prioridade||0)>0?'var(--red)':'var(--green)'};font-weight:900;font-size:12px;margin-top:4px">${prevFmtKm(c.prioridade)}</div>
+        <div style="color:var(--amber);font-size:11px;line-height:1.35;margin-top:4px">${prevEsc(prevResumoServicos(c,c.tipo))}</div>
+      </button>`).join('') || `<div style="padding:20px;text-align:center;color:var(--text3)">Nenhum carro disponível para este slot.</div>`}
+    </div>
+  </div>`;
+  modal.style.display='flex';
+}
+
+function prevFiltrarModalSlot(q){
+  const busca=String(q||'').toLowerCase().trim();
+  document.querySelectorAll('[data-prev-candidato]').forEach(el=>{ el.style.display=!busca||el.dataset.prevCandidato.includes(busca)?'block':'none'; });
+}
+
+function prevSelecionarSlot(key,tipo,prefixo){
+  _prevEscalaAlteracoes[key]={tipo,prefixo};
+  delete _prevValidados[key];
+  const modal=document.getElementById('modal-prev-slot');
+  if(modal) modal.style.display='none';
+  prevRenderGrupos();
+  toast('Slot alterado');
+}
 function prevHtmlFilasProposta(p){
   const semana=prevSelecionarSemana(p);
   const levesSemDuplicar=p.leves.filter(c=>!semana.heavySet.has(c.prefixo));
@@ -7951,6 +8088,8 @@ async function processarPrevPDF(file){
     _prevImportadoEm=new Date().toISOString();
     _prevGrupoAtivo='propostas';
     _prevBuscaPrefixo='';
+    _prevEscalaAlteracoes={};
+    _prevValidados={};
     renderFerrPrev();
     const r=prevResumoPropostas();
     toast(`Importação concluída: ${dados.length} itens. Propostas: ${r.pesadas} pesadas, ${r.leves} leves e ${r.garantiasRadar} garantias no radar.`);
@@ -8020,7 +8159,7 @@ function renderPrevProgramadas(){ renderFerrPrev(); }
 function renderAutoEscala(){ renderFerrPrev(); }
 function abrirModalProgramarPrev(){ renderFerrPrev(); }
 function carregarImportacao(){ renderFerrPrev(); }
-function excluirImportacao(){ _prevDados=[];_prevImportadoEm='';_prevBuscaPrefixo='';_prevGrupoAtivo='propostas';renderFerrPrev(); }
+function excluirImportacao(){ _prevDados=[];_prevImportadoEm='';_prevBuscaPrefixo='';_prevGrupoAtivo='propostas';_prevEscalaAlteracoes={};_prevValidados={};renderFerrPrev(); }
 function verHistoricoImportacoes(){ renderFerrPrev(); }
 async function renderFerr211(){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
