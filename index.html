@@ -14069,6 +14069,16 @@ async function abrirRelatorioHTMLPCM(html, nomePDF){
     const counts = pv3Counts();
     function color(i){ return i.tipoSlot==='garantia'?'#8B5CF6':i.tipoSlot==='valetamento'?'#06B6D4':i.tipoSlot==='pesada'?'#3B82F6':'#22C55E'; }
     function card(i){
+      if(i.slotVazio){
+        const c = color(i);
+        return `<div onclick="prevV3OpenReplace('${i.uid}')" style="background:transparent;border:2px dashed ${c}80;border-radius:10px;padding:14px 12px;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:58px" onmouseover="this.style.background='${c}10'" onmouseout="this.style.background='transparent'">
+          <div>
+            <div style="font-size:12px;font-weight:900;color:${c};text-transform:uppercase">Slot aberto</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:3px">${pv3Esc(i.tipoSlot||'preventiva')} · ${pv3DateLabel(i.data)}</div>
+          </div>
+          <button onclick="event.stopPropagation();prevV3OpenReplace('${i.uid}')" style="background:${c}18;border:1px solid ${c}60;border-radius:7px;color:${c};font-size:11px;font-weight:800;padding:6px 10px;cursor:pointer">Adicionar</button>
+        </div>`;
+      }
       if(i.removed) return '';
       const c = color(i);
       const mark = i.sourceProgId && !i.dirty ? 'programado' : i.dirty ? 'alterado' : i.selected ? 'novo' : '';
@@ -14086,7 +14096,7 @@ async function abrirRelatorioHTMLPCM(html, nomePDF){
       </div>`;
     }
     const cols = colunas.map(c => {
-      const arr = (buckets[c.ds]||[]).filter(i => !i.slotVazio);
+      const arr = (buckets[c.ds]||[]).filter(i => !(i.removed && !i.slotVazio));
       const grupos = ['valetamento','garantia','pesada','leve','avulso'];
       return `<div style="min-width:285px;max-width:320px;flex:1">
         <div style="background:${c.isSab?'#06B6D410':'var(--surface)'};border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;margin-bottom:10px"><b>${pv3Esc(c.label)}</b><div style="font-size:11px;color:var(--text3)">${pv3DateLabel(c.ds)} · ${arr.length} itens</div></div>
@@ -14107,9 +14117,17 @@ async function abrirRelatorioHTMLPCM(html, nomePDF){
   };
   window.prevV3Remove = function(uid){
     const i = (window._prevV3?.items||[]).find(x=>x.uid===uid); if(!i) return;
-    if(i.sourceProgId){ i.removed=true; i.dirty=false; i.selected=false; }
-    else { i.selected=false; i.removed=true; }
+    i.removed = true;
+    i.dirty = false;
+    i.selected = false;
+    i.slotVazio = true;
+    i.carroOriginal = i.carroOriginal || i.carro;
+    i.carro = 'Slot aberto';
+    i.planoNome = 'Escolha outro carro';
+    i.oportunistas = [];
+    i.oportunistasNomes = [];
     renderTelaEscala('', window._prevV3.diasSemana, window._prevV3.sabValetamento);
+    setTimeout(() => prevV3OpenReplace(uid), 80);
   };
   window.prevV3OpenReplace = function(uid){
     const item = (window._prevV3?.items||[]).find(x=>x.uid===uid); if(!item) return;
@@ -14125,7 +14143,8 @@ async function abrirRelatorioHTMLPCM(html, nomePDF){
     }).sort((a,b)=>(b.excessoKm||0)-(a.excessoKm||0)).slice(0,120);
     const modal=document.createElement('div'); modal.id='modal-prev-v3'; modal.style.cssText='position:fixed;inset:0;background:#0009;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
     const list = candidatos.map(p=>`<button onclick="prevV3Replace('${uid}','${pv3Esc(p.carro)}','${pv3Esc(p.planoNum)}','${pv3Esc((p.planoNome||'').replace(/'/g,''))}')" style="width:100%;text-align:left;background:var(--surface);border:1px solid var(--border2);border-radius:8px;color:var(--text);padding:10px;margin-bottom:6px;cursor:pointer"><b style="color:var(--blue);font-family:'DM Mono',monospace">${pv3Esc(p.carro)}</b> <span style="font-size:12px;color:var(--text2)">${pv3Esc((p.planoNome||'').split(' - ')[0])}</span><span style="float:right;color:${(p.excessoKm||0)>0?'var(--red)':'var(--green)'}">${(p.excessoKm||0).toLocaleString('pt-BR')} km</span></button>`).join('');
-    modal.innerHTML=`<div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:18px;width:100%;max-width:560px;max-height:85vh;overflow:auto"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><b>Trocar ${pv3Esc(item.carro)}</b><button onclick="document.getElementById('modal-prev-v3')?.remove()" style="background:transparent;border:0;color:var(--text3);font-size:22px">×</button></div>${list||'<div style="color:var(--text3);padding:20px;text-align:center">Nenhum candidato encontrado</div>'}</div>`;
+    const tituloModal = item.slotVazio ? `Adicionar carro ao slot ${pv3Esc(item.tipoSlot||'')}` : `Trocar ${pv3Esc(item.carro)}`;
+    modal.innerHTML=`<div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:18px;width:100%;max-width:560px;max-height:85vh;overflow:auto"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><b>${tituloModal}</b><button onclick="document.getElementById('modal-prev-v3')?.remove()" style="background:transparent;border:0;color:var(--text3);font-size:22px">×</button></div>${list||'<div style="color:var(--text3);padding:20px;text-align:center">Nenhum candidato encontrado</div>'}</div>`;
     document.body.appendChild(modal);
   };
   window.prevV3Replace = function(uid, carro, planoNum, planoNome){
