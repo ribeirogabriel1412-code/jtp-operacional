@@ -7428,18 +7428,25 @@ ${comprasRows?`<div class="sec">■ REQUISICOES AVULSAS</div>
 // ── 2.4 Fechamento de Turno ───────────────────────────────────────
 async function renderFech24(gid,back,tabs){
   setMain(back+tabs+'<div class="loading"><div class="spinner"></div></div>');
-  var agora=new Date(), hoje_=agora.toISOString().slice(0,10), turno=S.turno||'dia';
-  var ontem=new Date(agora); ontem.setDate(ontem.getDate()-1);
-  var ontemStr=ontem.toISOString().slice(0,10);
-  var ini=turno==='dia'?(hoje_+'T07:00'):(ontemStr+'T21:00');
-  var fim=turno==='dia'?(hoje_+'T17:00'):(hoje_+'T07:20');
-  var dataPrev=hoje_;
-  var tLabel=turno==='dia'?'Diurno 07:00–17:00':'Noturno 21:00–07:20';
-  var r1=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).gte('hora_entrada',new Date(ini).toISOString()).lte('hora_entrada',new Date(fim).toISOString()).order('hora_entrada',{ascending:true});
+  var agora=new Date(), hoje_=agora.toISOString().slice(0,10);
+  var turno=S._fech24Turno||S.turno||'dia';
+  var dataRef=S._fech24Data||hoje_;
+  var horaIni=S._fech24HoraIni||(turno==='dia'?'07:00':'21:00');
+  var horaFim=S._fech24HoraFim||(turno==='dia'?'17:00':'07:20');
+  var dtIni=new Date(dataRef+'T'+horaIni);
+  var dtFim=new Date(dataRef+'T'+horaFim);
+  if(dtFim<=dtIni) dtFim.setDate(dtFim.getDate()+1);
+  var ini=dtIni.toISOString();
+  var fim=dtFim.toISOString();
+  var dataPrev=dataRef;
+  var tLabel=(turno==='dia'?'Diurno':'Noturno')+' '+horaIni+'-'+horaFim;
+  var dataLabel=dtIni.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
+  var periodoLabel=dataLabel+' · '+horaIni+' ate '+horaFim;
+  var r1=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).gte('hora_entrada',ini).lte('hora_entrada',fim).order('hora_entrada',{ascending:true});
   var r2=await sb.from('programacao_preventiva').select('*').eq('garagem_id',gid).eq('data_prevista',dataPrev).order('prefixo');
-  var r3=await sb.from('movimentacao_pneu').select('*').eq('garagem_id',gid).eq('data',hoje_);
-  var r4=await sb.from('fechamento_24').select('*').eq('garagem_id',gid).eq('data',hoje_).eq('turno',turno).limit(1);
-  var r5=await sb.from('fech24_prev_turno').select('*').eq('garagem_id',gid).eq('data',hoje_).eq('turno',turno);
+  var r3=await sb.from('movimentacao_pneu').select('*').eq('garagem_id',gid).eq('data',dataRef);
+  var r4=await sb.from('fechamento_24').select('*').eq('garagem_id',gid).eq('data',dataRef).eq('turno',turno).limit(1);
+  var r5=await sb.from('fech24_prev_turno').select('*').eq('garagem_id',gid).eq('data',dataRef).eq('turno',turno);
   var ocs=r1.data||[], prevsProg=r2.data||[], pneus=r3.data||[];
   var fech=r4.data&&r4.data[0]||null, marcacoes=r5.data||[];
   var marcaMap={};
@@ -7498,7 +7505,7 @@ async function renderFech24(gid,back,tabs){
     var hrAb=p._os&&p._os.hora_entrada?new Date(p._os.hora_entrada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):(p._marc&&p._marc.hr_abertura||'—');
     var hrFch=p._os&&p._os.hora_liberacao&&p._status==='executada'?new Date(p._os.hora_liberacao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):(p._os?'Em aberto':(p._marc&&p._marc.hr_fechamento||'—'));
     return '<tr style="border-bottom:1px solid var(--border2)">'+
-      '<td style="padding:8px 10px;text-align:center"><button onclick="togglePrevTurno24(\''+gid+'\',\''+p.id+'\',\''+hoje_+'\',\''+turno+'\',false)" style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:16px">✕</button></td>'+
+      '<td style="padding:8px 10px;text-align:center"><button onclick="togglePrevTurno24(\''+gid+'\',\''+p.id+'\',\''+dataRef+'\',\''+turno+'\',false)" style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:16px">✕</button></td>'+
       '<td style="padding:8px 10px;font-family:monospace;font-weight:700;color:var(--blue)">'+p.prefixo+'</td>'+
       '<td style="padding:8px 10px;font-size:12px">'+tipoL+'</td>'+
       '<td style="padding:8px 10px"><span style="background:'+stC+'18;border:1px solid '+stC+'40;color:'+stC+';border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700">'+stL+'</span></td>'+
@@ -7516,7 +7523,7 @@ async function renderFech24(gid,back,tabs){
       '<td style="padding:8px 10px;font-family:monospace;font-weight:700;color:var(--blue)">'+p.prefixo+'</td>'+
       '<td style="padding:8px 10px;font-size:12px">'+tipoL+'</td>'+
       '<td style="padding:8px 10px;text-align:center;font-size:11px">'+(p._os?'<span style="color:var(--green)">✅ Sim</span>':'<span style="color:var(--text4)">Não</span>')+'</td>'+
-      '<td style="padding:8px 10px;text-align:center"><button onclick="togglePrevTurno24(\''+gid+'\',\''+p.id+'\',\''+hoje_+'\',\''+turno+'\',true)" style="padding:5px 14px;border-radius:7px;border:1px solid var(--blue);background:#3B82F618;color:var(--blue);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">✓ Deste turno</button></td>'+
+      '<td style="padding:8px 10px;text-align:center"><button onclick="togglePrevTurno24(\''+gid+'\',\''+p.id+'\',\''+dataRef+'\',\''+turno+'\',true)" style="padding:5px 14px;border-radius:7px;border:1px solid var(--blue);background:#3B82F618;color:var(--blue);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">✓ Deste turno</button></td>'+
     '</tr>';
   }).join('');
   var reqRows=reqs.map(function(r){
@@ -7527,7 +7534,13 @@ async function renderFech24(gid,back,tabs){
   var th=function(t){return '<th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">'+t+'</th>';};
   setMain(
     secTitle('📋','Fechamento de Turno PCM — 2.4',back)+tabs+
-    '<div style="font-size:12px;color:var(--text3);margin:-8px 0 16px">'+tLabel+' · '+agora.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'})+'</div>'+
+    '<div style="display:grid;grid-template-columns:180px 150px 130px 130px auto;gap:10px;align-items:end;margin:-4px 0 18px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px">'+
+      '<div><label class="campo-label">Data do checklist</label><input class="fi" type="date" value="'+dataRef+'" onchange="S._fech24Data=this.value;renderFerrPCM(&quot;fech24&quot;)"></div>'+
+      '<div><label class="campo-label">Turno</label><select class="fi" onchange="S._fech24Turno=this.value;S._fech24HoraIni=this.value===&quot;dia&quot;?&quot;07:00&quot;:&quot;21:00&quot;;S._fech24HoraFim=this.value===&quot;dia&quot;?&quot;17:00&quot;:&quot;07:20&quot;;renderFerrPCM(&quot;fech24&quot;)"><option value="dia" '+(turno==='dia'?'selected':'')+'>Diurno</option><option value="noite" '+(turno==='noite'?'selected':'')+'>Noturno</option></select></div>'+
+      '<div><label class="campo-label">Hora inicial</label><input class="fi" type="time" value="'+horaIni+'" onchange="S._fech24HoraIni=this.value;renderFerrPCM(&quot;fech24&quot;)"></div>'+
+      '<div><label class="campo-label">Hora final</label><input class="fi" type="time" value="'+horaFim+'" onchange="S._fech24HoraFim=this.value;renderFerrPCM(&quot;fech24&quot;)"></div>'+
+      '<div style="font-size:12px;color:var(--text3);padding-bottom:9px">'+tLabel+' · '+periodoLabel+'</div>'+
+    '</div>'+
     '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px">'+
       [['Total OS',ocs.length+'','var(--blue)'],['OS Fechadas',fechadas.length+'','var(--green)'],['OS Abertas',abertas.length+'',abertas.length>0?'var(--amber)':'var(--green)'],['Prev. Exec.',prevExec+'/'+prevsTurno.length,prevExec===prevsTurno.length&&prevsTurno.length>0?'var(--green)':'var(--amber)'],['Pend. s/ Just.',pendSemJust.length+'',pendSemJust.length===0?'var(--green)':'var(--red)']].map(function(k){return '<div class="kpi2"><div class="kpi2-v" style="color:'+k[2]+'">'+k[1]+'</div><div class="kpi2-l">'+k[0]+'</div></div>';}).join('')+
     '</div>'+
@@ -7569,7 +7582,7 @@ async function renderFech24(gid,back,tabs){
       '<textarea class="fi" id="fech24-obs" rows="4" placeholder="Pendências críticas, alertas para o próximo turno..." style="resize:vertical;min-height:90px;font-family:inherit;margin-bottom:16px">'+((fech&&fech.observacoes)||'')+'</textarea>'+
       '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">'+
         ((fech&&fech.fechado)?'<div style="background:#00C48C18;border:1px solid #00C48C40;border-radius:10px;padding:10px 16px;font-size:13px;color:#00C48C;font-weight:700">✅ Fechado por '+((fech&&fech.responsavel)||'—')+' às '+((fech&&fech.hora_fechamento)||'—')+'</div>':'')+
-        '<button onclick="fecharTurno24(\''+gid+'\',\''+hoje_+'\',\''+turno+'\')" style="padding:12px 28px;border-radius:10px;border:none;background:'+((fech&&fech.fechado)?'var(--amber)':'#00C48C')+';color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">'+((fech&&fech.fechado)?'🔄 Reabrir':'✅ Fechar Turno')+'</button>'+
+        '<button onclick="fecharTurno24(\''+gid+'\',\''+dataRef+'\',\''+turno+'\')" style="padding:12px 28px;border-radius:10px;border:none;background:'+((fech&&fech.fechado)?'var(--amber)':'#00C48C')+';color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">'+((fech&&fech.fechado)?'🔄 Reabrir':'✅ Fechar Turno')+'</button>'+
       '</div>'+
     '</div>'
   );
