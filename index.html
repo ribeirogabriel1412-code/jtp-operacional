@@ -7657,35 +7657,216 @@ async function salvarCustoRapido(ocId, gid, data){
 }
 
 // ══════════════════════════════════════════════════════════════
-// PAINEL PREVENTIVAS — MÓDULO ZERADO
+// ══════════════════════════════════════════════════════════════
+// PAINEL PREVENTIVAS — IMPORTAÇÃO MAN V1
 // ══════════════════════════════════════════════════════════════
 let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='todos', _prevImportId=null, _prevBuscaPrefixo='';
 
+const prevEsc=v=>String(v??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const prevToNumber=v=>{const s=String(v??'').replace(/[^\d-]/g,''); const n=parseInt(s,10); return Number.isFinite(n)?n:0;};
+const prevFmtKm=v=>`${(Number(v)||0).toLocaleString('pt-BR')} km`;
+const prevFmtPrefixo=v=>{
+  const d=String(v??'').replace(/\D/g,'');
+  const n=parseInt(d,10);
+  const base=Number.isFinite(n)?String(n).padStart(5,'0'):d.padStart(5,'0');
+  return `${base.slice(0,2)}.${base.slice(2)}`;
+};
+const prevPlanoKey=r=>`${r.planoNum||'---'}|${r.planoNome||'SEM PLANO'}`;
+
 function renderFerrPrev(){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  const total=_prevDados.length;
+  const vencidos=_prevDados.filter(r=>(r.excessoKm||0)>0).length;
+  const planos=new Set(_prevDados.map(prevPlanoKey)).size;
+  const maior=_prevDados.length?Math.max(..._prevDados.map(r=>r.excessoKm||0)):0;
+  const importado=_prevImportadoEm?new Date(_prevImportadoEm).toLocaleString('pt-BR'):'Nenhum PDF importado';
   setMain(`${back}
-    <div style="min-height:520px;display:flex;align-items:center;justify-content:center;padding:28px">
-      <div style="width:100%;max-width:760px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;text-align:center">
-        <div style="font-size:42px;margin-bottom:14px">🔩</div>
-        <h2 style="margin:0 0 8px;color:var(--text)">Módulo de Preventivas zerado</h2>
-        <p style="color:var(--text3);font-size:14px;line-height:1.5;margin:0 auto 18px;max-width:560px">
-          O módulo antigo foi removido para começarmos uma nova versão limpa, sem os fluxos quebrados de escala, alteração e gravação.
-        </p>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:left;margin-top:20px">
-          <div style="background:var(--bg);border:1px solid var(--border2);border-radius:10px;padding:14px"><div style="font-size:11px;color:var(--text3);font-weight:800;text-transform:uppercase">Status</div><div style="font-size:16px;font-weight:900;color:var(--amber);margin-top:4px">Em reconstrução</div></div>
-          <div style="background:var(--bg);border:1px solid var(--border2);border-radius:10px;padding:14px"><div style="font-size:11px;color:var(--text3);font-weight:800;text-transform:uppercase">Código antigo</div><div style="font-size:16px;font-weight:900;color:var(--green);margin-top:4px">Removido</div></div>
-          <div style="background:var(--bg);border:1px solid var(--border2);border-radius:10px;padding:14px"><div style="font-size:11px;color:var(--text3);font-weight:800;text-transform:uppercase">Próximo passo</div><div style="font-size:16px;font-weight:900;color:var(--blue);margin-top:4px">Desenhar V1</div></div>
-        </div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:14px;flex-wrap:wrap">
+      <div>
+        <h2 style="margin:0;color:var(--text)">📋 Lista padrão de preventivas</h2>
+        <div style="color:var(--text3);font-size:12px;margin-top:4px">Importação MAN • separado por plano • do mais vencido para o menos vencido</div>
       </div>
-    </div>`);
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <label class="btn primary" style="cursor:pointer;margin:0">📄 Importar PDF
+          <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="processarPrevPDF(this.files[0]);this.value=''">
+        </label>
+        ${total?`<button class="btn" onclick="_prevDados=[];_prevGrupoAtivo='todos';_prevBuscaPrefixo='';renderFerrPrev()">Limpar lista</button>`:''}
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:10px;margin-bottom:12px">
+      <div class="card"><div class="label">TOTAL IMPORTADO</div><div class="big blue">${total}</div></div>
+      <div class="card"><div class="label">PLANOS</div><div class="big green">${planos}</div></div>
+      <div class="card"><div class="label">VENCIDOS</div><div class="big red">${vencidos}</div></div>
+      <div class="card"><div class="label">MAIOR EXCESSO</div><div class="big amber">${prevFmtKm(maior)}</div></div>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+      <div style="font-size:12px;color:var(--text3)">Última importação: <b style="color:var(--text2)">${prevEsc(importado)}</b></div>
+      <div style="position:relative;min-width:260px;max-width:420px;flex:1">
+        <span style="position:absolute;left:12px;top:9px;color:var(--text3)">🔎</span>
+        <input value="${prevEsc(_prevBuscaPrefixo)}" oninput="_prevBuscaPrefixo=this.value;prevRenderGrupos()" placeholder="Pesquisar carro ou plano..." style="width:100%;padding:10px 12px 10px 36px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-weight:700">
+      </div>
+    </div>
+    <div id="prev-lista-v1">${total?prevHtmlGrupos():prevHtmlVazio()}</div>`);
+}
+
+function prevHtmlVazio(){
+  return `<div style="min-height:360px;display:flex;align-items:center;justify-content:center;padding:24px">
+    <label style="width:100%;max-width:720px;background:var(--surface);border:1px dashed var(--border2);border-radius:14px;padding:28px;text-align:center;cursor:pointer">
+      <div style="font-size:42px;margin-bottom:12px">📄</div>
+      <h3 style="margin:0 0 8px;color:var(--text)">Importe o relatório MAN de km atual dos serviços</h3>
+      <p style="margin:0 auto 18px;color:var(--text3);font-size:14px;line-height:1.5;max-width:560px">A lista será gerada por plano de revisão e cada plano ficará ordenado pelo maior excesso de km primeiro.</p>
+      <span class="btn primary">Selecionar PDF</span>
+      <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="processarPrevPDF(this.files[0]);this.value=''">
+    </label>
+  </div>`;
+}
+
+function prevHtmlGrupos(){
+  const busca=(_prevBuscaPrefixo||'').trim().toLowerCase();
+  const dados=_prevDados.filter(r=>!busca || `${r.prefixo} ${r.carro} ${r.planoNum} ${r.planoNome}`.toLowerCase().includes(busca));
+  if(!dados.length){
+    return `<div style="padding:28px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhum item encontrado para a pesquisa.</div>`;
+  }
+  const grupos=new Map();
+  dados.forEach(r=>{
+    const key=prevPlanoKey(r);
+    if(!grupos.has(key)) grupos.set(key,{planoNum:r.planoNum,planoNome:r.planoNome,itens:[]});
+    grupos.get(key).itens.push(r);
+  });
+  return [...grupos.values()].map(g=>{
+    g.itens.sort((a,b)=>(b.excessoKm||0)-(a.excessoKm||0) || String(a.prefixo).localeCompare(String(b.prefixo)));
+    g.maior=Math.max(...g.itens.map(r=>r.excessoKm||0));
+    return g;
+  }).sort((a,b)=>(b.maior||0)-(a.maior||0) || String(a.planoNum).localeCompare(String(b.planoNum))).map(prevHtmlGrupo).join('');
+}
+
+function prevHtmlGrupo(g){
+  const rows=g.itens.map((r,i)=>`
+    <tr style="border-top:1px solid var(--border)">
+      <td style="padding:10px 8px;color:var(--blue);font-weight:900;white-space:nowrap">${prevEsc(r.prefixo)}</td>
+      <td style="padding:10px 8px;color:var(--text2);font-weight:800">${prevEsc(r.planoNum)}</td>
+      <td style="padding:10px 8px;color:var(--text2)">${prevEsc(r.planoNome)}</td>
+      <td style="padding:10px 8px;text-align:right;color:var(--text2);white-space:nowrap">${prevFmtKm(r.kmAtual)}</td>
+      <td style="padding:10px 8px;text-align:right;color:var(--text2);white-space:nowrap">${prevFmtKm(r.proximaExecucao)}</td>
+      <td style="padding:10px 8px;text-align:right;color:${(r.excessoKm||0)>0?'var(--red)':'var(--green)'};font-weight:900;white-space:nowrap">${prevFmtKm(r.excessoKm)}</td>
+      <td style="padding:10px 8px;text-align:right;color:var(--amber);font-weight:800;white-space:nowrap">${(r.excessoDias||0).toLocaleString('pt-BR')}</td>
+      <td style="padding:10px 8px;text-align:center;color:${r.pendente?'var(--red)':'var(--green)'};font-weight:800">${r.pendente?'Sim':'Não'}</td>
+    </tr>`).join('');
+  return `<section style="background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:12px;overflow:hidden">
+    <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:12px;align-items:center;background:rgba(15,23,42,.32)">
+      <div>
+        <div style="font-size:11px;color:var(--text3);font-weight:900;letter-spacing:2px;text-transform:uppercase">Plano ${prevEsc(g.planoNum)}</div>
+        <div style="font-size:15px;color:var(--text);font-weight:900;margin-top:3px">${prevEsc(g.planoNome)}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:12px;color:var(--text3)">${g.itens.length} carro(s)</div>
+        <div style="font-size:13px;color:var(--red);font-weight:900">Maior: ${prevFmtKm(g.maior)}</div>
+      </div>
+    </div>
+    <div style="overflow:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:920px">
+        <thead><tr style="background:rgba(2,6,23,.45);color:var(--text3);font-size:10px;letter-spacing:2px;text-transform:uppercase;text-align:left">
+          <th style="padding:10px 8px">Prefixo</th><th style="padding:10px 8px">Plano</th><th style="padding:10px 8px">Serviço</th><th style="padding:10px 8px;text-align:right">Km atual</th><th style="padding:10px 8px;text-align:right">Próxima execução</th><th style="padding:10px 8px;text-align:right">Excesso km</th><th style="padding:10px 8px;text-align:right">Dias</th><th style="padding:10px 8px;text-align:center">Pendente</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </section>`;
+}
+
+function prevRenderGrupos(){
+  const el=document.getElementById('prev-lista-v1');
+  if(el) el.innerHTML=prevHtmlGrupos();
+}
+
+async function processarPrevPDF(file){
+  if(!file) return;
+  if(!window.pdfjsLib){ toast('Leitor de PDF não carregou. Recarregue a página e tente novamente.','err'); return; }
+  try{
+    toast('Lendo relatório MAN...');
+    const linhas=await prevExtrairLinhasPDF(file);
+    const dados=parsearMANPreventiva(linhas);
+    if(!dados.length){ toast('Não encontrei linhas válidas de preventivas nesse PDF.','err'); return; }
+    _prevDados=dados.sort((a,b)=>(b.excessoKm||0)-(a.excessoKm||0));
+    _prevImportadoEm=new Date().toISOString();
+    _prevGrupoAtivo='todos';
+    _prevBuscaPrefixo='';
+    renderFerrPrev();
+    toast(`Importação concluída: ${dados.length} item(ns) em ${new Set(dados.map(prevPlanoKey)).size} plano(s).`);
+  }catch(e){
+    console.error('[PREV IMPORT]',e);
+    toast('Erro ao ler o PDF de preventivas. Veja o console para detalhes.','err');
+  }
+}
+
+async function prevExtrairLinhasPDF(file){
+  const buf=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  const linhas=[];
+  for(let p=1;p<=pdf.numPages;p++){
+    const pg=await pdf.getPage(p);
+    const tc=await pg.getTextContent();
+    const vp=pg.getViewport({scale:1});
+    const items=tc.items.map(it=>({
+      t:String(it.str||'').trim(),
+      x:Math.round(it.transform[4]),
+      y:Math.round((vp.height-it.transform[5])/3)*3
+    })).filter(it=>it.t);
+    const rows=new Map();
+    items.forEach(it=>{
+      if(!rows.has(it.y)) rows.set(it.y,[]);
+      rows.get(it.y).push(it);
+    });
+    [...rows.entries()].sort((a,b)=>a[0]-b[0]).forEach(([,arr])=>{
+      const linha=arr.sort((a,b)=>a.x-b.x).map(it=>it.t).join(' ').replace(/\s+/g,' ').trim();
+      if(linha) linhas.push(linha);
+    });
+  }
+  return linhas;
+}
+
+function parsearMANPreventiva(linhas){
+  const out=[];
+  let grupoAtual='';
+  (Array.isArray(linhas)?linhas:String(linhas||'').split(/\r?\n/)).forEach(raw=>{
+    let line=String(raw||'').replace(/\s+/g,' ').trim();
+    if(!line) return;
+    const grupo=line.match(/Grupo de revisao:\s*(\d+)\s+(.+)/i);
+    if(grupo){ grupoAtual=`${grupo[1]} ${grupo[2].trim()}`; return; }
+    if(!/^\d{7}\s+\d{3}\s+/.test(line)) return;
+    const pendente=/Sim\s*$/i.test(line);
+    line=line.replace(/(Sim|Nao|Não)\s*$/i,'').trim();
+    const head=line.match(/^(\d{7})\s+(\d{3})\s+(.+)$/);
+    if(!head) return;
+    const carro=head[1], planoNum=head[2], resto=head[3];
+    const tail=resto.match(/^(.*?)\s+(-?\d[\d.]*)\s+(-?\d[\d.]*)\s+(-?\d[\d.]*)\s+(-?\d[\d.]*)\s+(-?\d[\d.]*)\s+(-?\d[\d.]*)\s+(-?\d[\d.]*)$/);
+    if(!tail) return;
+    let planoNome=tail[1].replace(/\d{2}\/\d{2}\/\d{4}\s*$/,'').trim();
+    planoNome=planoNome.replace(/\s{2,}/g,' ')||'SEM DESCRIÇÃO';
+    out.push({
+      carro,
+      prefixo:prevFmtPrefixo(carro),
+      planoNum,
+      planoNome,
+      grupo:grupoAtual,
+      kmUltima:prevToNumber(tail[2]),
+      execucoes:prevToNumber(tail[3]),
+      kmAtual:prevToNumber(tail[4]),
+      proximaExecucao:prevToNumber(tail[5]),
+      kmPercorridoUltima:prevToNumber(tail[6]),
+      excessoKm:prevToNumber(tail[7]),
+      excessoDias:prevToNumber(tail[8]),
+      pendente
+    });
+  });
+  return out;
 }
 
 function renderPrevProgramadas(){ renderFerrPrev(); }
 function renderAutoEscala(){ renderFerrPrev(); }
-function abrirModalProgramarPrev(){ toast('Módulo de preventivas foi zerado para reconstrução.','err'); }
-function processarPrevPDF(){ toast('Importação de preventivas será reconstruída na nova versão.','err'); }
-function carregarImportacao(){ toast('Histórico de importações será reconstruído na nova versão.','err'); }
-function excluirImportacao(){ toast('Módulo de preventivas foi zerado.','err'); }
+function abrirModalProgramarPrev(){ renderFerrPrev(); }
+function carregarImportacao(){ renderFerrPrev(); }
+function excluirImportacao(){ _prevDados=[];_prevImportadoEm='';_prevBuscaPrefixo='';renderFerrPrev(); }
 function verHistoricoImportacoes(){ renderFerrPrev(); }
 async function renderFerr211(){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
