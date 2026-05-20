@@ -142,6 +142,27 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min
 .btn-add:hover{opacity:.85}
 .btn-back{background:var(--border);border:none;color:var(--text2);border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
 
+
+/* BOTÕES / CARDS GENÉRICOS */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;background:var(--surface);border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:8px 13px;font-size:12px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .15s;text-decoration:none;line-height:1.2;white-space:nowrap}
+.btn:hover{border-color:#2563EB60;color:var(--text);background:#1E293B70}
+.btn.primary{background:linear-gradient(135deg,var(--blue-d),var(--blue));border-color:var(--blue);color:#fff}
+.btn.primary:hover{opacity:.9;color:#fff}
+.btn.danger{background:#EF444418;border-color:#EF444440;color:var(--red)}
+.btn.success{background:#00C48C18;border-color:#00C48C40;color:var(--green)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:14px 16px;border-left:3px solid #475569;min-height:76px}
+.card:hover{border-color:#2563EB50}
+.label{color:var(--text3);font-size:10px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase}
+.big{font-family:'DM Mono',monospace;font-size:24px;font-weight:700;color:var(--text);margin-top:4px;line-height:1.1}
+.big.blue{color:var(--blue)}.big.green{color:var(--green)}.big.red{color:var(--red)}.big.amber{color:var(--amber)}.big.purple{color:var(--purple)}
+.prev-toolbar{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:14px;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
+.prev-search{width:100%;padding:10px 12px 10px 36px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;outline:none}
+.prev-search:focus{border-color:var(--blue)}
+.prev-day{background:var(--surface);border:1px solid var(--border);border-radius:11px;min-width:220px;overflow:hidden}
+.prev-day-head{padding:10px 12px;background:var(--surface2);border-bottom:1px solid var(--border);text-align:center}
+.prev-slot{background:rgba(2,6,23,.35);border:1px solid var(--border);border-radius:8px;padding:9px;min-height:112px}
+.prev-slot.empty{background:rgba(2,6,23,.22);border:1px dashed var(--border);min-height:94px;display:flex;align-items:center;justify-content:center;text-align:center}
+.prev-section-label{font-size:10px;font-weight:900;letter-spacing:1.5px;text-transform:uppercase;margin-top:4px}
 /* ADMIN */
 .user-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;display:flex;align-items:center;gap:16px;transition:border-color .2s}
 .user-card:hover{border-color:#2563EB30}
@@ -7715,10 +7736,9 @@ function renderFerrPrev(){
   const total=_prevDados.length;
   const resumo=prevResumoPropostas();
   const importado=_prevImportadoEm?new Date(_prevImportadoEm).toLocaleString('pt-BR'):'Nenhum PDF importado';
-  setMain(`${back}
-    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:14px;flex-wrap:wrap">
+  setMain(`${secTitle('📋','Preventivas — propostas e escala',back)}\r\n    <div class="prev-toolbar">
       <div>
-        <h2 style="margin:0;color:var(--text)">📋 Preventivas — propostas e escala</h2>
+        <div style="font-size:14px;font-weight:800;color:var(--text)">Importação MAN e escala automática</div>
         <div style="color:var(--text3);font-size:12px;margin-top:4px">Garantia: 1/dia • Pesada: 10/semana, 2 por manhã • Leve: 30/semana, 6 por dia</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -7736,7 +7756,7 @@ function renderFerrPrev(){
       <div class="card"><div class="label">BACKLOG SEMANA</div><div class="big amber">${resumo.backlogSemana}</div><div style="color:var(--text3);font-size:11px">fora da capacidade</div></div>
     </div>
     ${total?prevHtmlMetricasDetalhadas(resumo):''}
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+    <div class="prev-toolbar">
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <button class="btn ${_prevGrupoAtivo!=='planos'?'primary':''}" onclick="_prevGrupoAtivo='propostas';prevRenderGrupos()">📆 Propostas e escala</button>
         <button class="btn ${_prevGrupoAtivo==='planos'?'primary':''}" onclick="_prevGrupoAtivo='planos';prevRenderGrupos()">📑 Lista por plano</button>
@@ -7744,7 +7764,7 @@ function renderFerrPrev(){
       <div style="font-size:12px;color:var(--text3)">Última importação: <b style="color:var(--text2)">${prevEsc(importado)}</b></div>
       <div style="position:relative;min-width:260px;max-width:420px;flex:1">
         <span style="position:absolute;left:12px;top:9px;color:var(--text3)">🔎</span>
-        <input value="${prevEsc(_prevBuscaPrefixo)}" oninput="_prevBuscaPrefixo=this.value;prevRenderGrupos()" placeholder="Pesquisar carro ou plano..." style="width:100%;padding:10px 12px 10px 36px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-weight:700">
+        <input value="${prevEsc(_prevBuscaPrefixo)}" oninput="_prevBuscaPrefixo=this.value;prevRenderGrupos()" placeholder="Pesquisar carro ou plano..." class="prev-search">
       </div>
     </div>
     <div id="prev-lista-v1">${total?prevHtmlConteudoAtual():prevHtmlVazio()}</div>`);
@@ -7787,11 +7807,11 @@ function prevHtmlMetricasDetalhadas(r){
 
 function prevHtmlVazio(){
   return `<div style="min-height:360px;display:flex;align-items:center;justify-content:center;padding:24px">
-    <label style="width:100%;max-width:720px;background:var(--surface);border:1px dashed var(--border2);border-radius:14px;padding:28px;text-align:center;cursor:pointer">
+    <label class="import-zone" style="width:100%;max-width:720px;cursor:pointer">
       <div style="font-size:42px;margin-bottom:12px">📄</div>
       <h3 style="margin:0 0 8px;color:var(--text)">Importe o relatório MAN de km atual dos serviços</h3>
       <p style="margin:0 auto 18px;color:var(--text3);font-size:14px;line-height:1.5;max-width:560px">A importação gera a lista por plano e também propõe a escala semanal de pesadas e leves.</p>
-      <span class="btn primary">Selecionar PDF</span>
+      <span class="btn-import">📄 Selecionar PDF</span>
       <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="processarPrevPDF(this.files[0]);this.value=''">
     </label>
   </div>`;
@@ -7932,17 +7952,17 @@ function prevHtmlEscalaSemanal(escala){
       <div style="font-size:12px;color:var(--text3)">Garantia: ${PREV_CAP.garantiaDia}/dia • Manhã: ${PREV_CAP.pesadaDia} pesadas/dia • Dia: ${PREV_CAP.leveDia} leves/dia</div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(5,minmax(220px,1fr));gap:10px;overflow:auto">
-      ${escala.map(d=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;min-width:220px;overflow:hidden">
-        <div style="padding:10px 12px;background:rgba(15,23,42,.45);border-bottom:1px solid var(--border);text-align:center">
+      ${escala.map(d=>`<div class="prev-day">
+        <div class="prev-day-head">
           <div style="font-weight:900;color:var(--text);text-transform:capitalize">${prevEsc(d.label)}</div>
           <div style="font-size:11px;color:var(--text3)">${prevEsc(d.data)} • ${d.garantias.filter(s=>s.item).length+d.pesadas.filter(s=>s.item).length+d.leves.filter(s=>s.item).length} carro(s)</div>
         </div>
         <div style="padding:10px;display:grid;gap:8px">
-          <div style="font-size:10px;color:var(--purple);font-weight:900;letter-spacing:1.5px;text-transform:uppercase">Garantia (${d.garantias.filter(s=>s.item).length}/${PREV_CAP.garantiaDia})</div>
+          <div class="prev-section-label" style="color:var(--purple)">Garantia (${d.garantias.filter(s=>s.item).length}/${PREV_CAP.garantiaDia})</div>
           ${d.garantias.map(prevHtmlCarroMini).join('')}
-          <div style="font-size:10px;color:var(--orange);font-weight:900;letter-spacing:1.5px;text-transform:uppercase">Pesadas manhã (${d.pesadas.filter(s=>s.item).length}/${PREV_CAP.pesadaDia})</div>
+          <div class="prev-section-label" style="color:var(--amber)">Pesadas manhã (${d.pesadas.filter(s=>s.item).length}/${PREV_CAP.pesadaDia})</div>
           ${d.pesadas.map(prevHtmlCarroMini).join('')}
-          <div style="font-size:10px;color:var(--green);font-weight:900;letter-spacing:1.5px;text-transform:uppercase;margin-top:4px">Leves (${d.leves.filter(s=>s.item).length}/${PREV_CAP.leveDia})</div>
+          <div class="prev-section-label" style="color:var(--green)">Leves (${d.leves.filter(s=>s.item).length}/${PREV_CAP.leveDia})</div>
           ${d.leves.map(prevHtmlCarroMini).join('')}
         </div>
       </div>`).join('')}
@@ -8028,7 +8048,7 @@ function prevAbrirSeletorSlot(key,tipoSlot){
   }
   modal.innerHTML=`<div class="modal" style="max-width:620px;max-height:86vh;overflow:hidden;display:flex;flex-direction:column">
     <div class="modal-title"><span>Selecionar carro — slot ${tipoSlot}</span><button class="btn-x" onclick="document.getElementById('modal-prev-slot').style.display='none'">✕</button></div>
-    <div style="position:relative;margin-bottom:10px"><span style="position:absolute;left:12px;top:10px;color:var(--text3)">🔎</span><input id="prev-slot-busca" oninput="prevFiltrarModalSlot(this.value)" placeholder="Pesquisar prefixo ou plano..." style="width:100%;padding:10px 12px 10px 36px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-weight:700"></div>
+    <div style="position:relative;margin-bottom:10px"><span style="position:absolute;left:12px;top:10px;color:var(--text3)">🔎</span><input id="prev-slot-busca" oninput="prevFiltrarModalSlot(this.value)" placeholder="Pesquisar prefixo ou plano..." class="prev-search"></div>
     <div id="prev-slot-list" style="overflow:auto;display:grid;gap:7px;padding-right:4px">
       ${candidatos.map(c=>`<button data-prev-candidato="${prevEsc(`${c.prefixo} ${c.tipo} ${c.descricoes.join(' ')}`).toLowerCase()}" onclick="prevSelecionarSlot('${key}','${c.tipo}','${c.prefixo}')" style="text-align:left;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;cursor:pointer;color:var(--text)">
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><b style="color:var(--blue);font-size:15px">${prevEsc(c.prefixo)}</b>${prevBadgeTipo(c.tipo)}</div>
