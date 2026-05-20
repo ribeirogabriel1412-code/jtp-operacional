@@ -7461,7 +7461,10 @@ async function renderFech24(gid,back,tabs){
     var tipoOS=isGar?'preventiva_garantia':isPes?'preventiva_pesada':'preventiva_leve';
     var osMatch=ocs.find(function(o){return o.prefixo===p.prefixo&&o.tipo===tipoOS;});
     var marc=marcaMap[p.id]||null;
-    var deste=!!(marc&&marc.selecionado);
+    var turnoProg=((p.turno||'')+'').toUpperCase();
+    var turnoAuto=(turnoProg==='A'||turnoProg==='VAL')?'dia':(turnoProg==='B'?'noite':null);
+    var temMarc=marc&&typeof marc.selecionado==='boolean';
+    var deste=temMarc?!!marc.selecionado:(turnoAuto===turno);
     var statusPrev='nao_iniciada';
     if(osMatch) statusPrev=osMatch.status==='liberado'?'executada':'em_andamento';
     return Object.assign({},p,{_os:osMatch,_marc:marc,_deste:deste,_status:statusPrev});
