@@ -10202,22 +10202,26 @@ async function confirmarEscalaAutomatica() {
     if(b){b.disabled=false;b.textContent='📅 Confirmar';}
   }
 
-  try {
-    const garagem=S.garagens?.find(g=>g.id===gid);
-    const linhas=selecionados.filter(e=>e.tipo!=='valetamento').slice(0,15)
-      .map(e=>`${e.tipo==='garantia'?'🔒':'🔩'} *${e.carro}* — ${e.planoNome.split(' ').slice(0,2).join(' ')} · ${e.data?.split('-').reverse().join('/')} T${e.turno}`)
-      .join('\n');
-    const msg=`🗓️ *ESCALA PREVENTIVA — JTP*\n📍 ${garagem?.nome||'Porto Velho'}\n\n✅ ${ok} confirmadas · ❌ ${erros} erros\n\n${linhas}${selecionados.length>15?`\n_...+${selecionados.length-15} itens_`:''}\n\n_${S.perfil?.nome||'PCM'}_`;
-    await fetch('https://evolution-api-production-8d56.up.railway.app/message/sendText/jtp-garagem',{
-      method:'POST',headers:{'Content-Type':'application/json','apikey':'4289AC11F437-43AD-96D7-9F27C2735696'},
-      body:JSON.stringify({number:'120363427489152994@g.us',options:{delay:0},textMessage:{text:msg}}),
-    });
-  } catch(e){console.warn('WPP:',e);}
-
   if (erros>0) toast(`⚠️ ${erros} erro(s): ${erroMsg}`,'err');
   if (ok>0) toast(`✅ ${ok} programações salvas!`);
   window._escalaRascunho=null;
   renderPrevProgramadas();
+
+  // WhatsApp da escala desativado temporariamente: a API externa esta retornando 400 e nao deve bloquear o registro.
+  const enviarWppEscala = false;
+  if (ok > 0 && enviarWppEscala) setTimeout(() => {
+    try {
+      const garagem=S.garagens?.find(g=>g.id===gid);
+      const linhas=selecionados.filter(e=>e.tipo!=='valetamento').slice(0,15)
+        .map(e=>`${e.tipo==='garantia'?'🔒':'🔩'} *${e.carro}* — ${e.planoNome.split(' ').slice(0,2).join(' ')} · ${e.data?.split('-').reverse().join('/')} T${e.turno||''}`)
+        .join('\n');
+      const msg=`🗓️ *ESCALA PREVENTIVA — JTP*\n📍 ${garagem?.nome||'Porto Velho'}\n\n✅ ${ok} confirmadas · ❌ ${erros} erros\n\n${linhas}${selecionados.length>15?`\n_...+${selecionados.length-15} itens_`:''}\n\n_${S.perfil?.nome||'PCM'}_`;
+      fetch('https://evolution-api-production-8d56.up.railway.app/message/sendText/jtp-garagem',{
+        method:'POST',headers:{'Content-Type':'application/json','apikey':'4289AC11F437-43AD-96D7-9F27C2735696'},
+        body:JSON.stringify({number:'120363427489152994@g.us',options:{delay:0},textMessage:{text:msg}}),
+      }).then(r=>{ if(!r.ok) console.warn('WPP escala:', r.status); }).catch(e=>console.warn('WPP escala:',e));
+    } catch(e){console.warn('WPP escala:',e);}
+  }, 0);
 }
 
 
