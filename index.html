@@ -14190,7 +14190,7 @@ async function abrirRelatorioHTMLPCM(html, nomePDF){
           if(r.error) throw r.error; ok++; removidos++; continue;
         }
         const obs=[e.incluileve?'Inclui Leve':'',e.incluiPesada?'Inclui Pesada':'',(e.oportunistasNomes||[]).length?'Oport: '+e.oportunistasNomes.join(', '):'',e.motivo].filter(Boolean).join(' | ');
-        const payload={prefixo:e.carro,plano_num:e.planoNum,plano_nome:e.planoNome,tipo_metrica:'KM',excesso_km:e.excessoKm||0,km_atual:0,data_prevista:e.data,turno:e.tipoSlot==='valetamento'?'VAL':(e.turno==='B'?'B':'A'),cesto_separado:!!e.cesto,observacao:obs||null,status:'programado'};
+        const payload={prefixo:e.carro,plano_num:e.planoNum,plano_nome:e.planoNome,tipo_metrica:'KM',excesso_km:e.excessoKm||0,km_atual:0,data_prevista:e.data,turno:(e.turno==='B')?'B':'A',cesto_separado:!!e.cesto,observacao:obs||null,status:'programado'};
         const r = e.sourceProgId
           ? await sb.from('programacao_preventiva').update(payload).eq('id',e.sourceProgId)
           : await sb.from('programacao_preventiva').insert({garagem_id:gid,...payload,criado_por:S.perfil?.nome||null,criado_por_id:S.perfil?.id||null});
