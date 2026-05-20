@@ -13958,6 +13958,228 @@ async function abrirRelatorioHTMLPCM(html, nomePDF){
 
 
 
-</script>
+
+/* PREVENTIVAS V3 - camada limpa de escala/programacao
+   Mantem o motor gerarEscalaAutomatica e substitui UI/estado/confirmacao. */
+(function(){
+  function pv3Tipo(item){
+    if(item.tipo==='valetamento') return 'valetamento';
+    if(item.tipo==='garantia' || (typeof isPlanoGarantia==='function' && isPlanoGarantia(item.planoNum))) return 'garantia';
+    if(typeof isPesada==='function' && isPesada(item.planoNum)) return 'pesada';
+    if(typeof isLeve==='function' && isLeve(item.planoNum)) return 'leve';
+    return item.tipo || 'avulso';
+  }
+  function pv3Key(carro, plano, data){ return [carro||'', plano||'', data||''].join('::'); }
+  function pv3Esc(v){ return String(v??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function pv3DateLabel(ds){ return ds ? ds.split('-').reverse().join('/') : '-'; }
+  function pv3PlanFor(carro, tipo, fallbackNum, fallbackNome){
+    const dados = (_prevDados||[]).filter(p => p.carro === carro);
+    let plano = null;
+    if(tipo === 'valetamento' || tipo === 'pesada') plano = dados.find(p => p.planoNum === '002');
+    else if(tipo === 'leve') plano = dados.find(p => p.planoNum === '001');
+    else if(tipo === 'garantia') plano = dados.find(p => isPlanoGarantia(p.planoNum));
+    plano = plano || dados.find(p => p.planoNum === fallbackNum) || dados[0] || null;
+    return {
+      planoNum: plano?.planoNum || fallbackNum || '002',
+      planoNome: plano?.planoNome || fallbackNome || 'PREVENTIVA',
+      excessoKm: plano?.excessoKm || 0,
+      dadosCarro: dados,
+      planoObj: plano
+    };
+  }
+  function pv3ApplyCar(item, carro, planoNum, planoNome){
+    const tipoSlot = item.tipoSlot || pv3Tipo(item);
+    const plan = pv3PlanFor(carro, tipoSlot, planoNum, planoNome);
+    const ops = (typeof calcularOportunistas === 'function')
+      ? calcularOportunistas(plan.dadosCarro, {planoNum:plan.planoNum, planoNome:plan.planoNome, excessoKm:plan.excessoKm})
+      : [];
+    item.carro = carro;
+    item.planoNum = plan.planoNum;
+    item.planoNome = plan.planoNome;
+    item.excessoKm = plan.excessoKm || 0;
+    item.oportunistas = ops.map(o => o.num);
+    item.oportunistasNomes = ops.map(o => o.nome);
+    item.incluileve = typeof isPesada === 'function' ? isPesada(plan.planoNum) : false;
+    item.incluiPesada = tipoSlot === 'garantia';
+    item.incluiGarantia = (typeof isGarantia === 'function' && typeof isPlanoGarantia === 'function') ? (isGarantia(carro) && isPlanoGarantia(plan.planoNum)) : false;
+    item.tipo = tipoSlot;
+    item.selected = true;
+    item.dirty = true;
+    item.removed = false;
+    item.slotVazio = false;
+    item.motivo = 'Manual';
+  }
+  function pv3Counts(){
+    const rows = window._prevV3?.items || [];
+    const pendentes = rows.filter(i => !i.removed && i.data && !String(i.tipo||'').includes('overflow') && ((i.selected && !i.sourceProgId) || (i.dirty && i.sourceProgId))).length;
+    const removidos = rows.filter(i => i.removed && i.sourceProgId).length;
+    return { pendentes, removidos, total: pendentes + removidos };
+  }
+
+  window.renderAutoEscala = async function renderAutoEscala(){
+    const gid = getGid();
+    const back = `<button class="btn-back" onclick="renderFerrPrev()">← Painel Preventivas</button>`;
+    setMain(`<div class="loading"><div class="spinner"></div> Gerando escala automática...</div>`);
+    if(!_prevDados.length){ toast('Importe o relatório MAN primeiro','err'); renderFerrPrev(); return; }
+
+    const { data: progs, error } = await sb.from('programacao_preventiva')
+      .select('id,prefixo,plano_num,plano_nome,data_prevista,status,turno,cesto_separado,observacao')
+      .eq('garagem_id', gid)
+      .in('status',['programado','em_execucao'])
+      .gte('data_prevista', new Date().toISOString().slice(0,10));
+    if(error){ toast('Erro ao carregar programações: '+error.message,'err'); renderFerrPrev(); return; }
+
+    const progMap = new Map((progs||[]).map(p => [pv3Key(p.prefixo,p.plano_num,p.data_prevista), p]));
+    const proxSemanaFim = new Date(); proxSemanaFim.setDate(proxSemanaFim.getDate()+7);
+    const prefixosJaProgBanco = new Set((progs||[])
+      .filter(p => (p.plano_num === '002' || ['003','029'].includes(p.plano_num)) && p.data_prevista <= proxSemanaFim.toISOString().slice(0,10))
+      .map(p => p.prefixo));
+
+    const gerada = gerarEscalaAutomatica(_prevDados, null, prefixosJaProgBanco);
+    const items = (gerada.escala||[]).map((e, idx) => {
+      const prog = progMap.get(pv3Key(e.carro,e.planoNum,e.data)) || null;
+      return {
+        ...e,
+        uid: 'pv3_'+idx,
+        tipoSlot: pv3Tipo(e),
+        sourceProgId: prog?.id || null,
+        originalCarro: prog?.prefixo || e.carro,
+        selected: !!e.data && !String(e.tipo||'').includes('overflow') && !prog,
+        dirty: false,
+        removed: false,
+        jaExiste: !!prog,
+        cesto: !!prog?.cesto_separado
+      };
+    });
+    window._prevV3 = { gid, items, diasSemana: gerada.diasSemana||[], sabValetamento: gerada.sabValetamento };
+    renderTelaEscala(back, gerada.diasSemana||[], gerada.sabValetamento);
+  };
+
+  window.renderTelaEscala = function renderTelaEscala(back, diasSemana, sabValetamento){
+    const state = window._prevV3 || {items:[]};
+    const items = state.items || [];
+    const sab = sabValetamento ? toDateStr(sabValetamento) : '';
+    const colunas = [
+      ...(sab ? [{ds:sab,label:'Sábado',isSab:true}] : []),
+      ...(diasSemana||[]).map(d => ({ds:toDateStr(d), label:d.toLocaleDateString('pt-BR',{weekday:'long'}), isSab:false}))
+    ];
+    const buckets = {};
+    colunas.forEach(c => buckets[c.ds] = []);
+    items.forEach(i => { const k = String(i.tipo||'').includes('overflow') ? 'overflow' : i.data; if(buckets[k]) buckets[k].push(i); });
+    const counts = pv3Counts();
+    function color(i){ return i.tipoSlot==='garantia'?'#8B5CF6':i.tipoSlot==='valetamento'?'#06B6D4':i.tipoSlot==='pesada'?'#3B82F6':'#22C55E'; }
+    function card(i){
+      if(i.removed) return '';
+      const c = color(i);
+      const mark = i.sourceProgId && !i.dirty ? 'programado' : i.dirty ? 'alterado' : i.selected ? 'novo' : '';
+      const op = (i.oportunistasNomes||[]).slice(0,3).join(' · ');
+      return `<div style="background:var(--surface);border:1px solid ${i.dirty?'#F59E0B80':'var(--border2)'};border-left:4px solid ${i.dirty?'#F59E0B':c};border-radius:10px;padding:10px 12px;margin-bottom:8px;opacity:${i.sourceProgId&&!i.dirty?'.55':'1'}">
+        <div style="display:flex;gap:8px;align-items:flex-start">
+          <button onclick="prevV3Toggle('${i.uid}')" style="width:22px;height:22px;border-radius:5px;border:1px solid ${i.selected||i.dirty?'#22C55E':'var(--border)'};background:${i.selected||i.dirty?'#22C55E':'transparent'};color:#fff;cursor:pointer">${i.selected||i.dirty?'✓':''}</button>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b style="font-family:'DM Mono',monospace;color:${c}">${pv3Esc(i.carro)}</b><span style="font-size:11px;color:var(--text2);font-weight:700">${pv3Esc((i.planoNome||'').split(' - ')[0])}</span>${mark?`<span style="font-size:9px;border:1px solid ${i.dirty?'#F59E0B60':'#3B82F660'};color:${i.dirty?'#F59E0B':'#3B82F6'};border-radius:4px;padding:1px 5px;text-transform:uppercase">${mark}</span>`:''}</div>
+            ${op?`<div style="font-size:10px;color:#F59E0B;margin-top:4px">${pv3Esc(op)}</div>`:''}
+          </div>
+          <button onclick="prevV3OpenReplace('${i.uid}')" title="Trocar carro" style="background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--blue);font-size:11px;padding:3px 7px;cursor:pointer">Trocar</button>
+          <button onclick="prevV3Remove('${i.uid}')" title="Remover" style="background:transparent;border:1px solid #EF444440;border-radius:5px;color:#EF4444;font-size:11px;padding:3px 7px;cursor:pointer">X</button>
+        </div>
+      </div>`;
+    }
+    const cols = colunas.map(c => {
+      const arr = (buckets[c.ds]||[]).filter(i => !i.slotVazio);
+      const grupos = ['valetamento','garantia','pesada','leve','avulso'];
+      return `<div style="min-width:285px;max-width:320px;flex:1">
+        <div style="background:${c.isSab?'#06B6D410':'var(--surface)'};border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;margin-bottom:10px"><b>${pv3Esc(c.label)}</b><div style="font-size:11px;color:var(--text3)">${pv3DateLabel(c.ds)} · ${arr.length} itens</div></div>
+        ${grupos.map(g => { const gi=arr.filter(i=>i.tipoSlot===g); if(!gi.length) return ''; const cc=g==='garantia'?'#8B5CF6':g==='valetamento'?'#06B6D4':g==='pesada'?'#3B82F6':'#22C55E'; return `<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:900;color:${cc};text-transform:uppercase;background:${cc}12;border-left:3px solid ${cc};padding:5px 8px;border-radius:6px;margin-bottom:7px">${g} <span style="float:right;color:var(--text3)">${gi.length}</span></div>${gi.map(card).join('')}</div>`; }).join('')}
+      </div>`;
+    }).join('');
+    setMain(`${back}<h2 style="margin:8px 0 0">🧰 Escala Automática de Preventivas</h2><div style="color:var(--text3);font-size:12px;margin-bottom:14px">${counts.total} pendente(s) para confirmar · ${items.filter(i=>i.sourceProgId&&!i.removed).length} já programada(s)</div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-bottom:12px"><button class="btn-sm" onclick="limparSemanaEscala()" style="color:var(--red);border-color:#EF444440">Limpar Semana</button><button class="btn-sm primary" onclick="confirmarEscalaAutomatica()">Confirmar ${counts.total}</button></div>
+      <div style="display:grid;grid-template-columns:repeat(5,minmax(160px,1fr));gap:10px;margin-bottom:14px"><div class="kpi"><div class="kpi-label">Total</div><div class="kpi-val">${items.length}</div></div><div class="kpi ok"><div class="kpi-label">Novos</div><div class="kpi-val">${items.filter(i=>i.selected&&!i.sourceProgId&&!i.removed).length}</div></div><div class="kpi neu"><div class="kpi-label">Alterados</div><div class="kpi-val">${items.filter(i=>i.dirty&&i.sourceProgId&&!i.removed).length}</div></div><div class="kpi nok"><div class="kpi-label">Removidos</div><div class="kpi-val">${counts.removidos}</div></div><div class="kpi neu"><div class="kpi-label">Já progr.</div><div class="kpi-val">${items.filter(i=>i.sourceProgId&&!i.removed).length}</div></div></div>
+      <div style="display:flex;gap:14px;overflow-x:auto;padding-bottom:20px;align-items:flex-start">${cols}</div>`);
+  };
+
+  window.prevV3Toggle = function(uid){
+    const i = (window._prevV3?.items||[]).find(x=>x.uid===uid); if(!i) return;
+    if(i.sourceProgId){ i.dirty = !i.dirty; i.selected = i.dirty; }
+    else i.selected = !i.selected;
+    renderTelaEscala('', window._prevV3.diasSemana, window._prevV3.sabValetamento);
+  };
+  window.prevV3Remove = function(uid){
+    const i = (window._prevV3?.items||[]).find(x=>x.uid===uid); if(!i) return;
+    if(i.sourceProgId){ i.removed=true; i.dirty=false; i.selected=false; }
+    else { i.selected=false; i.removed=true; }
+    renderTelaEscala('', window._prevV3.diasSemana, window._prevV3.sabValetamento);
+  };
+  window.prevV3OpenReplace = function(uid){
+    const item = (window._prevV3?.items||[]).find(x=>x.uid===uid); if(!item) return;
+    document.getElementById('modal-prev-v3')?.remove();
+    const usados = new Set((window._prevV3.items||[]).filter(x=>!x.removed&&x.uid!==uid).map(x=>pv3Key(x.carro,x.planoNum,x.data)));
+    const tipo = item.tipoSlot;
+    let candidatos = (_prevDados||[]).filter(p => {
+      if(usados.has(pv3Key(p.carro,p.planoNum,item.data))) return false;
+      if(tipo==='pesada'||tipo==='valetamento') return p.planoNum==='002';
+      if(tipo==='leve') return p.planoNum==='001';
+      if(tipo==='garantia') return isGarantia(p.carro) && isPlanoGarantia(p.planoNum);
+      return true;
+    }).sort((a,b)=>(b.excessoKm||0)-(a.excessoKm||0)).slice(0,120);
+    const modal=document.createElement('div'); modal.id='modal-prev-v3'; modal.style.cssText='position:fixed;inset:0;background:#0009;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+    const list = candidatos.map(p=>`<button onclick="prevV3Replace('${uid}','${pv3Esc(p.carro)}','${pv3Esc(p.planoNum)}','${pv3Esc((p.planoNome||'').replace(/'/g,''))}')" style="width:100%;text-align:left;background:var(--surface);border:1px solid var(--border2);border-radius:8px;color:var(--text);padding:10px;margin-bottom:6px;cursor:pointer"><b style="color:var(--blue);font-family:'DM Mono',monospace">${pv3Esc(p.carro)}</b> <span style="font-size:12px;color:var(--text2)">${pv3Esc((p.planoNome||'').split(' - ')[0])}</span><span style="float:right;color:${(p.excessoKm||0)>0?'var(--red)':'var(--green)'}">${(p.excessoKm||0).toLocaleString('pt-BR')} km</span></button>`).join('');
+    modal.innerHTML=`<div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:18px;width:100%;max-width:560px;max-height:85vh;overflow:auto"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><b>Trocar ${pv3Esc(item.carro)}</b><button onclick="document.getElementById('modal-prev-v3')?.remove()" style="background:transparent;border:0;color:var(--text3);font-size:22px">×</button></div>${list||'<div style="color:var(--text3);padding:20px;text-align:center">Nenhum candidato encontrado</div>'}</div>`;
+    document.body.appendChild(modal);
+  };
+  window.prevV3Replace = function(uid, carro, planoNum, planoNome){
+    const i = (window._prevV3?.items||[]).find(x=>x.uid===uid); if(!i) return;
+    const old = i.carro;
+    pv3ApplyCar(i, carro, planoNum, planoNome);
+    i.carroOriginal = old;
+    document.getElementById('modal-prev-v3')?.remove();
+    renderTelaEscala('', window._prevV3.diasSemana, window._prevV3.sabValetamento);
+  };
+
+  window.confirmarEscalaAutomatica = async function confirmarEscalaAutomatica(){
+    const state = window._prevV3; if(!state){ toast('Escala não carregada','err'); return; }
+    const gid = getGid();
+    const pendentes = (state.items||[]).filter(i => i.data && !String(i.tipo||'').includes('overflow') && ((i.selected && !i.sourceProgId && !i.removed) || (i.dirty && i.sourceProgId && !i.removed) || (i.removed && i.sourceProgId)));
+    if(!pendentes.length){ toast('Nenhuma alteração para salvar','err'); return; }
+    const btn=document.querySelector('[onclick*="confirmarEscalaAutomatica"]'); if(btn){btn.disabled=true;btn.textContent='Salvando...';}
+    let ok=0, erros=0, criados=0, alterados=0, removidos=0, erroMsg='';
+    for(const e of pendentes){
+      try{
+        if(e.removed && e.sourceProgId){
+          const r=await sb.from('programacao_preventiva').update({status:'cancelado'}).eq('id',e.sourceProgId);
+          if(r.error) throw r.error; ok++; removidos++; continue;
+        }
+        const obs=[e.incluileve?'Inclui Leve':'',e.incluiPesada?'Inclui Pesada':'',(e.oportunistasNomes||[]).length?'Oport: '+e.oportunistasNomes.join(', '):'',e.motivo].filter(Boolean).join(' | ');
+        const payload={prefixo:e.carro,plano_num:e.planoNum,plano_nome:e.planoNome,tipo_metrica:'KM',excesso_km:e.excessoKm||0,km_atual:0,data_prevista:e.data,turno:e.tipoSlot==='valetamento'?'VAL':(e.turno==='B'?'B':'A'),cesto_separado:!!e.cesto,observacao:obs||null,status:'programado'};
+        const r = e.sourceProgId
+          ? await sb.from('programacao_preventiva').update(payload).eq('id',e.sourceProgId)
+          : await sb.from('programacao_preventiva').insert({garagem_id:gid,...payload,criado_por:S.perfil?.nome||null,criado_por_id:S.perfil?.id||null});
+        if(r.error) throw r.error;
+        ok++; if(e.sourceProgId) alterados++; else criados++;
+      }catch(err){
+        erros++; const msg=err?.message||String(err); if(!erroMsg) erroMsg=`${e.carro}/${e.planoNum}: ${msg}`; console.error('[preventiva v3 salvar]', e, err);
+      }
+    }
+    if(btn){btn.disabled=false;btn.textContent='Confirmar';}
+    if(erros) toast(`Erro em ${erros}: ${erroMsg}`,'err');
+    if(ok) toast(`${ok} salvo(s): ${criados} novo(s), ${alterados} alterado(s), ${removidos} removido(s)`);
+    window._prevV3=null; window._escalaRascunho=null; renderPrevProgramadas();
+  };
+
+  window.limparSemanaEscala = async function limparSemanaEscala(){
+    const state=window._prevV3; const gid=getGid();
+    const datas=[...new Set((state?.items||[]).filter(i=>i.data).map(i=>i.data))].sort();
+    if(!datas.length){ toast('Nenhuma data na escala','err'); return; }
+    const min=datas[0], max=datas[datas.length-1];
+    const {data:alvos,error}=await sb.from('programacao_preventiva').select('id').eq('garagem_id',gid).in('status',['programado','em_execucao']).gte('data_prevista',min).lte('data_prevista',max);
+    if(error){ toast('Erro ao buscar semana: '+error.message,'err'); return; }
+    if(!(alvos||[]).length){ toast('Nenhuma programação ativa nessa semana','err'); return; }
+    if(!confirm(`Cancelar ${alvos.length} programação(ões) de ${pv3DateLabel(min)} a ${pv3DateLabel(max)}?`)) return;
+    const r=await sb.from('programacao_preventiva').update({status:'cancelado'}).in('id',alvos.map(a=>a.id));
+    if(r.error){ toast('Erro ao limpar: '+r.error.message,'err'); return; }
+    toast(`${alvos.length} programação(ões) cancelada(s)`); renderAutoEscala();
+  };
+})();</script>
 </body>
 </html>
