@@ -7682,7 +7682,7 @@ async function salvarCustoRapido(ocId, gid, data){
 // ══════════════════════════════════════════════════════════════
 // PAINEL PREVENTIVAS — IMPORTAÇÃO MAN V1
 // ══════════════════════════════════════════════════════════════
-let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='propostas', _prevImportId=null, _prevBuscaPrefixo='', _prevEscalaAlteracoes={}, _prevValidados={};
+let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='propostas', _prevImportId=null, _prevBuscaPrefixo='', _prevEscalaAlteracoes={}, _prevValidados={}, _prevHistFiltro='';
 
 const PREV_CAP={garantiaDia:1,garantiaSemana:5,pesadaDia:2,pesadaSemana:10,leveDia:6,leveSemana:30};
 const prevEsc=v=>String(v??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -7703,6 +7703,100 @@ const prevIntervaloGarantia=r=>String(r.planoNum)==='029'?30000:20000;
 const prevSlotKey=(tipo,dia,slot)=>`${tipo}:${dia}:${slot}`;
 const prevSlotValuePrefixo=v=>typeof v==='string'?v:(v&&v.prefixo)||'';
 const prevSlotValueTipo=v=>typeof v==='string'?'':(v&&v.tipo)||'';
+
+const PREV_HIST_BASE='jtp_prev_historicos_v1';
+function prevHistStorageKey(){
+  let gid='geral';
+  try{ gid=getGid()||'geral'; }catch(e){}
+  return `${PREV_HIST_BASE}:${gid}`;
+}
+function prevHistoricos(){
+  try{
+    const h=JSON.parse(localStorage.getItem(prevHistStorageKey())||'{}')||{};
+    return {importacoes:Array.isArray(h.importacoes)?h.importacoes:[],semanas:Array.isArray(h.semanas)?h.semanas:[]};
+  }catch(e){ return {importacoes:[],semanas:[]}; }
+}
+function prevSalvarHistoricos(h){
+  try{ localStorage.setItem(prevHistStorageKey(),JSON.stringify({importacoes:h.importacoes||[],semanas:h.semanas||[]})); }
+  catch(e){ console.warn('[PREV HIST]',e); }
+}
+function prevIsoDia(d){
+  const pad=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+function prevIsoDeData(iso){
+  if(!iso) return '';
+  try{
+    const parts=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Manaus',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(iso));
+    const obj=Object.fromEntries(parts.map(p=>[p.type,p.value]));
+    return `${obj.year}-${obj.month}-${obj.day}`;
+  }
+  catch(e){return String(iso).slice(0,10);}
+}
+function prevSemanaIdFromEscala(escala){
+  const dias=(escala||[]).map(d=>d.iso).filter(Boolean).sort();
+  return dias.length?`${dias[0]}_${dias[dias.length-1]}`:`semana_${hoje()}`;
+}
+function prevSemanaLabel(semana){
+  return `${semana.inicioBR||'--/--'} a ${semana.fimBR||'--/--'}`;
+}
+function prevRegistrarImportacao(file,dados,resumo){
+  const h=prevHistoricos();
+  const grupos=new Map();
+  (dados||[]).forEach(r=>{
+    const key=prevPlanoKey(r);
+    if(!grupos.has(key)) grupos.set(key,{planoNum:r.planoNum,planoNome:r.planoNome,qtd:0,maior:-999999});
+    const g=grupos.get(key); g.qtd++; g.maior=Math.max(g.maior,r.excessoKm||0);
+  });
+  const rec={
+    id:`imp_${Date.now()}`,
+    criadoEm:new Date().toISOString(),
+    arquivo:file?.name||'Relatorio MAN',
+    total:(dados||[]).length,
+    pesadas:resumo?.pesadas||0,
+    leves:resumo?.leves||0,
+    garantias:resumo?.garantiasRadar||0,
+    backlog:resumo?.backlogSemana||0,
+    planos:[...grupos.values()].sort((a,b)=>(b.maior||0)-(a.maior||0)).slice(0,80)
+  };
+  h.importacoes=[rec,...h.importacoes].slice(0,20);
+  prevSalvarHistoricos(h);
+}
+function prevSalvarSemanaHistorico(escala,linhas){
+  const id=prevSemanaIdFromEscala(escala);
+  const dias=(escala||[]).map(d=>({idx:d.idx,label:d.label,data:d.data,iso:d.iso,total:[...d.garantias,...d.pesadas,...d.leves].filter(s=>s.item).length}));
+  const itens=(linhas||[]).map(l=>({
+    dia:l.dia,
+    data:l.data,
+    iso:l.iso,
+    tipo:l.tipo,
+    slot:l.slot,
+    prefixo:l.item?.prefixo||'',
+    prioridade:l.item?.prioridade||0,
+    servicos:l.item?prevResumoServicos(l.item,l.tipo):'',
+    plano:l.item?.base?.planoNum||'',
+    planoNome:l.item?.base?.planoNome||'',
+    status:l.item?(l.validado?'validado':l.origem==='manual'?'alterado':'sugerido'):'aberto',
+    origem:l.origem,
+    validado:!!l.validado
+  }));
+  const h=prevHistoricos();
+  const first=dias[0]||{}, last=dias[dias.length-1]||{};
+  const antigo=h.semanas.find(s=>s.id===id);
+  const rec={
+    id,
+    criadoEm:antigo?.criadoEm||new Date().toISOString(),
+    atualizadoEm:new Date().toISOString(),
+    importadoEm:_prevImportadoEm||'',
+    inicio:first.iso||'', fim:last.iso||'', inicioBR:first.data||'', fimBR:last.data||'',
+    dias,
+    itens,
+    totais:{programadas:itens.filter(i=>i.prefixo).length,slotsAbertos:itens.filter(i=>!i.prefixo).length,validadas:itens.filter(i=>i.validado).length,alteradas:itens.filter(i=>i.status==='alterado').length}
+  };
+  h.semanas=[rec,...h.semanas.filter(s=>s.id!==id)].slice(0,30);
+  prevSalvarHistoricos(h);
+  return rec;
+}
 
 function prevServicosDoCarro(c,tipoPreferido=''){
   if(!c) return [];
@@ -7760,6 +7854,7 @@ function renderFerrPrev(){
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <button class="btn ${_prevGrupoAtivo!=='planos'?'primary':''}" onclick="_prevGrupoAtivo='propostas';prevRenderGrupos()">📆 Propostas e escala</button>
         <button class="btn ${_prevGrupoAtivo==='planos'?'primary':''}" onclick="_prevGrupoAtivo='planos';prevRenderGrupos()">📑 Lista por plano</button>
+        <button class="btn ${_prevGrupoAtivo==='historico'?'primary':''}" onclick="_prevGrupoAtivo='historico';prevRenderGrupos()">🗂️ Históricos</button>
       </div>
       <div style="font-size:12px;color:var(--text3)">Última importação: <b style="color:var(--text2)">${prevEsc(importado)}</b></div>
       <div style="position:relative;min-width:260px;max-width:420px;flex:1">
@@ -7767,7 +7862,7 @@ function renderFerrPrev(){
         <input value="${prevEsc(_prevBuscaPrefixo)}" oninput="_prevBuscaPrefixo=this.value;prevRenderGrupos()" placeholder="Pesquisar carro ou plano..." class="prev-search">
       </div>
     </div>
-    <div id="prev-lista-v1">${total?prevHtmlConteudoAtual():prevHtmlVazio()}</div>`);
+    <div id="prev-lista-v1">${(_prevGrupoAtivo==='historico'||total)?prevHtmlConteudoAtual():prevHtmlVazio()}</div>`);
 }
 
 function prevResumoPropostas(){
@@ -7818,7 +7913,7 @@ function prevHtmlVazio(){
 }
 
 function prevHtmlConteudoAtual(){
-  return _prevGrupoAtivo==='planos'?prevHtmlGrupos():prevHtmlPropostasEscala();
+  return _prevGrupoAtivo==='historico'?prevHtmlHistoricos():_prevGrupoAtivo==='planos'?prevHtmlGrupos():prevHtmlPropostasEscala();
 }
 
 function prevGerarPropostas(){
@@ -7867,7 +7962,7 @@ function prevDiasSemana(){
   base.setDate(base.getDate()-delta);
   return Array.from({length:5},(_,i)=>{
     const d=new Date(base); d.setDate(base.getDate()+i);
-    return {idx:i,label:d.toLocaleDateString('pt-BR',{weekday:'long'}),data:d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})};
+    return {idx:i,label:d.toLocaleDateString('pt-BR',{weekday:'long'}),data:d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}),iso:prevIsoDia(d)};
   });
 }
 
@@ -7976,12 +8071,13 @@ function prevConsolidarEscala(){
   const linhas=[];
   escala.forEach(d=>{
     [['garantia',d.garantias],['pesada',d.pesadas],['leve',d.leves]].forEach(([tipo,slots])=>{
-      slots.forEach((s,idx)=>linhas.push({dia:d.label,data:d.data,tipo,slot:idx+1,...s}));
+      slots.forEach((s,idx)=>linhas.push({dia:d.label,data:d.data,iso:d.iso,tipo,slot:idx+1,...s}));
     });
   });
   const preenchidos=linhas.filter(l=>l.item).length;
   const vazios=linhas.filter(l=>!l.item).length;
   const validados=linhas.filter(l=>l.validado).length;
+  const semanaSalva=prevSalvarSemanaHistorico(escala,linhas);
   let modal=document.getElementById('modal-prev-consolidado');
   if(!modal){
     modal=document.createElement('div');
@@ -8003,6 +8099,7 @@ function prevConsolidarEscala(){
         <tbody>${linhas.map(l=>`<tr style="border-top:1px solid var(--border)"><td style="padding:9px;color:var(--text2);white-space:nowrap;text-transform:capitalize">${prevEsc(l.dia)} ${prevEsc(l.data)}</td><td style="padding:9px">${prevBadgeTipo(l.tipo)}</td><td style="padding:9px;color:${l.item?'var(--blue)':'var(--amber)'};font-weight:900">${l.item?prevEsc(l.item.prefixo):'VAGA ABERTA'}</td><td style="padding:9px;color:${l.validado?'var(--green)':l.origem==='manual'?'var(--amber)':'var(--text3)'};font-weight:900">${l.item?(l.validado?'VALIDADO':l.origem==='manual'?'ALTERADO':'SUGERIDO'):'ABERTO'}</td><td style="padding:9px;color:var(--amber)">${l.item?prevEsc(prevResumoServicos(l.item,l.tipo)):'Aguardando seleção'}</td></tr>`).join('')}</tbody>
       </table>
     </div>
+    <div style="margin-top:10px;color:var(--green);font-size:12px;font-weight:800">Histórico da semana ${prevEsc(prevSemanaLabel(semanaSalva))} salvo/atualizado.</div>
   </div>`;
   modal.style.display='flex';
 }
@@ -8096,6 +8193,105 @@ function prevHtmlGarantias(itens){
   </section>`;
 }
 
+function prevHtmlHistoricos(){
+  const h=prevHistoricos();
+  const busca=(_prevHistFiltro||'').trim().toLowerCase();
+  const semanas=h.semanas.filter(s=>!busca || `${prevSemanaLabel(s)} ${s.itens?.map(i=>i.prefixo+' '+i.servicos).join(' ')}`.toLowerCase().includes(busca));
+  const imports=h.importacoes.filter(i=>!busca || `${i.arquivo} ${i.planos?.map(p=>p.planoNum+' '+p.planoNome).join(' ')}`.toLowerCase().includes(busca));
+  return `<section style="display:grid;gap:12px">
+    <div class="prev-toolbar" style="margin-bottom:0">
+      <div><div style="font-size:15px;font-weight:900;color:var(--text)">Históricos de preventivas</div><div style="font-size:12px;color:var(--text3);margin-top:3px">Importações MAN e semanas consolidadas da escala.</div></div>
+      <div style="position:relative;min-width:260px;max-width:420px;flex:1"><span style="position:absolute;left:12px;top:9px;color:var(--text3)">🔎</span><input value="${prevEsc(_prevHistFiltro)}" oninput="_prevHistFiltro=this.value;prevRenderGrupos()" placeholder="Pesquisar semana, carro ou plano..." class="prev-search"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:minmax(320px,.9fr) minmax(520px,1.4fr);gap:12px;align-items:start">
+      <section style="background:var(--surface);border:1px solid var(--border);border-radius:11px;overflow:hidden">
+        <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:8px"><b style="color:var(--text)">📥 Importações</b><span style="color:var(--text3);font-size:12px">${imports.length}</span></div>
+        <div style="display:grid;gap:8px;padding:10px;max-height:520px;overflow:auto">
+          ${imports.map(i=>`<button onclick="prevAbrirHistoricoImportacao('${i.id}')" style="text-align:left;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);cursor:pointer">
+            <div style="display:flex;justify-content:space-between;gap:8px"><b>${prevEsc(i.arquivo)}</b><span style="color:var(--text3);font-size:11px">${new Date(i.criadoEm).toLocaleString('pt-BR')}</span></div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:7px;font-size:12px;color:var(--text2)"><span>${i.total} itens</span><span style="color:var(--red)">${i.pesadas} pesadas</span><span style="color:var(--green)">${i.leves} leves</span><span style="color:var(--purple)">${i.garantias} garantias</span></div>
+          </button>`).join('') || `<div style="padding:22px;text-align:center;color:var(--text3)">Nenhuma importação salva ainda.</div>`}
+        </div>
+      </section>
+      <section style="background:var(--surface);border:1px solid var(--border);border-radius:11px;overflow:hidden">
+        <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:8px"><b style="color:var(--text)">📆 Semanas consolidadas</b><span style="color:var(--text3);font-size:12px">${semanas.length}</span></div>
+        <div style="display:grid;gap:8px;padding:10px;max-height:520px;overflow:auto">
+          ${semanas.map(s=>`<button onclick="prevAbrirHistoricoSemana('${s.id}')" style="text-align:left;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:11px;color:var(--text);cursor:pointer">
+            <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><b style="font-size:15px;color:var(--blue)">Semana ${prevEsc(prevSemanaLabel(s))}</b><div style="font-size:11px;color:var(--text3);margin-top:3px">Atualizado em ${new Date(s.atualizadoEm||s.criadoEm).toLocaleString('pt-BR')}</div></div><span class="btn" style="font-size:10px;padding:5px 8px">Abrir</span></div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:9px;font-size:12px"><span style="color:var(--green)">${s.totais?.programadas||0} programadas</span><span style="color:var(--amber)">${s.totais?.slotsAbertos||0} vagas abertas</span><span style="color:var(--blue)">${s.totais?.validadas||0} validadas</span><span style="color:var(--purple)">${s.totais?.alteradas||0} alteradas</span></div>
+          </button>`).join('') || `<div style="padding:22px;text-align:center;color:var(--text3)">Nenhuma semana consolidada ainda.</div>`}
+        </div>
+      </section>
+    </div>
+  </section>`;
+}
+
+function prevAbrirHistoricoImportacao(id){
+  const imp=prevHistoricos().importacoes.find(i=>i.id===id);
+  if(!imp) return;
+  let modal=document.getElementById('modal-prev-historico');
+  if(!modal){modal=document.createElement('div');modal.id='modal-prev-historico';modal.className='modal-ov';modal.onclick=e=>{if(e.target===modal)modal.style.display='none'};document.body.appendChild(modal);}
+  modal.innerHTML=`<div class="modal" style="max-width:820px;max-height:86vh;overflow:hidden;display:flex;flex-direction:column">
+    <div class="modal-title"><span>Importação preventiva</span><button class="btn-x" onclick="document.getElementById('modal-prev-historico').style.display='none'">✕</button></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px"><div class="card"><div class="label">Itens</div><div class="big blue">${imp.total}</div></div><div class="card"><div class="label">Pesadas</div><div class="big red">${imp.pesadas}</div></div><div class="card"><div class="label">Leves</div><div class="big green">${imp.leves}</div></div><div class="card"><div class="label">Garantias</div><div class="big purple">${imp.garantias}</div></div></div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">${prevEsc(imp.arquivo)} • ${new Date(imp.criadoEm).toLocaleString('pt-BR')}</div>
+    <div style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:650px"><thead><tr style="background:rgba(2,6,23,.65);color:var(--text3);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;text-align:left"><th style="padding:9px">Plano</th><th style="padding:9px">Descrição</th><th style="padding:9px;text-align:right">Itens</th><th style="padding:9px;text-align:right">Maior vencimento</th></tr></thead><tbody>${(imp.planos||[]).map(p=>`<tr style="border-top:1px solid var(--border)"><td style="padding:9px;color:var(--blue);font-weight:900">${prevEsc(p.planoNum)}</td><td style="padding:9px;color:var(--text2)">${prevEsc(p.planoNome)}</td><td style="padding:9px;text-align:right;color:var(--text2)">${p.qtd}</td><td style="padding:9px;text-align:right;color:${(p.maior||0)>0?'var(--red)':'var(--green)'};font-weight:900">${prevFmtKm(p.maior)}</td></tr>`).join('')}</tbody></table></div>
+  </div>`;
+  modal.style.display='flex';
+}
+
+async function prevBuscarOsSemana(semana){
+  const dias=(semana.itens||[]).map(i=>i.iso).filter(Boolean).sort();
+  const prefixos=[...new Set((semana.itens||[]).map(i=>i.prefixo).filter(Boolean))];
+  if(!dias.length||!prefixos.length) return [];
+  const ini=new Date(`${dias[0]}T00:00:00`);
+  const fim=new Date(`${dias[dias.length-1]}T23:59:59`);
+  let q=sb.from('ocorrencias_22').select('id,numero,prefixo,tipo,status,hora_entrada,hora_liberacao,descricao,custo_previsto,custo_real').eq('garagem_id',getGid()).gte('hora_entrada',ini.toISOString()).lte('hora_entrada',fim.toISOString()).in('prefixo',prefixos);
+  const {data,error}=await q.order('hora_entrada',{ascending:true});
+  if(error) throw error;
+  return data||[];
+}
+function prevTipoOsEsperado(tipo){return tipo==='pesada'?'preventiva_pesada':tipo==='leve'?'preventiva_leve':'preventiva_garantia';}
+function prevEncontrarOsSlot(slot,ocs){
+  if(!slot.prefixo) return null;
+  const esperado=prevTipoOsEsperado(slot.tipo);
+  const mesmoDia=o=>prevIsoDeData(o.hora_entrada)===slot.iso;
+  return (ocs||[]).find(o=>o.prefixo===slot.prefixo && o.tipo===esperado && mesmoDia(o)) || (ocs||[]).find(o=>o.prefixo===slot.prefixo && String(o.tipo||'').includes('preventiva') && mesmoDia(o)) || (ocs||[]).find(o=>o.prefixo===slot.prefixo && String(o.tipo||'').includes('preventiva')) || null;
+}
+function prevHtmlSlotHistorico(slot,ocs){
+  const os=prevEncontrarOsSlot(slot,ocs);
+  const concluida=!!(os&&(os.status==='liberado'||os.hora_liberacao));
+  const aberta=!!os;
+  const cor=!slot.prefixo?'var(--amber)':concluida?'var(--green)':aberta?'var(--blue)':'var(--red)';
+  const label=!slot.prefixo?'VAGA ABERTA':concluida?'OS CONCLUÍDA':aberta?'OS ABERTA':'SEM OS';
+  return `<div class="prev-slot" style="border-color:${cor}55;min-height:126px">
+    <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><b style="color:${slot.prefixo?'var(--blue)':'var(--amber)'};font-size:15px">${slot.prefixo?prevEsc(slot.prefixo):'Slot aberto'}</b><div style="color:var(--text3);font-size:11px;margin-top:3px">${slot.prefixo?prevEsc(slot.servicos||'Sem descrição'):'Aguardando carro'}</div></div>${prevBadgeTipo(slot.tipo)}</div>
+    <div style="margin-top:8px;color:${cor};font-size:11px;font-weight:900">${label}</div>
+    ${os?`<div style="margin-top:6px;color:var(--text2);font-size:11px;line-height:1.45"><div>OS: <b style="color:var(--blue)">${prevEsc(os.numero||os.id)}</b></div><div>Abertura: ${formatDT(os.hora_entrada)}</div><div>Conclusão: ${os.hora_liberacao?formatDT(os.hora_liberacao):'Em aberto'}</div></div>`:`<div style="margin-top:6px;color:var(--text3);font-size:11px">Nenhuma OS vinculada encontrada na semana.</div>`}
+  </div>`;
+}
+async function prevAbrirHistoricoSemana(id){
+  const semana=prevHistoricos().semanas.find(s=>s.id===id);
+  if(!semana) return;
+  let modal=document.getElementById('modal-prev-historico');
+  if(!modal){modal=document.createElement('div');modal.id='modal-prev-historico';modal.className='modal-ov';modal.onclick=e=>{if(e.target===modal)modal.style.display='none'};document.body.appendChild(modal);}
+  modal.innerHTML=`<div class="modal" style="max-width:1180px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column"><div class="modal-title"><span>Semana ${prevEsc(prevSemanaLabel(semana))}</span><button class="btn-x" onclick="document.getElementById('modal-prev-historico').style.display='none'">✕</button></div><div class="loading"><div class="spinner"></div> Consultando OS...</div></div>`;
+  modal.style.display='flex';
+  try{
+    const ocs=await prevBuscarOsSemana(semana);
+    const abertas=(semana.itens||[]).filter(i=>prevEncontrarOsSlot(i,ocs)).length;
+    const concluidas=(semana.itens||[]).filter(i=>{const os=prevEncontrarOsSlot(i,ocs);return os&&(os.status==='liberado'||os.hora_liberacao);}).length;
+    modal.innerHTML=`<div class="modal" style="max-width:1180px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column">
+      <div class="modal-title"><span>Semana ${prevEsc(prevSemanaLabel(semana))}</span><button class="btn-x" onclick="document.getElementById('modal-prev-historico').style.display='none'">✕</button></div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px"><div class="card"><div class="label">Programadas</div><div class="big blue">${semana.totais?.programadas||0}</div></div><div class="card"><div class="label">OS abertas</div><div class="big amber">${abertas}</div></div><div class="card"><div class="label">OS concluídas</div><div class="big green">${concluidas}</div></div><div class="card"><div class="label">Slots abertos</div><div class="big red">${semana.totais?.slotsAbertos||0}</div></div></div>
+      <div style="overflow:auto;padding-right:4px"><div style="display:grid;grid-template-columns:repeat(5,minmax(220px,1fr));gap:10px">${(semana.dias||[]).map(d=>{const itens=(semana.itens||[]).filter(i=>i.iso===d.iso);return `<div class="prev-day"><div class="prev-day-head"><div style="font-weight:900;color:var(--text);text-transform:capitalize">${prevEsc(d.label)}</div><div style="font-size:11px;color:var(--text3)">${prevEsc(d.data)} • ${itens.filter(i=>i.prefixo).length} programada(s)</div></div><div style="padding:10px;display:grid;gap:8px">${['garantia','pesada','leve'].map(tp=>{const sec=itens.filter(i=>i.tipo===tp);return sec.length?`<div class="prev-section-label" style="color:${tp==='garantia'?'var(--purple)':tp==='pesada'?'var(--amber)':'var(--green)'}">${tp}</div>${sec.map(s=>prevHtmlSlotHistorico(s,ocs)).join('')}`:'';}).join('')}</div></div>`;}).join('')}</div></div>
+    </div>`;
+  }catch(e){
+    console.error('[PREV HIST OS]',e);
+    modal.innerHTML=`<div class="modal" style="max-width:760px"><div class="modal-title"><span>Semana ${prevEsc(prevSemanaLabel(semana))}</span><button class="btn-x" onclick="document.getElementById('modal-prev-historico').style.display='none'">✕</button></div><div style="color:var(--red);padding:18px">Não consegui consultar as OS desta semana. Veja o console para detalhes.</div></div>`;
+  }
+}
+
 function prevHtmlGrupos(){
   const busca=(_prevBuscaPrefixo||'').trim().toLowerCase();
   const dados=_prevDados.filter(r=>!busca || `${r.prefixo} ${r.carro} ${r.planoNum} ${r.planoNome}`.toLowerCase().includes(busca));
@@ -8157,6 +8353,7 @@ async function processarPrevPDF(file){
     _prevValidados={};
     renderFerrPrev();
     const r=prevResumoPropostas();
+    prevRegistrarImportacao(file,dados,r);
     toast(`Importação concluída: ${dados.length} itens. Propostas: ${r.pesadas} pesadas, ${r.leves} leves e ${r.garantiasRadar} garantias no radar.`);
   }catch(e){
     console.error('[PREV IMPORT]',e);
@@ -8225,7 +8422,7 @@ function renderAutoEscala(){ renderFerrPrev(); }
 function abrirModalProgramarPrev(){ renderFerrPrev(); }
 function carregarImportacao(){ renderFerrPrev(); }
 function excluirImportacao(){ _prevDados=[];_prevImportadoEm='';_prevBuscaPrefixo='';_prevGrupoAtivo='propostas';_prevEscalaAlteracoes={};_prevValidados={};renderFerrPrev(); }
-function verHistoricoImportacoes(){ renderFerrPrev(); }
+function verHistoricoImportacoes(){ _prevGrupoAtivo='historico'; renderFerrPrev(); }
 async function renderFerr211(){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
   const gid=getGid();
