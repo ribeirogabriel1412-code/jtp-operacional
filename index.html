@@ -7663,7 +7663,7 @@ async function salvarCustoRapido(ocId, gid, data){
 // ══════════════════════════════════════════════════════════════
 let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='propostas', _prevImportId=null, _prevBuscaPrefixo='', _prevEscalaAlteracoes={}, _prevValidados={};
 
-const PREV_CAP={pesadaDia:2,pesadaSemana:10,leveDia:6,leveSemana:30};
+const PREV_CAP={garantiaDia:1,garantiaSemana:5,pesadaDia:2,pesadaSemana:10,leveDia:6,leveSemana:30};
 const prevEsc=v=>String(v??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const prevToNumber=v=>{const s=String(v??'').replace(/[^\d-]/g,''); const n=parseInt(s,10); return Number.isFinite(n)?n:0;};
 const prevFmtKm=v=>`${(Number(v)||0).toLocaleString('pt-BR')} km`;
@@ -7719,20 +7719,20 @@ function renderFerrPrev(){
     <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:14px;flex-wrap:wrap">
       <div>
         <h2 style="margin:0;color:var(--text)">📋 Preventivas — propostas e escala</h2>
-        <div style="color:var(--text3);font-size:12px;margin-top:4px">Pesada: 10/semana, 2 por manhã • Leve: 30/semana, 6 por dia • pesada baixa a leve do carro</div>
+        <div style="color:var(--text3);font-size:12px;margin-top:4px">Garantia: 1/dia • Pesada: 10/semana, 2 por manhã • Leve: 30/semana, 6 por dia</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <label class="btn primary" style="cursor:pointer;margin:0">📄 Importar PDF
           <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="processarPrevPDF(this.files[0]);this.value=''">
         </label>
-        ${total?`<button class="btn" onclick="_prevDados=[];_prevGrupoAtivo='propostas';_prevBuscaPrefixo='';_prevEscalaAlteracoes={};_prevValidados={};renderFerrPrev()">Limpar lista</button>`:''}
+        ${total?`<button class="btn primary" onclick="prevConsolidarEscala()">✓ Consolidar preventivas</button><button class="btn" onclick="_prevDados=[];_prevGrupoAtivo='propostas';_prevBuscaPrefixo='';_prevEscalaAlteracoes={};_prevValidados={};renderFerrPrev()">Limpar lista</button>`:''}
       </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:10px;margin-bottom:12px">
       <div class="card"><div class="label">CARROS ELEGÍVEIS</div><div class="big blue">${resumo.elegiveis}</div></div>
       <div class="card"><div class="label">PESADAS</div><div class="big red">${resumo.pesadas}</div><div style="color:var(--text3);font-size:11px">Semana: ${PREV_CAP.pesadaSemana}</div></div>
       <div class="card"><div class="label">LEVES</div><div class="big green">${resumo.leves}</div><div style="color:var(--text3);font-size:11px">Semana: ${PREV_CAP.leveSemana}</div></div>
-      <div class="card"><div class="label">GARANTIAS</div><div class="big purple">${resumo.garantiasRadar}</div><div style="color:var(--text3);font-size:11px">vencidas/próximas</div></div>
+      <div class="card"><div class="label">GARANTIAS</div><div class="big purple">${resumo.garantiasRadar}</div><div style="color:var(--text3);font-size:11px">Semana: ${PREV_CAP.garantiaSemana}</div></div>
       <div class="card"><div class="label">BACKLOG SEMANA</div><div class="big amber">${resumo.backlogSemana}</div><div style="color:var(--text3);font-size:11px">fora da capacidade</div></div>
     </div>
     ${total?prevHtmlMetricasDetalhadas(resumo):''}
@@ -7753,16 +7753,18 @@ function renderFerrPrev(){
 function prevResumoPropostas(){
   const p=prevGerarPropostas();
   const semana=prevSelecionarSemana(p);
-  const levesSemDuplicar=p.leves.filter(c=>!semana.heavySet.has(c.prefixo));
+  const bloqueados=new Set([...semana.garantiaSet,...semana.heavySet]);
+  const levesSemDuplicar=p.leves.filter(c=>!bloqueados.has(c.prefixo));
   return {
-    elegiveis:semana.pesadasSemana.length+semana.levesSemana.length,
+    elegiveis:semana.garantiasSemana.length+semana.pesadasSemana.length+semana.levesSemana.length,
     pesadas:p.pesadas.length,
     leves:levesSemDuplicar.length,
     garantias:p.garantias.length,
     garantiasRadar:p.garantias.filter(g=>g.prioridade>=-3000).length,
-    backlogPesada:Math.max(0,p.pesadas.length-PREV_CAP.pesadaSemana),
+    backlogGarantia:Math.max(0,p.garantias.length-PREV_CAP.garantiaSemana),
+    backlogPesada:Math.max(0,p.pesadas.filter(c=>!semana.garantiaSet.has(c.prefixo)).length-PREV_CAP.pesadaSemana),
     backlogLeve:Math.max(0,levesSemDuplicar.length-PREV_CAP.leveSemana),
-    backlogSemana:Math.max(0,p.pesadas.length-PREV_CAP.pesadaSemana)+Math.max(0,levesSemDuplicar.length-PREV_CAP.leveSemana),
+    backlogSemana:Math.max(0,p.garantias.length-PREV_CAP.garantiaSemana)+Math.max(0,p.pesadas.filter(c=>!semana.garantiaSet.has(c.prefixo)).length-PREV_CAP.pesadaSemana)+Math.max(0,levesSemDuplicar.length-PREV_CAP.leveSemana),
     escala:prevMontarEscala(p)
   };
 }
@@ -7831,10 +7833,12 @@ function prevGerarPropostas(){
   return {pesadas,leves,garantias,todos,porPrefixo};
 }
 function prevSelecionarSemana(p){
-  const pesadasSemana=p.pesadas.slice(0,PREV_CAP.pesadaSemana);
+  const garantiasSemana=p.garantias.slice(0,PREV_CAP.garantiaSemana);
+  const garantiaSet=new Set(garantiasSemana.map(c=>c.prefixo));
+  const pesadasSemana=p.pesadas.filter(c=>!garantiaSet.has(c.prefixo)).slice(0,PREV_CAP.pesadaSemana);
   const heavySet=new Set(pesadasSemana.map(c=>c.prefixo));
-  const levesSemana=p.leves.filter(c=>!heavySet.has(c.prefixo)).slice(0,PREV_CAP.leveSemana);
-  return {pesadasSemana,levesSemana,heavySet};
+  const levesSemana=p.leves.filter(c=>!garantiaSet.has(c.prefixo)&&!heavySet.has(c.prefixo)).slice(0,PREV_CAP.leveSemana);
+  return {garantiasSemana,garantiaSet,pesadasSemana,levesSemana,heavySet};
 }
 function prevDiasSemana(){
   const hoje=new Date();
@@ -7861,6 +7865,7 @@ function prevCandidatoPorPrefixo(p,prefixo,tipoPreferido){
 function prevMontarEscala(p){
   const dias=prevDiasSemana();
   const semana=prevSelecionarSemana(p);
+  const baseGarantias=semana.garantiasSemana;
   const basePesadas=semana.pesadasSemana;
   const baseLeves=semana.levesSemana;
   const manualPrefixes=new Set(Object.entries(_prevEscalaAlteracoes).filter(([,v])=>v).map(([,v])=>prevSlotValuePrefixo(v)));
@@ -7877,6 +7882,7 @@ function prevMontarEscala(p){
   };
   return dias.map((d,i)=>({
     ...d,
+    garantias:Array.from({length:PREV_CAP.garantiaDia},(_,s)=>slot('garantia',i,s,baseGarantias[i*PREV_CAP.garantiaDia+s])),
     pesadas:Array.from({length:PREV_CAP.pesadaDia},(_,s)=>slot('pesada',i,s,basePesadas[i*PREV_CAP.pesadaDia+s])),
     leves:Array.from({length:PREV_CAP.leveDia},(_,s)=>slot('leve',i,s,baseLeves[i*PREV_CAP.leveDia+s]))
   }));
@@ -7923,15 +7929,17 @@ function prevHtmlEscalaSemanal(escala){
   return `<section style="margin-bottom:12px">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin:4px 0 8px">
       <h3 style="margin:0;color:var(--text);font-size:16px">📆 Escala automática sugerida</h3>
-      <div style="font-size:12px;color:var(--text3)">Manhã: ${PREV_CAP.pesadaDia} pesadas/dia • Dia: ${PREV_CAP.leveDia} leves/dia</div>
+      <div style="font-size:12px;color:var(--text3)">Garantia: ${PREV_CAP.garantiaDia}/dia • Manhã: ${PREV_CAP.pesadaDia} pesadas/dia • Dia: ${PREV_CAP.leveDia} leves/dia</div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(5,minmax(220px,1fr));gap:10px;overflow:auto">
       ${escala.map(d=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;min-width:220px;overflow:hidden">
         <div style="padding:10px 12px;background:rgba(15,23,42,.45);border-bottom:1px solid var(--border);text-align:center">
           <div style="font-weight:900;color:var(--text);text-transform:capitalize">${prevEsc(d.label)}</div>
-          <div style="font-size:11px;color:var(--text3)">${prevEsc(d.data)} • ${d.pesadas.filter(s=>s.item).length+d.leves.filter(s=>s.item).length} carro(s)</div>
+          <div style="font-size:11px;color:var(--text3)">${prevEsc(d.data)} • ${d.garantias.filter(s=>s.item).length+d.pesadas.filter(s=>s.item).length+d.leves.filter(s=>s.item).length} carro(s)</div>
         </div>
         <div style="padding:10px;display:grid;gap:8px">
+          <div style="font-size:10px;color:var(--purple);font-weight:900;letter-spacing:1.5px;text-transform:uppercase">Garantia (${d.garantias.filter(s=>s.item).length}/${PREV_CAP.garantiaDia})</div>
+          ${d.garantias.map(prevHtmlCarroMini).join('')}
           <div style="font-size:10px;color:var(--orange);font-weight:900;letter-spacing:1.5px;text-transform:uppercase">Pesadas manhã (${d.pesadas.filter(s=>s.item).length}/${PREV_CAP.pesadaDia})</div>
           ${d.pesadas.map(prevHtmlCarroMini).join('')}
           <div style="font-size:10px;color:var(--green);font-weight:900;letter-spacing:1.5px;text-transform:uppercase;margin-top:4px">Leves (${d.leves.filter(s=>s.item).length}/${PREV_CAP.leveDia})</div>
@@ -7942,6 +7950,42 @@ function prevHtmlEscalaSemanal(escala){
   </section>`;
 }
 
+function prevConsolidarEscala(){
+  const p=prevGerarPropostas();
+  const escala=prevMontarEscala(p);
+  const linhas=[];
+  escala.forEach(d=>{
+    [['garantia',d.garantias],['pesada',d.pesadas],['leve',d.leves]].forEach(([tipo,slots])=>{
+      slots.forEach((s,idx)=>linhas.push({dia:d.label,data:d.data,tipo,slot:idx+1,...s}));
+    });
+  });
+  const preenchidos=linhas.filter(l=>l.item).length;
+  const vazios=linhas.filter(l=>!l.item).length;
+  const validados=linhas.filter(l=>l.validado).length;
+  let modal=document.getElementById('modal-prev-consolidado');
+  if(!modal){
+    modal=document.createElement('div');
+    modal.id='modal-prev-consolidado';
+    modal.className='modal-ov';
+    modal.onclick=e=>{if(e.target===modal)modal.style.display='none'};
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML=`<div class="modal" style="max-width:980px;max-height:88vh;overflow:hidden;display:flex;flex-direction:column">
+    <div class="modal-title"><span>Preventivas consolidadas</span><button class="btn-x" onclick="document.getElementById('modal-prev-consolidado').style.display='none'">✕</button></div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
+      <div class="card"><div class="label">Preenchidos</div><div class="big green">${preenchidos}</div></div>
+      <div class="card"><div class="label">Validados</div><div class="big blue">${validados}</div></div>
+      <div class="card"><div class="label">Slots abertos</div><div class="big amber">${vazios}</div></div>
+    </div>
+    <div style="overflow:auto;border:1px solid var(--border);border-radius:10px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:860px">
+        <thead><tr style="background:rgba(2,6,23,.65);color:var(--text3);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;text-align:left"><th style="padding:9px">Dia</th><th style="padding:9px">Tipo</th><th style="padding:9px">Prefixo</th><th style="padding:9px">Status</th><th style="padding:9px">Serviços vinculados</th></tr></thead>
+        <tbody>${linhas.map(l=>`<tr style="border-top:1px solid var(--border)"><td style="padding:9px;color:var(--text2);white-space:nowrap;text-transform:capitalize">${prevEsc(l.dia)} ${prevEsc(l.data)}</td><td style="padding:9px">${prevBadgeTipo(l.tipo)}</td><td style="padding:9px;color:${l.item?'var(--blue)':'var(--amber)'};font-weight:900">${l.item?prevEsc(l.item.prefixo):'VAGA ABERTA'}</td><td style="padding:9px;color:${l.validado?'var(--green)':l.origem==='manual'?'var(--amber)':'var(--text3)'};font-weight:900">${l.item?(l.validado?'VALIDADO':l.origem==='manual'?'ALTERADO':'SUGERIDO'):'ABERTO'}</td><td style="padding:9px;color:var(--amber)">${l.item?prevEsc(prevResumoServicos(l.item,l.tipo)):'Aguardando seleção'}</td></tr>`).join('')}</tbody>
+      </table>
+    </div>
+  </div>`;
+  modal.style.display='flex';
+}
 function prevValidarSlot(key){
   _prevValidados[key]=true;
   prevRenderGrupos();
@@ -7957,14 +8001,14 @@ function prevRemoverSlot(key){
 
 function prevUsadosNaEscala(p,excetoKey=''){
   const usados=new Set();
-  prevMontarEscala(p).forEach(d=>[...d.pesadas,...d.leves].forEach(s=>{ if(s.slotKey!==excetoKey && s.item) usados.add(s.item.prefixo); }));
+  prevMontarEscala(p).forEach(d=>[...d.garantias,...d.pesadas,...d.leves].forEach(s=>{ if(s.slotKey!==excetoKey && s.item) usados.add(s.item.prefixo); }));
   return usados;
 }
 
 function prevAbrirSeletorSlot(key,tipoSlot){
   const p=prevGerarPropostas();
   const usados=prevUsadosNaEscala(p,key);
-  const listas=tipoSlot==='pesada'?[...p.pesadas,...p.garantias]:[...p.leves,...p.garantias];
+  const listas=tipoSlot==='garantia'?[...p.garantias,...p.pesadas,...p.leves]:tipoSlot==='pesada'?[...p.pesadas,...p.garantias]:[...p.leves,...p.garantias];
   const candidatos=[];
   listas.forEach(c=>{
     const tipo=c.tipo||tipoSlot;
@@ -8011,14 +8055,15 @@ function prevSelecionarSlot(key,tipo,prefixo){
 }
 function prevHtmlFilasProposta(p){
   const semana=prevSelecionarSemana(p);
-  const levesSemDuplicar=p.leves.filter(c=>!semana.heavySet.has(c.prefixo));
+  const bloqueados=new Set([...semana.garantiaSet,...semana.heavySet]);
+  const levesSemDuplicar=p.leves.filter(c=>!bloqueados.has(c.prefixo));
   const fila=(titulo,itens,cor,limite)=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden">
     <div style="padding:10px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:8px"><b style="color:${cor}">${titulo}</b><span style="color:var(--text3);font-size:12px">${itens.length} fila • ${limite} semana</span></div>
     <div style="max-height:420px;overflow:auto">${itens.slice(0,60).map((c,i)=>`<div style="display:grid;grid-template-columns:42px 90px 110px 1fr;gap:8px;align-items:center;padding:9px 12px;border-bottom:1px solid rgba(148,163,184,.12);font-size:12px">
       <div style="color:var(--text3);font-weight:900">#${i+1}</div><div style="color:var(--blue);font-weight:900">${prevEsc(c.prefixo)}</div><div style="color:${(c.prioridade||0)>0?'var(--red)':'var(--green)'};font-weight:900;text-align:right">${prevFmtKm(c.prioridade)}</div><div style="color:var(--amber);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${prevEsc(c.descricoes.join(' · '))}</div>
     </div>`).join('')}</div>
   </div>`;
-  return `<section style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">${fila('Fila pesada',p.pesadas,'var(--orange)',PREV_CAP.pesadaSemana)}${fila('Fila leve sem duplicar pesada da semana',levesSemDuplicar,'var(--green)',PREV_CAP.leveSemana)}</section>`;
+  return `<section style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">${fila('Fila garantia',p.garantias,'var(--purple)',PREV_CAP.garantiaSemana)}${fila('Fila pesada sem garantia da semana',p.pesadas.filter(c=>!semana.garantiaSet.has(c.prefixo)),'var(--orange)',PREV_CAP.pesadaSemana)}${fila('Fila leve sem garantia/pesada da semana',levesSemDuplicar,'var(--green)',PREV_CAP.leveSemana)}</section>`;
 }
 
 function prevHtmlGarantias(itens){
