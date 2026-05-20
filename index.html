@@ -10159,13 +10159,14 @@ async function exportarEscalaExcel(){
 
 async function confirmarEscalaAutomatica() {
   const gid = getGid();
-  const selecionados = (window._escalaRascunho||[]).filter(e => e.confirmado && !e.jaExiste && e.data && !e.tipo.includes('overflow') && !e.slotVazio);
+  const selecionados = (window._escalaRascunho||[])
+    .filter(e => e.confirmado && e.data && !e.tipo.includes('overflow') && !e.slotVazio && !e.jaExiste);
   if (!selecionados.length) { toast('Nenhum item selecionado','err'); return; }
 
   const btn = document.querySelector('[onclick*="confirmarEscalaAutomatica"]');
   if (btn) { btn.disabled=true; btn.textContent=`Salvando 0/${selecionados.length}...`; }
 
-  let ok=0, erros=0, erroMsg='';
+  let ok=0, erros=0, atualizados=0, criados=0, erroMsg='';
   try {
     for (const e of selecionados) {
       const obs = [
@@ -10175,27 +10176,51 @@ async function confirmarEscalaAutomatica() {
         e.motivo,
       ].filter(Boolean).join(' | ');
 
-      const {error} = await sb.from('programacao_preventiva').insert({
-        garagem_id:gid, prefixo:e.carro,
-        plano_num:e.planoNum, plano_nome:e.planoNome,
-        tipo_metrica:'KM', excesso_km:e.excessoKm||0, km_atual:0,
+      const payload = {
+        garagem_id:gid,
+        prefixo:e.carro,
+        plano_num:e.planoNum,
+        plano_nome:e.planoNome,
+        tipo_metrica:'KM',
+        excesso_km:e.excessoKm||0,
+        km_atual:0,
         data_prevista:e.data,
-        turno:(e.turno==='VAL'||e.turno==='A')?'A':'B',
+        turno:(e.turno==='B')?'B':'A',
         cesto_separado:!!e.cesto,
         observacao:obs||null,
-        status:'programado',
-        criado_por:S.perfil?.nome||null,
-        criado_por_id:S.perfil?.id||null,
-      });
-      if (error) {
-        console.error('[escala]',e.carro,e.planoNum,error.message);
-        if (!erroMsg) erroMsg=`${e.carro}/${e.planoNum}: ${error.message}`;
+        status:'programado'
+      };
+
+      let resp;
+      if (e.progId) {
+        resp = await sb.from('programacao_preventiva')
+          .update(payload)
+          .eq('id', e.progId)
+          .select('id')
+          .maybeSingle();
+      } else {
+        resp = await sb.from('programacao_preventiva')
+          .insert({
+            ...payload,
+            criado_por:S.perfil?.nome||null,
+            criado_por_id:S.perfil?.id||null,
+          })
+          .select('id')
+          .maybeSingle();
+      }
+
+      if (resp.error || !resp.data?.id) {
+        const msg = resp.error?.message || 'Registro nao retornou id';
+        console.error('[escala salvar]', {carro:e.carro, plano:e.planoNum, progId:e.progId||null, payload, erro:msg});
+        if (!erroMsg) erroMsg=`${e.carro}/${e.planoNum}: ${msg}`;
         erros++;
       } else {
         ok++;
-        const b=document.querySelector('[onclick*="confirmarEscalaAutomatica"]');
-        if(b) b.textContent=`Salvando ${ok+erros}/${selecionados.length}...`;
+        if (e.progId) atualizados++; else criados++;
       }
+
+      const b=document.querySelector('[onclick*="confirmarEscalaAutomatica"]');
+      if(b) b.textContent=`Salvando ${ok+erros}/${selecionados.length}...`;
     }
   } finally {
     const b=document.querySelector('[onclick*="confirmarEscalaAutomatica"]');
@@ -10203,30 +10228,10 @@ async function confirmarEscalaAutomatica() {
   }
 
   if (erros>0) toast(`⚠️ ${erros} erro(s): ${erroMsg}`,'err');
-  if (ok>0) toast(`✅ ${ok} programações salvas!`);
+  if (ok>0) toast(`✅ ${ok} programação(ões) salva(s) · ${criados} nova(s) · ${atualizados} alterada(s)`);
   window._escalaRascunho=null;
   renderPrevProgramadas();
-
-  // WhatsApp da escala desativado temporariamente: a API externa esta retornando 400 e nao deve bloquear o registro.
-  const enviarWppEscala = false;
-  if (ok > 0 && enviarWppEscala) setTimeout(() => {
-    try {
-      const garagem=S.garagens?.find(g=>g.id===gid);
-      const linhas=selecionados.filter(e=>e.tipo!=='valetamento').slice(0,15)
-        .map(e=>`${e.tipo==='garantia'?'🔒':'🔩'} *${e.carro}* — ${e.planoNome.split(' ').slice(0,2).join(' ')} · ${e.data?.split('-').reverse().join('/')} T${e.turno||''}`)
-        .join('\n');
-      const msg=`🗓️ *ESCALA PREVENTIVA — JTP*\n📍 ${garagem?.nome||'Porto Velho'}\n\n✅ ${ok} confirmadas · ❌ ${erros} erros\n\n${linhas}${selecionados.length>15?`\n_...+${selecionados.length-15} itens_`:''}\n\n_${S.perfil?.nome||'PCM'}_`;
-      fetch('https://evolution-api-production-8d56.up.railway.app/message/sendText/jtp-garagem',{
-        method:'POST',headers:{'Content-Type':'application/json','apikey':'4289AC11F437-43AD-96D7-9F27C2735696'},
-        body:JSON.stringify({number:'120363427489152994@g.us',options:{delay:0},textMessage:{text:msg}}),
-      }).then(r=>{ if(!r.ok) console.warn('WPP escala:', r.status); }).catch(e=>console.warn('WPP escala:',e));
-    } catch(e){console.warn('WPP escala:',e);}
-  }, 0);
 }
-
-
-
-
 // ── MODAL DE PROGRAMAÇÃO ─────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════
 // HIERARQUIA E OPORTUNISMO
