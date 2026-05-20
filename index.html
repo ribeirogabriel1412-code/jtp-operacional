@@ -7685,6 +7685,7 @@ async function salvarCustoRapido(ocId, gid, data){
 let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='propostas', _prevImportId=null, _prevBuscaPrefixo='', _prevEscalaAlteracoes={}, _prevValidados={}, _prevHistFiltro='';
 
 const PREV_CAP={garantiaDia:1,garantiaSemana:5,pesadaDia:2,pesadaSemana:10,leveDia:6,leveSemana:30};
+const PREV_OUTROS_LIMITE_KM=1000;
 const prevEsc=v=>String(v??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const prevToNumber=v=>{const s=String(v??'').replace(/[^\d-]/g,''); const n=parseInt(s,10); return Number.isFinite(n)?n:0;};
 const prevFmtKm=v=>`${(Number(v)||0).toLocaleString('pt-BR')} km`;
@@ -7698,6 +7699,8 @@ const prevPlanoKey=r=>`${r.planoNum||'---'}|${r.planoNome||'SEM PLANO'}`;
 const prevIsPesada=r=>String(r.planoNum)==='002' || /PREVENTIVA\s+PESADA/i.test(r.planoNome||'');
 const prevIsLeve=r=>String(r.planoNum)==='001' || /PREVENTIVA\s+LEVE/i.test(r.planoNome||'');
 const prevIsGarantia=r=>['003','029'].includes(String(r.planoNum)) || /GARANTIA/i.test(r.planoNome||'');
+const prevIsOutroPlano=r=>!prevIsPesada(r)&&!prevIsLeve(r)&&!prevIsGarantia(r);
+const prevIsOutroRadar=r=>prevIsOutroPlano(r)&&((r.excessoKm||0)>0||r.pendente||(r.excessoKm||0)>=-PREV_OUTROS_LIMITE_KM);
 const prevPlanoPeso=r=>prevIsPesada(r)?4:prevIsGarantia(r)?3:prevIsLeve(r)?2:1;
 const prevIntervaloGarantia=r=>String(r.planoNum)==='029'?30000:20000;
 const prevSlotKey=(tipo,dia,slot)=>`${tipo}:${dia}:${slot}`;
@@ -7815,7 +7818,7 @@ function prevServicosDoCarro(c,tipoPreferido=''){
   }else{
     push(c.base);
   }
-  c.itens.filter(r=>!prevIsPesada(r)&&!prevIsLeve(r)&&!prevIsGarantia(r)&&((r.excessoKm||0)>0||r.pendente))
+  c.itens.filter(prevIsOutroRadar)
     .sort((a,b)=>(b.excessoKm||0)-(a.excessoKm||0))
     .forEach(push);
   return itens.map(r=>`${r.planoNum} ${r.planoNome.replace(/^\(KM\)\s*/i,'')}`);
@@ -7876,6 +7879,7 @@ function prevResumoPropostas(){
     leves:levesSemDuplicar.length,
     garantias:p.garantias.length,
     garantiasRadar:p.garantias.filter(g=>g.prioridade>=-3000).length,
+    outrosRadar:p.outros.length,
     backlogGarantia:Math.max(0,p.garantias.length-PREV_CAP.garantiaSemana),
     backlogPesada:Math.max(0,p.pesadas.filter(c=>!semana.garantiaSet.has(c.prefixo)).length-PREV_CAP.pesadaSemana),
     backlogLeve:Math.max(0,levesSemDuplicar.length-PREV_CAP.leveSemana),
@@ -7927,7 +7931,7 @@ function prevGerarPropostas(){
     if(prevIsGarantia(r)) c.garantias.push(r);
     c.maiorExcesso=Math.max(c.maiorExcesso,r.excessoKm||0);
   });
-  const pesadas=[], leves=[], garantias=[], todos=[];
+  const pesadas=[], leves=[], garantias=[], outros=[], todos=[];
   [...porCarro.values()].forEach(c=>{
     c.itens.sort((a,b)=>prevPlanoPeso(b)-prevPlanoPeso(a) || (b.excessoKm||0)-(a.excessoKm||0));
     c.planos=c.itens.map(r=>r.planoNum).filter((v,i,a)=>a.indexOf(v)===i).join(', ');
@@ -7935,17 +7939,20 @@ function prevGerarPropostas(){
     c.leve=c.itens.find(prevIsLeve);
     c.garantia=c.garantias.sort((a,b)=>(b.excessoKm||0)-(a.excessoKm||0))[0];
     c.base=c.itens[0];
+    c.outrosRadar=c.itens.filter(prevIsOutroRadar).sort((a,b)=>(b.excessoKm||0)-(a.excessoKm||0));
     c.descricoes=prevServicosDoCarro(c,'').map(s=>s.replace(/^\d+\s+/,''));
     todos.push(c);
     if(c.pesada) pesadas.push({...c,tipo:'pesada',prioridade:c.pesada.excessoKm||0,base:c.pesada,descricoes:prevServicosDoCarro(c,'pesada')});
     if(c.leve) leves.push({...c,tipo:'leve',prioridade:c.leve.excessoKm||0,base:c.leve,descricoes:prevServicosDoCarro(c,'leve')});
     if(c.garantia) garantias.push({...c,tipo:'garantia',prioridade:c.garantia.excessoKm||0,base:c.garantia,intervaloGarantia:prevIntervaloGarantia(c.garantia),descricoes:prevServicosDoCarro(c,'garantia')});
+    c.outrosRadar.forEach(r=>outros.push({...c,tipo:'outro',prioridade:r.excessoKm||0,base:r,descricoes:prevServicosDoCarro({...c,base:r},'outro')}));
   });
   pesadas.sort((a,b)=>(b.prioridade||0)-(a.prioridade||0) || a.prefixo.localeCompare(b.prefixo));
   leves.sort((a,b)=>(b.prioridade||0)-(a.prioridade||0) || a.prefixo.localeCompare(b.prefixo));
   garantias.sort((a,b)=>(b.prioridade||0)-(a.prioridade||0) || a.prefixo.localeCompare(b.prefixo));
+  outros.sort((a,b)=>(b.prioridade||0)-(a.prioridade||0) || a.prefixo.localeCompare(b.prefixo));
   const porPrefixo=new Map(todos.map(c=>[c.prefixo,c]));
-  return {pesadas,leves,garantias,todos,porPrefixo};
+  return {pesadas,leves,garantias,outros,todos,porPrefixo};
 }
 function prevSelecionarSemana(p){
   const garantiasSemana=p.garantias.slice(0,PREV_CAP.garantiaSemana);
@@ -8006,10 +8013,10 @@ function prevHtmlPropostasEscala(){
   const p=prevGerarPropostas();
   const escala=prevMontarEscala(p);
   const garantiaRadar=p.garantias.filter(g=>g.prioridade>=-3000).slice(0,20);
-  if(!p.pesadas.length&&!p.leves.length&&!garantiaRadar.length){
+  if(!p.pesadas.length&&!p.leves.length&&!garantiaRadar.length&&!p.outros.length){
     return `<div style="padding:28px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhuma proposta encontrada para a pesquisa atual.</div>`;
   }
-  return `${prevHtmlEscalaSemanal(escala)}${prevHtmlFilasProposta(p)}${prevHtmlGarantias(garantiaRadar)}`;
+  return `${prevHtmlEscalaSemanal(escala)}${prevHtmlOutrosPlanos(p,escala)}${prevHtmlFilasProposta(p)}${prevHtmlGarantias(garantiaRadar)}`;
 }
 
 function prevBadgeTipo(tipo){
@@ -8183,6 +8190,42 @@ function prevHtmlFilasProposta(p){
   return `<section style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">${fila('Fila garantia',p.garantias,'var(--purple)',PREV_CAP.garantiaSemana)}${fila('Fila pesada sem garantia da semana',p.pesadas.filter(c=>!semana.garantiaSet.has(c.prefixo)),'var(--orange)',PREV_CAP.pesadaSemana)}${fila('Fila leve sem garantia/pesada da semana',levesSemDuplicar,'var(--green)',PREV_CAP.leveSemana)}</section>`;
 }
 
+function prevHtmlOutrosPlanos(p,escala){
+  const itens=p.outros||[];
+  if(!itens.length) return '';
+  const programados=new Set();
+  (escala||[]).forEach(d=>[...d.garantias,...d.pesadas,...d.leves].forEach(s=>{ if(s.item) programados.add(s.item.prefixo); }));
+  const vinculados=itens.filter(c=>programados.has(c.prefixo));
+  const fora=itens.filter(c=>!programados.has(c.prefixo));
+  const rows=itens.slice(0,90).map(c=>{
+    const vinculado=programados.has(c.prefixo);
+    const status=vinculado?'Vinculado na escala':'Oportunidade fora da escala';
+    const statusCor=vinculado?'var(--green)':'var(--amber)';
+    return `<tr style="border-top:1px solid var(--border)">
+      <td style="padding:9px;color:var(--blue);font-weight:900;white-space:nowrap">${prevEsc(c.prefixo)}</td>
+      <td style="padding:9px;color:var(--text2)"><b>${prevEsc(c.base.planoNum)}</b> — ${prevEsc(c.base.planoNome.replace(/^\(KM\)\s*/i,''))}</td>
+      <td style="padding:9px;text-align:right;color:${(c.prioridade||0)>0?'var(--red)':'var(--green)'};font-weight:900;white-space:nowrap">${prevFmtKm(c.prioridade)}</td>
+      <td style="padding:9px;color:${statusCor};font-weight:900;font-size:11px;text-transform:uppercase">${status}</td>
+      <td style="padding:9px;color:var(--text3);font-size:11px">${prevEsc(prevResumoServicos(c,'outro'))}</td>
+    </tr>`;
+  }).join('');
+  const grupos=new Map();
+  itens.forEach(c=>{
+    const key=prevPlanoKey(c.base);
+    if(!grupos.has(key)) grupos.set(key,{plano:c.base.planoNum,nome:c.base.planoNome,qtd:0,maior:-999999});
+    const g=grupos.get(key); g.qtd++; g.maior=Math.max(g.maior,c.prioridade||0);
+  });
+  const chips=[...grupos.values()].sort((a,b)=>(b.maior||0)-(a.maior||0)).slice(0,8).map(g=>`<span style="border:1px solid var(--border);background:var(--bg);border-radius:7px;padding:5px 8px;color:var(--text2);font-size:11px"><b style="color:var(--blue)">${prevEsc(g.plano)}</b> ${prevEsc(g.nome.replace(/^\(KM\)\s*/i,''))}: <b style="color:${(g.maior||0)>0?'var(--red)':'var(--green)'}">${g.qtd}</b></span>`).join('');
+  return `<section style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:12px">
+    <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+      <div><b style="color:var(--amber)">🧩 Outros planos vencidos / a vencer</b><div style="color:var(--text3);font-size:12px;margin-top:3px">Entram no radar quando estão vencidos, pendentes ou até ${PREV_OUTROS_LIMITE_KM.toLocaleString('pt-BR')} km para vencer.</div></div>
+      <div style="display:flex;gap:10px;font-size:12px;flex-wrap:wrap"><span style="color:var(--green);font-weight:900">${vinculados.length} vinculados</span><span style="color:var(--amber);font-weight:900">${fora.length} fora da escala</span></div>
+    </div>
+    <div style="padding:10px 12px;display:flex;gap:7px;flex-wrap:wrap;border-bottom:1px solid var(--border)">${chips}</div>
+    <div style="overflow:auto;max-height:360px"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:960px"><thead><tr style="background:rgba(2,6,23,.45);color:var(--text3);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;text-align:left"><th style="padding:9px">Prefixo</th><th style="padding:9px">Plano</th><th style="padding:9px;text-align:right">Saldo</th><th style="padding:9px">Programação</th><th style="padding:9px">Serviços junto com a OS</th></tr></thead><tbody>${rows}</tbody></table></div>
+  </section>`;
+}
+
 function prevHtmlGarantias(itens){
   if(!itens.length) return '';
   return `<section style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:12px">
@@ -8354,7 +8397,7 @@ async function processarPrevPDF(file){
     renderFerrPrev();
     const r=prevResumoPropostas();
     prevRegistrarImportacao(file,dados,r);
-    toast(`Importação concluída: ${dados.length} itens. Propostas: ${r.pesadas} pesadas, ${r.leves} leves e ${r.garantiasRadar} garantias no radar.`);
+    toast(`Importação concluída: ${dados.length} itens. Propostas: ${r.pesadas} pesadas, ${r.leves} leves, ${r.garantiasRadar} garantias e ${r.outrosRadar} outros planos no radar.`);
   }catch(e){
     console.error('[PREV IMPORT]',e);
     toast('Erro ao ler o PDF de preventivas. Veja o console para detalhes.','err');
