@@ -1658,6 +1658,7 @@ async function renderAdmin(){
         <span class="badge ${u.ativo?'b-ativo':'b-inativo'}">${u.ativo?'Ativo':'Inativo'}</span>
         <button class="btn-sm" onclick="editarUsuario('${u.id}')">✏️ Editar</button>
         <button class="btn-sm danger" onclick="toggleAtivo('${u.id}',${u.ativo},'${u.nome}')">${u.ativo?'🔒 Desativar':'🔓 Ativar'}</button>
+        <button class="btn-sm danger" onclick="excluirUsuario('${u.id}')">Excluir</button>
       </div>
     </div>`;
   }).join('');
@@ -1867,6 +1868,22 @@ async function toggleAtivo(id,ativo,nome){
   renderAdmin();
 }
 
+async function excluirUsuario(id){
+  if(!S.perfil?.is_admin){toast('Apenas admin pode excluir usuarios.','err');return}
+  if(id===S.user?.id){toast('Voce nao pode excluir o proprio usuario logado.','err');return}
+
+  const{data:u,error:eBusca}=await sb.from('perfis').select('id,nome,email,is_admin').eq('id',id).single();
+  if(eBusca||!u){toast('Usuario nao encontrado.','err');return}
+
+  const alvo=`${u.nome||'usuario'}${u.email?' ('+u.email+')':''}`;
+  if(!confirm(`Excluir permanentemente o cadastro de ${alvo}?\n\nEssa acao remove o perfil do backend e o usuario nao conseguira entrar no sistema.`)) return;
+  if(!confirm(`Confirma mesmo excluir ${u.nome||'este usuario'}?`)) return;
+
+  const{error}=await sb.from('perfis').delete().eq('id',id);
+  if(error){toast('Erro ao excluir: '+error.message,'err');return}
+  toast('Usuario excluido do backend!');
+  renderAdmin();
+}
 // FERRAMENTAS
 function renderFerramentas(){
   // Descrições por ferramenta — centralizado aqui
