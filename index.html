@@ -7439,7 +7439,7 @@ async function renderFech24(gid,back,tabs){
   var ini=dtIni.toISOString();
   var fim=dtFim.toISOString();
   var dataPrev=dataRef;
-  var tLabel=(turno==='dia'?'Diurno':'Noturno')+' '+horaIni+'-'+horaFim;
+  var tLabel=(turno==='dia'?'Dia':'Noite')+' '+horaIni+'-'+horaFim;
   var dataLabel=dtIni.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
   var periodoLabel=dataLabel+' · '+horaIni+' ate '+horaFim;
   var r1=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).gte('hora_entrada',ini).lte('hora_entrada',fim).order('hora_entrada',{ascending:true});
@@ -7539,7 +7539,7 @@ async function renderFech24(gid,back,tabs){
     secTitle('📋','Fechamento de Turno PCM — 2.4',back)+tabs+
     '<div style="display:grid;grid-template-columns:180px 150px 130px 130px auto;gap:10px;align-items:end;margin:-4px 0 18px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px">'+
       '<div><label class="campo-label">Data do checklist</label><input class="fi" type="date" value="'+dataRef+'" onchange="S._fech24Data=this.value;renderFerrPCM(&quot;fech24&quot;)"></div>'+
-      '<div><label class="campo-label">Turno</label><select class="fi" onchange="S._fech24Turno=this.value;S._fech24HoraIni=this.value===&quot;dia&quot;?&quot;07:00&quot;:&quot;21:00&quot;;S._fech24HoraFim=this.value===&quot;dia&quot;?&quot;17:00&quot;:&quot;07:20&quot;;renderFerrPCM(&quot;fech24&quot;)"><option value="dia" '+(turno==='dia'?'selected':'')+'>Diurno</option><option value="noite" '+(turno==='noite'?'selected':'')+'>Noturno</option></select></div>'+
+      '<div><label class="campo-label">Turno</label><select class="fi" onchange="S._fech24Turno=this.value;S._fech24HoraIni=this.value===&quot;dia&quot;?&quot;07:00&quot;:&quot;21:00&quot;;S._fech24HoraFim=this.value===&quot;dia&quot;?&quot;17:00&quot;:&quot;07:20&quot;;renderFerrPCM(&quot;fech24&quot;)"><option value="dia" '+(turno==='dia'?'selected':'')+'>Dia</option><option value="noite" '+(turno==='noite'?'selected':'')+'>Noite</option></select></div>'+
       '<div><label class="campo-label">Hora inicial</label><input class="fi" type="time" value="'+horaIni+'" onchange="S._fech24HoraIni=this.value;renderFerrPCM(&quot;fech24&quot;)"></div>'+
       '<div><label class="campo-label">Hora final</label><input class="fi" type="time" value="'+horaFim+'" onchange="S._fech24HoraFim=this.value;renderFerrPCM(&quot;fech24&quot;)"></div>'+
       '<div style="font-size:12px;color:var(--text3);padding-bottom:9px">'+tLabel+' · '+periodoLabel+'</div>'+
