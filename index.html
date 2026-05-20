@@ -1061,36 +1061,9 @@ async function renderPainel(){
       }).join('')}
       ${ocs.length>6?`<div style="text-align:center"><button onclick="navToSub('ferr-22')" style="background:none;border:1px solid var(--border);color:var(--text3);border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">+ ${ocs.length-6} outros carros em aberto →</button></div>`:''}
     </div>`;
-
-  // ── Preventivas programadas próximos 7 dias ──────────────────────────────
-  const hojeStr=hoje();
-  const proxSemana=new Date();proxSemana.setDate(proxSemana.getDate()+7);
-  const{data:prevProg}=await sb.from('programacao_preventiva')
-    .select('prefixo,plano_num,data_prevista,turno')
-    .eq('garagem_id',gid).in('status',['programado','em_execucao'])
-    .gte('data_prevista',hojeStr).lte('data_prevista',proxSemana.toISOString().slice(0,10))
-    .order('data_prevista');
-  const CPNC={'001':'Leve','002':'Pesada','003':'Garantia','029':'Garantia'};
-  const CPLC={'001':'#3B82F6','002':'#F97316','003':'#8B5CF6','029':'#8B5CF6'};
+  // Preventivas removidas dos painéis. Mantidas apenas na Abertura de OS.
+  const prevProg=[];
   const prevPorData={};
-  (prevProg||[]).forEach(p=>{if(!prevPorData[p.data_prevista])prevPorData[p.data_prevista]=[];prevPorData[p.data_prevista].push(p);});
-  const prevHTML=Object.entries(prevPorData).sort(([a],[b])=>a.localeCompare(b)).map(([data,items])=>{
-    const dtFmt=new Date(data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
-    const diff=Math.round((new Date(data+'T12:00:00')-new Date(hojeStr+'T12:00:00'))/86400000);
-    const lbl=diff===0?'Hoje':diff===1?'Amanhã':`D+${diff}`;
-    const chips=items.map(p=>`<div style="display:inline-flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid ${CPLC[p.plano_num]||'var(--border)'}40;border-radius:8px;padding:4px 8px;margin-bottom:4px">
-      <span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700">${p.prefixo}</span>
-      <span style="font-size:9px;padding:1px 4px;border-radius:3px;background:${CPLC[p.plano_num]||'#475569'}25;color:${CPLC[p.plano_num]||'var(--text3)'};font-weight:700">${CPNC[p.plano_num]||p.plano_num}</span>
-    </div>`).join('');
-    return`<div style="margin-bottom:10px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-        <span style="font-size:11px;font-weight:800;padding:2px 8px;border-radius:6px;background:${diff===0?'#EF444420':'var(--surface2)'};color:${diff===0?'var(--red)':'var(--text3)'}">${lbl}</span>
-        <span style="font-size:11px;color:var(--text3)">${dtFmt}</span>
-        <span style="font-size:10px;background:var(--surface2);border-radius:20px;padding:1px 8px;color:var(--text3);font-weight:700">${items.length} carros</span>
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:5px">${chips}</div>
-    </div>`;
-  }).join('');
 
   setMain(`
     <div class="painel-hero">
@@ -1153,73 +1126,6 @@ async function renderPainel(){
     </div>
 
     ${rankingHTML}
-
-    <!-- Preventivas Programadas — Visual em colunas por dia -->
-    ${prevProg?.length ? `
-    <div style="margin-top:4px">
-      ${secTitle('🔧','Preventivas Programadas — Próximos 7 Dias',
-        `<button class="btn-add" style="font-size:12px;padding:6px 12px" onclick="navToSub('ferr-prev')">Ver Escala →</button>`
-      )}
-      <!-- KPIs -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
-        <div class="kpi ${prevPorData[hojeStr]?.length?'nok':'ok'}" style="padding:10px 8px">
-          <div class="kpi-label">Hoje</div>
-          <div class="kpi-val" style="color:${prevPorData[hojeStr]?.length?'var(--amber)':'var(--green)'}">${prevPorData[hojeStr]?.length||0}</div>
-        </div>
-        <div class="kpi neu" style="padding:10px 8px">
-          <div class="kpi-label">Semana</div>
-          <div class="kpi-val">${prevProg.length}</div>
-        </div>
-        <div class="kpi neu" style="padding:10px 8px">
-          <div class="kpi-label">Pesadas</div>
-          <div class="kpi-val" style="color:#F97316">${prevProg.filter(p=>p.plano_num==='002').length}</div>
-        </div>
-        <div class="kpi neu" style="padding:10px 8px">
-          <div class="kpi-label">Garantias</div>
-          <div class="kpi-val" style="color:#8B5CF6">${prevProg.filter(p=>['003','029'].includes(p.plano_num)).length}</div>
-        </div>
-      </div>
-      <!-- Colunas por dia -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
-        ${Object.entries(prevPorData).sort(([a],[b])=>a.localeCompare(b)).map(([data,items])=>{
-          const dtFmt=new Date(data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});
-          const diff=Math.round((new Date(data+'T12:00:00')-new Date(hojeStr+'T12:00:00'))/86400000);
-          const lbl=diff===0?'Hoje':diff===1?'Amanhã':`D+${diff}`;
-          const isHoje=diff===0;
-          const gars=items.filter(p=>['003','029'].includes(p.plano_num));
-          const pes=items.filter(p=>p.plano_num==='002');
-          const lev=items.filter(p=>p.plano_num==='001');
-
-          const chipP=(p,cor,bg)=>`<span style="display:inline-flex;align-items:center;font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:${cor};background:${bg};border:1px solid ${cor}30;border-radius:6px;padding:2px 6px;margin:2px">${p.prefixo}</span>`;
-
-          return`<div style="background:var(--surface);border:1px solid ${isHoje?'var(--amber)':'var(--border)'};border-top:3px solid ${isHoje?'var(--amber)':'var(--border2)'};border-radius:12px;padding:12px">
-            <!-- Header do dia -->
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-              <div>
-                <span style="font-size:11px;font-weight:800;padding:2px 8px;border-radius:6px;background:${isHoje?'#F59E0B20':'var(--surface2)'};color:${isHoje?'var(--amber)':'var(--text3)'}">${lbl}</span>
-                <div style="font-size:10px;color:var(--text4);margin-top:2px">${dtFmt}</div>
-              </div>
-              <span style="font-size:10px;background:var(--surface2);border-radius:20px;padding:1px 8px;color:var(--text3);font-weight:700">${items.length}</span>
-            </div>
-            <!-- Garantias -->
-            ${gars.length?`<div style="margin-bottom:8px">
-              <div style="font-size:9px;font-weight:800;color:#8B5CF6;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">🔒 Garantia</div>
-              <div style="display:flex;flex-wrap:wrap;gap:2px">${gars.map(p=>chipP(p,'#8B5CF6','#8B5CF610')).join('')}</div>
-            </div>`:''}
-            <!-- Pesadas -->
-            ${pes.length?`<div style="margin-bottom:8px">
-              <div style="font-size:9px;font-weight:800;color:#F97316;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">🔩 Pesada</div>
-              <div style="display:flex;flex-wrap:wrap;gap:2px">${pes.map(p=>chipP(p,'#F97316','#F9731610')).join('')}</div>
-            </div>`:''}
-            <!-- Leves -->
-            ${lev.length?`<div>
-              <div style="font-size:9px;font-weight:800;color:#3B82F6;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">🔵 Leve</div>
-              <div style="display:flex;flex-wrap:wrap;gap:2px">${lev.map(p=>chipP(p,'#3B82F6','#3B82F610')).join('')}</div>
-            </div>`:''}
-          </div>`;
-        }).join('')}
-      </div>
-    </div>` : ''}
 
     ${secTitle('🚌','Frota — Visão Rápida',`<button class="btn-add" onclick="navTo('frota',null)">Ver Tudo →</button>`)}
     ${total===0?`<div class="empty"><div style="font-size:40px">🚌</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Nenhum veículo cadastrado</div></div>`:`<div class="frota-grid">${top}</div>`}`);
@@ -4033,17 +3939,7 @@ async function renderFerr22(aba='ativas'){
     ckMap[c.ocorrencia_id].total++;
     if(c.concluido) ckMap[c.ocorrencia_id].feitos++;
   });
-
-  // Busca preventivas programadas (próximos 3 dias) para badge nos cards
-  const _hoje3=new Date().toISOString().slice(0,10);
-  const _em3=new Date(Date.now()+3*86400000).toISOString().slice(0,10);
-  let prevProgMap22={};
-  try{
-    const{data:prevProgs22}=await sb.from('programacao_preventiva')
-      .select('prefixo,data_prevista,turno,cesto_separado')
-      .eq('garagem_id',gid).eq('status','programado').lte('data_prevista',_em3);
-    (prevProgs22||[]).forEach(p=>{ prevProgMap22[p.prefixo]=p; });
-  }catch(e){}
+  const prevProgMap22={};
 
   const cards=lista.map(o=>{
     const st=STATUS22[o.status]||{l:o.status,ic:'?',c:'#475569',cls:''};
@@ -4091,12 +3987,6 @@ async function renderFerr22(aba='ativas'){
           <div style="background:var(--border);border-radius:99px;height:4px;overflow:hidden">
             <div style="height:100%;width:${Math.round((ckMap[o.id].feitos/ckMap[o.id].total)*100)}%;background:${ckMap[o.id].feitos===ckMap[o.id].total?'var(--green)':'var(--amber)'};border-radius:99px"></div>
           </div>
-        </div>`:''}
-      ${prevProgMap22[o.prefixo]?`
-        <div style="margin-top:8px;display:flex;align-items:center;gap:6px;background:#2563EB10;border:1px solid #2563EB30;border-radius:8px;padding:6px 10px">
-          <span style="font-size:12px">🔩</span>
-          <span style="font-size:11px;color:var(--blue);font-weight:700">Preventiva prog. ${prevProgMap22[o.prefixo].data_prevista.split('-').reverse().join('/')} T${prevProgMap22[o.prefixo].turno} ${prevProgMap22[o.prefixo].cesto_separado?'· ✅ Cesto OK':'· ⚠️ Cesto pendente'}</span>
-          <button onclick="event.stopPropagation();renderPrevProgramadas(o.prefixo,'')" style="margin-left:auto;padding:2px 8px;border-radius:5px;border:1px solid #2563EB40;background:transparent;color:var(--blue);font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif">Ver →</button>
         </div>`:''}
       <!-- Barra de ações — progressão de status + orçamento -->
       <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap" onclick="event.stopPropagation()">
@@ -7515,37 +7405,20 @@ async function renderFech24(gid,back,tabs){
   var dataLabel=dtIni.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
   var periodoLabel=dataLabel+' · '+horaIni+' ate '+horaFim;
   var r1=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).gte('hora_entrada',ini).lte('hora_entrada',fim).order('hora_entrada',{ascending:true});
-  var r2=await sb.from('programacao_preventiva').select('*').eq('garagem_id',gid).eq('data_prevista',dataPrev).order('prefixo');
   var r3=await sb.from('movimentacao_pneu').select('*').eq('garagem_id',gid).eq('data',dataRef);
   var r4=await sb.from('fechamento_24').select('*').eq('garagem_id',gid).eq('data',dataRef).eq('turno',turno).limit(1);
-  var r5=await sb.from('fech24_prev_turno').select('*').eq('garagem_id',gid).eq('data',dataRef).eq('turno',turno);
-  var ocs=r1.data||[], prevsProg=r2.data||[], pneus=r3.data||[];
-  var fech=r4.data&&r4.data[0]||null, marcacoes=r5.data||[];
+  var ocs=r1.data||[], prevsProg=[], pneus=r3.data||[];
+  var fech=r4.data&&r4.data[0]||null, marcacoes=[];
   var marcaMap={};
   marcacoes.forEach(function(m){marcaMap[m.prev_id]=m;});
   var ocIds=ocs.map(function(o){return o.id;});
   var reqs=[];
   if(ocIds.length){var rr=await sb.from('requisicoes_compra').select('*').in('ocorrencia_id',ocIds).order('criado_em',{ascending:false});reqs=rr.data||[];}
-  var prevsEnrich=prevsProg.map(function(p){
-    var planoN=(p.plano_nome||'').toLowerCase();
-    var isPes=planoN.includes('pesada')||planoN.includes('30.000');
-    var isGar=planoN.includes('garantia');
-    var tipoOS=isGar?'preventiva_garantia':isPes?'preventiva_pesada':'preventiva_leve';
-    var osMatch=ocs.find(function(o){return o.prefixo===p.prefixo&&o.tipo===tipoOS;});
-    var marc=marcaMap[p.id]||null;
-    var turnoProg=((p.turno||'')+'').toUpperCase();
-    var turnoAuto=(turnoProg==='A'||turnoProg==='VAL')?'dia':(turnoProg==='B'?'noite':null);
-    var temMarc=marc&&typeof marc.selecionado==='boolean';
-    var deste=temMarc?!!marc.selecionado:(turnoAuto===turno);
-    var statusPrev='nao_iniciada';
-    if(osMatch) statusPrev=osMatch.status==='liberado'?'executada':'em_andamento';
-    return Object.assign({},p,{_os:osMatch,_marc:marc,_deste:deste,_status:statusPrev});
-  });
-  var prevsTurno=prevsEnrich.filter(function(p){return p._deste;});
-  var outrosTurnos=prevsEnrich.filter(function(p){return !p._deste;});
+  var prevsTurno=[];
+  var outrosTurnos=[];
   var abertas=ocs.filter(function(o){return o.status!=='liberado';});
   var fechadas=ocs.filter(function(o){return o.status==='liberado';});
-  var prevExec=prevsTurno.filter(function(p){return p._status==='executada';}).length;
+  var prevExec=0;
   var pendSemJust=abertas.filter(function(o){return !o.justificativa_pendencia;});
   var fmtR=function(v){return v>0?'R$\u00a0'+parseFloat(v).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—';};
   var tipoMap={preventiva_leve:'Prev. Leve',preventiva_pesada:'Prev. Pesada',preventiva_garantia:'Garantia',corretiva:'Corretiva'};
@@ -7570,37 +7443,6 @@ async function renderFech24(gid,back,tabs){
       '<td style="padding:8px 6px">'+((!isFech)?'<input type="text" placeholder="Justificativa..." value="'+(o.justificativa_pendencia||'')+'" onblur="salvarJustPendencia24(\''+o.id+'\',this.value)" style="width:160px;background:var(--surface2);border:1px solid '+(!o.justificativa_pendencia?'#EF4444':'var(--border)')+';border-radius:6px;padding:4px 8px;color:var(--text);font-size:11px;font-family:inherit">':'—')+'</td>'+
     '</tr>';
   }).join('');
-  var stColors={executada:'#00C48C',em_andamento:'#F59E0B',nao_iniciada:'#EF4444'};
-  var stLabels={executada:'✅ Executada',em_andamento:'🔄 Em Andamento',nao_iniciada:'⏳ Não Iniciada'};
-  var prevTurnoRows=prevsTurno.map(function(p){
-    var planoN=(p.plano_nome||'').toLowerCase();
-    var isPes=planoN.includes('pesada'); var isGar=planoN.includes('garantia');
-    var tipoL=isGar?'🟢 Garantia':isPes?'🟠 Pesada':'🔵 Leve';
-    var stC=stColors[p._status]||'#94A3B8', stL=stLabels[p._status]||'—';
-    var hrAb=p._os&&p._os.hora_entrada?new Date(p._os.hora_entrada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):(p._marc&&p._marc.hr_abertura||'—');
-    var hrFch=p._os&&p._os.hora_liberacao&&p._status==='executada'?new Date(p._os.hora_liberacao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):(p._os?'Em aberto':(p._marc&&p._marc.hr_fechamento||'—'));
-    return '<tr style="border-bottom:1px solid var(--border2)">'+
-      '<td style="padding:8px 10px;text-align:center"><button onclick="togglePrevTurno24(\''+gid+'\',\''+p.id+'\',\''+dataRef+'\',\''+turno+'\',false)" style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:16px">✕</button></td>'+
-      '<td style="padding:8px 10px;font-family:monospace;font-weight:700;color:var(--blue)">'+p.prefixo+'</td>'+
-      '<td style="padding:8px 10px;font-size:12px">'+tipoL+'</td>'+
-      '<td style="padding:8px 10px"><span style="background:'+stC+'18;border:1px solid '+stC+'40;color:'+stC+';border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700">'+stL+'</span></td>'+
-      '<td style="padding:8px 10px;font-size:11px;color:'+(p._os?'var(--green)':'var(--text4)')+'">'+( p._os?'✅ OS aberta':'Sem OS')+'</td>'+
-      '<td style="padding:8px 10px;font-family:monospace;font-size:12px">'+hrAb+'</td>'+
-      '<td style="padding:8px 10px;font-family:monospace;font-size:12px;color:'+(p._status==='executada'?'var(--green)':'var(--amber)')+'">'+hrFch+'</td>'+
-      '<td style="padding:8px 10px">'+(p._status!=='executada'?'<input type="text" placeholder="Reagendamento..." value="'+(p.reagendamento||'')+'" onblur="salvarReagend24(\''+p.id+'\',this.value)" style="width:160px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:11px;font-family:inherit">':'—')+'</td>'+
-    '</tr>';
-  }).join('');
-  var outrosRows=outrosTurnos.map(function(p){
-    var planoN=(p.plano_nome||'').toLowerCase();
-    var isPes=planoN.includes('pesada'); var isGar=planoN.includes('garantia');
-    var tipoL=isGar?'🟢 Garantia':isPes?'🟠 Pesada':'🔵 Leve';
-    return '<tr style="border-bottom:1px solid var(--border2)">'+
-      '<td style="padding:8px 10px;font-family:monospace;font-weight:700;color:var(--blue)">'+p.prefixo+'</td>'+
-      '<td style="padding:8px 10px;font-size:12px">'+tipoL+'</td>'+
-      '<td style="padding:8px 10px;text-align:center;font-size:11px">'+(p._os?'<span style="color:var(--green)">✅ Sim</span>':'<span style="color:var(--text4)">Não</span>')+'</td>'+
-      '<td style="padding:8px 10px;text-align:center"><button onclick="togglePrevTurno24(\''+gid+'\',\''+p.id+'\',\''+dataRef+'\',\''+turno+'\',true)" style="padding:5px 14px;border-radius:7px;border:1px solid var(--blue);background:#3B82F618;color:var(--blue);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">✓ Deste turno</button></td>'+
-    '</tr>';
-  }).join('');
   var reqRows=reqs.map(function(r){
     var corSt=r.status==='aprovado'?'#00C48C':r.status==='reprovado'?'#EF4444':'#F59E0B';
     return '<tr style="border-bottom:1px solid var(--border2)"><td style="padding:8px 10px;font-family:monospace;font-weight:700;color:var(--blue)">'+(r.prefixo||'—')+'</td><td style="padding:8px 10px;font-size:12px">'+(r.peca||'—')+'</td><td style="padding:8px 10px;font-family:monospace;font-size:11px;color:var(--text3)">'+(r.cod_sap||'—')+'</td><td style="padding:8px 10px;text-align:center;font-size:12px">'+(r.quantidade||1)+'</td><td style="padding:8px 10px;text-align:right;font-family:monospace;font-size:12px;color:var(--amber)">'+(r.valor_estimado?'R$\u00a0'+parseFloat(r.valor_estimado).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—')+'</td><td style="padding:8px 10px;text-align:center"><span style="background:'+corSt+'18;border:1px solid '+corSt+'40;color:'+corSt+';border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;text-transform:capitalize">'+(r.status||'pendente')+'</span></td></tr>';
@@ -7617,27 +7459,14 @@ async function renderFech24(gid,back,tabs){
       '<div style="font-size:12px;color:var(--text3);padding-bottom:9px">'+tLabel+' · '+periodoLabel+'</div>'+
     '</div>'+
     '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px">'+
-      [['Total OS',ocs.length+'','var(--blue)'],['OS Fechadas',fechadas.length+'','var(--green)'],['OS Abertas',abertas.length+'',abertas.length>0?'var(--amber)':'var(--green)'],['Prev. Exec.',prevExec+'/'+prevsTurno.length,prevExec===prevsTurno.length&&prevsTurno.length>0?'var(--green)':'var(--amber)'],['Pend. s/ Just.',pendSemJust.length+'',pendSemJust.length===0?'var(--green)':'var(--red)']].map(function(k){return '<div class="kpi2"><div class="kpi2-v" style="color:'+k[2]+'">'+k[1]+'</div><div class="kpi2-l">'+k[0]+'</div></div>';}).join('')+
+      [['Total OS',ocs.length+'','var(--blue)'],['OS Fechadas',fechadas.length+'','var(--green)'],['OS Abertas',abertas.length+'',abertas.length>0?'var(--amber)':'var(--green)'],['Pend. s/ Just.',pendSemJust.length+'',pendSemJust.length===0?'var(--green)':'var(--red)']].map(function(k){return '<div class="kpi2"><div class="kpi2-v" style="color:'+k[2]+'">'+k[1]+'</div><div class="kpi2-l">'+k[0]+'</div></div>';}).join('')+
     '</div>'+
     secTitle('📋','Seção 1 — Controle de OS')+
     (ocs.length===0?'<div class="empty" style="margin-bottom:20px">Nenhuma OS neste turno</div>':
       '<div style="overflow-x:auto;margin-bottom:20px"><table style="width:100%;border-collapse:collapse;min-width:750px">'+
         '<thead><tr style="background:var(--surface2)">'+[th('PREFIXO'),th('TIPO'),th('MECÂNICO'),th('ABERTURA'),th('FECHAMENTO'),th('PEÇAS/CUSTO'),th('STATUS'),th('JUSTIFICATIVA')].join('')+'</tr></thead>'+
         '<tbody>'+osRows+'</tbody></table></div>')+
-    secTitle('🔧','Seção 2 — Preventivas do Dia')+
-    '<div style="background:var(--blue)0D;border:1px solid var(--blue)30;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--text3)">💡 Marque <b style="color:var(--text)">✓ Deste turno</b> nas preventivas da sua responsabilidade.</div>'+
-    (prevsTurno.length>0?
-      '<div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;margin-bottom:8px">✅ Do Meu Turno ('+prevsTurno.length+')</div>'+
-      '<div style="overflow-x:auto;margin-bottom:16px"><table style="width:100%;border-collapse:collapse;min-width:700px">'+
-        '<thead><tr style="background:var(--surface2)"><th style="padding:8px 10px;width:32px"></th>'+[th('PREFIXO'),th('TIPO'),th('STATUS'),th('OS VINCULADA'),th('ABERTURA'),th('FECHAMENTO'),th('REAGEND./OBS')].join('')+'</tr></thead>'+
-        '<tbody>'+prevTurnoRows+'</tbody></table></div>':'')+
-    (outrosTurnos.length>0?
-      '<div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;margin-bottom:8px">📋 Demais Preventivas do Dia ('+outrosTurnos.length+')</div>'+
-      '<div style="overflow-x:auto;margin-bottom:20px"><table style="width:100%;border-collapse:collapse;min-width:500px">'+
-        '<thead><tr style="background:var(--surface2)">'+[th('PREFIXO'),th('TIPO'),th('OS ABERTA?'),th('AÇÃO')].join('')+'</tr></thead>'+
-        '<tbody>'+outrosRows+'</tbody></table></div>':'')+
-    (prevsProg.length===0?'<div class="empty" style="margin-bottom:20px">Nenhuma preventiva programada para hoje</div>':'')+
-    secTitle('🛒','Seção 3 — Requisições do Turno')+
+    secTitle('🛒','Seção 2 — Requisições do Turno')+
     (reqs.length===0?'<div class="empty" style="margin-bottom:20px">Nenhuma requisição gerada</div>':
       '<div style="overflow-x:auto;margin-bottom:20px"><table style="width:100%;border-collapse:collapse;min-width:600px">'+
         '<thead><tr style="background:var(--surface2)">'+[th('PREFIXO'),th('PEÇA'),th('CÓD SAP'),th('QTD'),th('VALOR EST.'),th('STATUS')].join('')+'</tr></thead>'+
@@ -7670,7 +7499,6 @@ async function togglePrevTurno24(gid,prevId,data,turno,sel){
   renderFerrPCM('fech24');
 }
 async function salvarJustPendencia24(ocId,valor){await sb.from('ocorrencias_22').update({justificativa_pendencia:valor||null}).eq('id',ocId);toast('Justificativa salva','ok',1500);}
-async function salvarReagend24(prevId,val){await sb.from('preventivas_programadas').update({reagendamento:val||null}).eq('id',prevId);toast('Reagendamento salvo','ok',1200);}
 async function fecharTurno24(gid,data,turno){
   var resp=(document.getElementById('fech24-resp')||{}).value;
   var hora=(document.getElementById('fech24-hora')||{}).value;
@@ -10584,21 +10412,7 @@ async function gerarRelatorio24(){
 
   // Buscar peças sem estoque (OS com status aguardando_peca)
   const osAgPeca=osLista.filter(o=>o.status==='aguardando_peca'||o.pecas_necessarias);
-
-  // Buscar preventivas programadas vs executadas do dia
-  const diaRef=iniTurno.toISOString().slice(0,10);
-  const{data:prevProg}=await sb.from('programacao_preventiva').select('*')
-    .eq('garagem_id',gid).eq('data_prevista',diaRef).order('prefixo');
-
-  // Buscar frota com km atual
-  const prefixosPrev=[...new Set((prevProg||[]).map(p=>p.prefixo))];
-  const{data:frotaKm}=prefixosPrev.length
-    ? await sb.from('frota').select('prefixo,km_atual').eq('garagem_id',gid).in('prefixo',prefixosPrev)
-    : {data:[]};
-  const kmMap={};
-  (frotaKm||[]).forEach(v=>{kmMap[v.prefixo]=v.km_atual;});
-
-  // Verificar quais preventivas foram executadas (OS liberada no dia)
+  // Preventivas programadas removidas dos relatórios. OS preventiva continua na Abertura de OS.
   const osLiberadas=new Set((fechadasNaTurno||[]).map(o=>o.prefixo));
 
   const B='border:1px solid #333;';
@@ -10647,32 +10461,6 @@ async function gerarRelatorio24(){
   const vaziosPecas=Math.max(0,8-osAgPeca.length);
   const rowsPecasVazios=Array.from({length:vaziosPecas},()=>`<tr>
     <td style="${B}height:16px"></td><td style="${B}"></td><td style="${B}"></td>
-    <td style="${B}"></td><td style="${B}"></td><td style="${B}"></td>
-  </tr>`).join('');
-
-  // ── SEÇÃO 3: Preventivas Prog vs Executado ───────────────────────────────
-  const rowsPrev=(prevProg||[]).map(p=>{
-    const exec=osLiberadas.has(p.prefixo);
-    const tipo=p.plano_num==='001'?'Leve':'Pesada';
-    return`<tr>
-      <td style="${B}font-family:monospace;font-weight:700">${p.prefixo}</td>
-      <td style="${B}font-family:monospace">${kmMap[p.prefixo]?.toLocaleString('pt-BR')||'—'}</td>
-      <td style="${B}text-align:center;font-size:9px">
-        ${tipo==='Leve'?'☑ Leve &nbsp; ☐ Pesada':'☐ Leve &nbsp; ☑ Pesada'}
-      </td>
-      <td style="${B}text-align:center;font-size:9px">☑ Sim &nbsp; ☐ Não</td>
-      <td style="${B}text-align:center;font-size:9px">${exec?'☑ Sim &nbsp; ☐ Não':'☐ Sim &nbsp; ☑ Não'}</td>
-      <td style="${B}"></td>
-      <td style="${B}text-align:center;font-family:monospace;font-weight:700">${exec?'100%':'0%'}</td>
-      <td style="${B}font-size:9px">${exec?'':'Pendente próximo turno'}</td>
-    </tr>`;
-  }).join('');
-  const vaziosPrev=Math.max(0,10-(prevProg||[]).length);
-  const rowsPrevVazios=Array.from({length:vaziosPrev},()=>`<tr>
-    <td style="${B}height:16px"></td><td style="${B}"></td>
-    <td style="${B}font-size:9px">☐ Leve &nbsp; ☐ Pesada</td>
-    <td style="${B}font-size:9px">☐ Sim &nbsp; ☐ Não</td>
-    <td style="${B}font-size:9px">☐ Sim &nbsp; ☐ Não</td>
     <td style="${B}"></td><td style="${B}"></td><td style="${B}"></td>
   </tr>`).join('');
 
@@ -10738,20 +10526,6 @@ ${barraPrint('📋 2.4 · Fechamento de Turno PCM · '+garagem?.nome,'JTP_24_Fec
   <tbody>${rowsPecas}${rowsPecasVazios}</tbody>
 </table>
 
-<div style="${BG}margin-top:8px">■ PREVENTIVAS (PROGRAMADO vs. EXECUTADO)</div>
-<table>
-  <thead><tr>
-    <th style="${BH}width:55px">Prefixo</th>
-    <th style="${BH}width:65px">KM Atual</th>
-    <th style="${BH}width:110px">Tipo Prev.</th>
-    <th style="${BH}width:80px">Programado?</th>
-    <th style="${BH}width:80px">Executado?</th>
-    <th style="${BH}width:80px">Reagendamento</th>
-    <th style="${BH}width:70px">% Conclusão</th>
-    <th style="${BH}">Pendência</th>
-  </tr></thead>
-  <tbody>${rowsPrev}${rowsPrevVazios}</tbody>
-</table>
 
 <div style="${BG}margin-top:8px">■ MOVIMENTAÇÃO DE PNEUS E SUCATEAMENTO</div>
 <table>
