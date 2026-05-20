@@ -7658,10 +7658,12 @@ async function salvarCustoRapido(ocId, gid, data){
 
 // ══════════════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
 // PAINEL PREVENTIVAS — IMPORTAÇÃO MAN V1
 // ══════════════════════════════════════════════════════════════
-let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='todos', _prevImportId=null, _prevBuscaPrefixo='';
+let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='propostas', _prevImportId=null, _prevBuscaPrefixo='';
 
+const PREV_CAP={pesadaDia:2,pesadaSemana:10,leveDia:6,leveSemana:30};
 const prevEsc=v=>String(v??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const prevToNumber=v=>{const s=String(v??'').replace(/[^\d-]/g,''); const n=parseInt(s,10); return Number.isFinite(n)?n:0;};
 const prevFmtKm=v=>`${(Number(v)||0).toLocaleString('pt-BR')} km`;
@@ -7672,41 +7674,83 @@ const prevFmtPrefixo=v=>{
   return `${base.slice(0,2)}.${base.slice(2)}`;
 };
 const prevPlanoKey=r=>`${r.planoNum||'---'}|${r.planoNome||'SEM PLANO'}`;
+const prevIsPesada=r=>String(r.planoNum)==='002' || /PREVENTIVA\s+PESADA/i.test(r.planoNome||'');
+const prevIsLeve=r=>String(r.planoNum)==='001' || /PREVENTIVA\s+LEVE/i.test(r.planoNome||'');
+const prevIsGarantia=r=>['003','029'].includes(String(r.planoNum)) || /GARANTIA/i.test(r.planoNome||'');
+const prevPlanoPeso=r=>prevIsPesada(r)?4:prevIsGarantia(r)?3:prevIsLeve(r)?2:1;
+const prevIntervaloGarantia=r=>String(r.planoNum)==='029'?30000:20000;
 
 function renderFerrPrev(){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
   const total=_prevDados.length;
-  const vencidos=_prevDados.filter(r=>(r.excessoKm||0)>0).length;
-  const planos=new Set(_prevDados.map(prevPlanoKey)).size;
-  const maior=_prevDados.length?Math.max(..._prevDados.map(r=>r.excessoKm||0)):0;
+  const resumo=prevResumoPropostas();
   const importado=_prevImportadoEm?new Date(_prevImportadoEm).toLocaleString('pt-BR'):'Nenhum PDF importado';
   setMain(`${back}
     <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:14px;flex-wrap:wrap">
       <div>
-        <h2 style="margin:0;color:var(--text)">📋 Lista padrão de preventivas</h2>
-        <div style="color:var(--text3);font-size:12px;margin-top:4px">Importação MAN • separado por plano • do mais vencido para o menos vencido</div>
+        <h2 style="margin:0;color:var(--text)">📋 Preventivas — propostas e escala</h2>
+        <div style="color:var(--text3);font-size:12px;margin-top:4px">Pesada: 10/semana, 2 por manhã • Leve: 30/semana, 6 por dia • pesada baixa a leve do carro</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <label class="btn primary" style="cursor:pointer;margin:0">📄 Importar PDF
           <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="processarPrevPDF(this.files[0]);this.value=''">
         </label>
-        ${total?`<button class="btn" onclick="_prevDados=[];_prevGrupoAtivo='todos';_prevBuscaPrefixo='';renderFerrPrev()">Limpar lista</button>`:''}
+        ${total?`<button class="btn" onclick="_prevDados=[];_prevGrupoAtivo='propostas';_prevBuscaPrefixo='';renderFerrPrev()">Limpar lista</button>`:''}
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:10px;margin-bottom:12px">
-      <div class="card"><div class="label">TOTAL IMPORTADO</div><div class="big blue">${total}</div></div>
-      <div class="card"><div class="label">PLANOS</div><div class="big green">${planos}</div></div>
-      <div class="card"><div class="label">VENCIDOS</div><div class="big red">${vencidos}</div></div>
-      <div class="card"><div class="label">MAIOR EXCESSO</div><div class="big amber">${prevFmtKm(maior)}</div></div>
+    <div style="display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:10px;margin-bottom:12px">
+      <div class="card"><div class="label">CARROS ELEGÍVEIS</div><div class="big blue">${resumo.elegiveis}</div></div>
+      <div class="card"><div class="label">PESADAS</div><div class="big red">${resumo.pesadas}</div><div style="color:var(--text3);font-size:11px">Semana: ${PREV_CAP.pesadaSemana}</div></div>
+      <div class="card"><div class="label">LEVES</div><div class="big green">${resumo.leves}</div><div style="color:var(--text3);font-size:11px">Semana: ${PREV_CAP.leveSemana}</div></div>
+      <div class="card"><div class="label">GARANTIAS</div><div class="big purple">${resumo.garantiasRadar}</div><div style="color:var(--text3);font-size:11px">vencidas/próximas</div></div>
+      <div class="card"><div class="label">BACKLOG SEMANA</div><div class="big amber">${resumo.backlogSemana}</div><div style="color:var(--text3);font-size:11px">fora da capacidade</div></div>
     </div>
+    ${total?prevHtmlMetricasDetalhadas(resumo):''}
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn ${_prevGrupoAtivo!=='planos'?'primary':''}" onclick="_prevGrupoAtivo='propostas';prevRenderGrupos()">📆 Propostas e escala</button>
+        <button class="btn ${_prevGrupoAtivo==='planos'?'primary':''}" onclick="_prevGrupoAtivo='planos';prevRenderGrupos()">📑 Lista por plano</button>
+      </div>
       <div style="font-size:12px;color:var(--text3)">Última importação: <b style="color:var(--text2)">${prevEsc(importado)}</b></div>
       <div style="position:relative;min-width:260px;max-width:420px;flex:1">
         <span style="position:absolute;left:12px;top:9px;color:var(--text3)">🔎</span>
         <input value="${prevEsc(_prevBuscaPrefixo)}" oninput="_prevBuscaPrefixo=this.value;prevRenderGrupos()" placeholder="Pesquisar carro ou plano..." style="width:100%;padding:10px 12px 10px 36px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-weight:700">
       </div>
     </div>
-    <div id="prev-lista-v1">${total?prevHtmlGrupos():prevHtmlVazio()}</div>`);
+    <div id="prev-lista-v1">${total?prevHtmlConteudoAtual():prevHtmlVazio()}</div>`);
+}
+
+function prevResumoPropostas(){
+  const p=prevGerarPropostas();
+  const semana=prevSelecionarSemana(p);
+  const levesSemDuplicar=p.leves.filter(c=>!semana.heavySet.has(c.prefixo));
+  return {
+    elegiveis:semana.pesadasSemana.length+semana.levesSemana.length,
+    pesadas:p.pesadas.length,
+    leves:levesSemDuplicar.length,
+    garantias:p.garantias.length,
+    garantiasRadar:p.garantias.filter(g=>g.prioridade>=-3000).length,
+    backlogPesada:Math.max(0,p.pesadas.length-PREV_CAP.pesadaSemana),
+    backlogLeve:Math.max(0,levesSemDuplicar.length-PREV_CAP.leveSemana),
+    backlogSemana:Math.max(0,p.pesadas.length-PREV_CAP.pesadaSemana)+Math.max(0,levesSemDuplicar.length-PREV_CAP.leveSemana),
+    escala:prevMontarEscala(p)
+  };
+}
+function prevHtmlMetricasDetalhadas(r){
+  return `<div style="display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:10px;margin-bottom:12px">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px">
+      <div class="label">REGRA PESADA</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.55;margin-top:6px">2 por manhã, 10 por semana. A pesada entra primeiro na fila e remove o mesmo carro da fila leve.</div>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px">
+      <div class="label">REGRA LEVE</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.55;margin-top:6px">6 por dia, 30 por semana, somente carros sem pesada proposta na mesma semana.</div>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px">
+      <div class="label">GARANTIA</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.55;margin-top:6px">Plano 003 tratado como régua 20.000 km e plano 029 como régua 30.000 km, ordenados por proximidade/vencimento.</div>
+    </div>
+  </div>`;
 }
 
 function prevHtmlVazio(){
@@ -7714,11 +7758,140 @@ function prevHtmlVazio(){
     <label style="width:100%;max-width:720px;background:var(--surface);border:1px dashed var(--border2);border-radius:14px;padding:28px;text-align:center;cursor:pointer">
       <div style="font-size:42px;margin-bottom:12px">📄</div>
       <h3 style="margin:0 0 8px;color:var(--text)">Importe o relatório MAN de km atual dos serviços</h3>
-      <p style="margin:0 auto 18px;color:var(--text3);font-size:14px;line-height:1.5;max-width:560px">A lista será gerada por plano de revisão e cada plano ficará ordenado pelo maior excesso de km primeiro.</p>
+      <p style="margin:0 auto 18px;color:var(--text3);font-size:14px;line-height:1.5;max-width:560px">A importação gera a lista por plano e também propõe a escala semanal de pesadas e leves.</p>
       <span class="btn primary">Selecionar PDF</span>
       <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="processarPrevPDF(this.files[0]);this.value=''">
     </label>
   </div>`;
+}
+
+function prevHtmlConteudoAtual(){
+  return _prevGrupoAtivo==='planos'?prevHtmlGrupos():prevHtmlPropostasEscala();
+}
+
+function prevGerarPropostas(){
+  const busca=(_prevBuscaPrefixo||'').trim().toLowerCase();
+  const porCarro=new Map();
+  _prevDados.forEach(r=>{
+    if(busca && !`${r.prefixo} ${r.carro} ${r.planoNum} ${r.planoNome}`.toLowerCase().includes(busca)) return;
+    if(!porCarro.has(r.prefixo)) porCarro.set(r.prefixo,{prefixo:r.prefixo,carro:r.carro,itens:[],garantias:[],maiorExcesso:-999999});
+    const c=porCarro.get(r.prefixo);
+    c.itens.push(r);
+    if(prevIsGarantia(r)) c.garantias.push(r);
+    c.maiorExcesso=Math.max(c.maiorExcesso,r.excessoKm||0);
+  });
+  const pesadas=[], leves=[], garantias=[];
+  [...porCarro.values()].forEach(c=>{
+    c.itens.sort((a,b)=>prevPlanoPeso(b)-prevPlanoPeso(a) || (b.excessoKm||0)-(a.excessoKm||0));
+    c.planos=c.itens.map(r=>r.planoNum).filter((v,i,a)=>a.indexOf(v)===i).join(', ');
+    c.descricoes=c.itens.slice(0,6).map(r=>r.planoNome.replace(/^\(KM\)\s*/i,'')).filter((v,i,a)=>a.indexOf(v)===i);
+    const pesada=c.itens.find(prevIsPesada);
+    const leve=c.itens.find(prevIsLeve);
+    const garantia=c.garantias.sort((a,b)=>(b.excessoKm||0)-(a.excessoKm||0))[0];
+    if(pesada) pesadas.push({...c,tipo:'pesada',prioridade:pesada.excessoKm||0,base:pesada});
+    if(leve) leves.push({...c,tipo:'leve',prioridade:leve.excessoKm||0,base:leve});
+    if(garantia) garantias.push({...c,tipo:'garantia',prioridade:garantia.excessoKm||0,base:garantia,intervaloGarantia:prevIntervaloGarantia(garantia)});
+  });
+  pesadas.sort((a,b)=>(b.prioridade||0)-(a.prioridade||0) || a.prefixo.localeCompare(b.prefixo));
+  leves.sort((a,b)=>(b.prioridade||0)-(a.prioridade||0) || a.prefixo.localeCompare(b.prefixo));
+  garantias.sort((a,b)=>(b.prioridade||0)-(a.prioridade||0) || a.prefixo.localeCompare(b.prefixo));
+  return {pesadas,leves,garantias};
+}
+
+function prevSelecionarSemana(p){
+  const pesadasSemana=p.pesadas.slice(0,PREV_CAP.pesadaSemana);
+  const heavySet=new Set(pesadasSemana.map(c=>c.prefixo));
+  const levesSemana=p.leves.filter(c=>!heavySet.has(c.prefixo)).slice(0,PREV_CAP.leveSemana);
+  return {pesadasSemana,levesSemana,heavySet};
+}
+function prevDiasSemana(){
+  const hoje=new Date();
+  const base=new Date(hoje);
+  const delta=(base.getDay()+6)%7;
+  base.setDate(base.getDate()-delta);
+  return Array.from({length:5},(_,i)=>{
+    const d=new Date(base); d.setDate(base.getDate()+i);
+    return {idx:i,label:d.toLocaleDateString('pt-BR',{weekday:'long'}),data:d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})};
+  });
+}
+
+function prevMontarEscala(p){
+  const dias=prevDiasSemana();
+  const semana=prevSelecionarSemana(p);
+  const pesadas=semana.pesadasSemana;
+  const leves=semana.levesSemana;
+  return dias.map((d,i)=>({
+    ...d,
+    pesadas:pesadas.slice(i*PREV_CAP.pesadaDia,(i+1)*PREV_CAP.pesadaDia),
+    leves:leves.slice(i*PREV_CAP.leveDia,(i+1)*PREV_CAP.leveDia)
+  }));
+}
+function prevHtmlPropostasEscala(){
+  const p=prevGerarPropostas();
+  const escala=prevMontarEscala(p);
+  const garantiaRadar=p.garantias.filter(g=>g.prioridade>=-3000).slice(0,20);
+  if(!p.pesadas.length&&!p.leves.length&&!garantiaRadar.length){
+    return `<div style="padding:28px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhuma proposta encontrada para a pesquisa atual.</div>`;
+  }
+  return `${prevHtmlEscalaSemanal(escala)}${prevHtmlFilasProposta(p)}${prevHtmlGarantias(garantiaRadar)}`;
+}
+
+function prevBadgeTipo(tipo){
+  const cor=tipo==='pesada'?'var(--orange)':tipo==='leve'?'var(--green)':'var(--purple)';
+  return `<span style="font-size:10px;color:${cor};border:1px solid ${cor};border-radius:5px;padding:2px 5px;font-weight:900;text-transform:uppercase">${tipo}</span>`;
+}
+
+function prevHtmlCarroMini(c){
+  return `<div style="background:rgba(2,6,23,.35);border:1px solid var(--border);border-radius:8px;padding:9px;min-height:82px">
+    <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="color:var(--blue);font-size:15px">${prevEsc(c.prefixo)}</b>${prevBadgeTipo(c.tipo)}</div>
+    <div style="color:${(c.prioridade||0)>0?'var(--red)':'var(--green)'};font-size:12px;font-weight:900;margin-top:5px">${prevFmtKm(c.prioridade)}</div>
+    <div style="color:var(--amber);font-size:11px;line-height:1.35;margin-top:4px">${prevEsc(c.descricoes.slice(0,2).join(' · '))}</div>
+  </div>`;
+}
+
+function prevHtmlEscalaSemanal(escala){
+  return `<section style="margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin:4px 0 8px">
+      <h3 style="margin:0;color:var(--text);font-size:16px">📆 Escala automática sugerida</h3>
+      <div style="font-size:12px;color:var(--text3)">Manhã: ${PREV_CAP.pesadaDia} pesadas/dia • Dia: ${PREV_CAP.leveDia} leves/dia</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(5,minmax(220px,1fr));gap:10px;overflow:auto">
+      ${escala.map(d=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;min-width:220px;overflow:hidden">
+        <div style="padding:10px 12px;background:rgba(15,23,42,.45);border-bottom:1px solid var(--border);text-align:center">
+          <div style="font-weight:900;color:var(--text);text-transform:capitalize">${prevEsc(d.label)}</div>
+          <div style="font-size:11px;color:var(--text3)">${prevEsc(d.data)} • ${d.pesadas.length+d.leves.length} carro(s)</div>
+        </div>
+        <div style="padding:10px;display:grid;gap:8px">
+          <div style="font-size:10px;color:var(--orange);font-weight:900;letter-spacing:1.5px;text-transform:uppercase">Pesadas manhã (${d.pesadas.length}/${PREV_CAP.pesadaDia})</div>
+          ${d.pesadas.length?d.pesadas.map(prevHtmlCarroMini).join(''):`<div style="color:var(--text3);font-size:12px;padding:8px">Sem pesada sugerida</div>`}
+          <div style="font-size:10px;color:var(--green);font-weight:900;letter-spacing:1.5px;text-transform:uppercase;margin-top:4px">Leves (${d.leves.length}/${PREV_CAP.leveDia})</div>
+          ${d.leves.length?d.leves.map(prevHtmlCarroMini).join(''):`<div style="color:var(--text3);font-size:12px;padding:8px">Sem leve sugerida</div>`}
+        </div>
+      </div>`).join('')}
+    </div>
+  </section>`;
+}
+
+function prevHtmlFilasProposta(p){
+  const semana=prevSelecionarSemana(p);
+  const levesSemDuplicar=p.leves.filter(c=>!semana.heavySet.has(c.prefixo));
+  const fila=(titulo,itens,cor,limite)=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden">
+    <div style="padding:10px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:8px"><b style="color:${cor}">${titulo}</b><span style="color:var(--text3);font-size:12px">${itens.length} fila • ${limite} semana</span></div>
+    <div style="max-height:420px;overflow:auto">${itens.slice(0,60).map((c,i)=>`<div style="display:grid;grid-template-columns:42px 90px 110px 1fr;gap:8px;align-items:center;padding:9px 12px;border-bottom:1px solid rgba(148,163,184,.12);font-size:12px">
+      <div style="color:var(--text3);font-weight:900">#${i+1}</div><div style="color:var(--blue);font-weight:900">${prevEsc(c.prefixo)}</div><div style="color:${(c.prioridade||0)>0?'var(--red)':'var(--green)'};font-weight:900;text-align:right">${prevFmtKm(c.prioridade)}</div><div style="color:var(--amber);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${prevEsc(c.descricoes.join(' · '))}</div>
+    </div>`).join('')}</div>
+  </div>`;
+  return `<section style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">${fila('Fila pesada',p.pesadas,'var(--orange)',PREV_CAP.pesadaSemana)}${fila('Fila leve sem duplicar pesada da semana',levesSemDuplicar,'var(--green)',PREV_CAP.leveSemana)}</section>`;
+}
+
+function prevHtmlGarantias(itens){
+  if(!itens.length) return '';
+  return `<section style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:12px">
+    <div style="padding:10px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:8px"><b style="color:var(--purple)">🔒 Garantias no radar</b><span style="color:var(--text3);font-size:12px">vencidas ou até 3.000 km antes</span></div>
+    <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:760px"><thead><tr style="background:rgba(2,6,23,.45);color:var(--text3);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;text-align:left"><th style="padding:9px">Prefixo</th><th style="padding:9px">Plano</th><th style="padding:9px;text-align:right">Régua</th><th style="padding:9px;text-align:right">Km atual</th><th style="padding:9px;text-align:right">Próxima</th><th style="padding:9px;text-align:right">Saldo</th></tr></thead><tbody>
+      ${itens.map(c=>`<tr style="border-top:1px solid var(--border)"><td style="padding:9px;color:var(--blue);font-weight:900">${prevEsc(c.prefixo)}</td><td style="padding:9px;color:var(--text2)">${prevEsc(c.base.planoNum)} — ${prevEsc(c.base.planoNome)}</td><td style="padding:9px;text-align:right;color:var(--purple);font-weight:900">${prevFmtKm(c.intervaloGarantia)}</td><td style="padding:9px;text-align:right;color:var(--text2)">${prevFmtKm(c.base.kmAtual)}</td><td style="padding:9px;text-align:right;color:var(--text2)">${prevFmtKm(c.base.proximaExecucao)}</td><td style="padding:9px;text-align:right;color:${(c.prioridade||0)>0?'var(--red)':'var(--green)'};font-weight:900">${prevFmtKm(c.prioridade)}</td></tr>`).join('')}
+    </tbody></table></div>
+  </section>`;
 }
 
 function prevHtmlGrupos(){
@@ -7741,7 +7914,7 @@ function prevHtmlGrupos(){
 }
 
 function prevHtmlGrupo(g){
-  const rows=g.itens.map((r,i)=>`
+  const rows=g.itens.map(r=>`
     <tr style="border-top:1px solid var(--border)">
       <td style="padding:10px 8px;color:var(--blue);font-weight:900;white-space:nowrap">${prevEsc(r.prefixo)}</td>
       <td style="padding:10px 8px;color:var(--text2);font-weight:800">${prevEsc(r.planoNum)}</td>
@@ -7754,29 +7927,16 @@ function prevHtmlGrupo(g){
     </tr>`).join('');
   return `<section style="background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:12px;overflow:hidden">
     <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:12px;align-items:center;background:rgba(15,23,42,.32)">
-      <div>
-        <div style="font-size:11px;color:var(--text3);font-weight:900;letter-spacing:2px;text-transform:uppercase">Plano ${prevEsc(g.planoNum)}</div>
-        <div style="font-size:15px;color:var(--text);font-weight:900;margin-top:3px">${prevEsc(g.planoNome)}</div>
-      </div>
-      <div style="text-align:right">
-        <div style="font-size:12px;color:var(--text3)">${g.itens.length} carro(s)</div>
-        <div style="font-size:13px;color:var(--red);font-weight:900">Maior: ${prevFmtKm(g.maior)}</div>
-      </div>
+      <div><div style="font-size:11px;color:var(--text3);font-weight:900;letter-spacing:2px;text-transform:uppercase">Plano ${prevEsc(g.planoNum)}</div><div style="font-size:15px;color:var(--text);font-weight:900;margin-top:3px">${prevEsc(g.planoNome)}</div></div>
+      <div style="text-align:right"><div style="font-size:12px;color:var(--text3)">${g.itens.length} carro(s)</div><div style="font-size:13px;color:var(--red);font-weight:900">Maior: ${prevFmtKm(g.maior)}</div></div>
     </div>
-    <div style="overflow:auto">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:920px">
-        <thead><tr style="background:rgba(2,6,23,.45);color:var(--text3);font-size:10px;letter-spacing:2px;text-transform:uppercase;text-align:left">
-          <th style="padding:10px 8px">Prefixo</th><th style="padding:10px 8px">Plano</th><th style="padding:10px 8px">Serviço</th><th style="padding:10px 8px;text-align:right">Km atual</th><th style="padding:10px 8px;text-align:right">Próxima execução</th><th style="padding:10px 8px;text-align:right">Excesso km</th><th style="padding:10px 8px;text-align:right">Dias</th><th style="padding:10px 8px;text-align:center">Pendente</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
+    <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:920px"><thead><tr style="background:rgba(2,6,23,.45);color:var(--text3);font-size:10px;letter-spacing:2px;text-transform:uppercase;text-align:left"><th style="padding:10px 8px">Prefixo</th><th style="padding:10px 8px">Plano</th><th style="padding:10px 8px">Serviço</th><th style="padding:10px 8px;text-align:right">Km atual</th><th style="padding:10px 8px;text-align:right">Próxima execução</th><th style="padding:10px 8px;text-align:right">Excesso km</th><th style="padding:10px 8px;text-align:right">Dias</th><th style="padding:10px 8px;text-align:center">Pendente</th></tr></thead><tbody>${rows}</tbody></table></div>
   </section>`;
 }
 
 function prevRenderGrupos(){
   const el=document.getElementById('prev-lista-v1');
-  if(el) el.innerHTML=prevHtmlGrupos();
+  if(el) el.innerHTML=prevHtmlConteudoAtual();
 }
 
 async function processarPrevPDF(file){
@@ -7789,10 +7949,11 @@ async function processarPrevPDF(file){
     if(!dados.length){ toast('Não encontrei linhas válidas de preventivas nesse PDF.','err'); return; }
     _prevDados=dados.sort((a,b)=>(b.excessoKm||0)-(a.excessoKm||0));
     _prevImportadoEm=new Date().toISOString();
-    _prevGrupoAtivo='todos';
+    _prevGrupoAtivo='propostas';
     _prevBuscaPrefixo='';
     renderFerrPrev();
-    toast(`Importação concluída: ${dados.length} item(ns) em ${new Set(dados.map(prevPlanoKey)).size} plano(s).`);
+    const r=prevResumoPropostas();
+    toast(`Importação concluída: ${dados.length} itens. Propostas: ${r.pesadas} pesadas, ${r.leves} leves e ${r.garantiasRadar} garantias no radar.`);
   }catch(e){
     console.error('[PREV IMPORT]',e);
     toast('Erro ao ler o PDF de preventivas. Veja o console para detalhes.','err');
@@ -7807,16 +7968,9 @@ async function prevExtrairLinhasPDF(file){
     const pg=await pdf.getPage(p);
     const tc=await pg.getTextContent();
     const vp=pg.getViewport({scale:1});
-    const items=tc.items.map(it=>({
-      t:String(it.str||'').trim(),
-      x:Math.round(it.transform[4]),
-      y:Math.round((vp.height-it.transform[5])/3)*3
-    })).filter(it=>it.t);
+    const items=tc.items.map(it=>({t:String(it.str||'').trim(),x:Math.round(it.transform[4]),y:Math.round((vp.height-it.transform[5])/3)*3})).filter(it=>it.t);
     const rows=new Map();
-    items.forEach(it=>{
-      if(!rows.has(it.y)) rows.set(it.y,[]);
-      rows.get(it.y).push(it);
-    });
+    items.forEach(it=>{ if(!rows.has(it.y)) rows.set(it.y,[]); rows.get(it.y).push(it); });
     [...rows.entries()].sort((a,b)=>a[0]-b[0]).forEach(([,arr])=>{
       const linha=arr.sort((a,b)=>a.x-b.x).map(it=>it.t).join(' ').replace(/\s+/g,' ').trim();
       if(linha) linhas.push(linha);
@@ -7866,7 +8020,7 @@ function renderPrevProgramadas(){ renderFerrPrev(); }
 function renderAutoEscala(){ renderFerrPrev(); }
 function abrirModalProgramarPrev(){ renderFerrPrev(); }
 function carregarImportacao(){ renderFerrPrev(); }
-function excluirImportacao(){ _prevDados=[];_prevImportadoEm='';_prevBuscaPrefixo='';renderFerrPrev(); }
+function excluirImportacao(){ _prevDados=[];_prevImportadoEm='';_prevBuscaPrefixo='';_prevGrupoAtivo='propostas';renderFerrPrev(); }
 function verHistoricoImportacoes(){ renderFerrPrev(); }
 async function renderFerr211(){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
