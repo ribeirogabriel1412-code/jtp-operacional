@@ -9378,7 +9378,7 @@ function _recarregarEscala() {
 // ── RENDER PRINCIPAL — Layout Tabela por Dia ─────────────────────────────
 function renderTelaEscala(back, diasSemana, sabValetamento) {
   const rascunho = window._escalaRascunho || [];
-  const confirmados = rascunho.filter(e => e.confirmado && !e.jaExiste && e.data && !e.tipo.includes('overflow'));
+  const confirmados = rascunho.filter(e => e.confirmado && e.data && !e.tipo.includes('overflow') && !e.slotVazio && (!e.jaExiste || e.alteradoManual));
   const overflow = rascunho.filter(e => e.tipo.includes('overflow'));
   const sabStr = toDateStr(sabValetamento);
 
@@ -9425,7 +9425,8 @@ function renderTelaEscala(back, diasSemana, sabValetamento) {
     }
 
     const cor = e.tipo==='garantia'?'#8B5CF6': e.tipo==='valetamento'?'#06B6D4': isPesada(e.planoNum)?'#3B82F6':'#22C55E';
-    const check = e.confirmado&&!e.jaExiste ? '✅' : e.jaExiste ? '🔵' : '⬜';
+    const itemAlterado = !!e.alteradoManual;
+    const check = e.confirmado&&(!e.jaExiste || itemAlterado) ? '✅' : e.jaExiste ? '🔵' : '⬜';
 
     // Destaque para substituição manual
     const bordaSub = e.substituicaoManual ? '#F59E0B' : cor;
@@ -9902,6 +9903,8 @@ function preencherSlotVazio(id, novoCarro, novoPlanoNum, novoPlanoNome) {
     item.tipo = 'valetamento';
     item.motivo = `📦 Próxima pesada · manual · ${(dadosPlano.excessoKm||0).toLocaleString('pt-BR')} km`;
     item.confirmado = true; item.slotVazio = false;
+    item.jaExiste = false; item.alteradoManual = true; item.substituicaoManual = true;
+    item.carroOriginal = item.carroOriginal || 'programado';
     document.getElementById('modal-substituto')?.remove();
     _recarregarEscala();
     return;
@@ -9940,7 +9943,9 @@ function preencherSlotVazio(id, novoCarro, novoPlanoNum, novoPlanoNome) {
   item.motivo = `✋ Manual · ${dadosPlano.excessoKm>=0?'+':''}${(dadosPlano.excessoKm||0).toLocaleString('pt-BR')} km`;
   item.confirmado = true;
   item.slotVazio = false;
-  item.substituicaoManual = false;
+  item.jaExiste = false;
+  item.alteradoManual = true;
+  item.substituicaoManual = true;
 
   document.getElementById('modal-substituto')?.remove();
   _recarregarEscala();
@@ -10011,6 +10016,7 @@ function substituirItemEscala(idRemover, novoCarro, novoPlanoNum, novoPlanoNome)
   item.tipo = tipoSlot; // manter o tipo do slot original
   item.confirmado = true;
   item.jaExiste = false;
+  item.alteradoManual = true;
   item.substituicaoManual = true;
   item.carroOriginal = carroOriginal;
 
@@ -10160,7 +10166,7 @@ async function exportarEscalaExcel(){
 async function confirmarEscalaAutomatica() {
   const gid = getGid();
   const selecionados = (window._escalaRascunho||[])
-    .filter(e => e.confirmado && e.data && !e.tipo.includes('overflow') && !e.slotVazio && !e.jaExiste);
+    .filter(e => e.confirmado && e.data && !e.tipo.includes('overflow') && !e.slotVazio && (!e.jaExiste || e.alteradoManual));
   if (!selecionados.length) { toast('Nenhum item selecionado','err'); return; }
 
   const btn = document.querySelector('[onclick*="confirmarEscalaAutomatica"]');
@@ -10177,7 +10183,6 @@ async function confirmarEscalaAutomatica() {
       ].filter(Boolean).join(' | ');
 
       const payload = {
-        garagem_id:gid,
         prefixo:e.carro,
         plano_num:e.planoNum,
         plano_nome:e.planoNome,
@@ -10201,6 +10206,7 @@ async function confirmarEscalaAutomatica() {
       } else {
         resp = await sb.from('programacao_preventiva')
           .insert({
+            garagem_id:gid,
             ...payload,
             criado_por:S.perfil?.nome||null,
             criado_por_id:S.perfil?.id||null,
