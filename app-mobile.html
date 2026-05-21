@@ -1220,14 +1220,14 @@ async function _renderOS(){
   };
 }
 
-var _OS38={oc:null,dados:{}};
+var _OS38={oc:null,dados:{},qual:null};
 async function abrirOS38Oficina(ocId){
   var gid=getGid();
   var r1=await sb.from('ocorrencias_22').select('*').eq('id',ocId).single();
   var oc=r1.data;
   if(!oc){toast('OS não encontrada','err');return;}
   var r2=await sb.from('checklist_38').select('dados').eq('garagem_id',gid).eq('prefixo',oc.prefixo).order('criado_em',{ascending:false}).limit(1);
-  _OS38={oc:oc,dados:(r2.data&&r2.data[0]&&r2.data[0].dados)||{}};
+  _OS38={oc:oc,dados:(r2.data&&r2.data[0]&&r2.data[0].dados)||{},qual:null};
   renderOS38Oficina();
 }
 
@@ -1274,9 +1274,91 @@ function renderOS38Oficina(){
     '<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center"><div style="font-family:\'DM Mono\',monospace;font-size:18px;color:var(--green);font-weight:900">'+sim+'</div><div style="font-size:10px;color:var(--text3);font-weight:800">SIM</div></div>'+
     '<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center"><div style="font-family:\'DM Mono\',monospace;font-size:18px;color:'+(nao?'var(--red)':'var(--text4)')+';font-weight:900">'+nao+'</div><div style="font-size:10px;color:var(--text3);font-weight:800">NÃO</div></div>'+
   '</div>'+
-  '<div style="background:var(--border);border-radius:99px;height:6px;overflow:hidden;margin-bottom:12px"><div style="height:100%;width:'+pct+'%;background:'+(pct===100?'var(--green)':'var(--blue)')+'"></div></div>';
+  '<div style="background:var(--border);border-radius:99px;height:6px;overflow:hidden;margin-bottom:12px"><div style="height:100%;width:'+pct+'%;background:'+(pct===100?'var(--green)':'var(--blue)')+'"></div></div>'+
+  '<button onclick="abrirQual38Oficina()" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;font-weight:800;font-family:inherit;margin-bottom:12px">🔧 Qualificação da OS</button>';
   openSheet(oc.prefixo+' — Checklist 3.8',status+secoes+
     '<button onclick="salvarOS38Oficina()" style="width:100%;padding:15px;border-radius:12px;border:none;background:'+(pct===100?'var(--green)':'var(--blue)')+';color:#fff;font-size:15px;font-weight:800;font-family:inherit;margin-top:4px">'+(pct===100?'Salvar e exportar PDF':'Salvar checklist 3.8 ('+pct+'%)')+'</button>');
+}
+
+async function abrirQual38Oficina(){
+  var oc=_OS38.oc;
+  if(!oc) return;
+  if(!_OS38.qual){
+    var shbody=document.getElementById('shbody');
+    if(shbody) shbody.innerHTML='<div style="padding:18px;text-align:center;color:var(--text3)">Carregando qualificação...</div>';
+    _OS38.qual=await garantirChecklistLibMobile(oc);
+  }
+  renderQual38Oficina();
+}
+
+function renderQual38Oficina(){
+  var oc=_OS38.oc;
+  var ckl=_OS38.qual||[];
+  var tot=ckl.length;
+  var qual=ckl.filter(function(i){return i.trocado||i.nao_se_aplica;}).length;
+  var pct=tot?Math.round(qual/tot*100):0;
+  var setores='';
+  SETORES_M.forEach(function(sg){
+    var its=ckl.filter(function(i){var m=i.item&&i.item.match(/^\[([^\]]+)\]/);return (sg.gr||[]).includes(m?m[1]:'GERAL');});
+    if(!its.length) return;
+    var done=its.filter(function(i){return i.trocado||i.nao_se_aplica;}).length;
+    var ok=done===its.length;
+    setores+='<button onclick="abrirQualSetor38(\''+sg.key+'\')" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;background:'+(ok?'#00C48C12':'var(--surface2)')+';border:1px solid '+(ok?'#00C48C40':'var(--border)')+';border-radius:12px;padding:12px;margin-bottom:8px;color:'+(ok?'var(--green)':'var(--text)')+';font-size:13px;font-weight:800;font-family:inherit">'+
+      '<span>'+sg.ic+' '+sg.key+'</span><span>'+done+'/'+its.length+'</span></button>';
+  });
+  openSheet(oc.prefixo+' — Qualificação',
+    '<button onclick="renderOS38Oficina()" style="background:transparent;border:none;color:var(--blue);font-size:13px;font-weight:800;font-family:inherit;padding:0 0 12px">← Voltar ao 3.8</button>'+
+    '<div style="background:var(--surface2);border-radius:12px;padding:12px;margin-bottom:12px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-size:12px;color:var(--text3);font-weight:800">QUALIFICAÇÃO</span><b style="color:'+(pct===100?'var(--green)':'var(--blue)')+'">'+qual+'/'+tot+'</b></div>'+
+      '<div style="background:var(--border);height:6px;border-radius:99px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+(pct===100?'var(--green)':'var(--blue)')+'"></div></div>'+
+    '</div>'+setores);
+}
+
+function abrirQualSetor38(setor){
+  var oc=_OS38.oc;
+  var sg=SETORES_M.find(function(s){return s.key===setor;});
+  var ckl=_OS38.qual||[];
+  var itens=ckl.filter(function(i){var m=i.item&&i.item.match(/^\[([^\]]+)\]/);return (sg&&sg.gr||[]).includes(m?m[1]:'GERAL');});
+  var done=itens.filter(function(i){return i.trocado||i.nao_se_aplica;}).length;
+  var rows=itens.map(function(it){
+    var idx=ckl.indexOf(it);
+    var nsa=!!it.nao_se_aplica;
+    var txt=(it.item||'').replace(/^\[[^\]]+\]\s*/,'');
+    return '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border2)">'+
+      '<div style="flex:1;font-size:12px;line-height:1.35;color:'+(it.trocado?'var(--green)':it.verificado?'var(--text)':'var(--text3)')+'">'+txt+'</div>'+
+      '<button onclick="togQual38('+idx+',\'v\',\''+setor+'\')" class="ck-b '+(it.verificado?'von':'')+'" '+(nsa?'disabled':'')+'>V</button>'+
+      '<button onclick="togQual38('+idx+',\'t\',\''+setor+'\')" class="ck-b '+(it.trocado?'ton':'')+'" '+(!it.verificado||nsa?'disabled':'')+'>T</button>'+
+      '<button onclick="togQual38('+idx+',\'nsa\',\''+setor+'\')" class="ck-b '+(nsa?'na':'')+'">N/A</button>'+
+    '</div>';
+  }).join('');
+  openSheet((sg&&sg.ic||'🔧')+' '+setor+' — '+(oc&&oc.prefixo||''),
+    '<button onclick="renderQual38Oficina()" style="background:transparent;border:none;color:var(--blue);font-size:13px;font-weight:800;font-family:inherit;padding:0 0 12px">← Voltar aos setores</button>'+
+    '<div style="background:var(--surface2);border-radius:10px;padding:9px 12px;margin-bottom:10px;display:flex;justify-content:space-between;font-size:12px"><span>Qualificados</span><b style="color:'+(done===itens.length?'var(--green)':'var(--amber)')+'">'+done+'/'+itens.length+'</b></div>'+
+    '<div style="max-height:65vh;overflow-y:auto">'+rows+'</div>');
+}
+
+async function togQual38(idx,tipo,setor){
+  var it=_OS38.qual&&_OS38.qual[idx];
+  if(!it) return;
+  var n,p={};
+  if(tipo==='v'){
+    n=!it.verificado;
+    p={verificado:n,verificado_por:n?(S.perfil&&S.perfil.nome):null,verificado_em:n?new Date().toISOString():null};
+    it.verificado=n; it.verificado_por=p.verificado_por; it.verificado_em=p.verificado_em;
+    if(!n){p.trocado=false;it.trocado=false;}
+  } else if(tipo==='t'){
+    if(!it.verificado) return;
+    n=!it.trocado;
+    p={trocado:n,trocado_por:n?(S.perfil&&S.perfil.nome):null,trocado_em:n?new Date().toISOString():null};
+    it.trocado=n; it.trocado_por=p.trocado_por; it.trocado_em=p.trocado_em;
+  } else if(tipo==='nsa'){
+    n=!it.nao_se_aplica;
+    p={nao_se_aplica:n,verificado:n,trocado:n,verificado_por:n?(S.perfil&&S.perfil.nome):null,trocado_por:n?(S.perfil&&S.perfil.nome):null,verificado_em:n?new Date().toISOString():null,trocado_em:n?new Date().toISOString():null};
+    it.nao_se_aplica=n; it.verificado=n; it.trocado=n; it.verificado_por=p.verificado_por; it.trocado_por=p.trocado_por; it.verificado_em=p.verificado_em; it.trocado_em=p.trocado_em;
+  }
+  abrirQualSetor38(setor);
+  var res=await sb.from('checklist_liberacao').update(p).eq('id',it.id);
+  if(res.error){toast('Erro ao salvar item: '+res.error.message,'err');}
 }
 
 async function salvarOS38Oficina(){
@@ -1301,6 +1383,7 @@ async function salvarOS38Oficina(){
   };
   var res=await sb.from('checklist_38').insert(payload);
   if(res.error){toast('Erro ao salvar 3.8: '+res.error.message,'err');return;}
+  _OS.dados38[oc.id]=dados;
   toast('✅ 3.8 salvo. Gerando PDF...');
   closeSheet(true);
   await _exportarOS(oc.id);
