@@ -3821,24 +3821,66 @@ async function gerarPDFFechamento(gid, garaGemNome, data, dataFmt, turnoNome, pr
 // ══════════════════════════════════════════════════════════════════════════
 
 const EQUIP_OFICINA_34=[
-  {id:'compressor',     nome:'Compressor de ar',              criterio:'Nível de óleo e pressão de trabalho'},
-  {id:'scanner',        nome:'Scanner diagnóstico eletrônico', criterio:'Conexão, bateria e atualização de software'},
-  {id:'alinhamento',    nome:'Máquina de alinhamento',         criterio:'Calibração e funcionamento'},
-  {id:'esmeril',        nome:'Esmerilhadeira / Furadeira',     criterio:'Condição dos discos, brocas e proteções'},
-  {id:'macaco',         nome:'Macaco hidráulico / Pneumático', criterio:'Capacidade e condição de vedação'},
-  {id:'prensa',         nome:'Prensa hidráulica',              criterio:'Sem vazamento hidráulico'},
-  {id:'rebitadeira',    nome:'Rebitadeira pneumática',         criterio:'Sem vazamento pneumático'},
-  {id:'parafusadeira',  nome:'Parafusadeira Pneumática',       criterio:'Funcionamento e regulagem de torque'},
-  {id:'elevador',       nome:'Elevadores de veículo',          criterio:'Travas de segurança e sistema hidráulico'},
-  {id:'tablet',         nome:'Coletor de dados / Tablet',      criterio:'Carga da bateria e conectividade'},
+  {id:'compressor',     nome:'Compressor de ar',                               criterio:'Verificar nível de óleo e pressão'},
+  {id:'scanner',        nome:'Máquina de diagnóstico eletrônico (scanner)',     criterio:'Verificar conexão e atualização'},
+  {id:'alinhamento',    nome:'Máquina de alinhamento',                          criterio:'Verificar funcionamento'},
+  {id:'esmeril',        nome:'Esmerilhadeira / Furadeira (todas)',              criterio:'Verificar condição dos discos e brocas'},
+  {id:'macaco',         nome:'Macaco',                                          criterio:'Verificar capacidade e condição'},
+  {id:'prensa',         nome:'Prensa',                                          criterio:'Verificar se não há nenhum vazamento hidráulico'},
+  {id:'rebitadeira',    nome:'Rebitadeira',                                     criterio:'Verificar se não há nenhum vazamento pneumático'},
+  {id:'parafusadeira',  nome:'Parafusadeira Pneumática',                        criterio:'Verificar o funcionamento do equipamento'},
 ];
 const EQUIP_PATIO_34=[
   {id:'bomba_diesel',   nome:'Abastecedora de diesel (bomba)', criterio:'Acurácia do medidor e vedações'},
-  {id:'bomba_arla',     nome:'Abastecedora de Arla (bomba)',   criterio:'Acurácia do medidor e vedações'},
-  {id:'lavadora',       nome:'Lavadora de alta pressão',        criterio:'Mangueiras, bico e pressão'},
-  {id:'maq_chassis',    nome:'Máquina de lavagem de chassis',  criterio:'Funcionamento e abastecimento de produto'},
-  {id:'iluminacao',     nome:'Iluminação do pátio',             criterio:'Luminárias e circuitos críticos'},
+  {id:'lavadora',       nome:'Lavadora de alta pressão',        criterio:'Verificar mangueiras e bico'},
+  {id:'maq_chassis',    nome:'Máquina de lavagem de chassi',    criterio:'Verificar funcionamento'},
+  {id:'bomba_arla',     nome:'Abastecedora de Arla (bomba)',    criterio:'Verificar acurácia e vedações'},
 ];
+const EQUIP_MECMED_34=[
+  {id:'mec_lavador_limpeza',grupo:'LAVADOR DE ÔNIBUS AUTOMATIZADO - MECMED',nome:'Limpeza e lubrificação do lavador realizada conforme cronograma?',criterio:'Conferir cronograma e condição operacional'},
+  {id:'mec_lavador_mangueiras',grupo:'LAVADOR DE ÔNIBUS AUTOMATIZADO - MECMED',nome:'Mangueiras inspecionadas / substituídas se necessário?',criterio:'Verificar integridade e vazamentos'},
+  {id:'mec_lavador_cerdas',grupo:'LAVADOR DE ÔNIBUS AUTOMATIZADO - MECMED',nome:'Cerdas verificadas e trocadas se necessário?',criterio:'Conferir desgaste e fixação'},
+  {id:'mec_lavador_comando',grupo:'LAVADOR DE ÔNIBUS AUTOMATIZADO - MECMED',nome:'Quadro de comando verificado e ajustado?',criterio:'Conferir comandos e segurança'},
+  {id:'mec_diesel_descarga',grupo:'SISTEMA DE ABASTECIMENTO DIESEL - MECMED',nome:'Bomba de descarga inspecionada e operacional?',criterio:'Testar funcionamento'},
+  {id:'mec_diesel_filtros',grupo:'SISTEMA DE ABASTECIMENTO DIESEL - MECMED',nome:'Filtros verificados / substituídos conforme preventiva?',criterio:'Conferir condição dos filtros'},
+  {id:'mec_diesel_tanques',grupo:'SISTEMA DE ABASTECIMENTO DIESEL - MECMED',nome:'Tanques inspecionados quanto a vazamentos?',criterio:'Verificar vazamentos'},
+  {id:'mec_diesel_bombas',grupo:'SISTEMA DE ABASTECIMENTO DIESEL - MECMED',nome:'Bombas de abastecimento verificadas?',criterio:'Conferir operação e medição'},
+  {id:'mec_ar_compressores',grupo:'SISTEMA DE AR COMPRIMIDO - MECMED',nome:'Compressores verificados pela MECMED conforme cronograma?',criterio:'Conferir cronograma'},
+  {id:'mec_ar_pulmoes',grupo:'SISTEMA DE AR COMPRIMIDO - MECMED',nome:'Pulmões e quadro de comando inspecionados?',criterio:'Verificar segurança e funcionamento'},
+  {id:'mec_ar_rede',grupo:'SISTEMA DE AR COMPRIMIDO - MECMED',nome:'Rede de distribuição e mangueiras verificadas?',criterio:'Verificar vazamentos'},
+  {id:'mec_pmoc_splits',grupo:'REFRIGERAÇÃO E AR CONDICIONADO - MECMED (PLANO PMOC)',nome:'Manutenção preventiva dos splits realizada no mês?',criterio:'Conferir PMOC'},
+  {id:'mec_pmoc_plano',grupo:'REFRIGERAÇÃO E AR CONDICIONADO - MECMED (PLANO PMOC)',nome:'Plano PMOC atualizado e registrado?',criterio:'Conferir documentação'},
+  {id:'mec_eta_quadro',grupo:'ETA - ESTAÇÃO DE TRATAMENTO DE ÁGUA - MECMED',nome:'Quadro de comando da ETA verificado?',criterio:'Conferir comandos'},
+  {id:'mec_eta_dosadores',grupo:'ETA - ESTAÇÃO DE TRATAMENTO DE ÁGUA - MECMED',nome:'Dosadores de reagentes verificados e ajustados?',criterio:'Conferir dosagem'},
+  {id:'mec_eta_bombas',grupo:'ETA - ESTAÇÃO DE TRATAMENTO DE ÁGUA - MECMED',nome:'4 bombas d’água inspecionadas?',criterio:'Testar funcionamento'},
+  {id:'mec_eta_tratamento',grupo:'ETA - ESTAÇÃO DE TRATAMENTO DE ÁGUA - MECMED',nome:'Alimentação e tratamento de água realizado no dia?',criterio:'Conferir rotina diária'},
+  {id:'mec_inc_quadro',grupo:'SISTEMA DE COMBATE A INCÊNDIO - MECMED',nome:'Quadro de comando do incêndio verificado preventivamente?',criterio:'Conferir comando'},
+  {id:'mec_inc_bombas',grupo:'SISTEMA DE COMBATE A INCÊNDIO - MECMED',nome:'Bombas d’água (5CV e 12,5CV) inspecionadas?',criterio:'Testar bombas'},
+  {id:'mec_inc_hidrantes',grupo:'SISTEMA DE COMBATE A INCÊNDIO - MECMED',nome:'Canhões e caixas de hidrantes verificados?',criterio:'Conferir itens'},
+  {id:'mec_inc_alarme',grupo:'SISTEMA DE COMBATE A INCÊNDIO - MECMED',nome:'Sistema de alarme testado?',criterio:'Testar sirenes e acionadores'},
+  {id:'mec_inc_teste',grupo:'SISTEMA DE COMBATE A INCÊNDIO - MECMED',nome:'Teste mensal de funcionamento realizado?',criterio:'Conferir registro'},
+  {id:'mec_ele_quadros',grupo:'SISTEMAS ELÉTRICOS - MECMED',nome:'Quadros elétricos (8 unidades) inspecionados preventivamente?',criterio:'Conferir quadros'},
+  {id:'mec_ele_valas',grupo:'SISTEMAS ELÉTRICOS - MECMED',nome:'Luminárias das valas (5 valas) verificadas?',criterio:'Conferir iluminação'},
+  {id:'mec_ele_refletores',grupo:'SISTEMAS ELÉTRICOS - MECMED',nome:'Refletores (~80 unidades) inspecionados?',criterio:'Conferir refletores'},
+  {id:'mec_ele_subestacao',grupo:'SISTEMAS ELÉTRICOS - MECMED',nome:'Subestação de energia verificada?',criterio:'Conferir subestação'},
+  {id:'mec_ele_containers',grupo:'SISTEMAS ELÉTRICOS - MECMED',nome:'Containers e almoxarifado verificados eletricamente?',criterio:'Conferir elétrica'},
+  {id:'mec_hid_caixas',grupo:'SISTEMAS HIDRÁULICOS - MECMED',nome:'Caixas d’água e bombas de alimentação inspecionadas?',criterio:'Conferir hidráulica'},
+  {id:'mec_hid_rede',grupo:'SISTEMAS HIDRÁULICOS - MECMED',nome:'Rede hidráulica verificada?',criterio:'Torneiras, pias e banheiros'},
+  {id:'mec_hid_poco',grupo:'SISTEMAS HIDRÁULICOS - MECMED',nome:'Bomba submersa e poço artesiano verificados?',criterio:'Conferir funcionamento'},
+  {id:'mec_ete_cronograma',grupo:'ETE - ESTAÇÃO DE TRATAMENTO DE ESGOTO - MECMED',nome:'ETE verificada conforme cronograma?',criterio:'Conferir cronograma'},
+  {id:'mec_ete_banheiros',grupo:'ETE - ESTAÇÃO DE TRATAMENTO DE ESGOTO - MECMED',nome:'Hidráulica dos banheiros inspecionada?',criterio:'Conferir banheiros'},
+  {id:'mec_port_portao',grupo:'PORTARIA / PÁTIO / OFICINA / POSTO LAVAGEM - MECMED',nome:'Portão, motor e elétrica do container da portaria verificados?',criterio:'Conferir portaria'},
+  {id:'mec_port_lavagem',grupo:'PORTARIA / PÁTIO / OFICINA / POSTO LAVAGEM - MECMED',nome:'Quadros elétricos e refletores do posto de lavagem inspecionados?',criterio:'Conferir posto'},
+  {id:'mec_port_oficina',grupo:'PORTARIA / PÁTIO / OFICINA / POSTO LAVAGEM - MECMED',nome:'Quadros elétricos e iluminação da oficina verificados?',criterio:'Conferir oficina'},
+  {id:'mec_port_succao',grupo:'PORTARIA / PÁTIO / OFICINA / POSTO LAVAGEM - MECMED',nome:'Sistema de sucção das valetas verificado?',criterio:'Conferir sucção'},
+  {id:'mec_port_patio',grupo:'PORTARIA / PÁTIO / OFICINA / POSTO LAVAGEM - MECMED',nome:'Refletores, postes e para-raios do pátio inspecionados?',criterio:'Conferir pátio'},
+];
+const SECOES_34=[
+  {id:'of',titulo:'🔧 Equipamentos da Oficina',cor:'var(--blue)',itens:EQUIP_OFICINA_34},
+  {id:'pt',titulo:'🚌 Equipamentos de Pátio',cor:'var(--amber)',itens:EQUIP_PATIO_34},
+  {id:'mec',titulo:'🏭 3.4 MECMED Engenharia',cor:'var(--purple)',itens:EQUIP_MECMED_34},
+];
+const TODOS_EQUIP_34=SECOES_34.flatMap(s=>s.itens.map(e=>({...e,secao:s.id})));
 
 // Estado dos checks em memória durante a sessão
 window._ck34={};
@@ -3914,7 +3956,7 @@ async function telaChecklistEquip(){
     noksPendentes=noks||[];
   }catch(e){}
 
-  const totalItens=EQUIP_OFICINA_34.length+EQUIP_PATIO_34.length;
+  const totalItens=TODOS_EQUIP_34.length;
   const preenchidos=Object.values(window._ck34).filter(v=>v.status).length;
   const noks=Object.values(window._ck34).filter(v=>v.status==='nok').length;
   const oks=Object.values(window._ck34).filter(v=>v.status==='ok').length;
@@ -3945,9 +3987,9 @@ async function telaChecklistEquip(){
         </button>
       </div>
       ${nokSel?`<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
-        <input type="text" placeholder="Descreva o problema..." oninput="setCk34('${secao}','${equip.id}','obs',this.value)"
+        <textarea rows="2" placeholder="Tratativa obrigatória: descreva o problema e ação imediata..." oninput="setCk34SemRender('${secao}','${equip.id}','obs',this.value)"
           value="${val.obs||''}"
-          style="background:var(--surface2);border:1px solid var(--red);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+          style="background:var(--surface2);border:1px solid var(--red);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;font-family:inherit;outline:none;resize:vertical">${val.obs||''}</textarea>
         <div style="display:flex;gap:6px">
           <button onclick="setCk34('${secao}','${equip.id}','manut','sim')"
             style="flex:1;padding:7px;border-radius:7px;border:2px solid ${simSel?'var(--amber)':'var(--border)'};background:${simSel?'#F59E0B18':'transparent'};color:${simSel?'var(--amber)':'var(--text3)'};font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">
@@ -3985,7 +4027,7 @@ async function telaChecklistEquip(){
       </div>
 
       <!-- Já preenchido neste turno -->
-      ${jaFeito?`<div style="background:#00C48C10;border:1px solid #00C48C40;border-radius:10px;padding:10px 12px;margin-bottom:10px">
+      ${false&&jaFeito?`<div style="background:#00C48C10;border:1px solid #00C48C40;border-radius:10px;padding:10px 12px;margin-bottom:10px">
         <div style="font-size:12px;font-weight:700;color:var(--green)">✅ Já preenchido — ${turnoObj.label}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">
           ${ultimoReg?.criado_por||'—'} · ${ultimoReg?.criado_em?new Date(ultimoReg.criado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):''}
@@ -4034,16 +4076,15 @@ async function telaChecklistEquip(){
         <span style="font-weight:700;color:${pct===100?'var(--green)':noks>0?'var(--red)':'var(--text3)'}">${pct===100?'Completo':pct+'%'}</span>
       </div>
 
-      <!-- Seção Oficina -->
-      <div style="font-size:11px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;padding:6px 10px;background:#2563EB10;border-radius:8px;border-left:3px solid var(--blue)">
-        🔧 Equipamentos da Oficina
-      </div>
-      ${EQUIP_OFICINA_34.map(e=>cardEquip(e,'of')).join('')}
-
-      <div style="font-size:11px;font-weight:800;color:var(--amber);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;margin-top:18px;padding:6px 10px;background:#F59E0B10;border-radius:8px;border-left:3px solid var(--amber)">
-        🚌 Equipamentos de Pátio
-      </div>
-      ${EQUIP_PATIO_34.map(e=>cardEquip(e,'pt')).join('')}
+      ${SECOES_34.map(sec=>`
+        <div style="font-size:11px;font-weight:800;color:${sec.cor};text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;margin-top:18px;padding:6px 10px;background:var(--surface2);border-radius:8px;border-left:3px solid ${sec.cor}">
+          ${sec.titulo}
+        </div>
+        ${sec.id==='mec'?Object.entries(sec.itens.reduce((acc,e)=>{(acc[e.grupo]||(acc[e.grupo]=[])).push(e);return acc;},{})).map(([grupo,itens])=>`
+          <div style="font-size:10px;font-weight:800;color:var(--text3);text-transform:uppercase;margin:10px 2px 8px">${grupo}</div>
+          ${itens.map(e=>cardEquip(e,sec.id)).join('')}
+        `).join(''):sec.itens.map(e=>cardEquip(e,sec.id)).join('')}
+      `).join('')}
       <div style="height:90px"></div>
     </div>
 
@@ -4123,8 +4164,45 @@ async function confirmarFechamentoNOK(id){
 function setCk34(secao, id, campo, valor){
   const key=secao+'_'+id;
   if(!window._ck34[key]) window._ck34[key]={status:'',manut:'',obs:''};
+  const antes=window._ck34[key].status;
   window._ck34[key][campo]=valor;
+  if(campo==='status'&&valor==='ok'){
+    window._ck34[key].manut='';
+    window._ck34[key].obs='';
+  }
+  if(campo==='status'&&valor==='nok'&&antes!=='nok'&&!window._ck34[key].acionado){
+    window._ck34[key].acionado=true;
+    acionarLiderPCM34(secao,id);
+  }
   telaChecklistEquip();
+}
+
+function setCk34SemRender(secao,id,campo,valor){
+  const key=secao+'_'+id;
+  if(!window._ck34[key]) window._ck34[key]={status:'',manut:'',obs:''};
+  window._ck34[key][campo]=valor;
+}
+
+async function acionarLiderPCM34(secao,id){
+  const eq=TODOS_EQUIP_34.find(e=>e.id===id&&e.secao===secao)||TODOS_EQUIP_34.find(e=>e.id===id);
+  const gid=getGid();
+  const garagem=S.garagens?.find(g=>g.id===gid);
+  const msg=`🚨 *ACIONAR LÍDER PCM — NOK NO 3.4*
+📍 ${garagem?.nome||'Garagem'} · ${new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}
+👤 ${S.perfil?.nome||'Assistente PCM'}
+
+❌ *${eq?.nome||id}*
+Critério: ${eq?.criterio||'Verificação operacional'}
+
+⚠️ Tratativa obrigatória no checklist antes do envio.`;
+  try{
+    await fetch('https://evolution-api-production-8d56.up.railway.app/message/sendText/jtp-garagem',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':'4289AC11F437-43AD-96D7-9F27C2735696'},
+      body:JSON.stringify({number:'120363427489152994@g.us',options:{delay:0},textMessage:{text:msg}}),
+    });
+    toast('🚨 Líder PCM acionado');
+  }catch(e){console.warn('[WPP NOK imediato 3.4]',e.message);}
 }
 
 async function salvarChecklist34(){
@@ -4136,17 +4214,22 @@ async function salvarChecklist34(){
   // Montar lista de NOKs para o WPP
   const noks=[];
   const dados=window._ck34;
-  [...EQUIP_OFICINA_34,...EQUIP_PATIO_34].forEach(eq=>{
-    const secao=EQUIP_OFICINA_34.includes(eq)?'of':'pt';
+  TODOS_EQUIP_34.forEach(eq=>{
+    const secao=eq.secao;
     const v=dados[secao+'_'+eq.id]||{};
-    if(v.status==='nok') noks.push({nome:eq.nome,obs:v.obs||'',manut:v.manut});
+    if(v.status==='nok') noks.push({nome:eq.nome,criterio:eq.criterio,obs:v.obs||'',manut:v.manut,secao});
   });
 
   // Total preenchidos
-  const totalItens=EQUIP_OFICINA_34.length+EQUIP_PATIO_34.length;
+  const totalItens=TODOS_EQUIP_34.length;
   const preenchidos=Object.values(dados).filter(v=>v.status).length;
 
   if(preenchidos===0){ toast('Preencha pelo menos um item','err'); return; }
+  const nokSemTratativa=noks.filter(n=>!n.obs.trim()||!n.manut);
+  if(nokSemTratativa.length){
+    toast('Todo NOK precisa de tratativa e ação definida','err');
+    return;
+  }
 
   const btn=document.querySelector('#content button:last-child');
   if(btn){ btn.disabled=true; btn.textContent='Salvando...'; }
@@ -4217,7 +4300,7 @@ async function salvarChecklist34(){
 • ✅ OK: ${preenchidos-noks.length}
 • ❌ NOK: ${noks.length}
 
-${noks.length>0?`⚠️ *Equipamentos com problema:*\n${linhasNok}`:'✅ Todos os equipamentos em condições normais de operação'}
+${noks.length>0?`🚨 *Líder PCM acionado imediatamente.*\n⚠️ *Equipamentos com problema:*\n${linhasNok}`:'✅ Todos os equipamentos em condições normais de operação'}
 
 _Checklist 3.4 · Grupo JTP_`;
 
@@ -4293,7 +4376,7 @@ async function gerarPDF34Mobile(gid, data, turno, dados, noks, garagem, dtFmt, h
   </tr>
 </table>
 
-<div style="background:#333;color:#fff;font-weight:900;padding:4px 8px;font-size:10px">■ EQUIPAMENTOS DA OFICINA</div>
+${SECOES_34.map(sec=>`<div style="background:#333;color:#fff;font-weight:900;padding:4px 8px;font-size:10px;margin-top:6px">■ ${sec.titulo.replace(/[^\wÀ-ÿ /.-]/g,'').toUpperCase()}</div>
 <table>
   <thead><tr>
     <th>Equipamento / Item</th>
@@ -4301,19 +4384,10 @@ async function gerarPDF34Mobile(gid, data, turno, dados, noks, garagem, dtFmt, h
     <th style="width:80px;text-align:center">Status</th>
     <th style="width:90px;text-align:center">Manutenção Necessária?</th>
   </tr></thead>
-  <tbody>${EQUIP_OFICINA_34.map(e=>rowEquip34(e,'of')).join('')}</tbody>
-</table>
-
-<div style="background:#333;color:#fff;font-weight:900;padding:4px 8px;font-size:10px;margin-top:6px">■ EQUIPAMENTOS DE PÁTIO</div>
-<table>
-  <thead><tr>
-    <th>Equipamento / Item</th>
-    <th>Critério de Verificação</th>
-    <th style="width:80px;text-align:center">Status</th>
-    <th style="width:90px;text-align:center">Manutenção Necessária?</th>
-  </tr></thead>
-  <tbody>${EQUIP_PATIO_34.map(e=>rowEquip34(e,'pt')).join('')}</tbody>
-</table>
+  <tbody>${sec.id==='mec'
+    ? Object.entries(sec.itens.reduce((acc,e)=>{(acc[e.grupo]||(acc[e.grupo]=[])).push(e);return acc;},{})).map(([grupo,itens])=>`<tr><td colspan="4" style="${BH}">${grupo}</td></tr>${itens.map(e=>rowEquip34(e,sec.id)).join('')}`).join('')
+    : sec.itens.map(e=>rowEquip34(e,sec.id)).join('')}</tbody>
+</table>`).join('')}
 
 ${noks.length>0?`
 <div style="background:#333;color:#fff;font-weight:900;padding:4px 8px;font-size:10px;margin-top:6px">■ EQUIPAMENTOS COM NOK – AÇÃO IMEDIATA</div>
