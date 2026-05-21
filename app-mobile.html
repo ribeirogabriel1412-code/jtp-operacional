@@ -1276,7 +1276,7 @@ function renderOS38Oficina(){
   '</div>'+
   '<div style="background:var(--border);border-radius:99px;height:6px;overflow:hidden;margin-bottom:12px"><div style="height:100%;width:'+pct+'%;background:'+(pct===100?'var(--green)':'var(--blue)')+'"></div></div>';
   openSheet(oc.prefixo+' — Checklist 3.8',status+secoes+
-    '<button onclick="salvarOS38Oficina()" style="width:100%;padding:15px;border-radius:12px;border:none;background:'+(pct===100?'var(--green)':'var(--blue)')+';color:#fff;font-size:15px;font-weight:800;font-family:inherit;margin-top:4px">'+(pct===100?'Enviar liberação para PCM':'Salvar checklist 3.8 ('+pct+'%)')+'</button>');
+    '<button onclick="salvarOS38Oficina()" style="width:100%;padding:15px;border-radius:12px;border:none;background:'+(pct===100?'var(--green)':'var(--blue)')+';color:#fff;font-size:15px;font-weight:800;font-family:inherit;margin-top:4px">'+(pct===100?'Salvar e exportar PDF':'Salvar checklist 3.8 ('+pct+'%)')+'</button>');
 }
 
 async function salvarOS38Oficina(){
@@ -1301,9 +1301,9 @@ async function salvarOS38Oficina(){
   };
   var res=await sb.from('checklist_38').insert(payload);
   if(res.error){toast('Erro ao salvar 3.8: '+res.error.message,'err');return;}
-  await sb.from('ocorrencias_22').update({status:'aguardando_aprovacao',updated_at:new Date().toISOString()}).eq('id',oc.id);
-  toast('📤 3.8 enviado ao PCM');
+  toast('✅ 3.8 salvo. Gerando PDF...');
   closeSheet(true);
+  await _exportarOS(oc.id);
   telaOficina();
 }
 
