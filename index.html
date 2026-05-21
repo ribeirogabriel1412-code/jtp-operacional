@@ -6342,16 +6342,22 @@ async function renderFerrPCM(aba='painel'){
     orcamento=orc||[];
   }catch(e){}
 
+  const turnoPainel=S.turno||'dia';
+  const fluxoLocal=pcmReadLocal(pcmFluxoKey(gid,data,turnoPainel));
+  const periodoPainel=pcmPeriodoTurno(data,turnoPainel==='dia'?'07:00':'21:00',turnoPainel==='dia'?'17:00':'07:20');
+  const inicioFluxo=fluxoLocal.reset_em||periodoPainel.ini;
+
   const[{data:ocs},{data:frota}]=await Promise.all([
     sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado')
+      .gte('hora_entrada',inicioFluxo)
       .order('hora_entrada',{ascending:true}),
     sb.from('frota').select('*').eq('garagem_id',gid),
   ]);
 
-  // KPIs — busca OS fechadas hoje para calcular gasto real
+  // KPIs — gasto real apenas do fluxo ativo do turno
   const{data:fechadasHoje}=await sb.from('ocorrencias_22').select('custo_real,custo_previsto,tipo')
     .eq('garagem_id',gid).eq('status','liberado')
-    .gte('hora_liberacao',new Date(agora.getFullYear(),agora.getMonth(),agora.getDate()).toISOString());
+    .gte('hora_liberacao',inicioFluxo);
 
   const totalFrota=(frota||[]).length;
   const parados=(ocs||[]).length;
@@ -6443,7 +6449,7 @@ async function renderFerrPCM(aba='painel'){
         <div><div style="font-size:13px;font-weight:800">Fluxo de Custo PCM</div><div style="font-size:11px;color:var(--text3);margin-top:2px">Abertura prevista as 08:00; real oficializado pelo Lider PCM as 11:00.</div></div>
         <span style="font-size:10px;color:var(--text3)">${S.turno==='dia'?'Dia':'Noite'} · ${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</span>
       </div>
-      ${(()=>{const meta=pcmReadLocal(pcmFluxoKey(gid,data,S.turno||'dia'));const previsto=parseFloat(meta.valor_previsto??orc?.valor_previsto??orcDisp??0)||0;const realOficial=parseFloat(meta.valor_real??orc?.valor_real??(meta.status_fluxo==='oficializado'||orc?.status_fluxo==='oficializado'?orcDisp:0))||0;const statusFluxo=meta.status_fluxo||orc?.status_fluxo||(orc?'previsto':'pendente');const baseCusto=realOficial||previsto||orcDisp||0;const saldoFluxo=baseCusto-totalRealFechado-totalPrevisto;return `
+      ${(()=>{const meta=fluxoLocal||pcmReadLocal(pcmFluxoKey(gid,data,S.turno||'dia'));const foiResetado=meta.status_fluxo==='resetado';const previsto=foiResetado?0:(parseFloat(meta.valor_previsto??orc?.valor_previsto??orcDisp??0)||0);const realOficial=foiResetado?0:(parseFloat(meta.valor_real??orc?.valor_real??(meta.status_fluxo==='oficializado'||orc?.status_fluxo==='oficializado'?orcDisp:0))||0);const statusFluxo=meta.status_fluxo||orc?.status_fluxo||(orc?'previsto':'pendente');const baseCusto=realOficial||previsto||orcDisp||0;const saldoFluxo=baseCusto-totalRealFechado-totalPrevisto;return `
       <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:10px">
         <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:var(--amber);font-weight:700;margin-bottom:2px">PREVISTO 08:00</div><div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--amber)">${pcmMoeda(previsto)}</div></div>
         <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:var(--green);font-weight:700;margin-bottom:2px">REAL 11:00</div><div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--green)">${realOficial?pcmMoeda(realOficial):'Aguardando'}</div></div>
@@ -6451,13 +6457,14 @@ async function renderFerrPCM(aba='painel'){
         <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:var(--blue);font-weight:700;margin-bottom:2px">PREVISTO ABERTO</div><div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--blue)">${pcmMoeda(totalPrevisto)}</div></div>
         <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:2px">SALDO FLUXO</div><div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:${saldoFluxo>=0?'var(--green)':'var(--red)'}">${pcmMoeda(saldoFluxo)}</div></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:8px;align-items:end">
+      <div style="display:grid;grid-template-columns:1fr 1fr auto auto auto;gap:8px;align-items:end">
         <div><label class="campo-label">Custo previsto (abertura 08:00)</label><input type="number" id="custo-previsto-dia" value="${previsto||''}" placeholder="0,00" step="0.01" class="fi" style="font-family:'DM Mono',monospace"></div>
         <div><label class="campo-label">Custo real (oficializacao 11:00)</label><input type="number" id="custo-real-dia" value="${realOficial||''}" placeholder="0,00" step="0.01" class="fi" style="font-family:'DM Mono',monospace"></div>
         <button onclick="abrirCustoPrevistoPCM('${gid}','${data}')" class="btn-add" style="height:40px;white-space:nowrap;background:var(--amber);border-color:var(--amber);color:#111827">Abrir previsto</button>
         <button onclick="oficializarCustoPCM('${gid}','${data}')" class="btn-add" style="height:40px;white-space:nowrap;background:var(--green);border-color:var(--green);color:#fff">Oficializar real</button>
+        <button onclick="resetarFluxoCustoPCM('${gid}','${data}')" class="btn-add" style="height:40px;white-space:nowrap;background:var(--red);border-color:var(--red);color:#fff">Resetar</button>
       </div>
-      <div style="font-size:11px;color:var(--text3);margin-top:8px">Status: <strong style="color:${statusFluxo==='oficializado'?'var(--green)':statusFluxo==='previsto'?'var(--amber)':'var(--text3)'}">${statusFluxo==='oficializado'?'oficializado':statusFluxo==='previsto'?'previsto aberto':'pendente'}</strong>${meta.oficializado_por?' · por '+meta.oficializado_por:''}</div>`})()}
+      <div style="font-size:11px;color:var(--text3);margin-top:8px">Status: <strong style="color:${statusFluxo==='oficializado'?'var(--green)':statusFluxo==='previsto'?'var(--amber)':statusFluxo==='resetado'?'var(--red)':'var(--text3)'}">${statusFluxo==='oficializado'?'oficializado':statusFluxo==='previsto'?'previsto aberto':statusFluxo==='resetado'?'resetado':'pendente'}</strong>${meta.oficializado_por?' · por '+meta.oficializado_por:''}${meta.reset_em?' · reset '+new Date(meta.reset_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):''}</div>`})()}
     </div>
     <!-- 2. KPIs -->
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">
@@ -7408,6 +7415,7 @@ function pcmPeriodoTurno(dataRef,horaIni,horaFim){var dtIni=new Date(dataRef+'T'
 async function pcmUpsertOrcamento(gid,data,turno,base,extra){var key=pcmFluxoKey(gid,data,turno);pcmSaveLocal(key,extra||{});var payload=Object.assign({},base||{},extra||{});var exist=null;try{var q=await sb.from('pcm_orcamento').select('id').eq('garagem_id',gid).eq('data',data).eq('turno',turno).limit(1);exist=q.data&&q.data[0];}catch(e){}var res=exist&&exist.id?await sb.from('pcm_orcamento').update(payload).eq('id',exist.id):await sb.from('pcm_orcamento').insert(Object.assign({garagem_id:gid,data:data,turno:turno},payload));if(res.error&&pcmIsMissingColumn(res.error)){var fallback=Object.assign({},base||{});res=exist&&exist.id?await sb.from('pcm_orcamento').update(fallback).eq('id',exist.id):await sb.from('pcm_orcamento').insert(Object.assign({garagem_id:gid,data:data,turno:turno},fallback));}return res;}
 async function abrirCustoPrevistoPCM(gid,data){var turno=S.turno||'dia';var previsto=parseFloat(document.getElementById('custo-previsto-dia')?.value||0)||0;if(!previsto){toast('Informe o custo previsto de abertura','err');return;}var agora=new Date().toISOString();var res=await pcmUpsertOrcamento(gid,data,turno,{valor_disponivel:previsto,atualizado_em:agora,atualizado_por:S.perfil?.nome},{valor_previsto:previsto,status_fluxo:'previsto',aberto_em:agora,aberto_por:S.perfil?.nome});if(res.error){toast('Erro ao abrir custo: '+res.error.message,'err');return;}toast('Custo previsto aberto. Oficialize o real as 11:00.');renderFerrPCM('painel');}
 async function oficializarCustoPCM(gid,data){if(!(S.perfil?.cargo==='lider_pcm'||S.perfil?.is_admin)){toast('Somente Lider PCM oficializa o custo real','err');return;}var turno=S.turno||'dia';var previsto=parseFloat(document.getElementById('custo-previsto-dia')?.value||0)||0;var real=parseFloat(document.getElementById('custo-real-dia')?.value||0)||previsto;if(!real){toast('Informe o custo real para oficializar','err');return;}var agora=new Date().toISOString();var res=await pcmUpsertOrcamento(gid,data,turno,{valor_disponivel:real,atualizado_em:agora,atualizado_por:S.perfil?.nome},{valor_previsto:previsto||real,valor_real:real,status_fluxo:'oficializado',oficializado_em:agora,oficializado_por:S.perfil?.nome});if(res.error){toast('Erro ao oficializar: '+res.error.message,'err');return;}try{await sb.from('pcm_conferencias').insert({garagem_id:gid,data:data,turno:turno,disponivel:real,gasto_real:0,gasto_previsto:previsto||real,saldo:real,pct_utilizado:0,conferido_por:S.perfil?.nome||'Lider PCM',conferido_em:agora});}catch(e){}toast('Custo real oficializado.');renderFerrPCM('painel');}
+async function resetarFluxoCustoPCM(gid,data){var turno=S.turno||'dia';if(!confirm('Resetar o fluxo financeiro deste turno? O historico das OS continua salvo, mas o painel passa a somar apenas movimentos daqui para frente.'))return;var agora=new Date().toISOString();var key=pcmFluxoKey(gid,data,turno);pcmSaveLocal(key,{valor_previsto:0,valor_real:0,status_fluxo:'resetado',reset_em:agora,reset_por:S.perfil?.nome||null});try{await sb.from('pcm_conferencias').insert({garagem_id:gid,data:data,turno:turno,disponivel:0,gasto_real:0,gasto_previsto:0,saldo:0,pct_utilizado:0,conferido_por:(S.perfil?.nome||'Sistema')+' reset',conferido_em:agora});}catch(e){}toast('Fluxo resetado. Novos gastos contam a partir de agora.');renderFerrPCM('painel');}
 async function renderFech24(gid,back,tabs){
   setMain(back+tabs+'<div class="loading"><div class="spinner"></div></div>');
   var agora=new Date(), hoje_=agora.toISOString().slice(0,10);
