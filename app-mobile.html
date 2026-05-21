@@ -2778,6 +2778,7 @@ async function buscarEscalaRecolha(prefixo){
 // Fluxo: Líder monta plano → Lavador confirma → Líder vistoria
 // ══════════════════════════════════════════════════════════
 let _lpData=(()=>{try{return sessionStorage.getItem('jtp_lpData')||hoje();}catch(e){return hoje();}})();
+let _lpFiltro='todos';
 function setLpData(d){_lpData=d;try{sessionStorage.setItem('jtp_lpData',d);}catch(e){}}
 
 async function telaLavPesada(){
@@ -2871,10 +2872,14 @@ async function telaLavPesada(){
     if(!arr.length) return '';
     return '<div class="sl" style="margin-top:12px;color:'+cor+'">'+titulo+' <span style="color:var(--text3);font-weight:600">· '+sub+'</span></div>'+arr.map(mkCardLav).join('');
   };
-  const cards=
-    secaoLav('Programados pendentes','precisam lavar',lista.filter(l=>l.status!=='executado'),'var(--amber)')+
-    secaoLav('Lavados aguardando vistoria','conferir qualidade',lista.filter(l=>l.status==='executado'&&!l.validado_patio),'var(--blue)')+
-    secaoLav('Limpos e liberados','vistoriados pelo pátio',lista.filter(l=>l.validado_patio),'var(--green)');
+  const listaPend=lista.filter(l=>l.status!=='executado');
+  const listaAguard=lista.filter(l=>l.status==='executado'&&!l.validado_patio);
+  const listaLimpos=lista.filter(l=>l.validado_patio);
+  const cards=_lpFiltro==='pendentes'
+    ? secaoLav('Não lavados','faltam lavar',listaPend,'var(--amber)')
+    : secaoLav('Programados pendentes','precisam lavar',listaPend,'var(--amber)')+
+      secaoLav('Lavados aguardando vistoria','conferir qualidade',listaAguard,'var(--blue)')+
+      secaoLav('Limpos e liberados','vistoriados pelo pátio',listaLimpos,'var(--green)');
 
   render(
     '<div style="padding:14px 14px 0">'
@@ -2912,8 +2917,12 @@ async function telaLavPesada(){
     // Barra
     +'<div class="prog"><div class="prog-f" style="width:'+pct+'%;background:'+(pct===100?'var(--green)':'var(--blue)')+'"></div></div>'
     +'<div style="font-size:11px;color:var(--text3);margin-top:4px;margin-bottom:10px">'+lavados+'/'+total+' lavados · '+pct+'%</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 4px">'
+    +'<button onclick="_lpFiltro=\'todos\';telaLavPesada()" style="padding:10px;border-radius:10px;border:1px solid '+(_lpFiltro==='todos'?'var(--blue)':'var(--border)')+';background:'+(_lpFiltro==='todos'?'#2563EB18':'transparent')+';color:'+(_lpFiltro==='todos'?'var(--blue)':'var(--text3)')+';font-size:12px;font-weight:800;font-family:inherit">Todos</button>'
+    +'<button onclick="_lpFiltro=\'pendentes\';telaLavPesada()" style="padding:10px;border-radius:10px;border:1px solid '+(_lpFiltro==='pendentes'?'var(--amber)':'var(--border)')+';background:'+(_lpFiltro==='pendentes'?'#F59E0B18':'transparent')+';color:'+(_lpFiltro==='pendentes'?'var(--amber)':'var(--text3)')+';font-size:12px;font-weight:800;font-family:inherit">Não lavados ('+pendentes+')</button>'
     +'</div>'
-    +(total?'<div class="sl">'+total+' veículo(s) no plano</div>'+cards
+    +'</div>'
+    +(total?'<div class="sl">'+(_lpFiltro==='pendentes'?pendentes:total)+' veículo(s) '+(_lpFiltro==='pendentes'?'não lavado(s)':'no plano')+'</div>'+(cards||'<div style="padding:18px;text-align:center;color:var(--green);font-weight:800">✅ Todos os programados já foram lavados</div>')
       :'<div class="empty"><div class="empty-ic">🚿</div><div style="font-weight:700;font-size:16px;margin-bottom:8px">Sem plano hoje</div><div style="font-size:13px">Use o + para montar o plano do dia.</div></div>')
     +(vistoriados>0?'<div style="padding:14px">'
       +'<button onclick="fecharTurnoLavagem()" style="width:100%;padding:14px;border-radius:12px;border:1px solid '+(vistoriados===total?'#00C48C40':'#F59E0B40')+';background:'+(vistoriados===total?'#00C48C18':'#F59E0B18')+';color:'+(vistoriados===total?'var(--green)':'var(--amber)')+';font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">'
