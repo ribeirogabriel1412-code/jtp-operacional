@@ -3549,14 +3549,20 @@ async function gerarPDFSoltura(gid, data, escala, lavagemMap){
   const saiu=escala.filter(r=>r.saiu===true).length;
   const naoSaiu=escala.filter(r=>r.saiu===false).length;
   const pendente=escala.filter(r=>r.saiu==null).length;
-  const trocaMotorista=escala.filter(r=>r.observacao?.toLowerCase().includes('falta')||r.observacao?.toLowerCase().includes('atraso')||r.observacao?.toLowerCase().includes('troca')||r.motorista_fim&&r.motorista_fim!==r.motorista).length;
+  const isTrocaMotFalta=function(r){
+    const txt=((r.motivo_troca||'')+' '+(r.observacao||'')).toLowerCase();
+    return !!(r.motorista_fim&&r.motorista_fim!==r.motorista&&txt.includes('falta'));
+  };
+  const trocaMotorista=escala.filter(isTrocaMotFalta).length;
   const trocaCarro=escala.filter(r=>r.observacao?.toLowerCase().includes('reserva:')).length;
 
   const rows=escala.map(r=>{
     // Detectar troca
-    const temTrocaMotorista=r.observacao?.toLowerCase().includes('falta')||r.observacao?.toLowerCase().includes('atraso')||r.observacao?.toLowerCase().includes('acidente')||(r.motorista_fim&&r.motorista_fim!==r.motorista);
+    const temTrocaMotorista=isTrocaMotFalta(r);
     const temTrocaCarro=r.observacao?.toLowerCase().includes('reserva:');
     const obs=r.observacao||'';
+    const obsPartes=obs.split('|').map(p=>p.trim()).filter(Boolean);
+    const reservaInfo=temTrocaCarro?obsPartes.join(' · '):'';
 
     // Última lavagem — dias atrás
     const ultLav=lavagemMap[r.prefixo];
@@ -3571,27 +3577,25 @@ async function gerarPDFSoltura(gid, data, escala, lavagemMap){
     const statusBg=r.saiu===true?'#f0fdf4':r.saiu===false?'#fef2f2':'#fffbeb';
     const statusTxt=r.saiu===true?'✅ Saiu':r.saiu===false?'❌ Não saiu':'⏳ Pend.';
 
-    // Motorista — mostrar troca se houver
+    // Motorista — mostra troca somente quando foi por falta
     const motoristaTxt=temTrocaMotorista&&r.motorista_fim&&r.motorista_fim!==r.motorista
       ?`${r.motorista||'—'} → ${r.motorista_fim}`
       :(r.motorista||'—');
 
-    // Prefixo — mostrar troca de carro se houver
-    const prefixoTxt=temTrocaCarro
-      ?`${r.prefixo} ⇄`
-      :r.prefixo;
+    // Prefixo sempre original; reserva fica somente na observação
+    const prefixoTxt=r.prefixo;
 
     const rowBg=temTrocaMotorista||temTrocaCarro?'background:#fffbeb;':'';
     return`<tr style="${rowBg}">
-      <td style="${B}padding:3px 5px;font-family:monospace;font-weight:700;font-size:10px;${temTrocaCarro?'color:#b45309;':''}">${prefixoTxt}</td>
+      <td style="${B}padding:3px 5px;font-family:monospace;font-weight:700;font-size:10px">${prefixoTxt}</td>
       <td style="${B}padding:3px 5px;font-size:10px">${r.linha||'—'}</td>
       <td style="${B}padding:3px 5px;font-size:10px">${motoristaTxt}</td>
       <td style="${B}padding:3px 5px;text-align:center;font-family:monospace;font-size:10px">${r.horario_programado||'—'}</td>
       <td style="${B}padding:3px 5px;text-align:center;font-family:monospace;font-size:10px;font-weight:${r.horario_real?'700':'400'};color:${r.horario_real?'#166534':'#666'}">${r.horario_real||'—'}</td>
       <td style="${B}padding:3px 5px;text-align:center;background:${statusBg};color:${statusCor};font-size:10px;font-weight:700">${statusTxt}</td>
       <td style="${B}padding:3px 5px;font-size:9px;color:${temTrocaMotorista?'#b45309':temTrocaCarro?'#b45309':'#555'};font-weight:${temTrocaMotorista||temTrocaCarro?'700':'400'}">
-        ${temTrocaCarro?'🔄 '+obs.split('|')[0].trim():''}
-        ${temTrocaMotorista&&!temTrocaCarro?'👤 '+obs.split('|')[0].trim():''}
+        ${temTrocaCarro?'🔄 '+reservaInfo:''}
+        ${temTrocaMotorista&&!temTrocaCarro?'👤 Troca motorista (Falta): '+(r.motorista_fim||'—'):''}
         ${!temTrocaMotorista&&!temTrocaCarro&&obs?obs.substring(0,40):''}
       </td>
       <td style="${B}padding:3px 5px;text-align:center;font-size:10px;color:${ultLav?'#166534':'#999'}">${diasSemLavar}</td>
@@ -3682,7 +3686,7 @@ async function gerarPDFSoltura(gid, data, escala, lavagemMap){
   try{
     const linhas=escala.slice(0,20).map(r=>{
       const st=r.saiu===true?'✅':r.saiu===false?'❌':'⏳';
-      const troca=r.observacao?.toLowerCase().includes('reserva:')||r.motorista_fim&&r.motorista_fim!==r.motorista?'🔄':'';
+      const troca=r.observacao?.toLowerCase().includes('reserva:')||isTrocaMotFalta(r)?'🔄':'';
       return`${st}${troca} *${r.prefixo}* | ${r.linha||'—'} | ${r.motorista?.split(' ').slice(0,2).join(' ')||'—'} | ${r.horario_programado||'—'}→${r.horario_real||'—'}`;
     }).join('\n');
 
