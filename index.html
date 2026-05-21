@@ -5689,6 +5689,29 @@ function proximoSabadoISO(base=new Date()){
   return d.toISOString().slice(0,10);
 }
 
+const VALET_METRICA_BASE='jtp_valetamento_metrica_v1';
+function valetMetricaKey(data){
+  let gid='geral';
+  try{ gid=getGid()||'geral'; }catch(e){}
+  return `${VALET_METRICA_BASE}:${gid}:${data||proximoSabadoISO()}`;
+}
+function lerValetamentoMetrica(data){
+  try{return JSON.parse(localStorage.getItem(valetMetricaKey(data))||'null')||null;}catch(e){return null;}
+}
+function salvarValetamentoMetrica(data,itens){
+  const rec={data,itens:itens||[],criadoEm:new Date().toISOString(),criadoPor:S.perfil?.nome||null};
+  try{localStorage.setItem(valetMetricaKey(data),JSON.stringify(rec));}catch(e){console.warn('[VALET]',e);}
+  return rec;
+}
+function preencherValetCarro(prefixo, servicos){
+  const prefEl=document.getElementById('req-pref-site');
+  const justEl=document.getElementById('req-just-site');
+  if(prefEl) prefEl.value=prefixo||'';
+  if(justEl&&!justEl.value) justEl.value='Valetamento preventiva pesada - preparar peças';
+  document.getElementById('valet-sap-busca')?.focus();
+  toast('Carro selecionado. Busque as peças na base SAP.');
+}
+
 function badgeValetStatus(status){
   const map={
     solicitado_pcm:{txt:'Solicitado PCM',c:'var(--amber)',bg:'#F59E0B20'},
@@ -5701,6 +5724,45 @@ function badgeValetStatus(status){
   };
   const s=map[status]||{txt:status||'—',c:'var(--text3)',bg:'var(--surface2)'};
   return `<span style="font-size:11px;padding:3px 8px;border-radius:6px;font-weight:800;background:${s.bg};color:${s.c}">${s.txt}</span>`;
+}
+
+var _valetSapTimer=null;
+window._valetSapMap=window._valetSapMap||{};
+async function valetBuscarPecaSap(inputEl){
+  var q=(inputEl.value||'').trim();
+  var drop=document.getElementById('valet-sap-drop');
+  if(!drop) return;
+  if(q.length<2){drop.style.display='none';return;}
+  if(_valetSapTimer) clearTimeout(_valetSapTimer);
+  _valetSapTimer=setTimeout(async function(){
+    var gid=getGid();
+    var res=await sb.from('sap_precos').select('cod_sap,descricao,preco_unit,unidade').eq('garagem_id',gid).or('cod_sap.ilike.%'+q+'%,descricao.ilike.%'+q+'%').limit(12);
+    var data=res.data||[];
+    if(!data.length){drop.innerHTML='<div style="padding:10px;font-size:12px;color:var(--text3)">Nenhuma peça encontrada na base SAP</div>';drop.style.display='block';return;}
+    data.forEach(function(r){window._valetSapMap[r.cod_sap]={cod:r.cod_sap,desc:r.descricao,preco:parseFloat(r.preco_unit||0),und:r.unidade||'UN'};});
+    drop.innerHTML=data.map(function(r){
+      var p=parseFloat(r.preco_unit||0);
+      var cod=String(r.cod_sap).replace(/'/g,'\\u0027');
+      return `<button onclick="valetSelecionarPecaSap('${cod}')" style="width:100%;text-align:left;padding:9px 12px;border:0;border-bottom:1px solid var(--border2);background:var(--surface);color:var(--text);cursor:pointer;font-family:'DM Sans',sans-serif">
+        <div style="display:flex;justify-content:space-between;gap:10px"><span style="font-family:monospace;color:var(--amber);font-size:11px">${prevEsc(r.cod_sap)}</span><b style="color:var(--green);font-family:monospace;font-size:12px">R$ ${p.toLocaleString('pt-BR',{minimumFractionDigits:2})}</b></div>
+        <div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">${prevEsc(r.descricao)}</div>
+      </button>`;
+    }).join('');
+    drop.style.display='block';
+  },250);
+}
+function valetSelecionarPecaSap(cod){
+  var it=window._valetSapMap?.[cod];
+  if(!it) return;
+  var busca=document.getElementById('valet-sap-busca');
+  var peca=document.getElementById('req-peca-site');
+  var valor=document.getElementById('req-valor-site');
+  var drop=document.getElementById('valet-sap-drop');
+  if(busca) busca.value=it.cod+' - '+it.desc;
+  if(peca) peca.value=it.cod+' - '+it.desc;
+  if(valor) valor.value=(parseFloat(it.preco||0)||0).toFixed(2);
+  if(drop) drop.style.display='none';
+  document.getElementById('req-qtd-site')?.focus();
 }
 
 function preencherReqCompraSite(prefixo, peca, numero){
@@ -6081,6 +6143,8 @@ async function renderFerrPCM(aba='painel'){
     ]);
     const reqs=reqRes.data||[];
     const osPecas=(osRes.data||[]).filter(o=>(o.pecas_necessarias||'').trim());
+    const valetMetrica=lerValetamentoMetrica(dataValet);
+    const carrosValet=(valetMetrica?.itens||[]);
     const safeText=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
     const arg=v=>String(v??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\r?\n/g,' | ');
     const totalVal=reqs.reduce((s,r)=>s+(parseFloat(r.valor_estimado||0)*parseInt(r.quantidade||1)),0);
@@ -6093,8 +6157,8 @@ async function renderFerrPCM(aba='painel'){
       ${secTitle('📦','Valetamento de Sábado',`<input type="date" value="${dataValet}" onchange="S._valetData=this.value;renderFerrPCM('req_compra')" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 10px;font-family:'DM Mono',monospace">`)}
       <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px">
         <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--amber);border-radius:10px;padding:14px">
-          <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:2px">OS base</div>
-          <div style="font-family:'DM Mono',monospace;font-size:24px;font-weight:800;color:var(--amber);margin-top:6px">${osPecas.length}</div>
+          <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:2px">Carros 11-20</div>
+          <div style="font-family:'DM Mono',monospace;font-size:24px;font-weight:800;color:var(--amber);margin-top:6px">${carrosValet.length||osPecas.length}</div>
         </div>
         <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:10px;padding:14px">
           <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:2px">Itens solicitados</div>
@@ -6115,6 +6179,12 @@ async function renderFerrPCM(aba='painel'){
           ${secTitle('📝','Solicitar Item do Valetamento')}
           <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
             <input type="hidden" id="req-data-site" value="${dataValet}">
+            <div style="position:relative;margin-bottom:10px">
+              <label class="campo-label">🔎 Base de Peças SAP</label>
+              <input type="text" id="valet-sap-busca" placeholder="Digite código SAP ou descrição da peça" oninput="valetBuscarPecaSap(this)"
+                style="width:100%;background:var(--surface2);border:1px solid var(--blue);border-radius:8px;padding:10px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+              <div id="valet-sap-drop" style="display:none;position:absolute;z-index:20;left:0;right:0;top:64px;max-height:260px;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 14px 30px #0008"></div>
+            </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
               <div>
                 <label class="campo-label">🚌 Prefixo / OS</label>
@@ -6149,7 +6219,22 @@ async function renderFerrPCM(aba='painel'){
             </button>
           </div>
           <div style="margin-top:16px">
-            ${secTitle('🔩','Base de OS com Peças')}
+            ${secTitle('🚌','Carros do Valetamento 11 ao 20')}
+            ${carrosValet.length?carrosValet.map(c=>`
+              <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--orange);border-radius:10px;padding:12px;margin-bottom:8px">
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+                  <div>
+                    <div style="display:flex;gap:8px;align-items:center"><span style="font-size:10px;color:var(--text3);font-weight:900">#${c.posicao||'—'}</span><span style="font-family:'DM Mono',monospace;font-size:15px;font-weight:900;color:var(--blue)">${safeText(c.prefixo||'—')}</span></div>
+                    <div style="font-size:11px;color:${(c.prioridade||0)>0?'var(--red)':'var(--green)'};font-weight:900;margin-top:3px">${(c.prioridade||0)>0?'Vencido ':'A vencer '}${prevFmtKm(Math.abs(c.prioridade||0))}</div>
+                  </div>
+                  <button onclick="preencherValetCarro('${arg(c.prefixo)}','${arg(c.servicos)}')" style="padding:6px 10px;border-radius:8px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">Selecionar</button>
+                </div>
+                <div style="font-size:12px;color:var(--text2);margin-top:10px;line-height:1.35">${safeText(c.servicos||'Preventiva pesada')}</div>
+              </div>
+            `).join(''):`<div class="empty">Consolide a escala preventiva para trazer os carros 11 ao 20 da pesada</div>`}
+          </div>
+          <div style="margin-top:16px">
+            ${secTitle('🔩','OS com Peças Faltantes')}
             ${osPecas.length?osPecas.map(o=>`
               <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${o.prioridade==='urgente'?'var(--red)':'var(--amber)'};border-radius:10px;padding:12px;margin-bottom:8px">
                 <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
@@ -8066,6 +8151,24 @@ function prevSelecionarSemana(p){
   const levesSemana=p.leves.filter(c=>!garantiaSet.has(c.prefixo)&&!heavySet.has(c.prefixo)).slice(0,PREV_CAP.leveSemana);
   return {garantiasSemana,garantiaSet,pesadasSemana,levesSemana,heavySet};
 }
+function prevValetamentoPesada(p){
+  const semana=prevSelecionarSemana(p);
+  return p.pesadas
+    .filter(c=>!semana.garantiaSet.has(c.prefixo))
+    .slice(PREV_CAP.pesadaSemana,PREV_CAP.pesadaSemana*2)
+    .map((c,i)=>({
+      posicao:PREV_CAP.pesadaSemana+i+1,
+      prefixo:c.prefixo,
+      prioridade:c.prioridade||0,
+      servicos:prevResumoServicos(c,'pesada'),
+      plano:c.base?.planoNum||'002',
+      planoNome:c.base?.planoNome||'Preventiva Pesada'
+    }));
+}
+function prevSalvarValetamentoDaEscala(p){
+  const data=proximoSabadoISO();
+  return salvarValetamentoMetrica(data,prevValetamentoPesada(p));
+}
 function prevDiasSemana(){
   const hoje=new Date();
   const base=new Date(hoje);
@@ -8120,12 +8223,40 @@ function prevHtmlPropostasEscala(){
   if(!p.pesadas.length&&!p.leves.length&&!garantiaRadar.length&&!p.outros.length){
     return `<div style="padding:28px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhuma proposta encontrada para a pesquisa atual.</div>`;
   }
-  return `${prevHtmlEscalaSemanal(escala)}${prevHtmlOutrosPlanos(p,escala)}${prevHtmlFilasProposta(p)}${prevHtmlGarantias(garantiaRadar)}`;
+  return `${prevHtmlEscalaSemanal(escala)}${prevHtmlValetamentoProposto(p)}${prevHtmlOutrosPlanos(p,escala)}${prevHtmlFilasProposta(p)}${prevHtmlGarantias(garantiaRadar)}`;
 }
 
 function prevBadgeTipo(tipo){
   const cor=tipo==='pesada'?'var(--orange)':tipo==='leve'?'var(--green)':'var(--purple)';
   return `<span style="font-size:10px;color:${cor};border:1px solid ${cor};border-radius:5px;padding:2px 5px;font-weight:900;text-transform:uppercase">${tipo}</span>`;
+}
+
+function prevHtmlValetamentoProposto(p){
+  const itens=prevValetamentoPesada(p);
+  if(!itens.length) return '';
+  return `<section style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--orange);border-radius:10px;padding:12px;margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px">
+      <div>
+        <h3 style="margin:0;color:var(--text);font-size:16px">📦 Valetamento sugerido</h3>
+        <div style="font-size:12px;color:var(--text3);margin-top:3px">Preventiva pesada: carros do 11º ao 20º mais vencidos, preparados para a próxima outra semana.</div>
+      </div>
+      <button class="btn primary" onclick="prevGerarValetamentoPCM()">Subir valetamento no PCM</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(5,minmax(170px,1fr));gap:8px;overflow:auto">
+      ${itens.map(c=>`<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;min-height:92px">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b style="color:var(--blue);font-family:'DM Mono',monospace">${prevEsc(c.prefixo)}</b><span style="font-size:10px;color:var(--text3);font-weight:900">#${c.posicao}</span></div>
+        <div style="color:${(c.prioridade||0)>0?'var(--red)':'var(--green)'};font-weight:900;font-size:12px;margin-top:5px">${prevFmtKm(c.prioridade)}</div>
+        <div style="color:var(--amber);font-size:11px;line-height:1.3;margin-top:5px">${prevEsc(c.servicos)}</div>
+      </div>`).join('')}
+    </div>
+  </section>`;
+}
+
+function prevGerarValetamentoPCM(){
+  const p=prevGerarPropostas();
+  const rec=prevSalvarValetamentoDaEscala(p);
+  toast('✅ Valetamento enviado para o PCM: '+(rec.itens||[]).length+' carros');
+  renderFerrPCM('req_compra');
 }
 
 function prevHtmlCarroMini(slot){
@@ -8189,6 +8320,7 @@ function prevConsolidarEscala(){
   const vazios=linhas.filter(l=>!l.item).length;
   const validados=linhas.filter(l=>l.validado).length;
   const semanaSalva=prevSalvarSemanaHistorico(escala,linhas);
+  const valetSalvo=prevSalvarValetamentoDaEscala(p);
   let modal=document.getElementById('modal-prev-consolidado');
   if(!modal){
     modal=document.createElement('div');
@@ -8210,7 +8342,7 @@ function prevConsolidarEscala(){
         <tbody>${linhas.map(l=>`<tr style="border-top:1px solid var(--border)"><td style="padding:9px;color:var(--text2);white-space:nowrap;text-transform:capitalize">${prevEsc(l.dia)} ${prevEsc(l.data)}</td><td style="padding:9px">${prevBadgeTipo(l.tipo)}</td><td style="padding:9px;color:${l.item?'var(--blue)':'var(--amber)'};font-weight:900">${l.item?prevEsc(l.item.prefixo):'VAGA ABERTA'}</td><td style="padding:9px;color:${l.validado?'var(--green)':l.origem==='manual'?'var(--amber)':'var(--text3)'};font-weight:900">${l.item?(l.validado?'VALIDADO':l.origem==='manual'?'ALTERADO':'SUGERIDO'):'ABERTO'}</td><td style="padding:9px;color:var(--amber)">${l.item?prevEsc(prevResumoServicos(l.item,l.tipo)):'Aguardando seleção'}</td></tr>`).join('')}</tbody>
       </table>
     </div>
-    <div style="margin-top:10px;color:var(--green);font-size:12px;font-weight:800">Histórico da semana ${prevEsc(prevSemanaLabel(semanaSalva))} salvo/atualizado.</div>
+    <div style="margin-top:10px;color:var(--green);font-size:12px;font-weight:800">Histórico da semana ${prevEsc(prevSemanaLabel(semanaSalva))} salvo/atualizado. Valetamento PCM gerado com ${(valetSalvo.itens||[]).length} carro(s) do 11º ao 20º.</div>
   </div>`;
   modal.style.display='flex';
 }
