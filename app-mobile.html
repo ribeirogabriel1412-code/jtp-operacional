@@ -55,10 +55,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 /* SHEET */
 .sheet-ov{position:fixed;inset:0;background:#00000088;z-index:300;display:none;align-items:flex-end}
 .sheet-ov.open{display:flex}
-.sheet{background:var(--surface);border-radius:24px 24px 0 0;width:100%;max-height:92vh;overflow-y:auto;padding-bottom:calc(var(--safe-bot) + 16px)}
+.sheet{background:var(--surface);border-radius:24px 24px 0 0;width:100%;max-height:92vh;overflow:hidden;padding-bottom:calc(var(--safe-bot) + 16px);display:flex;flex-direction:column}
 .sheet-handle{width:40px;height:4px;background:var(--border);border-radius:99px;margin:12px auto}
-.sheet-ttl{font-size:17px;font-weight:800;padding:4px 20px 14px;border-bottom:1px solid var(--border)}
-.sheet-body{padding:16px 20px}
+.sheet-ttl{font-size:17px;font-weight:800;padding:4px 20px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
+.sheet-body{padding:16px 20px;overflow-y:auto;-webkit-overflow-scrolling:touch}
 /* CHECKLIST */
 .ck-row{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--border2)}
 .ck-row:last-child{border:none}
@@ -208,7 +208,7 @@ const NAV={
   lavador:[{id:'lavagem',ic:'🚿',lb:'Lavagem'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_patio:[{id:'patio',ic:'✅',lb:'Validar'},{id:'patio_man',ic:'🚗',lb:'Zona'},{id:'soltura',ic:'🚌',lb:'Soltura'},{id:'abastecimento',ic:'⛽',lb:'Abastec.'},{id:'lav_pesada',ic:'🚿',lb:'Lavagem'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_operacional:[{id:'patio_man',ic:'🚗',lb:'Pátio'},{id:'home',ic:'🏠',lb:'Início'}],
-  lider_oficina:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'checklist_equip',ic:'📋',lb:'3.4'},{id:'prev26',ic:'💰',lb:'2.6'},{id:'home',ic:'🏠',lb:'Início'}],
+  lider_oficina:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_pcm:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'checklist_equip',ic:'📋',lb:'3.4'},{id:'prev26',ic:'💰',lb:'2.6'},{id:'home',ic:'🏠',lb:'Início'}],
   assistente_pcm:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'checklist_equip',ic:'📋',lb:'3.4'},{id:'prev26',ic:'💰',lb:'2.6'},{id:'home',ic:'🏠',lb:'Início'}],
   manobrista:[{id:'patio_man',ic:'🚗',lb:'Pátio'},{id:'home',ic:'🏠',lb:'Início'}],
@@ -1147,7 +1147,9 @@ async function _renderOS(){
   var cor38=pct38>=100?'var(--green)':pct38>=60?'var(--amber)':'var(--blue)';
   var pessoas=parseInt(oc.manutentores)||0;
   var ST={em_manutencao:'🔧 Manutenção',aguardando_peca:'📦 Ag. Peça',aguardando_aprovacao:'⏳ Ag. Aprovação',liberado:'✅ Liberado'};
-  var podeEd=['lider_oficina','lider_pcm','assistente_pcm'].includes(cargo());
+  var subm=ckl.some(function(i){return i.submetido;});
+  var aprov=ckl.some(function(i){return i.aprovado;});
+  var podeEd=['lider_oficina','lider_pcm','assistente_pcm'].includes(cargo())&&!subm&&!aprov;
 
   // Abas — data-aba, sem onclick dinâmico
   var tabs='<div style="display:flex;gap:6px;margin-bottom:12px">';
@@ -1194,7 +1196,15 @@ async function _renderOS(){
       '</button>';
     });
     var barQ='<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase">Qualificação</span><span style="font-size:14px;font-weight:900;color:'+corQ+'">'+qualQ+'/'+totQ+'</span></div><div style="background:var(--border);border-radius:6px;height:5px;overflow:hidden"><div style="height:100%;width:'+pctQ+'%;background:'+corQ+';border-radius:6px"></div></div></div>';
-    corpo=barQ+btns;
+    var envio='';
+    if(subm){
+      envio='<div style="margin-top:12px;background:#F59E0B12;border:1px solid #F59E0B40;color:var(--amber);border-radius:10px;padding:11px 12px;font-size:12px;font-weight:700;text-align:center">⏳ Enviado ao PCM para aprovação</div>';
+    } else if(aprov){
+      envio='<div style="margin-top:12px;background:#00C48C12;border:1px solid #00C48C40;color:var(--green);border-radius:10px;padding:11px 12px;font-size:12px;font-weight:700;text-align:center">✅ Aprovado pelo PCM</div>';
+    } else if(pctQ>=100&&totQ>0){
+      envio='<button data-action="enviar-pcm" style="width:100%;margin-top:12px;padding:14px;border-radius:12px;border:none;background:var(--green);color:#fff;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">Enviar liberação para PCM</button>';
+    }
+    corpo=barQ+btns+envio;
   }
   else if(aba==='ck38'){
     var bar38='<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase">Checklist 3.8</span><span style="font-size:14px;font-weight:900;color:'+cor38+'">'+qual38+'/'+TOTAL_38+'</span></div><div style="background:var(--border);border-radius:6px;height:5px;overflow:hidden"><div style="height:100%;width:'+pct38+'%;background:'+cor38+';border-radius:6px"></div></div></div>';
@@ -1260,6 +1270,14 @@ async function _renderOS(){
       document.getElementById('shbody').onclick=null;
       await _renderSetor(ocId, el.dataset.setor);
     }
+    else if(action==='enviar-pcm'){
+      if(!confirm('Enviar checklist de liberação para aprovação do PCM?')) return;
+      await sb.from('checklist_liberacao').update({submetido:true,submetido_por:S.perfil&&S.perfil.nome,submetido_em:new Date().toISOString()}).eq('ocorrencia_id',ocId);
+      await sb.from('ocorrencias_22').update({status:'aguardando_aprovacao',updated_at:new Date().toISOString()}).eq('id',ocId);
+      toast('📤 Enviado ao PCM');
+      document.getElementById('shbody').onclick=null;
+      await _renderOS();
+    }
     else if(action==='set38'){
       var key=el.dataset.key, val=el.dataset.val;
       if(!_OS.dados38[ocId]) _OS.dados38[ocId]={};
@@ -1292,10 +1310,11 @@ async function _renderSetor(ocId,setor){
   var r2=await sb.from('ocorrencias_22').select('prefixo').eq('id',ocId).single();
   var ckl=r1.data||[];
   var itens=ckl.filter(function(i){var m=i.item&&i.item.match(/^\[([^\]]+)\]/);return (sg&&sg.gr||[]).includes(m?m[1]:'GERAL');});
-  var podeEd=['lider_oficina','lider_pcm','assistente_pcm'].includes(cargo());
+  var subm=ckl.some(function(i){return i.submetido;});
+  var aprov=ckl.some(function(i){return i.aprovado;});
+  var podeEd=['lider_oficina','lider_pcm','assistente_pcm'].includes(cargo())&&!subm&&!aprov;
   var vTot=itens.filter(function(i){return i.verificado||i.nao_se_aplica;}).length;
   var tTot=itens.filter(function(i){return i.trocado||i.nao_se_aplica;}).length;
-  var faseV=vTot<itens.length;
 
   var rows='';
   itens.forEach(function(it){
@@ -1307,7 +1326,7 @@ async function _renderSetor(ocId,setor){
     if(podeEd){
       // data-itemid, data-tipo — sem nenhum valor dinâmico no atributo onclick
       rows+='<button data-action="tog" data-itemid="'+it.id+'" data-tipo="v" data-setor="'+setor+'" '+(nsa?'disabled':'')+' class="ck-b '+(it.verificado?'von':'')+'" style="touch-action:manipulation">V</button>';
-      rows+='<button data-action="tog" data-itemid="'+it.id+'" data-tipo="t" data-setor="'+setor+'" '+(!it.verificado||nsa||faseV?'disabled':'')+' class="ck-b '+(it.trocado?'ton':'')+'" style="touch-action:manipulation">T</button>';
+      rows+='<button data-action="tog" data-itemid="'+it.id+'" data-tipo="t" data-setor="'+setor+'" '+(!it.verificado||nsa?'disabled':'')+' class="ck-b '+(it.trocado?'ton':'')+'" style="touch-action:manipulation">T</button>';
       rows+='<button data-action="tog" data-itemid="'+it.id+'" data-tipo="nsa" data-setor="'+setor+'" class="ck-b '+(nsa?'na':'')+'" style="touch-action:manipulation">N/A</button>';
     } else {
       rows+='<span style="font-size:11px;color:'+(it.trocado?'var(--green)':it.verificado?'var(--blue)':'var(--text4)')+'">'+( it.trocado?'T✓':it.verificado?'V✓':nsa?'N/A':'—')+'</span>';
@@ -1511,7 +1530,6 @@ async function abrirSetor(ocId,setor){
     const subm=(ckl||[]).some(i=>i.submetido),aprov=(ckl||[]).some(i=>i.aprovado);
     const podeEd=['lider_oficina','lider_pcm','assistente_pcm'].includes(cargo())&&!subm&&!aprov;
     const vTot=itens.filter(i=>i.verificado||i.nao_se_aplica).length;
-    const faseV=vTot<itens.length;
     openSheet((sg?.ic||'')+' '+setor+' — '+oc?.prefixo,`
       <div style="font-size:11px;color:var(--text3);margin-bottom:10px">${itens.length} itens · V:${vTot}/${itens.length}</div>
       <div style="max-height:58vh;overflow-y:auto">
@@ -1522,7 +1540,7 @@ async function abrirSetor(ocId,setor){
             <div style="flex:1;font-size:12px;line-height:1.4;color:${it.trocado?'var(--green)':it.verificado?'var(--text)':'var(--text3)'}">${txt}</div>
             ${podeEd?`
               <button onclick="togCk('${it.id}','v','${ocId}','${setor}')" class="ck-b ${it.verificado?'von':''}" ${nsa?'disabled':''}>V</button>
-              <button onclick="togCk('${it.id}','t','${ocId}','${setor}')" class="ck-b ${it.trocado?'ton':''}" ${!it.verificado||nsa||faseV?'disabled':''}>T</button>
+              <button onclick="togCk('${it.id}','t','${ocId}','${setor}')" class="ck-b ${it.trocado?'ton':''}" ${!it.verificado||nsa?'disabled':''}>T</button>
               <button onclick="togCk('${it.id}','nsa','${ocId}','${setor}')" class="ck-b ${nsa?'na':''}">N/A</button>
             `:`<span style="font-size:11px;color:${it.trocado?'var(--green)':it.verificado?'var(--blue)':'var(--text4)'}">${it.trocado?'T✓':it.verificado?'V✓':nsa?'N/A':'—'}</span>`}
           </div>`;
