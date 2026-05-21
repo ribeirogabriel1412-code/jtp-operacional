@@ -3823,7 +3823,6 @@ async function gerarPDFFechamento(gid, garaGemNome, data, dataFmt, turnoNome, pr
 const EQUIP_OFICINA_34=[
   {id:'compressor',     nome:'Compressor de ar',                               criterio:'Verificar nível de óleo e pressão'},
   {id:'scanner',        nome:'Máquina de diagnóstico eletrônico (scanner)',     criterio:'Verificar conexão e atualização'},
-  {id:'alinhamento',    nome:'Máquina de alinhamento',                          criterio:'Verificar funcionamento'},
   {id:'esmeril',        nome:'Esmerilhadeira / Furadeira (todas)',              criterio:'Verificar condição dos discos e brocas'},
   {id:'macaco',         nome:'Macaco',                                          criterio:'Verificar capacidade e condição'},
   {id:'prensa',         nome:'Prensa',                                          criterio:'Verificar se não há nenhum vazamento hidráulico'},
@@ -3878,7 +3877,6 @@ const EQUIP_MECMED_34=[
 const SECOES_34=[
   {id:'of',titulo:'🔧 Equipamentos da Oficina',cor:'var(--blue)',itens:EQUIP_OFICINA_34},
   {id:'pt',titulo:'🚌 Equipamentos de Pátio',cor:'var(--amber)',itens:EQUIP_PATIO_34},
-  {id:'mec',titulo:'🏭 3.4 MECMED Engenharia',cor:'var(--purple)',itens:EQUIP_MECMED_34},
 ];
 const TODOS_EQUIP_34=SECOES_34.flatMap(s=>s.itens.map(e=>({...e,secao:s.id})));
 
@@ -4060,8 +4058,8 @@ async function telaChecklistEquip(){
               </button>
               ${(S.perfil?.cargo==='lider_pcm'||S.perfil?.is_admin)?`<button onclick="fecharNOK('${n.id}')"
                 style="flex:1;padding:7px;border-radius:7px;border:1px solid var(--green);background:#00C48C10;color:var(--green);font-size:11px;font-weight:700;font-family:inherit;cursor:pointer">
-                ✅ Resolver
-              </button>`:'<div style="flex:1;text-align:center;font-size:10px;color:var(--text4);padding:7px">Líder PCM resolve</div>'}
+                ✅ Resolver tratativa
+              </button>`:'<div style="flex:1;text-align:center;font-size:10px;color:var(--text4);padding:7px">Tratativa aguardando Líder PCM</div>'}
             </div>
           </div>`;
         }).join('')}
