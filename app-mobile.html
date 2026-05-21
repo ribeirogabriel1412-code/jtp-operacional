@@ -1118,14 +1118,6 @@ async function garantirChecklistLibMobile(oc){
 
 async function abrirOS_v2(ocId){
   _OS.id=ocId; _OS.aba='qual';
-  if(!_OS.dados38[ocId]){
-    var gid=getGid();
-    var r=await sb.from('ocorrencias_22').select('prefixo').eq('id',ocId).single();
-    if(r.data){
-      var r2=await sb.from('checklist_38').select('dados').eq('garagem_id',gid).eq('prefixo',r.data.prefixo).order('criado_em',{ascending:false}).limit(1);
-      _OS.dados38[ocId]=(r2.data&&r2.data[0]&&r2.data[0].dados)||{};
-    }
-  }
   await _renderOS();
 }
 
@@ -1137,27 +1129,15 @@ async function _renderOS(){
   var r2=await garantirChecklistLibMobile(_OS.oc);
   _OS.ckl=r2||[];
 
-  var oc=_OS.oc, ckl=_OS.ckl, aba=_OS.aba, dados38=_OS.dados38[ocId]||{};
+  var oc=_OS.oc, ckl=_OS.ckl;
   var totQ=ckl.length, qualQ=ckl.filter(function(i){return i.trocado||i.nao_se_aplica;}).length;
   var pctQ=totQ>0?Math.round(qualQ/totQ*100):0;
-  var qual38=0;
-  SECS38.forEach(function(sec){sec.itens.forEach(function(it){if(dados38[sec.sec+'_'+it.id]==='sim')qual38++;});});
-  var pct38=Math.round(qual38/TOTAL_38*100);
   var corQ=pctQ>=100?'var(--green)':pctQ>=60?'var(--amber)':'var(--blue)';
-  var cor38=pct38>=100?'var(--green)':pct38>=60?'var(--amber)':'var(--blue)';
   var pessoas=parseInt(oc.manutentores)||0;
   var ST={em_manutencao:'🔧 Manutenção',aguardando_peca:'📦 Ag. Peça',aguardando_aprovacao:'⏳ Ag. Aprovação',liberado:'✅ Liberado'};
   var subm=ckl.some(function(i){return i.submetido;});
   var aprov=ckl.some(function(i){return i.aprovado;});
   var podeEd=['lider_oficina','lider_pcm','assistente_pcm'].includes(cargo())&&!subm&&!aprov;
-
-  // Abas — data-aba, sem onclick dinâmico
-  var tabs='<div style="display:flex;gap:6px;margin-bottom:12px">';
-  [{id:'qual',ic:'✅',l:'Qualificação',v:qualQ+'/'+totQ,c:corQ},{id:'ck38',ic:'📋',l:'3.8',v:qual38+'/'+TOTAL_38,c:cor38},{id:'export',ic:'📄',l:'PDF',v:'',c:'var(--text4)'}].forEach(function(a){
-    var sel=aba===a.id;
-    tabs+='<button data-aba="'+a.id+'" data-action="muda-aba" style="flex:1;padding:8px 4px;border-radius:10px;border:2px solid '+(sel?'var(--blue)':'var(--border)')+';background:'+(sel?'#3B82F618':'transparent')+';color:'+(sel?'var(--blue)':'var(--text3)')+';font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">'+a.ic+' '+a.l+'<br><span style="color:'+a.c+'">'+a.v+'</span></button>';
-  });
-  tabs+='</div>';
 
   // Infobar — data-action para editar pessoas e status
   var info='<div style="display:flex;gap:8px;margin-bottom:12px">'+
@@ -1182,65 +1162,28 @@ async function _renderOS(){
     :'')+
   '</div>';
 
-  // Corpo por aba
-  var corpo='';
-  if(aba==='qual'){
-    var btns='';
-    SETORES_M.forEach(function(sg){
-      var its=ckl.filter(function(i){var m=i.item&&i.item.match(/^\[([^\]]+)\]/);return (sg.gr||[]).includes(m?m[1]:'GERAL');});
-      if(!its.length) return;
-      var tS=its.filter(function(i){return i.trocado||i.nao_se_aplica;}).length;
-      var ok=tS===its.length, part=tS>0&&tS<its.length;
-      btns+='<button data-setor="'+sg.key+'" data-action="abre-setor" style="display:inline-flex;align-items:center;gap:5px;background:'+(ok?'#00C48C12':part?'#F59E0B12':'var(--surface2)')+';border:1px solid '+(ok?'#00C48C40':part?'#F59E0B40':'var(--border)')+';border-radius:10px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;margin:3px;color:'+(ok?'var(--green)':part?'var(--amber)':'var(--text2)')+';font-family:inherit">'+
-        sg.ic+' '+sg.key+' '+(ok?'✅':tS+'/'+its.length)+
-      '</button>';
-    });
-    var barQ='<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase">Qualificação</span><span style="font-size:14px;font-weight:900;color:'+corQ+'">'+qualQ+'/'+totQ+'</span></div><div style="background:var(--border);border-radius:6px;height:5px;overflow:hidden"><div style="height:100%;width:'+pctQ+'%;background:'+corQ+';border-radius:6px"></div></div></div>';
-    var envio='';
-    if(subm){
-      envio='<div style="margin-top:12px;background:#F59E0B12;border:1px solid #F59E0B40;color:var(--amber);border-radius:10px;padding:11px 12px;font-size:12px;font-weight:700;text-align:center">⏳ Enviado ao PCM para aprovação</div>';
-    } else if(aprov){
-      envio='<div style="margin-top:12px;background:#00C48C12;border:1px solid #00C48C40;color:var(--green);border-radius:10px;padding:11px 12px;font-size:12px;font-weight:700;text-align:center">✅ Aprovado pelo PCM</div>';
-    } else if(pctQ>=100&&totQ>0){
-      envio='<button data-action="enviar-pcm" style="width:100%;margin-top:12px;padding:14px;border-radius:12px;border:none;background:var(--green);color:#fff;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">Enviar liberação para PCM</button>';
-    }
-    corpo=barQ+btns+envio;
+  var btns='';
+  SETORES_M.forEach(function(sg){
+    var its=ckl.filter(function(i){var m=i.item&&i.item.match(/^\[([^\]]+)\]/);return (sg.gr||[]).includes(m?m[1]:'GERAL');});
+    if(!its.length) return;
+    var tS=its.filter(function(i){return i.trocado||i.nao_se_aplica;}).length;
+    var ok=tS===its.length, part=tS>0&&tS<its.length;
+    btns+='<button data-setor="'+sg.key+'" data-action="abre-setor" style="display:inline-flex;align-items:center;gap:5px;background:'+(ok?'#00C48C12':part?'#F59E0B12':'var(--surface2)')+';border:1px solid '+(ok?'#00C48C40':part?'#F59E0B40':'var(--border)')+';border-radius:10px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;margin:3px;color:'+(ok?'var(--green)':part?'var(--amber)':'var(--text2)')+';font-family:inherit">'+
+      sg.ic+' '+sg.key+' '+(ok?'✅':tS+'/'+its.length)+
+    '</button>';
+  });
+  var barQ='<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase">Checklist de Liberação</span><span style="font-size:14px;font-weight:900;color:'+corQ+'">'+qualQ+'/'+totQ+'</span></div><div style="background:var(--border);border-radius:6px;height:5px;overflow:hidden"><div style="height:100%;width:'+pctQ+'%;background:'+corQ+';border-radius:6px"></div></div></div>';
+  var envio='';
+  if(subm){
+    envio='<div style="margin-top:12px;background:#F59E0B12;border:1px solid #F59E0B40;color:var(--amber);border-radius:10px;padding:11px 12px;font-size:12px;font-weight:700;text-align:center">⏳ Enviado ao PCM para aprovação</div>';
+  } else if(aprov){
+    envio='<div style="margin-top:12px;background:#00C48C12;border:1px solid #00C48C40;color:var(--green);border-radius:10px;padding:11px 12px;font-size:12px;font-weight:700;text-align:center">✅ Aprovado pelo PCM</div>';
+  } else if(pctQ>=100&&totQ>0){
+    envio='<button data-action="enviar-pcm" style="width:100%;margin-top:12px;padding:14px;border-radius:12px;border:none;background:var(--green);color:#fff;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">Enviar liberação para PCM</button>';
   }
-  else if(aba==='ck38'){
-    var bar38='<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase">Checklist 3.8</span><span style="font-size:14px;font-weight:900;color:'+cor38+'">'+qual38+'/'+TOTAL_38+'</span></div><div style="background:var(--border);border-radius:6px;height:5px;overflow:hidden"><div style="height:100%;width:'+pct38+'%;background:'+cor38+';border-radius:6px"></div></div></div>';
-    var secs='';
-    SECS38.forEach(function(sec){
-      var secQual=sec.itens.filter(function(it){return dados38[sec.sec+'_'+it.id]==='sim';}).length;
-      secs+='<div style="margin-bottom:14px"><div style="font-size:11px;font-weight:800;color:'+(secQual===sec.itens.length?'var(--green)':'var(--text3)')+';text-transform:uppercase;border-bottom:1px solid var(--border2);padding-bottom:5px;margin-bottom:4px;display:flex;justify-content:space-between"><span>'+sec.sec+'</span><span>'+(secQual===sec.itens.length?'✅':secQual+'/'+sec.itens.length)+'</span></div>';
-      sec.itens.forEach(function(it){
-        var key=sec.sec+'_'+it.id;
-        var val=dados38[key]||'';
-        secs+='<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border2)">'+
-          '<div style="flex:1;font-size:12px;line-height:1.4;color:'+(val==='sim'?'var(--green)':val==='nao'?'var(--red)':'var(--text)')+'">'+it.txt+'</div>';
-        if(podeEd){
-          secs+='<button data-action="set38" data-key="'+key+'" data-val="sim" style="padding:5px 11px;border-radius:7px;border:2px solid '+(val==='sim'?'var(--green)':'var(--border)')+';background:'+(val==='sim'?'#00C48C18':'transparent')+';color:'+(val==='sim'?'var(--green)':'var(--text3)')+';font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">SIM</button>'+
-                 '<button data-action="set38" data-key="'+key+'" data-val="nao" style="padding:5px 11px;border-radius:7px;border:2px solid '+(val==='nao'?'var(--red)':'var(--border)')+';background:'+(val==='nao'?'#EF444418':'transparent')+';color:'+(val==='nao'?'var(--red)':'var(--text3)')+';font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">NÃO</button>';
-        } else {
-          secs+='<span style="font-size:11px;font-weight:700;color:'+(val==='sim'?'var(--green)':val==='nao'?'var(--red)':'var(--text4)')+'">'+( val==='sim'?'✅':val==='nao'?'❌':'—')+'</span>';
-        }
-        secs+='</div>';
-      });
-      secs+='</div>';
-    });
-    var btnSalvar=podeEd?'<button data-action="salvar38" style="width:100%;padding:12px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;margin-top:8px">💾 Salvar 3.8</button>':'';
-    corpo=bar38+'<div style="max-height:52vh;overflow-y:auto">'+secs+'</div>'+btnSalvar;
-  }
-  else if(aba==='export'){
-    corpo='<div style="text-align:center;padding:8px 0 16px">'+
-      '<div style="display:flex;gap:10px;justify-content:center;margin-bottom:16px">'+
-        '<div style="flex:1;background:var(--surface2);border-radius:10px;padding:12px"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">Qualificação</div><div style="font-size:24px;font-weight:900;color:'+corQ+'">'+pctQ+'%</div><div style="font-size:11px;color:var(--text3)">'+qualQ+'/'+totQ+'</div></div>'+
-        '<div style="flex:1;background:var(--surface2);border-radius:10px;padding:12px"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">Check. 3.8</div><div style="font-size:24px;font-weight:900;color:'+cor38+'">'+pct38+'%</div><div style="font-size:11px;color:var(--text3)">'+qual38+'/'+TOTAL_38+'</div></div>'+
-      '</div>'+
-      '<button data-action="exportar" style="width:100%;padding:16px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer">📄 Gerar & Compartilhar PDF</button>'+
-    '</div>';
-  }
+  var corpo=barQ+btns+envio;
 
-  openSheet(oc.prefixo+' — '+(oc.tipo||'').replace(/_/g,' '), tabs+info+corpo);
+  openSheet(oc.prefixo+' — '+(oc.tipo||'').replace(/_/g,' '), info+corpo);
 
   // ── EVENT DELEGATION no sheet body ─────────────────────────
   document.getElementById('shbody').onclick=async function(e){
@@ -1248,12 +1191,7 @@ async function _renderOS(){
     if(!el) return;
     var action=el.dataset.action;
 
-    if(action==='muda-aba'){
-      _OS.aba=el.dataset.aba;
-      document.getElementById('shbody').onclick=null;
-      await _renderOS();
-    }
-    else if(action==='editar-pessoas'){
+    if(action==='editar-pessoas'){
       document.getElementById('shbody').onclick=null;
       _editarPessoas(ocId, pessoas);
     }
@@ -1277,25 +1215,6 @@ async function _renderOS(){
       toast('📤 Enviado ao PCM');
       document.getElementById('shbody').onclick=null;
       await _renderOS();
-    }
-    else if(action==='set38'){
-      var key=el.dataset.key, val=el.dataset.val;
-      if(!_OS.dados38[ocId]) _OS.dados38[ocId]={};
-      _OS.dados38[ocId][key]=val;
-      document.getElementById('shbody').onclick=null;
-      await _renderOS();
-    }
-    else if(action==='salvar38'){
-      var gid=getGid();
-      var rp=await sb.from('ocorrencias_22').select('prefixo').eq('id',ocId).single();
-      if(!rp.data){toast('Erro','err');return;}
-      var res=await sb.from('checklist_38').upsert({garagem_id:gid,prefixo:rp.data.prefixo,dados:_OS.dados38[ocId]||{},criado_por:S.perfil&&S.perfil.nome,criado_em:new Date().toISOString()},{onConflict:'garagem_id,prefixo'});
-      if(res.error){toast('Erro: '+res.error.message,'err');return;}
-      toast('✅ 3.8 salvo!');
-    }
-    else if(action==='exportar'){
-      document.getElementById('shbody').onclick=null;
-      await _exportarOS(ocId);
     }
   };
 }
