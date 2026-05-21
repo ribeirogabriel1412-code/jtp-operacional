@@ -1318,7 +1318,54 @@ function toggleSolturaDetalhe(){
 }
 
 function renderManutencao(){setMain(`${secTitle('🔧','Ordens de Serviço')}<div class="empty"><div style="font-size:40px">🔧</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Em desenvolvimento</div></div><div class="info-blue info-banner">🔗 Fase 2: OS integradas ao banco + integração Praxio</div>`)}
-function renderAlmoxarifado(){setMain(`${secTitle('📦','Almoxarifado')}<div class="empty"><div style="font-size:40px">📦</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Em desenvolvimento</div></div><div class="info-blue info-banner">🔗 Fase 2: estoque, movimentações, inventário, Praxio/SAP</div>`)}
+async function renderAlmoxarifado(){
+  const gid=getGid();
+  const data=S._valetData||proximoSabadoISO();
+  setMain(`<div class="loading"><div class="spinner"></div></div>`);
+  const{data:reqs}=await sb.from('requisicoes_compra')
+    .select('*').eq('garagem_id',gid).eq('data',data)
+    .order('prefixo',{ascending:true}).order('criado_em',{ascending:true});
+  const lista=(reqs||[]).filter(r=>['solicitado_pcm','separado','pedido_compra','comprado','pendente','aprovado'].includes(r.status||''));
+  const safe=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const chegada=id=>JSON.parse(localStorage.getItem('valet_chegada_'+id)||'{}')?.data||'';
+  const qtdSep=lista.filter(r=>r.status==='separado').length;
+  const qtdCompra=lista.filter(r=>r.status==='pedido_compra').length;
+  const qtdComprado=lista.filter(r=>r.status==='comprado').length;
+  setMain(`
+    ${secTitle('📦','Almoxarifado - Valetamento',`<input type="date" value="${data}" onchange="S._valetData=this.value;renderAlmoxarifado()" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 10px;font-family:'DM Mono',monospace">`)}
+    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px">
+      ${kpi('Itens solicitados',lista.length,undefined,'',false,0)}
+      ${kpi('Separados',qtdSep,undefined,'',false,0)}
+      ${kpi('Pedido compra',qtdCompra,0,'',true,0)}
+      ${kpi('Comprados',qtdComprado,undefined,'',false,0)}
+    </div>
+    <div class="tbl-wrap"><table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:var(--surface2)">
+        <th style="padding:9px 12px;text-align:left;font-size:11px;color:var(--text3)">Carro / OS</th>
+        <th style="padding:9px 12px;text-align:left;font-size:11px;color:var(--text3)">Item</th>
+        <th style="padding:9px 12px;text-align:center;font-size:11px;color:var(--text3)">Qtd</th>
+        <th style="padding:9px 12px;text-align:center;font-size:11px;color:var(--text3)">Status</th>
+        <th style="padding:9px 12px;text-align:left;font-size:11px;color:var(--text3)">Chegada</th>
+        <th style="padding:9px 12px;text-align:center;font-size:11px;color:var(--text3)">Ação Almox.</th>
+      </tr></thead>
+      <tbody>${lista.length?lista.map(r=>`
+        <tr style="border-bottom:1px solid var(--border2)">
+          <td style="padding:9px 12px;font-family:'DM Mono',monospace;font-weight:800;color:var(--blue)">${safe(r.prefixo||'—')}</td>
+          <td style="padding:9px 12px;font-size:12px">${safe(r.peca)}${r.justificativa?`<div style="font-size:10px;color:var(--text3);margin-top:3px">${safe(r.justificativa)}</div>`:''}</td>
+          <td style="padding:9px 12px;text-align:center;font-family:'DM Mono',monospace">${r.quantidade||1}</td>
+          <td style="padding:9px 12px;text-align:center">${badgeValetStatus(r.status)}</td>
+          <td style="padding:9px 12px">
+            <input type="date" id="cheg-${r.id}" value="${chegada(r.id)}" onchange="salvarChegadaValet('${r.id}',this.value)" style="width:140px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 8px;font-family:'DM Mono',monospace;font-size:12px">
+          </td>
+          <td style="padding:9px 12px;text-align:center;white-space:nowrap">
+            <button onclick="atualizarReqCompra('${r.id}','separado','almox')" style="padding:5px 9px;border-radius:7px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">Separar</button>
+            <button onclick="atualizarReqCompra('${r.id}','pedido_compra','almox')" style="padding:5px 9px;border-radius:7px;border:1px solid var(--amber);background:#F59E0B18;color:var(--amber);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;margin-left:4px">Comprar</button>
+            <button onclick="atualizarReqCompra('${r.id}','comprado','almox')" style="padding:5px 9px;border-radius:7px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;margin-left:4px">Chegou</button>
+          </td>
+        </tr>`).join(''):`<tr><td colspan="6"><div class="empty">Nenhum valetamento para este sábado</div></td></tr>`}</tbody>
+    </table></div>
+  `);
+}
 
 // ADMIN — GESTÃO DE USUÁRIOS
 // ══════════════════════════════════════════════════════════════
@@ -5617,6 +5664,7 @@ async function salvarCk38Site(){
 
 async function salvarReqCompraSite(){
   const gid=getGid();
+  const dataValet=document.getElementById('req-data-site')?.value||S._valetData||proximoSabadoISO();
   const peca=document.getElementById('req-peca-site')?.value?.trim();
   const prefixo=document.getElementById('req-pref-site')?.value?.trim();
   const qtd=parseInt(document.getElementById('req-qtd-site')?.value)||1;
@@ -5626,21 +5674,60 @@ async function salvarReqCompraSite(){
   const{error}=await sb.from('requisicoes_compra').insert({
     garagem_id:gid, peca, prefixo:prefixo||null, quantidade:qtd,
     valor_estimado:valor||null, justificativa:just||null,
-    data:hoje(), status:'pendente',
+    data:dataValet, status:'solicitado_pcm',
     criado_por:S.perfil?.nome||null, criado_em:new Date().toISOString(),
   });
   if(error){toast('Erro: '+error.message,'err');return;}
-  toast('✅ Solicitação registrada!');
+  toast('✅ Item registrado no valetamento!');
   renderFerrPCM('req_compra');
 }
 
-async function atualizarReqCompra(id, status){
+function proximoSabadoISO(base=new Date()){
+  const d=new Date(base.getFullYear(),base.getMonth(),base.getDate());
+  const faltam=(6-d.getDay()+7)%7;
+  d.setDate(d.getDate()+faltam);
+  return d.toISOString().slice(0,10);
+}
+
+function badgeValetStatus(status){
+  const map={
+    solicitado_pcm:{txt:'Solicitado PCM',c:'var(--amber)',bg:'#F59E0B20'},
+    pendente:{txt:'Solicitado PCM',c:'var(--amber)',bg:'#F59E0B20'},
+    aprovado:{txt:'Aprovado',c:'var(--green)',bg:'#00C48C20'},
+    separado:{txt:'Separado',c:'var(--green)',bg:'#00C48C20'},
+    pedido_compra:{txt:'Pedido compra',c:'var(--red)',bg:'#EF444420'},
+    comprado:{txt:'Comprado / chegou',c:'var(--blue)',bg:'#2563EB20'},
+    reprovado:{txt:'Reprovado',c:'var(--red)',bg:'#EF444420'}
+  };
+  const s=map[status]||{txt:status||'—',c:'var(--text3)',bg:'var(--surface2)'};
+  return `<span style="font-size:11px;padding:3px 8px;border-radius:6px;font-weight:800;background:${s.bg};color:${s.c}">${s.txt}</span>`;
+}
+
+function preencherReqCompraSite(prefixo, peca, numero){
+  const prefEl=document.getElementById('req-pref-site');
+  const pecaEl=document.getElementById('req-peca-site');
+  const qtdEl=document.getElementById('req-qtd-site');
+  const justEl=document.getElementById('req-just-site');
+  if(prefEl) prefEl.value=numero?`${prefixo||''} / ${numero}`:(prefixo||'');
+  if(pecaEl) pecaEl.value=peca||'';
+  if(qtdEl) qtdEl.value=1;
+  if(justEl&&!justEl.value) justEl.value='Peça faltante levantada na OS';
+  pecaEl?.focus();
+  toast('Item puxado para a cesta. Confira e adicione.');
+}
+
+function salvarChegadaValet(id,data){
+  localStorage.setItem('valet_chegada_'+id,JSON.stringify({data,por:S.perfil?.nome||null,em:new Date().toISOString()}));
+  toast('Previsão de chegada atualizada.');
+}
+
+async function atualizarReqCompra(id, status, origem='pcm'){
   const{error}=await sb.from('requisicoes_compra').update({
     status, atualizado_por:S.perfil?.nome||null, atualizado_em:new Date().toISOString()
   }).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
-  toast(status==='aprovado'?'✅ Aprovado!':'❌ Reprovado');
-  renderFerrPCM('req_compra');
+  toast(status==='separado'?'✅ Item separado!':status==='pedido_compra'?'🛒 Enviado para compra':status==='comprado'?'✅ Compra recebida':status==='aprovado'?'✅ Aprovado!':'Status atualizado');
+  if(origem==='almox') renderAlmoxarifado(); else renderFerrPCM('req_compra');
 }
 
 async function salvarMovPneuSite(){
@@ -5725,6 +5812,7 @@ async function renderFerrPCM(aba='painel'){
     <button class="filtro-btn${aba==='painel'?' active':''}" onclick="renderFerrPCM('painel')">📊 Painel</button>
     <button class="filtro-btn${aba==='ck37'?' active':''}" onclick="renderFerrPCM('ck37')">✅ 3.7 Supervisão</button>
     <button class="filtro-btn${aba==='mov_pneu'?' active':''}" onclick="renderFerrPCM('mov_pneu')">⚙️ Pneus</button>
+    <button class="filtro-btn${aba==='req_compra'?' active':''}" onclick="renderFerrPCM('req_compra')">📦 Valetamento</button>
     <button class="filtro-btn${aba==='consolidado'?' active':''}" onclick="renderFerrPCM('consolidado')">📋 2.6 - Custo</button>
     <button class="filtro-btn${aba==='fech24'?' active':''}" onclick="renderFerrPCM('fech24')">📋 2.4 Fechamento</button>
     <button class="filtro-btn${aba==='conf_orc'?' active':''}" onclick="renderFerrPCM('conf_orc')">📊 Conferência</button>
@@ -5980,19 +6068,53 @@ async function renderFerrPCM(aba='painel'){
 
   // ── ABA REQUISIÇÃO DE COMPRA ─────────────────────────────────────────────
   if(aba==='req_compra'){
-    const{data:reqs}=await sb.from('requisicoes_compra')
-      .select('*').eq('garagem_id',gid).eq('data',data)
-      .order('criado_em',{ascending:false});
-
-    const totalVal=(reqs||[]).reduce((s,r)=>s+parseFloat(r.valor_estimado||0),0);
-    const pendentes=(reqs||[]).filter(r=>r.status==='pendente').length;
+    const dataValet=S._valetData||proximoSabadoISO();
+    const [reqRes,osRes]=await Promise.all([
+      sb.from('requisicoes_compra')
+        .select('*').eq('garagem_id',gid).eq('data',dataValet)
+        .order('criado_em',{ascending:false}),
+      sb.from('ocorrencias_22')
+        .select('id,numero,prefixo,tipo,status,prioridade,pecas_necessarias,hora_entrada,custo_previsto')
+        .eq('garagem_id',gid).neq('status','liberado')
+        .not('pecas_necessarias','is',null)
+        .order('hora_entrada',{ascending:false}).limit(30)
+    ]);
+    const reqs=reqRes.data||[];
+    const osPecas=(osRes.data||[]).filter(o=>(o.pecas_necessarias||'').trim());
+    const safeText=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    const arg=v=>String(v??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\r?\n/g,' | ');
+    const totalVal=reqs.reduce((s,r)=>s+(parseFloat(r.valor_estimado||0)*parseInt(r.quantidade||1)),0);
+    const solicitados=reqs.filter(r=>['solicitado_pcm','pendente'].includes(r.status||'')).length;
+    const separados=reqs.filter(r=>r.status==='separado').length;
+    const compras=reqs.filter(r=>r.status==='pedido_compra').length;
+    const comprados=reqs.filter(r=>r.status==='comprado').length;
 
     setMain(`${back}${tabs}
-      <div style="display:grid;grid-template-columns:420px 1fr;gap:16px;align-items:start">
+      ${secTitle('📦','Valetamento de Sábado',`<input type="date" value="${dataValet}" onchange="S._valetData=this.value;renderFerrPCM('req_compra')" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 10px;font-family:'DM Mono',monospace">`)}
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px">
+        <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--amber);border-radius:10px;padding:14px">
+          <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:2px">OS base</div>
+          <div style="font-family:'DM Mono',monospace;font-size:24px;font-weight:800;color:var(--amber);margin-top:6px">${osPecas.length}</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:10px;padding:14px">
+          <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:2px">Itens solicitados</div>
+          <div style="font-family:'DM Mono',monospace;font-size:24px;font-weight:800;color:var(--blue);margin-top:6px">${reqs.length}</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${compras?'var(--red)':'var(--green)'};border-radius:10px;padding:14px">
+          <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:2px">A comprar</div>
+          <div style="font-family:'DM Mono',monospace;font-size:24px;font-weight:800;color:${compras?'var(--red)':'var(--green)'};margin-top:6px">${compras}</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--green);border-radius:10px;padding:14px">
+          <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:2px">Valor estimado</div>
+          <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:800;color:var(--green);margin-top:8px">R$ ${totalVal.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(360px,420px) minmax(360px,1fr);gap:16px;align-items:start">
         <!-- Formulário -->
         <div>
-          ${secTitle('🛒','Nova Requisição de Compra')}
+          ${secTitle('📝','Solicitar Item do Valetamento')}
           <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+            <input type="hidden" id="req-data-site" value="${dataValet}">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
               <div>
                 <label class="campo-label">🚌 Prefixo / OS</label>
@@ -6023,13 +6145,28 @@ async function renderFerrPCM(aba='painel'){
               </div>
             </div>
             <button onclick="salvarReqCompraSite()" style="width:100%;padding:12px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
-              ➕ Adicionar Solicitação
+              ➕ Adicionar na Cesta
             </button>
+          </div>
+          <div style="margin-top:16px">
+            ${secTitle('🔩','Base de OS com Peças')}
+            ${osPecas.length?osPecas.map(o=>`
+              <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${o.prioridade==='urgente'?'var(--red)':'var(--amber)'};border-radius:10px;padding:12px;margin-bottom:8px">
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+                  <div>
+                    <div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:800;color:var(--blue)">${safeText(o.prefixo||'—')} <span style="color:var(--text3);font-size:11px">${safeText(o.numero||'')}</span></div>
+                    <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;margin-top:2px">${safeText((o.tipo||'OS').replace('_',' '))} · ${safeText(o.status||'em aberto')}</div>
+                  </div>
+                  <button onclick="preencherReqCompraSite('${arg(o.prefixo)}','${arg(o.pecas_necessarias)}','${arg(o.numero)}')" style="padding:6px 10px;border-radius:8px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">Puxar</button>
+                </div>
+                <div style="font-size:12px;color:var(--text2);margin-top:10px;line-height:1.35">${safeText(o.pecas_necessarias)}</div>
+              </div>
+            `).join(''):'<div class="empty">Nenhuma OS aberta com peça faltante</div>'}
           </div>
         </div>
         <!-- Lista -->
         <div>
-          ${secTitle('📋','Solicitações de Hoje',`<div style="font-size:12px;color:var(--text3)">${pendentes} pendentes · R$ ${totalVal.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`)}
+          ${secTitle('🛒','Itens do Valetamento',`<div style="font-size:12px;color:var(--text3)">${solicitados} solicitados · ${separados} separados · ${compras} compras · ${comprados} chegaram</div>`)}
           ${(reqs||[]).length?`<div class="tbl-wrap"><table style="width:100%;border-collapse:collapse">
             <thead><tr style="background:var(--surface2)">
               <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3)">Prefixo</th>
@@ -6040,23 +6177,21 @@ async function renderFerrPCM(aba='painel'){
               <th style="padding:8px 12px;text-align:center;font-size:11px;color:var(--text3)">Ação</th>
             </tr></thead>
             <tbody>${(reqs||[]).map(r=>`<tr style="border-bottom:1px solid var(--border2)">
-              <td style="padding:8px 12px;font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${r.prefixo||'—'}</td>
-              <td style="padding:8px 12px;font-size:12px">${r.peca}</td>
+              <td style="padding:8px 12px;font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${safeText(r.prefixo||'—')}</td>
+              <td style="padding:8px 12px;font-size:12px">${safeText(r.peca)}</td>
               <td style="padding:8px 12px;text-align:center;font-size:12px">${r.quantidade}</td>
-              <td style="padding:8px 12px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;color:var(--amber)">${r.valor_estimado?'R$ '+parseFloat(r.valor_estimado).toFixed(2):'—'}</td>
+              <td style="padding:8px 12px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;color:var(--amber)">${r.valor_estimado?'R$ '+(parseFloat(r.valor_estimado)*parseInt(r.quantidade||1)).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</td>
               <td style="padding:8px 12px;text-align:center">
-                <span style="font-size:11px;padding:2px 8px;border-radius:5px;font-weight:700;background:${r.status==='aprovado'?'#00C48C20':r.status==='reprovado'?'#EF444420':'#F59E0B20'};color:${r.status==='aprovado'?'var(--green)':r.status==='reprovado'?'var(--red)':'var(--amber)'}">
-                  ${r.status==='aprovado'?'✅ Aprovado':r.status==='reprovado'?'❌ Reprovado':'⏳ Pendente'}
-                </span>
+                ${badgeValetStatus(r.status)}
               </td>
               <td style="padding:8px 12px;text-align:center">
-                ${r.status==='pendente'?`
+                ${['solicitado_pcm','pendente'].includes(r.status||'')?`
                   <button onclick="atualizarReqCompra('${r.id}','aprovado')" style="padding:4px 10px;border-radius:6px;border:1px solid var(--green);background:transparent;color:var(--green);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;margin-right:4px">✅</button>
                   <button onclick="atualizarReqCompra('${r.id}','reprovado')" style="padding:4px 10px;border-radius:6px;border:1px solid var(--red);background:transparent;color:var(--red);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">❌</button>
                 `:'—'}
               </td>
             </tr>`).join('')}</tbody>
-          </table></div>`:'<div class="empty">Nenhuma solicitação hoje</div>'}
+          </table></div>`:'<div class="empty">Nenhum item solicitado para este valetamento</div>'}
         </div>
       </div>
     `);
