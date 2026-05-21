@@ -2827,6 +2827,9 @@ async function telaLavPesada(){
   lista.forEach(l=>{if(l.validado_patio)vistoriadosSemanaSet.add(l.prefixo);});
   const lavadosSemana=lavadosSemanaSet.size;
   const vistoriadosSemana=vistoriadosSemanaSet.size;
+  const planoMap={};
+  lista.forEach(l=>{planoMap[l.prefixo]=l;});
+  const naoLavadosSemana=(frota||[]).filter(v=>!lavadosSemanaSet.has(v.prefixo));
   const faltamLavar=Math.max(0,totalFrota-lavadosSemana);
   const faltamVistoriar=Math.max(0,totalFrota-vistoriadosSemana);
   const pctSemLav=totalFrota?Math.round(lavadosSemana/totalFrota*100):0;
@@ -2868,6 +2871,25 @@ async function telaLavPesada(){
       +(vistoriado?'✅':lavado?'🚿':'○')
       +'</div></div></div>';
   };
+  const mkCardNaoLavadoSemana=function(v){
+    const r=planoMap[v.prefixo];
+    if(r) return mkCardLav(r);
+    const ultLav=v.ultima_lavagem;
+    const diasSem=ultLav?Math.max(0,Math.round((new Date(data+'T12:00:00')-new Date(ultLav+'T12:00:00'))/86400000)):null;
+    const hist=ultLav?(diasSem===1?'Última lavagem: 1 dia':'Última lavagem: '+diasSem+' dias'):'Sem histórico';
+    return '<div class="vcard" onclick="addLavagemSemana(\''+v.prefixo+'\')" style="background:var(--surface2);border-left:3px solid var(--red)">'
+      +'<div style="flex:1">'
+      +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
+      +'<div class="prefixo" style="color:var(--red)">'+v.prefixo+'</div>'
+      +'<span style="font-size:9px;background:#EF444418;border:1px solid #EF444440;color:var(--red);border-radius:4px;padding:1px 6px;font-weight:800">NÃO LAVADO</span>'
+      +'<span style="font-size:9px;background:#2563EB18;border:1px solid #2563EB40;color:var(--blue);border-radius:4px;padding:1px 6px;font-weight:800">TOQUE PARA PROGRAMAR</span>'
+      +'</div>'
+      +'<div class="vcard-sub">Fora do plano do dia</div>'
+      +'<div class="vcard-sub" style="font-size:10px;color:var(--amber)">'+hist+'</div>'
+      +'</div>'
+      +'<div style="width:36px;height:36px;border-radius:10px;border:2px solid var(--red);display:flex;align-items:center;justify-content:center;font-size:16px">○</div>'
+      +'</div>';
+  };
   const secaoLav=function(titulo,sub,arr,cor){
     if(!arr.length) return '';
     return '<div class="sl" style="margin-top:12px;color:'+cor+'">'+titulo+' <span style="color:var(--text3);font-weight:600">· '+sub+'</span></div>'+arr.map(mkCardLav).join('');
@@ -2876,7 +2898,7 @@ async function telaLavPesada(){
   const listaAguard=lista.filter(l=>l.status==='executado'&&!l.validado_patio);
   const listaLimpos=lista.filter(l=>l.validado_patio);
   const cards=_lpFiltro==='pendentes'
-    ? secaoLav('Não lavados','faltam lavar',listaPend,'var(--amber)')
+    ? '<div class="sl" style="margin-top:12px;color:var(--red)">Não lavados na semana <span style="color:var(--text3);font-weight:600">· frota inteira</span></div>'+naoLavadosSemana.map(mkCardNaoLavadoSemana).join('')
     : secaoLav('Programados pendentes','precisam lavar',listaPend,'var(--amber)')+
       secaoLav('Lavados aguardando vistoria','conferir qualidade',listaAguard,'var(--blue)')+
       secaoLav('Limpos e liberados','vistoriados pelo pátio',listaLimpos,'var(--green)');
@@ -2919,10 +2941,10 @@ async function telaLavPesada(){
     +'<div style="font-size:11px;color:var(--text3);margin-top:4px;margin-bottom:10px">'+lavados+'/'+total+' lavados · '+pct+'%</div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 4px">'
     +'<button onclick="_lpFiltro=\'todos\';telaLavPesada()" style="padding:10px;border-radius:10px;border:1px solid '+(_lpFiltro==='todos'?'var(--blue)':'var(--border)')+';background:'+(_lpFiltro==='todos'?'#2563EB18':'transparent')+';color:'+(_lpFiltro==='todos'?'var(--blue)':'var(--text3)')+';font-size:12px;font-weight:800;font-family:inherit">Todos</button>'
-    +'<button onclick="_lpFiltro=\'pendentes\';telaLavPesada()" style="padding:10px;border-radius:10px;border:1px solid '+(_lpFiltro==='pendentes'?'var(--amber)':'var(--border)')+';background:'+(_lpFiltro==='pendentes'?'#F59E0B18':'transparent')+';color:'+(_lpFiltro==='pendentes'?'var(--amber)':'var(--text3)')+';font-size:12px;font-weight:800;font-family:inherit">Não lavados ('+pendentes+')</button>'
+    +'<button onclick="_lpFiltro=\'pendentes\';telaLavPesada()" style="padding:10px;border-radius:10px;border:1px solid '+(_lpFiltro==='pendentes'?'var(--red)':'var(--border)')+';background:'+(_lpFiltro==='pendentes'?'#EF444418':'transparent')+';color:'+(_lpFiltro==='pendentes'?'var(--red)':'var(--text3)')+';font-size:12px;font-weight:800;font-family:inherit">Não lavados semana ('+faltamLavar+')</button>'
     +'</div>'
     +'</div>'
-    +(total?'<div class="sl">'+(_lpFiltro==='pendentes'?pendentes:total)+' veículo(s) '+(_lpFiltro==='pendentes'?'não lavado(s)':'no plano')+'</div>'+(cards||'<div style="padding:18px;text-align:center;color:var(--green);font-weight:800">✅ Todos os programados já foram lavados</div>')
+    +(total||_lpFiltro==='pendentes'?'<div class="sl">'+(_lpFiltro==='pendentes'?faltamLavar:total)+' veículo(s) '+(_lpFiltro==='pendentes'?'não lavado(s) na semana':'no plano')+'</div>'+(cards||'<div style="padding:18px;text-align:center;color:var(--green);font-weight:800">✅ Toda a frota já foi lavada nesta semana</div>')
       :'<div class="empty"><div class="empty-ic">🚿</div><div style="font-weight:700;font-size:16px;margin-bottom:8px">Sem plano hoje</div><div style="font-size:13px">Use o + para montar o plano do dia.</div></div>')
     +(vistoriados>0?'<div style="padding:14px">'
       +'<button onclick="fecharTurnoLavagem()" style="width:100%;padding:14px;border-radius:12px;border:1px solid '+(vistoriados===total?'#00C48C40':'#F59E0B40')+';background:'+(vistoriados===total?'#00C48C18':'#F59E0B18')+';color:'+(vistoriados===total?'var(--green)':'var(--amber)')+';font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">'
@@ -2932,6 +2954,21 @@ async function telaLavPesada(){
   
   document.getElementById('content').insertAdjacentHTML('beforeend',
     '<button class="fab" onclick="abrirMontarPlano()">＋</button>');
+}
+
+async function addLavagemSemana(prefixo){
+  const gid=getGid();
+  const {error}=await sb.from('checklist_lavagem').upsert([{
+    garagem_id:gid,
+    prefixo:prefixo,
+    data:_lpData,
+    tipo_lavagem:'pesada',
+    status:'pendente',
+    turno:S.turno||'dia',
+  }],{onConflict:'garagem_id,prefixo,data',ignoreDuplicates:true});
+  if(error){toast('Erro ao programar: '+error.message,'err');return;}
+  toast('✅ '+prefixo+' programado para lavar');
+  telaLavPesada();
 }
 
 async function fecharTurnoLavagem(){
