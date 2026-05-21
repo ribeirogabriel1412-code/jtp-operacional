@@ -2800,20 +2800,28 @@ async function telaLavPesada(){
   const total=lista.length;
   const lavados=lista.filter(l=>l.status==='executado').length;
   const vistoriados=lista.filter(l=>l.validado_patio).length;
+  const pendentes=lista.filter(l=>l.status!=='executado').length;
+  const aguardandoVistoria=lista.filter(l=>l.status==='executado'&&!l.validado_patio).length;
   const pct=total>0?Math.round(lavados/total*100):0;
   const dataFmt=new Date(data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'});
+  const frotaMap={};
+  (frota||[]).forEach(v=>{frotaMap[v.prefixo]=v;});
 
   // Cards do plano
-  const cards=lista.map(r=>{
+  const mkCardLav=function(r){
     const lavado=r.status==='executado';
     const vistoriado=r.validado_patio;
     const emPrev=prevSet.has(r.prefixo);
+    const ultLav=frotaMap[r.prefixo]?.ultima_lavagem;
+    const diasSem=ultLav?Math.max(0,Math.round((new Date(data+'T12:00:00')-new Date(ultLav+'T12:00:00'))/86400000)):null;
+    const ultTxt=vistoriado?'Limpo hoje':ultLav?(diasSem===0?'Lavado hoje':diasSem===1?'Última lavagem: 1 dia':'Última lavagem: '+diasSem+' dias'):'Sem histórico';
     
     let statusCor='var(--text3)';
     let statusTxt='⏳ Aguardando';
     let statusBg='var(--surface2)';
-    if(vistoriado){statusCor='var(--green)';statusTxt='✅ Vistoriado';statusBg='#00C48C08';}
-    else if(lavado){statusCor='var(--blue)';statusTxt='🚿 Lavado';statusBg='#2563EB08';}
+    let selo='PROGRAMADO';
+    if(vistoriado){statusCor='var(--green)';statusTxt='✅ Limpo e vistoriado';statusBg='#00C48C08';selo='LIMPO';}
+    else if(lavado){statusCor='var(--blue)';statusTxt='🚿 Lavado — falta vistoria';statusBg='#2563EB08';selo='AGUARD. VISTORIA';}
     
     var _idx=lista.indexOf(r);
     var oc2='onclick="abrirCardLavPesada('+_idx+')"';
@@ -2821,17 +2829,27 @@ async function telaLavPesada(){
       +'<div style="flex:1">'
       +'<div style="display:flex;align-items:center;gap:6px">'
       +'<div class="prefixo" style="color:'+statusCor+'">'+r.prefixo+'</div>'
+      +'<span style="font-size:9px;background:'+statusCor+'18;border:1px solid '+statusCor+'40;color:'+statusCor+';border-radius:4px;padding:1px 6px;font-weight:800">'+selo+'</span>'
       +(emPrev?'<span style="font-size:9px;background:#8B5CF618;border:1px solid #8B5CF640;color:#8B5CF6;border-radius:4px;padding:1px 6px;font-weight:700">PREVENTIVA</span>':'')
       +(r.tipo_lavagem==='pesada'?'<span style="font-size:9px;background:#F59E0B18;border:1px solid #F59E0B40;color:var(--amber);border-radius:4px;padding:1px 6px;font-weight:700">PESADA</span>':'')
       +'</div>'
       +'<div class="vcard-sub">'+statusTxt+(r.executado_por?' · '+r.executado_por.split(' ')[0]:'')+'</div>'
+      +'<div class="vcard-sub" style="font-size:10px;color:'+(vistoriado?'var(--green)':ultLav?'var(--text3)':'var(--amber)')+'">'+ultTxt+'</div>'
       +(r.validado_por?'<div class="vcard-sub" style="color:var(--green);font-size:10px">✅ Vistoria: '+r.validado_por.split(' ')[0]+(r.validado_em?' '+new Date(r.validado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'')+'</div>':'')
       +'</div>'
       +'<div style="display:flex;flex-direction:column;align-items:center;gap:4px">'
       +'<div style="width:36px;height:36px;border-radius:10px;border:2px solid '+statusCor+';background:'+(vistoriado?statusCor:lavado?statusCor+'18':'transparent')+';display:flex;align-items:center;justify-content:center;font-size:16px">'
       +(vistoriado?'✅':lavado?'🚿':'○')
       +'</div></div></div>';
-  }).join('');
+  };
+  const secaoLav=function(titulo,sub,arr,cor){
+    if(!arr.length) return '';
+    return '<div class="sl" style="margin-top:12px;color:'+cor+'">'+titulo+' <span style="color:var(--text3);font-weight:600">· '+sub+'</span></div>'+arr.map(mkCardLav).join('');
+  };
+  const cards=
+    secaoLav('Programados pendentes','precisam lavar',lista.filter(l=>l.status!=='executado'),'var(--amber)')+
+    secaoLav('Lavados aguardando vistoria','conferir qualidade',lista.filter(l=>l.status==='executado'&&!l.validado_patio),'var(--blue)')+
+    secaoLav('Limpos e liberados','vistoriados pelo pátio',lista.filter(l=>l.validado_patio),'var(--green)');
 
   render(
     '<div style="padding:14px 14px 0">'
@@ -2841,16 +2859,19 @@ async function telaLavPesada(){
     +'<button onclick="telaLavPesada()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>'
     +'</div>'
     // KPIs
-    +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">'
+    +'<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px">'
     +'<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center">'
     +'<div style="font-family:\x27DM Mono\x27,monospace;font-size:20px;font-weight:800">'+total+'</div>'
-    +'<div style="font-size:10px;color:var(--text3)">Planeados</div></div>'
+    +'<div style="font-size:10px;color:var(--text3)">Programados</div></div>'
     +'<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center">'
-    +'<div style="font-family:\x27DM Mono\x27,monospace;font-size:20px;font-weight:800;color:var(--blue)">'+lavados+'</div>'
-    +'<div style="font-size:10px;color:var(--text3)">Lavados</div></div>'
+    +'<div style="font-family:\x27DM Mono\x27,monospace;font-size:20px;font-weight:800;color:var(--amber)">'+pendentes+'</div>'
+    +'<div style="font-size:10px;color:var(--text3)">Pendentes</div></div>'
+    +'<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center">'
+    +'<div style="font-family:\x27DM Mono\x27,monospace;font-size:20px;font-weight:800;color:var(--blue)">'+aguardandoVistoria+'</div>'
+    +'<div style="font-size:10px;color:var(--text3)">Aguard. vistoria</div></div>'
     +'<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center">'
     +'<div style="font-family:\x27DM Mono\x27,monospace;font-size:20px;font-weight:800;color:var(--green)">'+vistoriados+'</div>'
-    +'<div style="font-size:10px;color:var(--text3)">Vistoriados</div></div>'
+    +'<div style="font-size:10px;color:var(--text3)">Limpos</div></div>'
     +'</div>'
     // Barra
     +'<div class="prog"><div class="prog-f" style="width:'+pct+'%;background:'+(pct===100?'var(--green)':'var(--blue)')+'"></div></div>'
@@ -3248,6 +3269,16 @@ async function abrirMontarPlano(){
     const dB=ultMap[b.prefixo]||'2000-01-01';
     return dA.localeCompare(dB);
   });
+  const limposDisp=disponiveis.filter(v=>{
+    const ultD=ultMap[v.prefixo];
+    if(!ultD) return false;
+    return Math.round((new Date()-new Date(ultD+'T12:00:00'))/86400000)<=1;
+  }).length;
+  const urgentesDisp=disponiveis.filter(v=>{
+    const ultD=ultMap[v.prefixo];
+    const dias=ultD?Math.round((new Date()-new Date(ultD+'T12:00:00'))/86400000):999;
+    return dias>=6;
+  }).length;
 
   window._planoSel=new Set();
   
@@ -3258,6 +3289,12 @@ async function abrirMontarPlano(){
       const diasSem=ultD?Math.round((new Date()-new Date(ultD+'T12:00:00'))/(86400000)):999;
       const emPrev=prevSet.has(v.prefixo);
       const urgente=diasSem>=6;
+      const limpo=ultD&&diasSem<=1;
+      const vencendo=!urgente&&!limpo&&diasSem>=4;
+      const tag=limpo?'<span style="font-size:9px;background:#00C48C18;border:1px solid #00C48C40;color:var(--green);border-radius:4px;padding:1px 5px;font-weight:700">LIMPO</span>'
+        :urgente?'<span style="font-size:9px;background:#F59E0B18;border:1px solid #F59E0B40;color:var(--amber);border-radius:4px;padding:1px 5px;font-weight:700">URGENTE</span>'
+        :vencendo?'<span style="font-size:9px;background:#3B82F618;border:1px solid #3B82F640;color:var(--blue);border-radius:4px;padding:1px 5px;font-weight:700">VENCENDO</span>'
+        :'<span style="font-size:9px;background:var(--surface);border:1px solid var(--border);color:var(--text3);border-radius:4px;padding:1px 5px;font-weight:700">OK</span>';
       var tipoStr=emPrev?'preventiva':'pesada';
       return '<div onclick="togSel(\x27'+v.prefixo+'\x27)" data-prefixo="'+v.prefixo+'" data-tipo="'+tipoStr+'" style="display:flex;align-items:center;gap:10px;padding:11px 12px;background:'+(sel?'#2563EB18':'var(--surface2)')+';border:1px solid '+(sel?'#2563EB60':urgente?'#F59E0B30':'var(--border)')+';border-radius:10px;margin-bottom:6px;cursor:pointer;transition:all .15s">'
         +'<div style="width:24px;height:24px;border-radius:6px;border:2px solid '+(sel?'var(--blue)':'var(--border)')+';background:'+(sel?'var(--blue)':'transparent')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;color:white;font-size:12px">'+(sel?'✓':'')+'</div>'
@@ -3265,7 +3302,7 @@ async function abrirMontarPlano(){
         +'<div style="display:flex;align-items:center;gap:6px">'
         +'<span style="font-family:\x27DM Mono\x27,monospace;font-weight:700;font-size:15px;color:var(--blue)">'+v.prefixo+'</span>'
         +(emPrev?'<span style="font-size:9px;background:#8B5CF618;border:1px solid #8B5CF640;color:#8B5CF6;border-radius:4px;padding:1px 5px;font-weight:700">PREV</span>':'')
-        +(urgente?'<span style="font-size:9px;background:#F59E0B18;border:1px solid #F59E0B40;color:var(--amber);border-radius:4px;padding:1px 5px;font-weight:700">URGENTE</span>':'')
+        +tag
         +'</div>'
         +'<div style="font-size:10px;color:var(--text3)">'+( ultD?diasSem+'d sem lavar':'Nunca lavado')+'</div>'
         +'</div>'
@@ -3286,6 +3323,10 @@ async function abrirMontarPlano(){
   
   openSheet('🚿 Montar Plano do Dia',
     '<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:10px">'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">'
+    +'<div style="background:var(--surface);border-radius:8px;padding:8px;text-align:center"><div style="font-family:\'DM Mono\',monospace;font-size:18px;font-weight:800;color:var(--green)">'+limposDisp+'</div><div style="font-size:10px;color:var(--text3)">Limpos fora do plano</div></div>'
+    +'<div style="background:var(--surface);border-radius:8px;padding:8px;text-align:center"><div style="font-family:\'DM Mono\',monospace;font-size:18px;font-weight:800;color:var(--amber)">'+urgentesDisp+'</div><div style="font-size:10px;color:var(--text3)">Prioridade</div></div>'
+    +'</div>'
     +'<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Tipo de lavagem dos carros selecionados:</div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
     +'<button id="fp-prev" onclick="setTipoPlano(\'preventiva\')" style="padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">&#128995; Preventiva<br><span style=\"font-size:10px;font-weight:400\">lavagem completa</span></button>'
