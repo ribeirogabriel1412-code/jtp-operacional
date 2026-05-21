@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"><!-- JTP v2.2 -->
@@ -6437,38 +6437,27 @@ async function renderFerrPCM(aba='painel'){
   }).join('');
 
   setMain(`${back}${tabs}
-    <!-- 1. ORÇAMENTO DO TURNO -->
+    <!-- 1. FLUXO DE CUSTO DO DIA -->
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="font-size:13px;font-weight:700">💰 Orçamento do Turno</div>
-        <span style="font-size:10px;color:var(--text3)">${S.turno==='dia'?'☀️ Dia':'🌙 Noite'} · ${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</span>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:12px;flex-wrap:wrap">
+        <div><div style="font-size:13px;font-weight:800">Fluxo de Custo PCM</div><div style="font-size:11px;color:var(--text3);margin-top:2px">Abertura prevista as 08:00; real oficializado pelo Lider PCM as 11:00.</div></div>
+        <span style="font-size:10px;color:var(--text3)">${S.turno==='dia'?'Dia':'Noite'} · ${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</span>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px">
-        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:2px">DISPONÍVEL</div>
-          <div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--green)" id="orc-disp">R$ ${orcDisp.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
-        </div>
-        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:9px;color:var(--red);font-weight:700;margin-bottom:2px">GASTO REAL</div>
-          <div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--red)">R$ ${totalRealFechado.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
-        </div>
-        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:9px;color:var(--amber);font-weight:700;margin-bottom:2px">PREVISTO ABERTO</div>
-          <div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--amber)">R$ ${totalPrevisto.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
-        </div>
-        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:2px">SALDO</div>
-          <div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:${orcSaldo>=0?'var(--green)':'var(--red)'}">R$ ${orcSaldo.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
-        </div>
+      ${(()=>{const meta=pcmReadLocal(pcmFluxoKey(gid,data,S.turno||'dia'));const previsto=parseFloat(meta.valor_previsto??orc?.valor_previsto??orcDisp??0)||0;const realOficial=parseFloat(meta.valor_real??orc?.valor_real??(meta.status_fluxo==='oficializado'||orc?.status_fluxo==='oficializado'?orcDisp:0))||0;const statusFluxo=meta.status_fluxo||orc?.status_fluxo||(orc?'previsto':'pendente');const baseCusto=realOficial||previsto||orcDisp||0;const saldoFluxo=baseCusto-totalRealFechado-totalPrevisto;return `
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:10px">
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:var(--amber);font-weight:700;margin-bottom:2px">PREVISTO 08:00</div><div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--amber)">${pcmMoeda(previsto)}</div></div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:var(--green);font-weight:700;margin-bottom:2px">REAL 11:00</div><div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--green)">${realOficial?pcmMoeda(realOficial):'Aguardando'}</div></div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:var(--red);font-weight:700;margin-bottom:2px">REAL FECHADO</div><div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--red)">${pcmMoeda(totalRealFechado)}</div></div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:var(--blue);font-weight:700;margin-bottom:2px">PREVISTO ABERTO</div><div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--blue)">${pcmMoeda(totalPrevisto)}</div></div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:2px">SALDO FLUXO</div><div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:${saldoFluxo>=0?'var(--green)':'var(--red)'}">${pcmMoeda(saldoFluxo)}</div></div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <div style="position:relative;flex:1">
-          <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text3)">R$</span>
-          <input type="number" id="orc-input" placeholder="Digite o valor disponível do Power BI..." value="${orcDisp||''}"
-            style="width:100%;padding:9px 10px 9px 28px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:'DM Mono',monospace;outline:none">
-        </div>
-        <button onclick="salvarOrcamento('${gid}','${data}')" class="btn-add" style="white-space:nowrap">💾 Salvar</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:8px;align-items:end">
+        <div><label class="campo-label">Custo previsto (abertura 08:00)</label><input type="number" id="custo-previsto-dia" value="${previsto||''}" placeholder="0,00" step="0.01" class="fi" style="font-family:'DM Mono',monospace"></div>
+        <div><label class="campo-label">Custo real (oficializacao 11:00)</label><input type="number" id="custo-real-dia" value="${realOficial||''}" placeholder="0,00" step="0.01" class="fi" style="font-family:'DM Mono',monospace"></div>
+        <button onclick="abrirCustoPrevistoPCM('${gid}','${data}')" class="btn-add" style="height:40px;white-space:nowrap;background:var(--amber);border-color:var(--amber);color:#111827">Abrir previsto</button>
+        <button onclick="oficializarCustoPCM('${gid}','${data}')" class="btn-add" style="height:40px;white-space:nowrap;background:var(--green);border-color:var(--green);color:#fff">Oficializar real</button>
       </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:8px">Status: <strong style="color:${statusFluxo==='oficializado'?'var(--green)':statusFluxo==='previsto'?'var(--amber)':'var(--text3)'}">${statusFluxo==='oficializado'?'oficializado':statusFluxo==='previsto'?'previsto aberto':'pendente'}</strong>${meta.oficializado_por?' · por '+meta.oficializado_por:''}</div>`})()}
     </div>
     <!-- 2. KPIs -->
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">
@@ -7409,6 +7398,16 @@ ${comprasRows?`<div class="sec">■ REQUISICOES AVULSAS</div>
 }
 
 // ── 2.4 Fechamento de Turno ───────────────────────────────────────
+function pcmFluxoKey(gid,data,turno){return 'jtp_pcm_fluxo_custo_'+gid+'_'+data+'_'+turno;}
+function pcmFech24Key(gid,data,turno){return 'jtp_fech24_fluxo_'+gid+'_'+data+'_'+turno;}
+function pcmReadLocal(key){try{return JSON.parse(localStorage.getItem(key)||'{}')||{};}catch(e){return {};}}
+function pcmSaveLocal(key,obj){try{localStorage.setItem(key,JSON.stringify(Object.assign({},pcmReadLocal(key),obj||{})));}catch(e){}}
+function pcmIsMissingColumn(err){return !!(err&&(err.code==='PGRST204'||/column|schema cache|Could not find/i.test(err.message||'')));}
+function pcmMoeda(v){return 'R$ '+parseFloat(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});}
+function pcmPeriodoTurno(dataRef,horaIni,horaFim){var dtIni=new Date(dataRef+'T'+horaIni);var dtFim=new Date(dataRef+'T'+horaFim);if(dtFim<=dtIni)dtFim.setDate(dtFim.getDate()+1);return{dtIni:dtIni,dtFim:dtFim,ini:dtIni.toISOString(),fim:dtFim.toISOString()};}
+async function pcmUpsertOrcamento(gid,data,turno,base,extra){var key=pcmFluxoKey(gid,data,turno);pcmSaveLocal(key,extra||{});var payload=Object.assign({},base||{},extra||{});var exist=null;try{var q=await sb.from('pcm_orcamento').select('id').eq('garagem_id',gid).eq('data',data).eq('turno',turno).limit(1);exist=q.data&&q.data[0];}catch(e){}var res=exist&&exist.id?await sb.from('pcm_orcamento').update(payload).eq('id',exist.id):await sb.from('pcm_orcamento').insert(Object.assign({garagem_id:gid,data:data,turno:turno},payload));if(res.error&&pcmIsMissingColumn(res.error)){var fallback=Object.assign({},base||{});res=exist&&exist.id?await sb.from('pcm_orcamento').update(fallback).eq('id',exist.id):await sb.from('pcm_orcamento').insert(Object.assign({garagem_id:gid,data:data,turno:turno},fallback));}return res;}
+async function abrirCustoPrevistoPCM(gid,data){var turno=S.turno||'dia';var previsto=parseFloat(document.getElementById('custo-previsto-dia')?.value||0)||0;if(!previsto){toast('Informe o custo previsto de abertura','err');return;}var agora=new Date().toISOString();var res=await pcmUpsertOrcamento(gid,data,turno,{valor_disponivel:previsto,atualizado_em:agora,atualizado_por:S.perfil?.nome},{valor_previsto:previsto,status_fluxo:'previsto',aberto_em:agora,aberto_por:S.perfil?.nome});if(res.error){toast('Erro ao abrir custo: '+res.error.message,'err');return;}toast('Custo previsto aberto. Oficialize o real as 11:00.');renderFerrPCM('painel');}
+async function oficializarCustoPCM(gid,data){if(!(S.perfil?.cargo==='lider_pcm'||S.perfil?.is_admin)){toast('Somente Lider PCM oficializa o custo real','err');return;}var turno=S.turno||'dia';var previsto=parseFloat(document.getElementById('custo-previsto-dia')?.value||0)||0;var real=parseFloat(document.getElementById('custo-real-dia')?.value||0)||previsto;if(!real){toast('Informe o custo real para oficializar','err');return;}var agora=new Date().toISOString();var res=await pcmUpsertOrcamento(gid,data,turno,{valor_disponivel:real,atualizado_em:agora,atualizado_por:S.perfil?.nome},{valor_previsto:previsto||real,valor_real:real,status_fluxo:'oficializado',oficializado_em:agora,oficializado_por:S.perfil?.nome});if(res.error){toast('Erro ao oficializar: '+res.error.message,'err');return;}try{await sb.from('pcm_conferencias').insert({garagem_id:gid,data:data,turno:turno,disponivel:real,gasto_real:0,gasto_previsto:previsto||real,saldo:real,pct_utilizado:0,conferido_por:S.perfil?.nome||'Lider PCM',conferido_em:agora});}catch(e){}toast('Custo real oficializado.');renderFerrPCM('painel');}
 async function renderFech24(gid,back,tabs){
   setMain(back+tabs+'<div class="loading"><div class="spinner"></div></div>');
   var agora=new Date(), hoje_=agora.toISOString().slice(0,10);
@@ -7416,101 +7415,55 @@ async function renderFech24(gid,back,tabs){
   var dataRef=S._fech24Data||hoje_;
   var horaIni=S._fech24HoraIni||(turno==='dia'?'07:00':'21:00');
   var horaFim=S._fech24HoraFim||(turno==='dia'?'17:00':'07:20');
-  var dtIni=new Date(dataRef+'T'+horaIni);
-  var dtFim=new Date(dataRef+'T'+horaFim);
-  if(dtFim<=dtIni) dtFim.setDate(dtFim.getDate()+1);
-  var ini=dtIni.toISOString();
-  var fim=dtFim.toISOString();
-  var dataPrev=dataRef;
+  var periodo=pcmPeriodoTurno(dataRef,horaIni,horaFim);
+  var ini=periodo.ini, fim=periodo.fim;
   var tLabel=(turno==='dia'?'Dia':'Noite')+' '+horaIni+'-'+horaFim;
-  var dataLabel=dtIni.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
-  var periodoLabel=dataLabel+' · '+horaIni+' ate '+horaFim;
-  var r1=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).gte('hora_entrada',ini).lte('hora_entrada',fim).order('hora_entrada',{ascending:true});
+  var dataLabel=periodo.dtIni.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
+  var periodoLabel=dataLabel+' - '+horaIni+' ate '+horaFim;
+  var localFech=pcmReadLocal(pcmFech24Key(gid,dataRef,turno));
+  var localCusto=pcmReadLocal(pcmFluxoKey(gid,dataRef,turno));
+  var resAbertas=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).gte('hora_entrada',ini).lte('hora_entrada',fim).order('hora_entrada',{ascending:true});
+  var resFechadas=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).eq('status','liberado').gte('hora_liberacao',ini).lte('hora_liberacao',fim).order('hora_liberacao',{ascending:true});
   var r3=await sb.from('movimentacao_pneu').select('*').eq('garagem_id',gid).eq('data',dataRef);
   var r4=await sb.from('fechamento_24').select('*').eq('garagem_id',gid).eq('data',dataRef).eq('turno',turno).limit(1);
-  var ocs=r1.data||[], prevsProg=[], pneus=r3.data||[];
-  var fech=r4.data&&r4.data[0]||null, marcacoes=[];
-  var marcaMap={};
-  marcacoes.forEach(function(m){marcaMap[m.prev_id]=m;});
+  var abertasPeriodo=resAbertas.data||[], fechadasPeriodo=resFechadas.data||[], pneus=r3.data||[];
+  var fech=r4.data&&r4.data[0]||null;
+  var mapa={};
+  abertasPeriodo.concat(fechadasPeriodo).forEach(function(o){mapa[o.id]=Object.assign({},mapa[o.id]||{},o,{_abertaPeriodo:abertasPeriodo.some(function(a){return a.id===o.id;}),_fechadaPeriodo:fechadasPeriodo.some(function(f){return f.id===o.id;})});});
+  var ocs=Object.values(mapa).sort(function(a,b){return new Date(a.hora_entrada||a.hora_liberacao)-new Date(b.hora_entrada||b.hora_liberacao);});
   var ocIds=ocs.map(function(o){return o.id;});
   var reqs=[];
   if(ocIds.length){var rr=await sb.from('requisicoes_compra').select('*').in('ocorrencia_id',ocIds).order('criado_em',{ascending:false});reqs=rr.data||[];}
-  var prevsTurno=[];
-  var outrosTurnos=[];
-  var abertas=ocs.filter(function(o){return o.status!=='liberado';});
-  var fechadas=ocs.filter(function(o){return o.status==='liberado';});
-  var prevExec=0;
-  var pendSemJust=abertas.filter(function(o){return !o.justificativa_pendencia;});
-  var fmtR=function(v){return v>0?'R$\u00a0'+parseFloat(v).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—';};
+  var pendentes=ocs.filter(function(o){return o.status!=='liberado';});
+  var pendSemJust=pendentes.filter(function(o){return !o.justificativa_pendencia;});
+  var totalPrevAbertas=abertasPeriodo.reduce(function(s,o){return s+parseFloat(o.custo_previsto||0);},0);
+  var totalRealFechadas=fechadasPeriodo.reduce(function(s,o){return s+parseFloat(o.custo_real||o.custo_previsto||0);},0);
+  var entrada=parseFloat((fech&&fech.entrada_valor)||localFech.entrada_valor||0)||0;
+  var saida=parseFloat((fech&&fech.saida_valor)||localFech.saida_valor||0)||0;
+  var movimento=saida-entrada;
+  var divergencia=movimento-totalRealFechadas;
+  S._fech24Resumo={ini:ini,fim:fim,entrada_valor:entrada,saida_valor:saida,total_previsto_aberto:totalPrevAbertas,total_real_fechado:totalRealFechadas,os_abertas_periodo:abertasPeriodo.length,os_fechadas_periodo:fechadasPeriodo.length};
+  var fmtR=pcmMoeda;
   var tipoMap={preventiva_leve:'Prev. Leve',preventiva_pesada:'Prev. Pesada',preventiva_garantia:'Garantia',corretiva:'Corretiva'};
-  var osRows=ocs.map(function(o){
-    var isFech=o.status==='liberado';
-    var hrAb=o.hora_entrada?new Date(o.hora_entrada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
-    var hrFch=o.hora_liberacao?new Date(o.hora_liberacao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'—';
-    var tipo=tipoMap[o.tipo]||o.tipo||'—';
-    var isPrev=o.tipo&&(o.tipo.includes('preventiva')||o.tipo.includes('garantia'));
-    var corTipo=isPrev?'var(--amber)':'var(--red)';
-    var custoReal=o.custo_real?fmtR(o.custo_real):'—';
-    var ocReqs=reqs.filter(function(r){return r.ocorrencia_id===o.id;});
-    if(isPrev&&prevsTurno.some(function(p){return p._os&&p._os.id===o.id;})) return '';
-    return '<tr style="border-bottom:1px solid var(--border2);'+((!isFech)?'background:rgba(239,68,68,0.03)':'')+'">'+
-      '<td style="padding:8px 10px;font-family:monospace;font-weight:700;color:var(--blue)">'+o.prefixo+'</td>'+
-      '<td style="padding:8px 10px;font-size:12px;color:'+corTipo+';font-weight:600">'+tipo+'</td>'+
-      '<td style="padding:8px 10px;font-size:12px">'+(o.mecanico&&o.mecanico!=='null'?o.mecanico:'—')+'</td>'+
-      '<td style="padding:8px 10px;text-align:center;font-family:monospace;font-size:12px">'+hrAb+'</td>'+
-      '<td style="padding:8px 10px;text-align:center;font-family:monospace;font-size:12px;color:'+(isFech?'var(--green)':'var(--text4)')+'">'+hrFch+'</td>'+
-      '<td style="padding:8px 10px;font-size:11px;color:var(--text3)">'+(o.pecas_utilizadas||'')+(custoReal!=='—'?'<span style="color:var(--blue);font-weight:700;display:block">'+custoReal+'</span>':'')+(ocReqs.length?'<span style="color:var(--purple);font-size:10px">🛒 '+ocReqs.length+' req.</span>':'')+((!o.pecas_utilizadas&&custoReal==='—'&&!ocReqs.length)?'—':'')+'</td>'+
-      '<td style="padding:8px 10px;text-align:center"><span style="background:'+(isFech?'#00C48C':'#EF4444')+'18;border:1px solid '+(isFech?'#00C48C':'#EF4444')+'40;color:'+(isFech?'#00C48C':'#EF4444')+';border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">'+(isFech?'✅ Fechada':'⏳ Pendente')+'</span></td>'+
-      '<td style="padding:8px 6px">'+((!isFech)?'<input type="text" placeholder="Justificativa..." value="'+(o.justificativa_pendencia||'')+'" onblur="salvarJustPendencia24(\''+o.id+'\',this.value)" style="width:160px;background:var(--surface2);border:1px solid '+(!o.justificativa_pendencia?'#EF4444':'var(--border)')+';border-radius:6px;padding:4px 8px;color:var(--text);font-size:11px;font-family:inherit">':'—')+'</td>'+
-    '</tr>';
-  }).join('');
-  var reqRows=reqs.map(function(r){
-    var corSt=r.status==='aprovado'?'#00C48C':r.status==='reprovado'?'#EF4444':'#F59E0B';
-    return '<tr style="border-bottom:1px solid var(--border2)"><td style="padding:8px 10px;font-family:monospace;font-weight:700;color:var(--blue)">'+(r.prefixo||'—')+'</td><td style="padding:8px 10px;font-size:12px">'+(r.peca||'—')+'</td><td style="padding:8px 10px;font-family:monospace;font-size:11px;color:var(--text3)">'+(r.cod_sap||'—')+'</td><td style="padding:8px 10px;text-align:center;font-size:12px">'+(r.quantidade||1)+'</td><td style="padding:8px 10px;text-align:right;font-family:monospace;font-size:12px;color:var(--amber)">'+(r.valor_estimado?'R$\u00a0'+parseFloat(r.valor_estimado).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—')+'</td><td style="padding:8px 10px;text-align:center"><span style="background:'+corSt+'18;border:1px solid '+corSt+'40;color:'+corSt+';border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;text-transform:capitalize">'+(r.status||'pendente')+'</span></td></tr>';
-  }).join('');
-  var pneuRows=pneus.map(function(p){var corAcao=p.tipo==='troca'?'#00C48C':p.tipo==='sucata'?'#EF4444':'#F59E0B';return '<tr style="border-bottom:1px solid var(--border2)"><td style="padding:8px 10px;font-family:monospace;font-weight:700;color:var(--blue)">'+p.prefixo+'</td><td style="padding:8px 10px;font-size:12px">'+(p.posicao||'—')+'</td><td style="padding:8px 10px;font-family:monospace;font-size:12px">'+(p.numero_serie||'—')+'</td><td style="padding:8px 10px"><span style="background:'+corAcao+'18;border:1px solid '+corAcao+'40;color:'+corAcao+';border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;text-transform:capitalize">'+(p.tipo||'—')+'</span></td><td style="padding:8px 10px;font-size:11px;color:var(--text3)">'+(p.observacao||'—')+'</td></tr>';}).join('');
   var th=function(t){return '<th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3);font-weight:700">'+t+'</th>';};
-  setMain(
-    secTitle('📋','Fechamento de Turno PCM — 2.4',back)+tabs+
-    '<div style="display:grid;grid-template-columns:180px 150px 130px 130px auto;gap:10px;align-items:end;margin:-4px 0 18px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px">'+
-      '<div><label class="campo-label">Data do checklist</label><input class="fi" type="date" value="'+dataRef+'" onchange="S._fech24Data=this.value;renderFerrPCM(&quot;fech24&quot;)"></div>'+
-      '<div><label class="campo-label">Turno</label><select class="fi" onchange="S._fech24Turno=this.value;S._fech24HoraIni=this.value===&quot;dia&quot;?&quot;07:00&quot;:&quot;21:00&quot;;S._fech24HoraFim=this.value===&quot;dia&quot;?&quot;17:00&quot;:&quot;07:20&quot;;renderFerrPCM(&quot;fech24&quot;)"><option value="dia" '+(turno==='dia'?'selected':'')+'>Dia</option><option value="noite" '+(turno==='noite'?'selected':'')+'>Noite</option></select></div>'+
-      '<div><label class="campo-label">Hora inicial</label><input class="fi" type="time" value="'+horaIni+'" onchange="S._fech24HoraIni=this.value;renderFerrPCM(&quot;fech24&quot;)"></div>'+
-      '<div><label class="campo-label">Hora final</label><input class="fi" type="time" value="'+horaFim+'" onchange="S._fech24HoraFim=this.value;renderFerrPCM(&quot;fech24&quot;)"></div>'+
-      '<div style="font-size:12px;color:var(--text3);padding-bottom:9px">'+tLabel+' · '+periodoLabel+'</div>'+
-    '</div>'+
-    '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px">'+
-      [['Total OS',ocs.length+'','var(--blue)'],['OS Fechadas',fechadas.length+'','var(--green)'],['OS Abertas',abertas.length+'',abertas.length>0?'var(--amber)':'var(--green)'],['Pend. s/ Just.',pendSemJust.length+'',pendSemJust.length===0?'var(--green)':'var(--red)']].map(function(k){return '<div class="kpi2"><div class="kpi2-v" style="color:'+k[2]+'">'+k[1]+'</div><div class="kpi2-l">'+k[0]+'</div></div>';}).join('')+
-    '</div>'+
-    secTitle('📋','Seção 1 — Controle de OS')+
-    (ocs.length===0?'<div class="empty" style="margin-bottom:20px">Nenhuma OS neste turno</div>':
-      '<div style="overflow-x:auto;margin-bottom:20px"><table style="width:100%;border-collapse:collapse;min-width:750px">'+
-        '<thead><tr style="background:var(--surface2)">'+[th('PREFIXO'),th('TIPO'),th('MECÂNICO'),th('ABERTURA'),th('FECHAMENTO'),th('PEÇAS/CUSTO'),th('STATUS'),th('JUSTIFICATIVA')].join('')+'</tr></thead>'+
-        '<tbody>'+osRows+'</tbody></table></div>')+
-    secTitle('🛒','Seção 2 — Requisições do Turno')+
-    (reqs.length===0?'<div class="empty" style="margin-bottom:20px">Nenhuma requisição gerada</div>':
-      '<div style="overflow-x:auto;margin-bottom:20px"><table style="width:100%;border-collapse:collapse;min-width:600px">'+
-        '<thead><tr style="background:var(--surface2)">'+[th('PREFIXO'),th('PEÇA'),th('CÓD SAP'),th('QTD'),th('VALOR EST.'),th('STATUS')].join('')+'</tr></thead>'+
-        '<tbody>'+reqRows+'</tbody></table></div>')+
-    secTitle('⚙️','Seção 4 — Movimentação de Pneus')+
-    (pneus.length===0?'<div class="empty" style="margin-bottom:20px">Nenhuma movimentação</div>':
-      '<div style="overflow-x:auto;margin-bottom:20px"><table style="width:100%;border-collapse:collapse;min-width:450px">'+
-        '<thead><tr style="background:var(--surface2)">'+[th('PREFIXO'),th('POSIÇÃO'),th('Nº PNEU'),th('AÇÃO'),th('OBS')].join('')+'</tr></thead>'+
-        '<tbody>'+pneuRows+'</tbody></table></div>')+
-    secTitle('✍️','Seção 5 — Fechamento e Passagem de Bastão')+
-    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:20px">'+
-      '<div class="campo-grid" style="margin-bottom:16px">'+
-        '<div><label class="campo-label">Responsável (Assistente PCM)</label><input class="fi" id="fech24-resp" value="'+((fech&&fech.responsavel)||((S.perfil&&S.perfil.nome)||''))+'" placeholder="Nome do assistente"></div>'+
-        '<div><label class="campo-label">Hora de Fechamento</label><input class="fi" id="fech24-hora" type="time" value="'+((fech&&fech.hora_fechamento)||agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}))+'"></div>'+
-      '</div>'+
-      '<label class="campo-label">Pontos de Atenção — Passagem de Bastão</label>'+
-      '<textarea class="fi" id="fech24-obs" rows="4" placeholder="Pendências críticas, alertas para o próximo turno..." style="resize:vertical;min-height:90px;font-family:inherit;margin-bottom:16px">'+((fech&&fech.observacoes)||'')+'</textarea>'+
-      '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">'+
-        ((fech&&fech.fechado)?'<div style="background:#00C48C18;border:1px solid #00C48C40;border-radius:10px;padding:10px 16px;font-size:13px;color:#00C48C;font-weight:700">✅ Fechado por '+((fech&&fech.responsavel)||'—')+' às '+((fech&&fech.hora_fechamento)||'—')+'</div>':'')+
-        '<button onclick="fecharTurno24(\''+gid+'\',\''+dataRef+'\',\''+turno+'\')" style="padding:12px 28px;border-radius:10px;border:none;background:'+((fech&&fech.fechado)?'var(--amber)':'#00C48C')+';color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">'+((fech&&fech.fechado)?'🔄 Reabrir':'✅ Fechar Turno')+'</button>'+
-      '</div>'+
-    '</div>'
-  );
+  var osRows=ocs.map(function(o){
+    var hrAb=o.hora_entrada?new Date(o.hora_entrada).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'--';
+    var hrFch=o.hora_liberacao?new Date(o.hora_liberacao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'--';
+    var tipo=tipoMap[o.tipo]||o.tipo||'--';
+    var fase=(o._abertaPeriodo?'Abertura':'')+(o._abertaPeriodo&&o._fechadaPeriodo?' + ':'')+(o._fechadaPeriodo?'Fechamento':'');
+    var ocReqs=reqs.filter(function(r){return r.ocorrencia_id===o.id;});
+    return '<tr style="border-bottom:1px solid var(--border2);'+(o.status!=='liberado'?'background:rgba(245,158,11,0.04)':'')+'"><td style="padding:8px 10px;font-family:monospace;font-weight:700;color:var(--blue)">'+o.prefixo+'</td><td style="padding:8px 10px;font-size:12px">'+tipo+'</td><td style="padding:8px 10px;font-size:12px;color:var(--text3)">'+fase+'</td><td style="padding:8px 10px;text-align:center;font-family:monospace;font-size:12px">'+hrAb+'</td><td style="padding:8px 10px;text-align:center;font-family:monospace;font-size:12px;color:'+(o._fechadaPeriodo?'var(--green)':'var(--text4)')+'">'+hrFch+'</td><td style="padding:8px 10px;text-align:right;font-family:monospace;font-size:12px;color:var(--amber)">'+(o.custo_previsto?fmtR(o.custo_previsto):'--')+'</td><td style="padding:8px 10px;text-align:right;font-family:monospace;font-size:12px;color:var(--blue);font-weight:700">'+(o.custo_real?fmtR(o.custo_real):'--')+'</td><td style="padding:8px 10px;font-size:11px;color:var(--text3)">'+(o.pecas_utilizadas||'')+(ocReqs.length?'<span style="color:var(--purple);font-size:10px;display:block">Req. '+ocReqs.length+'</span>':'')+((!o.pecas_utilizadas&&!ocReqs.length)?'--':'')+'</td><td style="padding:8px 6px">'+(o.status!=='liberado'?'<input type="text" placeholder="Justificativa..." value="'+(o.justificativa_pendencia||'')+'" onblur="salvarJustPendencia24(\''+o.id+'\',this.value)" style="width:160px;background:var(--surface2);border:1px solid '+(!o.justificativa_pendencia?'#EF4444':'var(--border)')+';border-radius:6px;padding:4px 8px;color:var(--text);font-size:11px;font-family:inherit">':'--')+'</td></tr>';
+  }).join('');
+  var reqRows=reqs.map(function(r){var corSt=r.status==='aprovado'?'#00C48C':r.status==='reprovado'?'#EF4444':'#F59E0B';return '<tr style="border-bottom:1px solid var(--border2)"><td style="padding:8px 10px;font-family:monospace;font-weight:700;color:var(--blue)">'+(r.prefixo||'--')+'</td><td style="padding:8px 10px;font-size:12px">'+(r.peca||'--')+'</td><td style="padding:8px 10px;font-family:monospace;font-size:11px;color:var(--text3)">'+(r.cod_sap||'--')+'</td><td style="padding:8px 10px;text-align:center;font-size:12px">'+(r.quantidade||1)+'</td><td style="padding:8px 10px;text-align:right;font-family:monospace;font-size:12px;color:var(--amber)">'+(r.valor_estimado?fmtR(r.valor_estimado):'--')+'</td><td style="padding:8px 10px;text-align:center"><span style="background:'+corSt+'18;border:1px solid '+corSt+'40;color:'+corSt+';border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;text-transform:capitalize">'+(r.status||'pendente')+'</span></td></tr>';}).join('');
+  var pneuRows=pneus.map(function(p){var corAcao=p.tipo==='troca'?'#00C48C':p.tipo==='sucata'?'#EF4444':'#F59E0B';return '<tr style="border-bottom:1px solid var(--border2)"><td style="padding:8px 10px;font-family:monospace;font-weight:700;color:var(--blue)">'+p.prefixo+'</td><td style="padding:8px 10px;font-size:12px">'+(p.posicao||'--')+'</td><td style="padding:8px 10px;font-family:monospace;font-size:12px">'+(p.numero_serie||'--')+'</td><td style="padding:8px 10px"><span style="background:'+corAcao+'18;border:1px solid '+corAcao+'40;color:'+corAcao+';border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;text-transform:capitalize">'+(p.tipo||'--')+'</span></td><td style="padding:8px 10px;font-size:11px;color:var(--text3)">'+(p.observacao||'--')+'</td></tr>';}).join('');
+  setMain(secTitle('📋','Fechamento de Turno PCM - 2.4',back)+tabs+
+    '<div style="display:grid;grid-template-columns:180px 150px 130px 130px auto;gap:10px;align-items:end;margin:-4px 0 18px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px"><div><label class="campo-label">Data do checklist</label><input class="fi" type="date" value="'+dataRef+'" onchange="S._fech24Data=this.value;renderFerrPCM(&quot;fech24&quot;)"></div><div><label class="campo-label">Turno</label><select class="fi" onchange="S._fech24Turno=this.value;S._fech24HoraIni=this.value===&quot;dia&quot;?&quot;07:00&quot;:&quot;21:00&quot;;S._fech24HoraFim=this.value===&quot;dia&quot;?&quot;17:00&quot;:&quot;07:20&quot;;renderFerrPCM(&quot;fech24&quot;)"><option value="dia" '+(turno==='dia'?'selected':'')+'>Dia</option><option value="noite" '+(turno==='noite'?'selected':'')+'>Noite</option></select></div><div><label class="campo-label">Hora inicial</label><input class="fi" type="time" value="'+horaIni+'" onchange="S._fech24HoraIni=this.value;renderFerrPCM(&quot;fech24&quot;)"></div><div><label class="campo-label">Hora final</label><input class="fi" type="time" value="'+horaFim+'" onchange="S._fech24HoraFim=this.value;renderFerrPCM(&quot;fech24&quot;)"></div><div style="font-size:12px;color:var(--text3);padding-bottom:9px">'+tLabel+' · '+periodoLabel+'</div></div>'+
+    '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px">'+[['OS abertas',abertasPeriodo.length+'','var(--amber)'],['OS fechadas',fechadasPeriodo.length+'','var(--green)'],['Previsto aberto',fmtR(totalPrevAbertas),'var(--amber)'],['Real fechado',fmtR(totalRealFechadas),'var(--blue)'],['Mov. entrada/saida',fmtR(movimento),'var(--text3)'],['Divergencia',fmtR(divergencia),Math.abs(divergencia)<0.01?'var(--green)':'var(--red)']].map(function(k){return '<div class="kpi2"><div class="kpi2-v" style="color:'+k[2]+';font-size:17px">'+k[1]+'</div><div class="kpi2-l">'+k[0]+'</div></div>';}).join('')+'</div>'+    
+    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:18px"><div style="font-size:12px;font-weight:800;margin-bottom:8px">Entrada e saida do assistente</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px"><div><label class="campo-label">Entrada do turno</label><input class="fi" id="fech24-entrada" type="number" step="0.01" value="'+(entrada||'')+'" placeholder="0,00"></div><div><label class="campo-label">Saida do turno</label><input class="fi" id="fech24-saida" type="number" step="0.01" value="'+(saida||'')+'" placeholder="0,00"></div><div><label class="campo-label">Custo oficial do periodo</label><div class="fi" style="background:var(--surface2);color:var(--green);font-family:monospace">'+fmtR(localCusto.valor_real||localCusto.valor_previsto||0)+'</div></div></div></div>'+ 
+    secTitle('📋','Secao 1 - OS abertas e fechadas no periodo')+(ocs.length===0?'<div class="empty" style="margin-bottom:20px">Nenhuma OS neste periodo</div>':'<div style="overflow-x:auto;margin-bottom:20px"><table style="width:100%;border-collapse:collapse;min-width:880px"><thead><tr style="background:var(--surface2)">'+[th('PREFIXO'),th('TIPO'),th('MOVIMENTO'),th('ABERTURA'),th('FECHAMENTO'),th('PREVISTO'),th('REAL'),th('PECAS/REQ.'),th('JUSTIFICATIVA')].join('')+'</tr></thead><tbody>'+osRows+'</tbody></table></div>')+
+    secTitle('🛒','Secao 2 - Requisicoes do periodo')+(reqs.length===0?'<div class="empty" style="margin-bottom:20px">Nenhuma requisicao gerada</div>':'<div style="overflow-x:auto;margin-bottom:20px"><table style="width:100%;border-collapse:collapse;min-width:600px"><thead><tr style="background:var(--surface2)">'+[th('PREFIXO'),th('PECA'),th('COD SAP'),th('QTD'),th('VALOR EST.'),th('STATUS')].join('')+'</tr></thead><tbody>'+reqRows+'</tbody></table></div>')+
+    secTitle('⚙️','Secao 4 - Movimentacao de Pneus')+(pneus.length===0?'<div class="empty" style="margin-bottom:20px">Nenhuma movimentacao</div>':'<div style="overflow-x:auto;margin-bottom:20px"><table style="width:100%;border-collapse:collapse;min-width:450px"><thead><tr style="background:var(--surface2)">'+[th('PREFIXO'),th('POSICAO'),th('N PNEU'),th('ACAO'),th('OBS')].join('')+'</tr></thead><tbody>'+pneuRows+'</tbody></table></div>')+
+    secTitle('✍','Secao 5 - Fechamento e Passagem de Bastao')+'<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:20px"><div class="campo-grid" style="margin-bottom:16px"><div><label class="campo-label">Responsavel (Assistente PCM)</label><input class="fi" id="fech24-resp" value="'+((fech&&fech.responsavel)||((S.perfil&&S.perfil.nome)||''))+'" placeholder="Nome do assistente"></div><div><label class="campo-label">Hora de Fechamento</label><input class="fi" id="fech24-hora" type="time" value="'+((fech&&fech.hora_fechamento)||agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}))+'"></div></div><label class="campo-label">Pontos de Atencao - Passagem de Bastao</label><textarea class="fi" id="fech24-obs" rows="4" placeholder="Pendencias criticas, alertas para o proximo turno..." style="resize:vertical;min-height:90px;font-family:inherit;margin-bottom:16px">'+((fech&&fech.observacoes)||'')+'</textarea><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">'+((fech&&fech.fechado)?'<div style="background:#00C48C18;border:1px solid #00C48C40;border-radius:10px;padding:10px 16px;font-size:13px;color:#00C48C;font-weight:700">Fechado por '+((fech&&fech.responsavel)||'--')+' as '+((fech&&fech.hora_fechamento)||'--')+'</div>':'')+'<button onclick="fecharTurno24(\''+gid+'\',\''+dataRef+'\',\''+turno+'\')" style="padding:12px 28px;border-radius:10px;border:none;background:'+((fech&&fech.fechado)?'var(--amber)':'#00C48C')+';color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">'+((fech&&fech.fechado)?'Reabrir':'Fechar Turno')+'</button></div></div>');
 }
 
 async function togglePrevTurno24(gid,prevId,data,turno,sel){
@@ -7525,7 +7478,15 @@ async function fecharTurno24(gid,data,turno){
   var hora=(document.getElementById('fech24-hora')||{}).value;
   var obs=(document.getElementById('fech24-obs')||{}).value;
   if(!resp||!resp.trim()){toast('Informe o responsável','err');return;}
-  var res=await sb.from('fechamento_24').upsert({garagem_id:gid,data:data,turno:turno,responsavel:resp.trim(),hora_fechamento:hora,observacoes:obs||null,fechado:true,fechado_em:new Date().toISOString(),fechado_por:S.user&&S.user.id||null},{onConflict:'garagem_id,data,turno'});
+  var entrada=parseFloat(document.getElementById('fech24-entrada')?.value||0)||0;
+  var saida=parseFloat(document.getElementById('fech24-saida')?.value||0)||0;
+  var resumo=S._fech24Resumo||{};
+  var key=pcmFech24Key(gid,data,turno);
+  var extra={entrada_valor:entrada,saida_valor:saida,total_previsto_aberto:resumo.total_previsto_aberto||0,total_real_fechado:resumo.total_real_fechado||0,os_abertas_periodo:resumo.os_abertas_periodo||0,os_fechadas_periodo:resumo.os_fechadas_periodo||0,periodo_inicio:resumo.ini||null,periodo_fim:resumo.fim||null};
+  pcmSaveLocal(key,extra);
+  var base={garagem_id:gid,data:data,turno:turno,responsavel:resp.trim(),hora_fechamento:hora,observacoes:obs||null,fechado:true,fechado_em:new Date().toISOString(),fechado_por:S.user&&S.user.id||null};
+  var res=await sb.from('fechamento_24').upsert(Object.assign({},base,extra),{onConflict:'garagem_id,data,turno'});
+  if(res.error&&pcmIsMissingColumn(res.error)){res=await sb.from('fechamento_24').upsert(base,{onConflict:'garagem_id,data,turno'});}
   if(res.error){toast('Erro: '+res.error.message,'err');return;}
   toast('✅ Turno fechado!');
   renderFerrPCM('fech24');
