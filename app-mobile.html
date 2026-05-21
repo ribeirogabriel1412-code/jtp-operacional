@@ -1220,14 +1220,14 @@ async function _renderOS(){
   };
 }
 
-var _OS38={oc:null,dados:{},qual:null};
+var _OS38={oc:null,dados:{},qual:null,qualDirty:{}};
 async function abrirOS38Oficina(ocId){
   var gid=getGid();
   var r1=await sb.from('ocorrencias_22').select('*').eq('id',ocId).single();
   var oc=r1.data;
   if(!oc){toast('OS não encontrada','err');return;}
   var r2=await sb.from('checklist_38').select('dados').eq('garagem_id',gid).eq('prefixo',oc.prefixo).order('criado_em',{ascending:false}).limit(1);
-  _OS38={oc:oc,dados:(r2.data&&r2.data[0]&&r2.data[0].dados)||{},qual:null};
+  _OS38={oc:oc,dados:(r2.data&&r2.data[0]&&r2.data[0].dados)||{},qual:null,qualDirty:{}};
   renderOS38Oficina();
 }
 
@@ -1324,20 +1324,21 @@ function abrirQualSetor38(setor){
     var idx=ckl.indexOf(it);
     var nsa=!!it.nao_se_aplica;
     var txt=(it.item||'').replace(/^\[[^\]]+\]\s*/,'');
-    return '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border2)">'+
-      '<div style="flex:1;font-size:12px;line-height:1.35;color:'+(it.trocado?'var(--green)':it.verificado?'var(--text)':'var(--text3)')+'">'+txt+'</div>'+
-      '<button onclick="togQual38('+idx+',\'v\',\''+setor+'\')" class="ck-b '+(it.verificado?'von':'')+'" '+(nsa?'disabled':'')+'>V</button>'+
-      '<button onclick="togQual38('+idx+',\'t\',\''+setor+'\')" class="ck-b '+(it.trocado?'ton':'')+'" '+(!it.verificado||nsa?'disabled':'')+'>T</button>'+
-      '<button onclick="togQual38('+idx+',\'nsa\',\''+setor+'\')" class="ck-b '+(nsa?'na':'')+'">N/A</button>'+
+    return '<div id="qrow_'+idx+'" style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border2)">'+
+      '<div id="qtxt_'+idx+'" style="flex:1;font-size:12px;line-height:1.35;color:'+(it.trocado?'var(--green)':it.verificado?'var(--text)':'var(--text3)')+'">'+txt+'</div>'+
+      '<button id="qbtn_'+idx+'_v" onclick="togQual38('+idx+',\'v\',\''+setor+'\')" class="ck-b '+(it.verificado?'von':'')+'" '+(nsa?'disabled':'')+'>V</button>'+
+      '<button id="qbtn_'+idx+'_t" onclick="togQual38('+idx+',\'t\',\''+setor+'\')" class="ck-b '+(it.trocado?'ton':'')+'" '+(!it.verificado||nsa?'disabled':'')+'>T</button>'+
+      '<button id="qbtn_'+idx+'_nsa" onclick="togQual38('+idx+',\'nsa\',\''+setor+'\')" class="ck-b '+(nsa?'na':'')+'">N/A</button>'+
     '</div>';
   }).join('');
   openSheet((sg&&sg.ic||'🔧')+' '+setor+' — '+(oc&&oc.prefixo||''),
     '<button onclick="renderQual38Oficina()" style="background:transparent;border:none;color:var(--blue);font-size:13px;font-weight:800;font-family:inherit;padding:0 0 12px">← Voltar aos setores</button>'+
-    '<div style="background:var(--surface2);border-radius:10px;padding:9px 12px;margin-bottom:10px;display:flex;justify-content:space-between;font-size:12px"><span>Qualificados</span><b style="color:'+(done===itens.length?'var(--green)':'var(--amber)')+'">'+done+'/'+itens.length+'</b></div>'+
-    '<div style="max-height:65vh;overflow-y:auto">'+rows+'</div>');
+    '<div style="background:var(--surface2);border-radius:10px;padding:9px 12px;margin-bottom:10px;display:flex;justify-content:space-between;font-size:12px"><span>Qualificados</span><b id="qcnt_setor" style="color:'+(done===itens.length?'var(--green)':'var(--amber)')+'">'+done+'/'+itens.length+'</b></div>'+
+    '<div style="max-height:62vh;overflow-y:auto">'+rows+'</div>'+
+    '<button onclick="salvarQual38Oficina()" style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--green);color:#fff;font-size:14px;font-weight:800;font-family:inherit;margin-top:12px">Salvar qualificação</button>');
 }
 
-async function togQual38(idx,tipo,setor){
+function togQual38(idx,tipo,setor){
   var it=_OS38.qual&&_OS38.qual[idx];
   if(!it) return;
   var n,p={};
@@ -1356,9 +1357,39 @@ async function togQual38(idx,tipo,setor){
     p={nao_se_aplica:n,verificado:n,trocado:n,verificado_por:n?(S.perfil&&S.perfil.nome):null,trocado_por:n?(S.perfil&&S.perfil.nome):null,verificado_em:n?new Date().toISOString():null,trocado_em:n?new Date().toISOString():null};
     it.nao_se_aplica=n; it.verificado=n; it.trocado=n; it.verificado_por=p.verificado_por; it.trocado_por=p.trocado_por; it.verificado_em=p.verificado_em; it.trocado_em=p.trocado_em;
   }
-  abrirQualSetor38(setor);
-  var res=await sb.from('checklist_liberacao').update(p).eq('id',it.id);
-  if(res.error){toast('Erro ao salvar item: '+res.error.message,'err');}
+  _OS38.qualDirty[it.id]=p;
+  refreshQual38Linha(idx,setor);
+}
+
+function refreshQual38Linha(idx,setor){
+  var it=_OS38.qual&&_OS38.qual[idx];
+  if(!it) return;
+  var nsa=!!it.nao_se_aplica;
+  var txt=document.getElementById('qtxt_'+idx);
+  if(txt) txt.style.color=it.trocado?'var(--green)':it.verificado?'var(--text)':'var(--text3)';
+  var bv=document.getElementById('qbtn_'+idx+'_v');
+  var bt=document.getElementById('qbtn_'+idx+'_t');
+  var bn=document.getElementById('qbtn_'+idx+'_nsa');
+  if(bv){bv.className='ck-b '+(it.verificado?'von':'');bv.disabled=nsa;}
+  if(bt){bt.className='ck-b '+(it.trocado?'ton':'');bt.disabled=!it.verificado||nsa;}
+  if(bn){bn.className='ck-b '+(nsa?'na':'');}
+  var sg=SETORES_M.find(function(s){return s.key===setor;});
+  var itens=(_OS38.qual||[]).filter(function(i){var m=i.item&&i.item.match(/^\[([^\]]+)\]/);return (sg&&sg.gr||[]).includes(m?m[1]:'GERAL');});
+  var done=itens.filter(function(i){return i.trocado||i.nao_se_aplica;}).length;
+  var cnt=document.getElementById('qcnt_setor');
+  if(cnt){cnt.textContent=done+'/'+itens.length;cnt.style.color=done===itens.length?'var(--green)':'var(--amber)';}
+}
+
+async function salvarQual38Oficina(silencioso){
+  var ids=Object.keys(_OS38.qualDirty||{});
+  if(!ids.length){if(!silencioso) toast('Nada novo para salvar');return true;}
+  for(var i=0;i<ids.length;i++){
+    var res=await sb.from('checklist_liberacao').update(_OS38.qualDirty[ids[i]]).eq('id',ids[i]);
+    if(res.error){toast('Erro ao salvar qualificação: '+res.error.message,'err');return false;}
+  }
+  _OS38.qualDirty={};
+  if(!silencioso) toast('✅ Qualificação salva');
+  return true;
 }
 
 async function salvarOS38Oficina(){
@@ -1383,6 +1414,10 @@ async function salvarOS38Oficina(){
   };
   var res=await sb.from('checklist_38').insert(payload);
   if(res.error){toast('Erro ao salvar 3.8: '+res.error.message,'err');return;}
+  if(_OS38.qual&&Object.keys(_OS38.qualDirty||{}).length){
+    var okQual=await salvarQual38Oficina(true);
+    if(!okQual) return;
+  }
   _OS.dados38[oc.id]=dados;
   toast('✅ 3.8 salvo. Gerando PDF...');
   closeSheet(true);
