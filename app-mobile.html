@@ -2783,14 +2783,23 @@ function setLpData(d){_lpData=d;try{sessionStorage.setItem('jtp_lpData',d);}catc
 async function telaLavPesada(){
   const gid=getGid();
   const data=_lpData;
+  const baseSemana=new Date(data+'T12:00:00');
+  const dow=baseSemana.getDay();
+  const offset=(dow+6)%7; // segunda-feira como início
+  const semanaIni=new Date(baseSemana);semanaIni.setDate(baseSemana.getDate()-offset);
+  const semanaFim=new Date(semanaIni);semanaFim.setDate(semanaIni.getDate()+7);
+  const semanaIniStr=semanaIni.toISOString().split('T')[0];
+  const semanaFimStr=semanaFim.toISOString().split('T')[0];
   
   // Carregar plano do dia + frota (com ultima_lavagem) + preventivas do dia
   // Filtra cancelado/arquivado diretamente na query — não depende de filtro JS
-  const[{data:plano},{data:frota},{data:prevHoje}]=await Promise.all([
+  const[{data:plano},{data:frota},{data:prevHoje},{data:vistoriasSemana}]=await Promise.all([
     sb.from('checklist_lavagem').select('*').eq('garagem_id',gid).eq('data',data)
       .not('status','in','("cancelado","arquivado")').order('prefixo'),
     sb.from('frota').select('prefixo,modelo,ultima_lavagem').eq('garagem_id',gid).order('prefixo'),
     sb.from('soltura_2_10').select('prefixo').eq('garagem_id',gid).eq('data',data),
+    sb.from('vistoria_lavagem').select('prefixo,created_at,aprovado').eq('garagem_id',gid).eq('aprovado',true)
+      .gte('created_at',semanaIni.toISOString()).lt('created_at',semanaFim.toISOString()),
   ]);
   
   window._lavLista=plano||[];
@@ -2806,6 +2815,22 @@ async function telaLavPesada(){
   const dataFmt=new Date(data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'});
   const frotaMap={};
   (frota||[]).forEach(v=>{frotaMap[v.prefixo]=v;});
+  const totalFrota=(frota||[]).length;
+  const lavadosSemanaSet=new Set();
+  (frota||[]).forEach(v=>{
+    if(v.ultima_lavagem&&v.ultima_lavagem>=semanaIniStr&&v.ultima_lavagem<semanaFimStr) lavadosSemanaSet.add(v.prefixo);
+  });
+  lista.forEach(l=>{if(l.status==='executado'||l.validado_patio)lavadosSemanaSet.add(l.prefixo);});
+  const vistoriadosSemanaSet=new Set();
+  (vistoriasSemana||[]).forEach(v=>{if(v.prefixo)vistoriadosSemanaSet.add(v.prefixo);});
+  lista.forEach(l=>{if(l.validado_patio)vistoriadosSemanaSet.add(l.prefixo);});
+  const lavadosSemana=lavadosSemanaSet.size;
+  const vistoriadosSemana=vistoriadosSemanaSet.size;
+  const faltamLavar=Math.max(0,totalFrota-lavadosSemana);
+  const faltamVistoriar=Math.max(0,totalFrota-vistoriadosSemana);
+  const pctSemLav=totalFrota?Math.round(lavadosSemana/totalFrota*100):0;
+  const pctSemVis=totalFrota?Math.round(vistoriadosSemana/totalFrota*100):0;
+  const semanaLbl=semanaIni.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' a '+new Date(semanaFim.getTime()-86400000).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
 
   // Cards do plano
   const mkCardLav=function(r){
@@ -2857,6 +2882,17 @@ async function telaLavPesada(){
     +'<div><div style="font-weight:800;font-size:17px">🚿 Lavagem Pesada</div>'
     +'<div style="font-size:11px;color:var(--text3)">'+dataFmt+'</div></div>'
     +'<button onclick="telaLavPesada()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>'
+    +'</div>'
+    +'<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-size:11px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:1px">Meta semanal da frota</div><div style="font-size:11px;color:var(--text3)">'+semanaLbl+'</div></div>'
+    +'<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:9px">'
+    +'<div style="background:var(--surface);border-radius:10px;padding:10px;text-align:center;border:1px solid '+(faltamLavar===0?'#00C48C40':'#F59E0B40')+'"><div style="font-family:\'DM Mono\',monospace;font-size:20px;font-weight:900;color:'+(faltamLavar===0?'var(--green)':'var(--blue)')+'">'+lavadosSemana+'/'+totalFrota+'</div><div style="font-size:10px;color:var(--text3)">Lavados na semana</div></div>'
+    +'<div style="background:var(--surface);border-radius:10px;padding:10px;text-align:center;border:1px solid '+(faltamLavar===0?'#00C48C40':'#EF444440')+'"><div style="font-family:\'DM Mono\',monospace;font-size:20px;font-weight:900;color:'+(faltamLavar===0?'var(--green)':'var(--red)')+'">'+faltamLavar+'</div><div style="font-size:10px;color:var(--text3)">Faltam lavar</div></div>'
+    +'<div style="background:var(--surface);border-radius:10px;padding:10px;text-align:center;border:1px solid '+(faltamVistoriar===0?'#00C48C40':'#F59E0B40')+'"><div style="font-family:\'DM Mono\',monospace;font-size:20px;font-weight:900;color:'+(faltamVistoriar===0?'var(--green)':'var(--amber)')+'">'+vistoriadosSemana+'/'+totalFrota+'</div><div style="font-size:10px;color:var(--text3)">Vistoriados</div></div>'
+    +'<div style="background:var(--surface);border-radius:10px;padding:10px;text-align:center;border:1px solid '+(faltamVistoriar===0?'#00C48C40':'#EF444440')+'"><div style="font-family:\'DM Mono\',monospace;font-size:20px;font-weight:900;color:'+(faltamVistoriar===0?'var(--green)':'var(--red)')+'">'+faltamVistoriar+'</div><div style="font-size:10px;color:var(--text3)">Faltam vistoriar</div></div>'
+    +'</div>'
+    +'<div style="height:6px;background:var(--border);border-radius:99px;overflow:hidden;margin-bottom:5px"><div style="height:100%;width:'+pctSemLav+'%;background:'+(pctSemLav>=100?'var(--green)':'var(--blue)')+'"></div></div>'
+    +'<div style="font-size:10px;color:var(--text3);display:flex;justify-content:space-between"><span>Lavagem '+pctSemLav+'%</span><span>Vistoria '+pctSemVis+'%</span></div>'
     +'</div>'
     // KPIs
     +'<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px">'
