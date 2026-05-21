@@ -7630,6 +7630,7 @@ function pcmFech24Key(gid,data,turno){return 'jtp_fech24_fluxo_'+gid+'_'+data+'_
 function pcmReadLocal(key){try{return JSON.parse(localStorage.getItem(key)||'{}')||{};}catch(e){return {};}}
 function pcmSaveLocal(key,obj){try{localStorage.setItem(key,JSON.stringify(Object.assign({},pcmReadLocal(key),obj||{})));}catch(e){}}
 function pcmIsMissingColumn(err){return !!(err&&(err.code==='PGRST204'||/column|schema cache|Could not find/i.test(err.message||'')));}
+function pcmIsMissingTable(err){return !!(err&&(err.code==='42P01'||err.code==='PGRST205'||err.status===404||/does not exist|not found|Could not find the table|schema cache/i.test(err.message||'')));}
 function pcmMoeda(v){return 'R$ '+parseFloat(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});}
 function pcmPeriodoTurno(dataRef,horaIni,horaFim){var dtIni=new Date(dataRef+'T'+horaIni);var dtFim=new Date(dataRef+'T'+horaFim);if(dtFim<=dtIni)dtFim.setDate(dtFim.getDate()+1);return{dtIni:dtIni,dtFim:dtFim,ini:dtIni.toISOString(),fim:dtFim.toISOString()};}
 async function pcmUpsertOrcamento(gid,data,turno,base,extra){var key=pcmFluxoKey(gid,data,turno);pcmSaveLocal(key,extra||{});var payload=Object.assign({},base||{},extra||{});var exist=null;try{var q=await sb.from('pcm_orcamento').select('id').eq('garagem_id',gid).eq('data',data).eq('turno',turno).limit(1);exist=q.data&&q.data[0];}catch(e){}var res=exist&&exist.id?await sb.from('pcm_orcamento').update(payload).eq('id',exist.id):await sb.from('pcm_orcamento').insert(Object.assign({garagem_id:gid,data:data,turno:turno},payload));if(res.error&&pcmIsMissingColumn(res.error)){var fallback=Object.assign({},base||{});res=exist&&exist.id?await sb.from('pcm_orcamento').update(fallback).eq('id',exist.id):await sb.from('pcm_orcamento').insert(Object.assign({garagem_id:gid,data:data,turno:turno},fallback));}return res;}
@@ -7653,9 +7654,10 @@ async function renderFech24(gid,back,tabs){
   var resAbertas=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).gte('hora_entrada',ini).lte('hora_entrada',fim).order('hora_entrada',{ascending:true});
   var resFechadas=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).eq('status','liberado').gte('hora_liberacao',ini).lte('hora_liberacao',fim).order('hora_liberacao',{ascending:true});
   var r3=await sb.from('movimentacao_pneu').select('*').eq('garagem_id',gid).eq('data',dataRef);
-  var r4=await sb.from('fechamento_24').select('*').eq('garagem_id',gid).eq('data',dataRef).eq('turno',turno).limit(1);
+  var r4={data:null,error:null};
+  try{r4=await sb.from('fechamento_24').select('*').eq('garagem_id',gid).eq('data',dataRef).eq('turno',turno).limit(1);}catch(e){r4={data:null,error:e};}
   var abertasPeriodo=resAbertas.data||[], fechadasPeriodo=resFechadas.data||[], pneus=r3.data||[];
-  var fech=r4.data&&r4.data[0]||null;
+  var fech=(r4.data&&r4.data[0])||(localFech&&localFech.fechado?localFech:null)||null;
   var mapa={};
   abertasPeriodo.concat(fechadasPeriodo).forEach(function(o){mapa[o.id]=Object.assign({},mapa[o.id]||{},o,{_abertaPeriodo:abertasPeriodo.some(function(a){return a.id===o.id;}),_fechadaPeriodo:fechadasPeriodo.some(function(f){return f.id===o.id;})});});
   var ocs=Object.values(mapa).sort(function(a,b){return new Date(a.hora_entrada||a.hora_liberacao)-new Date(b.hora_entrada||b.hora_liberacao);});
@@ -7711,11 +7713,13 @@ async function fecharTurno24(gid,data,turno){
   var resumo=S._fech24Resumo||{};
   var key=pcmFech24Key(gid,data,turno);
   var extra={entrada_valor:entrada,saida_valor:saida,total_previsto_aberto:resumo.total_previsto_aberto||0,total_real_fechado:resumo.total_real_fechado||0,os_abertas_periodo:resumo.os_abertas_periodo||0,os_fechadas_periodo:resumo.os_fechadas_periodo||0,periodo_inicio:resumo.ini||null,periodo_fim:resumo.fim||null};
-  pcmSaveLocal(key,extra);
   var base={garagem_id:gid,data:data,turno:turno,responsavel:resp.trim(),hora_fechamento:hora,observacoes:obs||null,fechado:true,fechado_em:new Date().toISOString(),fechado_por:S.user&&S.user.id||null};
-  var res=await sb.from('fechamento_24').upsert(Object.assign({},base,extra),{onConflict:'garagem_id,data,turno'});
-  if(res.error&&pcmIsMissingColumn(res.error)){res=await sb.from('fechamento_24').upsert(base,{onConflict:'garagem_id,data,turno'});}
-  if(res.error){toast('Erro: '+res.error.message,'err');return;}
+  pcmSaveLocal(key,Object.assign({},base,extra));
+  var res={error:null};
+  try{res=await sb.from('fechamento_24').upsert(Object.assign({},base,extra),{onConflict:'garagem_id,data,turno'});}catch(e){res={error:e};}
+  if(res.error&&pcmIsMissingColumn(res.error)){try{res=await sb.from('fechamento_24').upsert(base,{onConflict:'garagem_id,data,turno'});}catch(e){res={error:e};}}
+  if(res.error&&pcmIsMissingTable(res.error)){toast('✅ Turno fechado localmente. A tabela fechamento_24 ainda não existe no banco.');renderFerrPCM('fech24');return;}
+  if(res.error){toast('Fechado localmente, mas o banco recusou: '+res.error.message,'err');renderFerrPCM('fech24');return;}
   toast('✅ Turno fechado!');
   renderFerrPCM('fech24');
 }
