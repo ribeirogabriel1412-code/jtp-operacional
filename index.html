@@ -7643,12 +7643,18 @@ async function resetarFluxoCustoPCM(gid,data){var turno=S.turno||'dia';if(!confi
 function pcmFechLiderKey(gid,data,fluxo){return 'jtp_pcm_fech_lider_'+gid+'_'+data+'_'+fluxo;}
 function pcmFluxoLiderDef(fluxo,dataRef){
   var defs={
-    manha:{id:'manha',label:'Parcial manhã',ini:'05:00',fim:'17:00',cor:'var(--amber)'},
-    noite:{id:'noite',label:'Parcial noite',ini:'17:00',fim:'05:00',cor:'var(--blue)'},
-    dia:{id:'dia',label:'Dia completo',ini:'05:00',fim:'05:00',cor:'var(--green)'}
+    manha:{id:'manha',label:'Parcial manhã',ini:'08:00',fim:'18:00',cor:'var(--amber)'},
+    noite:{id:'noite',label:'Parcial noite',ini:'20:00',fim:'04:20',cor:'var(--blue)'},
+    dia:{id:'dia',label:'Dia completo',ini:'08:00',fim:'08:00',cor:'var(--green)',diaAnterior:true}
   };
   var d=defs[fluxo]||defs.manha;
-  var p=pcmPeriodoTurno(dataRef,d.ini,d.fim);
+  var baseData=dataRef;
+  if(d.diaAnterior){
+    var ant=new Date(dataRef+'T12:00:00');
+    ant.setDate(ant.getDate()-1);
+    baseData=ant.toISOString().slice(0,10);
+  }
+  var p=pcmPeriodoTurno(baseData,d.ini,d.fim);
   return Object.assign({},d,p);
 }
 async function renderFechLiderPCM(gid,back,tabs,embedded){
