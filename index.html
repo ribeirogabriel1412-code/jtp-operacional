@@ -7938,13 +7938,6 @@ const prevPlanoPeso=r=>prevIsPesada(r)?4:prevIsGarantia(r)?3:prevIsLeve(r)?2:1;
 const prevIntervaloGarantia=r=>String(r.planoNum)==='029'?30000:20000;
 function prevOrdenarPreventiva(a,b){
   const aKm=a?.excessoKm??a?.prioridade??0, bKm=b?.excessoKm??b?.prioridade??0;
-  const aDias=a?.excessoDias??a?.base?.excessoDias??0, bDias=b?.excessoDias??b?.base?.excessoDias??0;
-  const aVencKm=aKm>0, bVencKm=bKm>0;
-  if(aVencKm!==bVencKm) return aVencKm?-1:1;
-  if(aVencKm&&aKm!==bKm) return bKm-aKm;
-  const aAtraso=aDias<0, bAtraso=bDias<0;
-  if(aAtraso!==bAtraso) return aAtraso?-1:1;
-  if(aAtraso&&aDias!==bDias) return aDias-bDias;
   if(aKm!==bKm) return bKm-aKm;
   return String(a?.prefixo||'').localeCompare(String(b?.prefixo||''));
 }
