@@ -7811,35 +7811,34 @@ async function pdfFechLiderPCM(gid,data,fluxo){
     var dif=(parseFloat(o._realPdf||0)-parseFloat(o._prevPdf||0));
     return '<tr><td>'+esc(o.prefixo)+'</td><td>'+esc(tipoMap[o.tipo]||o.tipo)+'</td><td>'+esc(mov||'--')+'</td><td class="center">'+fmtH(o.hora_entrada)+'</td><td class="center">'+fmtH(o.hora_liberacao)+'</td><td class="right">'+(o._prevPdf?fmtR(o._prevPdf):'--')+'</td><td class="right">'+(o._realPdf?fmtR(o._realPdf):'--')+'</td><td class="right '+(dif>0?'nok':dif<0?'ok':'')+'">'+((o._prevPdf||o._realPdf)?fmtR(dif):'--')+'</td></tr>';
   }).join('');
-  abrirJanelaPDF(`
-    <div class="header">
-      <div>
-        <div class="logo">JTP Operacional</div>
-        <h1>Fechamento Parcial do Líder PCM</h1>
-      </div>
-      <div class="meta">
-        <div><strong>Garagem:</strong> ${esc(garagem?.nome||'--')}</div>
-        <div><strong>Fluxo:</strong> ${esc(rel.def?.label||fluxo)}</div>
-        <div><strong>Período:</strong> ${esc(rel.periodoLabel)}</div>
-        <div><strong>Hora fechamento:</strong> ${esc(hora)}</div>
-      </div>
+  var dtGerado=new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'});
+  var tituloFluxo=(rel.def?.id==='dia'?'DIA COMPLETO':(rel.def?.label||'PARCIAL')).toUpperCase();
+  var html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>JTP Fechamento Lider PCM</title><style>
+    *{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#000;background:#fff;margin:0;padding:8px;font-size:10px}
+    .top-print{position:sticky;top:0;z-index:5;background:#f3f4f6;border:1px solid #ddd;border-radius:6px;padding:8px;margin-bottom:8px;display:flex;gap:8px;align-items:center}
+    .top-print button{border:0;border-radius:6px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer}.print{background:#111;color:#fff}.close{background:#e5e7eb;color:#111}
+    .head{text-align:center;border:3px solid #111;padding:10px 8px;margin-bottom:10px;font-weight:900;font-size:16px;letter-spacing:.2px}
+    table{width:100%;border-collapse:collapse;margin-bottom:8px}td,th{border:1px solid #222;padding:5px 8px;vertical-align:middle}th{background:#eee;text-align:left;text-transform:uppercase;font-size:10px;font-weight:900}
+    .info td{font-size:14px}.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:10px 0 12px}.kpi{border:1px solid #111;border-radius:7px;text-align:center;padding:8px 5px;font-size:14px}.kpi b{display:block;font-size:17px;line-height:1.05}.sec{background:#111;color:#fff;font-weight:900;font-size:16px;padding:8px 10px;margin:10px 0 3px}.zebra tr:nth-child(even){background:#f4f4f4}.right{text-align:right}.center{text-align:center}.ok{background:#d1fae5;color:#065f46}.nok{background:#fee2e2;color:#991b1b}.total th{background:#111;color:#fff;font-size:14px}.assin{display:grid;grid-template-columns:1fr 80px 1fr;gap:0;margin-top:96px}.linha{border-top:1px solid #111;text-align:center;padding-top:6px;font-size:12px}
+    @media print{.top-print{display:none!important}body{padding:5px}@page{size:A4 landscape;margin:7mm}}
+  </style></head><body>
+    <div class="top-print"><button class="print" onclick="window.print()">Imprimir / Salvar PDF</button><button class="close" onclick="window.close()">Fechar</button><span>Padrao operacional JTP</span></div>
+    <div class="head">GRUPO JTP | FECHAMENTO ${esc(tituloFluxo)} LIDER PCM | ${esc(garagem?.nome||'Garagem')}</div>
+    <table class="info"><tr><td><b>Data/periodo:</b> ${esc(rel.periodoLabel)}</td><td><b>Fluxo:</b> ${esc(rel.def?.label||fluxo)}</td><td><b>Responsavel:</b> ${esc(S.perfil?.nome||rel.local?.responsavel||'--')}</td><td><b>Gerado:</b> ${esc(dtGerado)}</td></tr></table>
+    <div class="kpis">
+      <div class="kpi">OS abertas<b>${ocs.filter(o=>o._abertaPeriodo).length}</b></div>
+      <div class="kpi">OS fechadas<b>${ocs.filter(o=>o._fechadaPeriodo).length}</b></div>
+      <div class="kpi">Previsto OS<b>${fmtR(totalPrev)}</b></div>
+      <div class="kpi">Real OS<b>${fmtR(totalReal)}</b></div>
+      <div class="kpi">Divergencia<b>${fmtR(totalDif)}</b></div>
     </div>
-    <div class="kpi-row">
-      <div class="kpi"><div class="kpi-val">${ocs.filter(o=>o._abertaPeriodo).length}</div><div class="kpi-lab">OS Abertas</div></div>
-      <div class="kpi"><div class="kpi-val">${ocs.filter(o=>o._fechadaPeriodo).length}</div><div class="kpi-lab">OS Fechadas</div></div>
-      <div class="kpi"><div class="kpi-val">${fmtR(totalPrev)}</div><div class="kpi-lab">Custo Previsto</div></div>
-      <div class="kpi"><div class="kpi-val">${fmtR(totalReal)}</div><div class="kpi-lab">Custo Real</div></div>
-    </div>
-    <h2>OS Trabalhadas No Período</h2>
-    <table>
-      <thead><tr><th>Prefixo</th><th>Tipo</th><th>Movimento</th><th>Abertura</th><th>Fechamento</th><th style="text-align:right">Previsto</th><th style="text-align:right">Real</th><th style="text-align:right">Dif.</th></tr></thead>
-      <tbody>${rows||'<tr><td colspan="8">Nenhuma OS trabalhada no período</td></tr>'}</tbody>
-      <tfoot><tr><th colspan="5" style="text-align:right">Total</th><th style="text-align:right">${fmtR(totalPrev)}</th><th style="text-align:right">${fmtR(totalReal)}</th><th style="text-align:right">${fmtR(totalDif)}</th></tr></tfoot>
-    </table>
-    <h2>Observação / Passagem De Bastão</h2>
-    <table><tr><td style="min-height:60px">${esc(obs||'--')}</td></tr></table>
-    <table style="margin-top:24px"><tr><td style="height:42px;border-bottom:1px solid #111"></td><td style="width:60px;border:0"></td><td style="height:42px;border-bottom:1px solid #111"></td></tr><tr><td style="text-align:center;border:0">Líder PCM</td><td style="border:0"></td><td style="text-align:center;border:0">Recebimento / Próximo turno</td></tr></table>
-  `,'JTP_Fechamento_Lider_PCM');
+    <div class="sec">Secao 1 - OS trabalhadas no periodo</div>
+    <table class="zebra"><thead><tr><th>Prefixo</th><th>Tipo</th><th>Movimento</th><th>Abertura</th><th>Fechamento</th><th class="right">Previsto</th><th class="right">Real</th><th class="right">Dif.</th></tr></thead><tbody>${rows||'<tr><td colspan="8">Sem OS no periodo</td></tr>'}</tbody><tfoot><tr class="total"><th colspan="5" class="right">TOTAL</th><th class="right">${fmtR(totalPrev)}</th><th class="right">${fmtR(totalReal)}</th><th class="right">${fmtR(totalDif)}</th></tr></tfoot></table>
+    <div class="sec">Secao 2 - Observacao / passagem de bastao</div>
+    <table><tr><td style="height:44px">${esc(obs||'--')}</td></tr></table>
+    <div class="assin"><div class="linha">Lider PCM</div><div></div><div class="linha">Recebimento / Proximo turno</div></div>
+  </body></html>`;
+  abrirRelatorioHTMLPCM(html,'JTP_Fechamento_Lider_PCM_'+String(data).replace(/-/g,'')+'.pdf');
 }
 async function renderFech24(gid,back,tabs){
   setMain(back+tabs+'<div class="loading"><div class="spinner"></div></div>');
