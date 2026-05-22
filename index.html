@@ -8034,6 +8034,53 @@ function prevSalvarSemanaHistorico(escala,linhas){
   return rec;
 }
 
+function prevUltimasProgramacoes(){
+  const h=prevHistoricos();
+  const mapa={};
+  const melhor=(atual,novo)=>{
+    if(!novo) return atual||null;
+    if(!atual) return novo;
+    const a=String(atual.iso||atual.atualizadoEm||atual.criadoEm||'');
+    const b=String(novo.iso||novo.atualizadoEm||novo.criadoEm||'');
+    return b>a?novo:atual;
+  };
+  (h.semanas||[]).forEach(semana=>{
+    (semana.itens||[]).forEach(item=>{
+      if(!item||!item.prefixo) return;
+      const info={
+        prefixo:item.prefixo,
+        tipo:item.tipo||'',
+        iso:item.iso||semana.fim||semana.inicio||'',
+        semana:prevSemanaLabel(semana),
+        status:item.status||'',
+        validado:!!item.validado,
+        atualizadoEm:semana.atualizadoEm||'',
+        criadoEm:semana.criadoEm||''
+      };
+      const keyTipo=`${item.prefixo}|${item.tipo||''}`;
+      const keyGeral=`${item.prefixo}|*`;
+      mapa[keyTipo]=melhor(mapa[keyTipo],info);
+      mapa[keyGeral]=melhor(mapa[keyGeral],info);
+    });
+  });
+  return mapa;
+}
+
+function prevUltimaProgramacao(prefixo,tipo,mapa){
+  if(!prefixo) return null;
+  const base=mapa||prevUltimasProgramacoes();
+  return base[`${prefixo}|${tipo||''}`]||base[`${prefixo}|*`]||null;
+}
+
+function prevFmtUltimaProgramacao(info){
+  if(!info) return 'Sem histórico no app';
+  let data='';
+  try{ data=info.iso?new Date(`${info.iso}T12:00:00`).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):''; }catch(e){ data=''; }
+  const tipo=info.tipo?` • ${info.tipo}`:'';
+  const status=info.validado?' • validada':info.status?` • ${info.status}`:'';
+  return `${data||info.semana||'--/--'}${tipo}${status}`;
+}
+
 function prevServicosDoCarro(c,tipoPreferido=''){
   if(!c) return [];
   const itens=[];
@@ -8263,11 +8310,12 @@ function prevMontarEscala(p){
 function prevHtmlPropostasEscala(){
   const p=prevGerarPropostas();
   const escala=prevMontarEscala(p);
+  const ultimas=prevUltimasProgramacoes();
   const garantiaRadar=p.garantias.filter(g=>g.prioridade>=-3000).slice(0,20);
   if(!p.pesadas.length&&!p.leves.length&&!garantiaRadar.length&&!p.outros.length){
     return `<div style="padding:28px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhuma proposta encontrada para a pesquisa atual.</div>`;
   }
-  return `${prevHtmlEscalaSemanal(escala)}${prevHtmlValetamentoProposto(p)}${prevHtmlOutrosPlanos(p,escala)}${prevHtmlFilasProposta(p)}${prevHtmlGarantias(garantiaRadar)}`;
+  return `${prevHtmlEscalaSemanal(escala,ultimas)}${prevHtmlValetamentoProposto(p)}${prevHtmlOutrosPlanos(p,escala)}${prevHtmlFilasProposta(p)}${prevHtmlGarantias(garantiaRadar)}`;
 }
 
 function prevBadgeTipo(tipo){
@@ -8303,7 +8351,7 @@ function prevGerarValetamentoPCM(){
   renderFerrPCM('req_compra');
 }
 
-function prevHtmlCarroMini(slot){
+function prevHtmlCarroMini(slot,ultimas){
   const c=slot.item;
   if(!c){
     return `<div style="background:rgba(2,6,23,.22);border:1px dashed var(--border2);border-radius:8px;padding:9px;min-height:94px;display:flex;align-items:center;justify-content:center;text-align:center">
@@ -8313,12 +8361,15 @@ function prevHtmlCarroMini(slot){
   const tipo=c.tipo||slot.tipoSlot;
   const border=slot.validado?'var(--green)':slot.origem==='manual'?'var(--amber)':'var(--border)';
   const status=slot.validado?'VALIDADO':slot.origem==='manual'?'ALTERADO':'SUGERIDO';
+  const ultima=prevUltimaProgramacao(c.prefixo,tipo,ultimas);
+  const ultimaCor=ultima?'var(--text3)':'var(--amber)';
   return `<div style="background:rgba(2,6,23,.35);border:1px solid ${border};border-radius:8px;padding:9px;min-height:112px">
     <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
       <div><b style="color:var(--blue);font-size:15px">${prevEsc(c.prefixo)}</b><div style="color:${(c.prioridade||0)>0?'var(--red)':'var(--green)'};font-size:12px;font-weight:900;margin-top:4px">${prevFmtKm(c.prioridade)}</div></div>
       <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${prevBadgeTipo(tipo)}<span style="font-size:9px;color:${slot.validado?'var(--green)':'var(--text3)'};font-weight:900">${status}</span></div>
     </div>
     <div style="color:var(--amber);font-size:11px;line-height:1.35;margin-top:6px">${prevEsc(prevResumoServicos(c,tipo))}</div>
+    <div style="color:${ultimaCor};font-size:10.5px;line-height:1.35;margin-top:6px">Última prog.: ${prevEsc(prevFmtUltimaProgramacao(ultima))}</div>
     <div style="display:flex;gap:5px;margin-top:8px;justify-content:flex-end;flex-wrap:wrap">
       <button class="btn" style="font-size:10px;padding:4px 7px" onclick="prevValidarSlot('${slot.slotKey}')">✓ Validar</button>
       <button class="btn" style="font-size:10px;padding:4px 7px" onclick="prevAbrirSeletorSlot('${slot.slotKey}','${slot.tipoSlot}')">Trocar</button>
@@ -8326,7 +8377,7 @@ function prevHtmlCarroMini(slot){
     </div>
   </div>`;
 }
-function prevHtmlEscalaSemanal(escala){
+function prevHtmlEscalaSemanal(escala,ultimas){
   return `<section style="margin-bottom:12px">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin:4px 0 8px">
       <h3 style="margin:0;color:var(--text);font-size:16px">📆 Escala automática sugerida</h3>
@@ -8340,11 +8391,11 @@ function prevHtmlEscalaSemanal(escala){
         </div>
         <div style="padding:10px;display:grid;gap:8px">
           <div class="prev-section-label" style="color:var(--purple)">Garantia (${d.garantias.filter(s=>s.item).length}/${PREV_CAP.garantiaDia})</div>
-          ${d.garantias.map(prevHtmlCarroMini).join('')}
+          ${d.garantias.map(s=>prevHtmlCarroMini(s,ultimas)).join('')}
           <div class="prev-section-label" style="color:var(--amber)">Pesadas manhã (${d.pesadas.filter(s=>s.item).length}/${PREV_CAP.pesadaDia})</div>
-          ${d.pesadas.map(prevHtmlCarroMini).join('')}
+          ${d.pesadas.map(s=>prevHtmlCarroMini(s,ultimas)).join('')}
           <div class="prev-section-label" style="color:var(--green)">Leves (${d.leves.filter(s=>s.item).length}/${PREV_CAP.leveDia})</div>
-          ${d.leves.map(prevHtmlCarroMini).join('')}
+          ${d.leves.map(s=>prevHtmlCarroMini(s,ultimas)).join('')}
         </div>
       </div>`).join('')}
     </div>
