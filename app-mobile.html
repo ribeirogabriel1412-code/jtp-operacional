@@ -1836,12 +1836,15 @@ async function telaValetOficina(){
   const{data:reqs}=await sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).eq('data',data).order('prefixo',{ascending:true}).order('criado_em',{ascending:true});
   const lista=(reqs||[]).filter(r=>['lista_oficina','solicitado_pcm','aprovado','separado','pedido_compra','comprado'].includes(r.status||''));
   const grupos={};
+  const jsArg=v=>String(v??'').replace(/\\/g,'\\\\').replace(/'/g,'\\u0027').replace(/"/g,'&quot;').replace(/\r?\n/g,'\\n');
   lista.forEach(r=>{const k=r.prefixo||'Sem prefixo';if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
   const cards=Object.entries(grupos).map(([pref,itens])=>{
     const total=itens.length;
     const ok=itens.filter(i=>['separado','comprado'].includes(i.status||'')).length;
     const neg=itens.filter(i=>i.status==='pedido_compra').length;
     const aberto=itens.filter(i=>i.status==='lista_oficina').length;
+    const textoEdit=itens.filter(i=>i.status==='lista_oficina').map(i=>`${i.quantidade||1} ${i.peca||''}`).join('\n');
+    const kmInfo=(itens.find(i=>String(i.justificativa||'').includes('KM '))?.justificativa||'').match(/KM\s+([^·]+)/)?.[1]?.trim()||'';
     return `<div class="card" style="margin-bottom:10px;border-left:4px solid ${ok===total?'var(--green)':neg?'var(--amber)':'var(--blue)'}">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
         <div>
@@ -1857,6 +1860,11 @@ async function telaValetOficina(){
           <span style="font-size:10px;color:${i.status==='lista_oficina'?'var(--amber)':i.status==='pedido_compra'?'var(--red)':i.status==='separado'||i.status==='comprado'?'var(--green)':'var(--blue)'};font-weight:800">${escHtml(i.status||'')}</span>
         </div>`).join('')}
       </div>
+      <div style="display:flex;gap:6px;margin-top:12px">
+        ${aberto?`<button onclick="abrirListaValetOficina('${jsArg(pref)}','${jsArg(kmInfo)}','${jsArg(textoEdit)}','editar')" style="flex:1;padding:9px;border-radius:9px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:12px;font-weight:800;font-family:inherit">Editar</button>`:''}
+        <button onclick="abrirListaValetOficina('${jsArg(pref)}','','','adicionar')" style="flex:1;padding:9px;border-radius:9px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:12px;font-weight:800;font-family:inherit">Adicionar</button>
+        ${aberto?`<button onclick="excluirListaValetOficina('${jsArg(pref)}')" style="flex:1;padding:9px;border-radius:9px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:12px;font-weight:800;font-family:inherit">Excluir</button>`:''}
+      </div>
     </div>`;
   }).join('');
   render(`
@@ -1869,31 +1877,43 @@ async function telaValetOficina(){
     ${cards||'<div class="empty"><div class="empty-ic">📦</div><div style="font-weight:700">Nenhuma lista lançada</div><div style="font-size:12px;color:var(--text3);margin-top:6px">Crie a lista por prefixo para o PCM complementar.</div></div>'}
   `);
 }
-function abrirListaValetOficina(){
-  openSheet('📦 Lista de peças',`
+function abrirListaValetOficina(prefixo='',km='',itensTxt='',modo='nova'){
+  openSheet(modo==='editar'?'✏️ Alterar lista':modo==='adicionar'?'➕ Adicionar peças':'📦 Lista de peças',`
     <div style="display:flex;flex-direction:column;gap:10px">
+      <input type="hidden" id="val-modo" value="${modo}">
       <div><label class="fl">Data do valetamento</label><input class="fi2" id="val-data" type="date" value="${_valetMobData||proximoSabadoISO()}" style="font-family:'DM Mono',monospace"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div><label class="fl">Prefixo</label><input class="fi2" id="val-pref" type="text" placeholder="02.015" style="font-family:'DM Mono',monospace;font-size:20px"></div>
-        <div><label class="fl">KM atual</label><input class="fi2" id="val-km" type="number" placeholder="19880" style="font-family:'DM Mono',monospace;font-size:20px"></div>
+        <div><label class="fl">Prefixo</label><input class="fi2" id="val-pref" type="text" placeholder="02.015" value="${escHtml(prefixo)}" style="font-family:'DM Mono',monospace;font-size:20px"></div>
+        <div><label class="fl">KM atual</label><input class="fi2" id="val-km" type="number" placeholder="19880" value="${escHtml(km)}" style="font-family:'DM Mono',monospace;font-size:20px"></div>
       </div>
-      <div><label class="fl">Peças - uma por linha</label><textarea id="val-itens" placeholder="2 Filtro de óleo&#10;1 Correia do alternador&#10;Pastilha freio x4" style="width:100%;height:180px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;color:var(--text);padding:12px;font-size:15px;line-height:1.45;font-family:inherit;outline:none;box-sizing:border-box"></textarea></div>
-      <button onclick="salvarListaValetOficina()" style="padding:16px;border-radius:12px;border:none;background:var(--green);color:#06131f;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer">Salvar lista</button>
+      <div><label class="fl">Peças - uma por linha</label><textarea id="val-itens" placeholder="2 Filtro de óleo&#10;1 Correia do alternador&#10;Pastilha freio x4" style="width:100%;height:180px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;color:var(--text);padding:12px;font-size:15px;line-height:1.45;font-family:inherit;outline:none;box-sizing:border-box">${escHtml(itensTxt)}</textarea></div>
+      <button onclick="salvarListaValetOficina()" style="padding:16px;border-radius:12px;border:none;background:var(--green);color:#06131f;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer">${modo==='adicionar'?'Adicionar peças':'Salvar lista'}</button>
     </div>`);
 }
 async function salvarListaValetOficina(){
   const gid=getGid();
+  const modo=document.getElementById('val-modo')?.value||'nova';
   const data=document.getElementById('val-data')?.value||proximoSabadoISO();
   const prefixo=document.getElementById('val-pref')?.value?.trim().toUpperCase();
   const km=document.getElementById('val-km')?.value?.trim();
   const itens=parseItensValetTexto(document.getElementById('val-itens')?.value);
   if(!prefixo){toast('Informe o prefixo','err');return;}
   if(!itens.length){toast('Informe pelo menos uma peça','err');return;}
-  await sb.from('requisicoes_compra').delete().eq('garagem_id',gid).eq('data',data).eq('prefixo',prefixo).eq('status','lista_oficina');
+  if(modo!=='adicionar'){
+    const del=await sb.from('requisicoes_compra').update({status:'cancelado',atualizado_por:S.perfil?.nome||null,atualizado_em:new Date().toISOString()}).eq('garagem_id',gid).eq('data',data).eq('prefixo',prefixo).eq('status','lista_oficina');
+    if(del.error){toast('Erro ao substituir lista: '+del.error.message,'err');return;}
+  }
   const rows=itens.map(it=>({garagem_id:gid,data,prefixo,peca:it.peca,quantidade:it.qtd,status:'lista_oficina',justificativa:(km?`KM ${km} · `:'')+'Lista líder oficina',criado_por:S.perfil?.nome||null,criado_em:new Date().toISOString()}));
   const{error}=await sb.from('requisicoes_compra').insert(rows);
   if(error){toast('Erro: '+error.message,'err');return;}
   _valetMobData=data;closeSheet(true);toast('✅ Lista enviada ao PCM');telaValetOficina();
+}
+async function excluirListaValetOficina(prefixo){
+  const gid=getGid(),data=_valetMobData||proximoSabadoISO();
+  if(!confirm(`Excluir os itens em aberto do valetamento ${prefixo}?`))return;
+  const{error}=await sb.from('requisicoes_compra').update({status:'cancelado',atualizado_por:S.perfil?.nome||null,atualizado_em:new Date().toISOString()}).eq('garagem_id',gid).eq('data',data).eq('prefixo',prefixo).eq('status','lista_oficina');
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('Lista excluída');telaValetOficina();
 }
 async function telaValetAlmox(){
   const gid=getGid(),data=_valetMobData||proximoSabadoISO();
