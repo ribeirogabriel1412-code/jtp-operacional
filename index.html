@@ -7941,6 +7941,10 @@ function prevOrdenarPreventiva(a,b){
   if(aKm!==bKm) return bKm-aKm;
   return String(a?.prefixo||'').localeCompare(String(b?.prefixo||''));
 }
+function prevBaseGarantiaPorKm(c){
+  if(!c||!c.garantias?.length) return null;
+  return [...(c.itens||[])].sort(prevOrdenarPreventiva)[0]||c.garantias.sort(prevOrdenarPreventiva)[0]||null;
+}
 const prevSlotKey=(tipo,dia,slot)=>`${tipo}:${dia}:${slot}`;
 const prevSlotValuePrefixo=v=>typeof v==='string'?v:(v&&v.prefixo)||'';
 const prevSlotValueTipo=v=>typeof v==='string'?'':(v&&v.tipo)||'';
@@ -8184,7 +8188,7 @@ function prevHtmlMetricasDetalhadas(r){
     </div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px">
       <div class="label">GARANTIA</div>
-      <div style="font-size:13px;color:var(--text2);line-height:1.55;margin-top:6px">Plano 003 tratado como régua 20.000 km e plano 029 como régua 30.000 km, ordenados por proximidade/vencimento.</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.55;margin-top:6px">Carro com garantia no radar entra pela maior criticidade de KM do veículo, não pela ordem fixa do plano.</div>
     </div>
   </div>`;
 }
@@ -8222,14 +8226,14 @@ function prevGerarPropostas(){
     c.planos=c.itens.map(r=>r.planoNum).filter((v,i,a)=>a.indexOf(v)===i).join(', ');
     c.pesada=c.itens.find(prevIsPesada);
     c.leve=c.itens.find(prevIsLeve);
-    c.garantia=c.garantias.sort(prevOrdenarPreventiva)[0];
+    c.garantia=prevBaseGarantiaPorKm(c);
     c.base=c.itens[0];
     c.outrosRadar=c.itens.filter(prevIsOutroRadar).sort(prevOrdenarPreventiva);
     c.descricoes=prevServicosDoCarro(c,'').map(s=>s.replace(/^\d+\s+/,''));
     todos.push(c);
     if(c.pesada) pesadas.push({...c,tipo:'pesada',prioridade:c.pesada.excessoKm||0,base:c.pesada,descricoes:prevServicosDoCarro(c,'pesada')});
     if(c.leve) leves.push({...c,tipo:'leve',prioridade:c.leve.excessoKm||0,base:c.leve,descricoes:prevServicosDoCarro(c,'leve')});
-    if(c.garantia) garantias.push({...c,tipo:'garantia',prioridade:c.garantia.excessoKm||0,base:c.garantia,intervaloGarantia:prevIntervaloGarantia(c.garantia),descricoes:prevServicosDoCarro(c,'garantia')});
+    if(c.garantia) garantias.push({...c,tipo:'garantia',prioridade:c.garantia.excessoKm||0,base:c.garantia,intervaloGarantia:c.garantia.proximaExecucao||prevIntervaloGarantia(c.garantia),descricoes:prevServicosDoCarro(c,'garantia')});
     c.outrosRadar.forEach(r=>outros.push({...c,tipo:'outro',prioridade:r.excessoKm||0,base:r,descricoes:prevServicosDoCarro({...c,base:r},'outro')}));
   });
   pesadas.sort(prevOrdenarPreventiva);
@@ -8477,7 +8481,7 @@ function prevAbrirSeletorSlot(key,tipoSlot){
     if(usados.has(c.prefixo)) return;
     candidatos.push({...c,id,tipo,descricoes:prevServicosDoCarro(c,tipo)});
   });
-  candidatos.sort((a,b)=>(b.prioridade||0)-(a.prioridade||0) || a.prefixo.localeCompare(b.prefixo));
+  candidatos.sort(prevOrdenarPreventiva);
   let modal=document.getElementById('modal-prev-slot');
   if(!modal){
     modal=document.createElement('div');
@@ -8565,7 +8569,7 @@ function prevHtmlOutrosPlanos(p,escala){
 function prevHtmlGarantias(itens){
   if(!itens.length) return '';
   return `<section style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:12px">
-    <div style="padding:10px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:8px"><b style="color:var(--purple)">🔒 Garantias no radar</b><span style="color:var(--text3);font-size:12px">vencidas ou até 3.000 km antes</span></div>
+    <div style="padding:10px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:8px"><b style="color:var(--purple)">🔒 Garantias no radar</b><span style="color:var(--text3);font-size:12px">ordenadas pelo KM mais crítico do carro</span></div>
     <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:760px"><thead><tr style="background:rgba(2,6,23,.45);color:var(--text3);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;text-align:left"><th style="padding:9px">Prefixo</th><th style="padding:9px">Plano</th><th style="padding:9px;text-align:right">Régua</th><th style="padding:9px;text-align:right">Km atual</th><th style="padding:9px;text-align:right">Próxima</th><th style="padding:9px;text-align:right">Saldo</th></tr></thead><tbody>
       ${itens.map(c=>`<tr style="border-top:1px solid var(--border)"><td style="padding:9px;color:var(--blue);font-weight:900">${prevEsc(c.prefixo)}</td><td style="padding:9px;color:var(--text2)">${prevEsc(c.base.planoNum)} — ${prevEsc(c.base.planoNome)}</td><td style="padding:9px;text-align:right;color:var(--purple);font-weight:900">${prevFmtKm(c.intervaloGarantia)}</td><td style="padding:9px;text-align:right;color:var(--text2)">${prevFmtKm(c.base.kmAtual)}</td><td style="padding:9px;text-align:right;color:var(--text2)">${prevFmtKm(c.base.proximaExecucao)}</td><td style="padding:9px;text-align:right;color:${(c.prioridade||0)>0?'var(--red)':'var(--green)'};font-weight:900">${prevFmtKm(c.prioridade)}</td></tr>`).join('')}
     </tbody></table></div>
