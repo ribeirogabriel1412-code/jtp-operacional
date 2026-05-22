@@ -7735,32 +7735,29 @@ async function renderFechLiderPCM(gid,back,tabs,embedded){
   var fluxo=S._fechLiderFluxo||'manha';
   var def=pcmFluxoLiderDef(fluxo,dataRef);
   var local=pcmReadLocal(pcmFechLiderKey(gid,dataRef,fluxo));
-  var [ra,rf,rc]=await Promise.all([
+  var [ra,rf]=await Promise.all([
     sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).gte('hora_entrada',def.ini).lte('hora_entrada',def.fim).order('hora_entrada',{ascending:true}),
-    sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).eq('status','liberado').gte('hora_liberacao',def.ini).lte('hora_liberacao',def.fim).order('hora_liberacao',{ascending:true}),
-    sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).gte('criado_em',def.ini).lte('criado_em',def.fim).order('criado_em',{ascending:false})
+    sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).eq('status','liberado').gte('hora_liberacao',def.ini).lte('hora_liberacao',def.fim).order('hora_liberacao',{ascending:true})
   ]);
-  var abertas=ra.data||[], fechadas=rf.data||[], reqs=rc.data||[];
+  var abertas=ra.data||[], fechadas=rf.data||[];
   var mapa={};
   abertas.concat(fechadas).forEach(function(o){mapa[o.id]=Object.assign({},mapa[o.id]||{},o,{_abertaPeriodo:abertas.some(function(a){return a.id===o.id;}),_fechadaPeriodo:fechadas.some(function(f){return f.id===o.id;})});});
   var ocs=Object.values(mapa).sort(function(a,b){return new Date(a.hora_entrada||a.hora_liberacao)-new Date(b.hora_entrada||b.hora_liberacao);});
   var totalPrev=abertas.reduce(function(s,o){return s+parseFloat(o.custo_previsto||0);},0);
   var totalReal=fechadas.reduce(function(s,o){return s+parseFloat(o.custo_real||o.custo_previsto||0);},0);
-  var totalReq=reqs.reduce(function(s,r){return s+(parseFloat(r.valor_estimado||0)*parseInt(r.quantidade||1));},0);
   var pendentes=ocs.filter(function(o){return o.status!=='liberado';}).length;
   var fmtR=pcmMoeda;
   var fmtH=function(v){return v?new Date(v).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'--';};
   var target=embedded?'consolidado':'fech_lider';
   var fluxoBtn=function(id,label,desc){var d=pcmFluxoLiderDef(id,dataRef),ativo=fluxo===id;return '<button onclick="S._fechLiderFluxo=&quot;'+id+'&quot;;renderFerrPCM(&quot;'+target+'&quot;)" style="text-align:left;padding:10px 12px;border-radius:10px;border:1px solid '+(ativo?'var(--blue)':'var(--border)')+';background:'+(ativo?'#2563EB22':'var(--surface2)')+';color:'+(ativo?'var(--blue)':'var(--text2)')+';font-size:12px;font-weight:900;cursor:pointer;font-family:\'DM Sans\',sans-serif"><div>'+label+'</div><div style="font-size:10px;color:var(--text3);font-weight:700;margin-top:2px">'+desc+' · '+d.horaIni+'-'+d.horaFim+'</div></button>';};
-  var osRows=ocs.map(function(o){var mov=(o._abertaPeriodo?'Abertura':'')+(o._abertaPeriodo&&o._fechadaPeriodo?' + ':'')+(o._fechadaPeriodo?'Fechamento':'');return '<tr style="border-bottom:1px solid var(--border2)"><td style="padding:8px 10px;font-family:monospace;color:var(--blue);font-weight:900">'+(o.prefixo||'--')+'</td><td style="padding:8px 10px;font-size:12px">'+(o.tipo||'--')+'</td><td style="padding:8px 10px;font-size:12px;color:var(--text3)">'+mov+'</td><td style="padding:8px 10px;text-align:center;font-family:monospace">'+fmtH(o.hora_entrada)+'</td><td style="padding:8px 10px;text-align:center;font-family:monospace;color:'+(o._fechadaPeriodo?'var(--green)':'var(--text4)')+'">'+fmtH(o.hora_liberacao)+'</td><td style="padding:8px 10px;text-align:right;font-family:monospace;color:var(--amber)">'+(o.custo_previsto?fmtR(o.custo_previsto):'--')+'</td><td style="padding:8px 10px;text-align:right;font-family:monospace;color:var(--blue);font-weight:800">'+(o.custo_real?fmtR(o.custo_real):'--')+'</td></tr>';}).join('');
-  var reqRows=reqs.map(function(r){return '<tr style="border-bottom:1px solid var(--border2)"><td style="padding:8px 10px;font-family:monospace;color:var(--blue);font-weight:900">'+(r.prefixo||'--')+'</td><td style="padding:8px 10px;font-size:12px">'+(r.peca||'--')+'</td><td style="padding:8px 10px;text-align:center">'+(r.quantidade||1)+'</td><td style="padding:8px 10px;text-align:right;font-family:monospace;color:var(--amber)">'+(r.valor_estimado?fmtR(r.valor_estimado):'--')+'</td><td style="padding:8px 10px;font-size:12px">'+(r.status||'pendente')+'</td></tr>';}).join('');
+  var osRows=ocs.map(function(o){var mov=(o._abertaPeriodo?'Abertura':'')+(o._abertaPeriodo&&o._fechadaPeriodo?' + ':'')+(o._fechadaPeriodo?'Fechamento':'');var prev=parseFloat(o.custo_previsto||0)||0;var real=parseFloat(o.custo_real||0)||0;var delta=real-prev;return '<tr style="border-bottom:1px solid var(--border2)"><td style="padding:8px 10px;font-family:monospace;color:var(--blue);font-weight:900">'+(o.prefixo||'--')+'</td><td style="padding:8px 10px;font-size:12px">'+(o.tipo||'--')+'</td><td style="padding:8px 10px;font-size:12px;color:var(--text3)">'+mov+'</td><td style="padding:8px 10px;text-align:center;font-family:monospace">'+fmtH(o.hora_entrada)+'</td><td style="padding:8px 10px;text-align:center;font-family:monospace;color:'+(o._fechadaPeriodo?'var(--green)':'var(--text4)')+'">'+fmtH(o.hora_liberacao)+'</td><td style="padding:8px 10px;text-align:right"><input id="fl-prev-'+o.id+'" type="number" step="0.01" value="'+(o.custo_previsto||'')+'" onblur="salvarCustoFechLider(&quot;'+o.id+'&quot;,&quot;custo_previsto&quot;,this.value)" style="width:105px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--amber);padding:6px 8px;text-align:right;font-family:monospace;font-size:12px"></td><td style="padding:8px 10px;text-align:right"><input id="fl-real-'+o.id+'" type="number" step="0.01" value="'+(o.custo_real||'')+'" onblur="salvarCustoFechLider(&quot;'+o.id+'&quot;,&quot;custo_real&quot;,this.value)" style="width:105px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--blue);padding:6px 8px;text-align:right;font-family:monospace;font-size:12px;font-weight:800"></td><td style="padding:8px 10px;text-align:right;font-family:monospace;color:'+(delta>0?'var(--red)':delta<0?'var(--green)':'var(--text3)')+'">'+(real||prev?fmtR(delta):'--')+'</td></tr>';}).join('');
   var periodoLabel=new Date(def.ini).toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',timeZone:'America/Manaus'})+' · '+def.horaIni+' ate '+def.horaFim;
   var html=secTitle('🧭','Fechamento Líder PCM')+
     '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:16px"><div style="display:grid;grid-template-columns:180px 1fr auto;gap:12px;align-items:end"><div><label class="campo-label">Data operacional</label><input class="fi" type="date" value="'+dataRef+'" onchange="S._fechLiderData=this.value;renderFerrPCM(&quot;'+target+'&quot;)"></div><div><label class="campo-label">Fluxo do líder</label><div style="display:grid;grid-template-columns:repeat(3,minmax(150px,1fr));gap:8px">'+fluxoBtn('manha','Parcial manhã','Líder PCM')+fluxoBtn('noite','Parcial noite','Líder PCM')+fluxoBtn('dia','Dia completo','Consolidado')+'</div></div><div style="font-size:12px;color:var(--text3);padding-bottom:9px;min-width:190px">'+periodoLabel+'</div></div></div>'+
-    '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:18px">'+[['OS abertas',abertas.length,'var(--amber)'],['OS fechadas',fechadas.length,'var(--green)'],['Pendentes',pendentes,'var(--red)'],['Previsto aberto',fmtR(totalPrev),'var(--amber)'],['Real fechado',fmtR(totalReal),'var(--blue)'],['Req. peças',fmtR(totalReq),'var(--purple)']].map(function(k){return '<div class="kpi2"><div class="kpi2-v" style="color:'+k[2]+';font-size:17px">'+k[1]+'</div><div class="kpi2-l">'+k[0]+'</div></div>';}).join('')+'</div>'+
-    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:18px"><div style="display:grid;grid-template-columns:1fr 150px;gap:10px"><div><label class="campo-label">Observação do Líder PCM</label><textarea class="fi" id="fech-lider-obs" rows="3" style="resize:vertical;font-family:inherit" placeholder="Resumo do parcial, pendências e decisão para o próximo período">'+(local.observacoes||'')+'</textarea></div><div><label class="campo-label">Hora fechamento</label><input class="fi" id="fech-lider-hora" type="time" value="'+(local.hora_fechamento||new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}))+'"><button onclick="salvarFechLiderPCM(&quot;'+gid+'&quot;,&quot;'+dataRef+'&quot;,&quot;'+fluxo+'&quot;)" style="width:100%;margin-top:10px;padding:11px 12px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:13px;font-weight:900;cursor:pointer;font-family:\'DM Sans\',sans-serif">'+(local.fechado?'Atualizar':'Salvar fechamento')+'</button></div></div>'+(local.fechado?'<div style="margin-top:10px;color:var(--green);font-size:12px;font-weight:800">Fechado por '+(local.responsavel||'--')+' as '+(local.hora_fechamento||'--')+'</div>':'')+'</div>'+
-    secTitle('📋','OS do período do Líder')+(ocs.length?'<div style="overflow-x:auto;margin-bottom:18px"><table style="width:100%;border-collapse:collapse;min-width:780px"><thead><tr style="background:var(--surface2)"><th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3)">Prefixo</th><th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3)">Tipo</th><th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3)">Movimento</th><th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text3)">Abertura</th><th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text3)">Fechamento</th><th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--text3)">Previsto</th><th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--text3)">Real</th></tr></thead><tbody>'+osRows+'</tbody></table></div>':'<div class="empty" style="margin-bottom:18px">Nenhuma OS neste período</div>')+
-    secTitle('🛒','Requisições do período')+(reqs.length?'<div style="overflow-x:auto;margin-bottom:18px"><table style="width:100%;border-collapse:collapse;min-width:620px"><thead><tr style="background:var(--surface2)"><th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3)">Prefixo</th><th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3)">Peça</th><th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text3)">Qtd</th><th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--text3)">Valor</th><th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3)">Status</th></tr></thead><tbody>'+reqRows+'</tbody></table></div>':'<div class="empty" style="margin-bottom:18px">Nenhuma requisição neste período</div>');
+    '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:18px">'+[['OS abertas',abertas.length,'var(--amber)'],['OS fechadas',fechadas.length,'var(--green)'],['Pendentes',pendentes,'var(--red)'],['Previsto OS',fmtR(totalPrev),'var(--amber)'],['Real OS',fmtR(totalReal),'var(--blue)']].map(function(k){return '<div class="kpi2"><div class="kpi2-v" style="color:'+k[2]+';font-size:17px">'+k[1]+'</div><div class="kpi2-l">'+k[0]+'</div></div>';}).join('')+'</div>'+
+    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:18px"><div style="display:grid;grid-template-columns:1fr 170px;gap:10px"><div><label class="campo-label">Observação do Líder PCM</label><textarea class="fi" id="fech-lider-obs" rows="3" style="resize:vertical;font-family:inherit" placeholder="Resumo do parcial, pendências e decisão para o próximo período">'+(local.observacoes||'')+'</textarea></div><div><label class="campo-label">Hora fechamento</label><input class="fi" id="fech-lider-hora" type="time" value="'+(local.hora_fechamento||new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}))+'"><button onclick="salvarFechLiderPCM(&quot;'+gid+'&quot;,&quot;'+dataRef+'&quot;,&quot;'+fluxo+'&quot;)" style="width:100%;margin-top:10px;padding:11px 12px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:13px;font-weight:900;cursor:pointer;font-family:\'DM Sans\',sans-serif">'+(local.fechado?'Atualizar':'Salvar fechamento')+'</button><button onclick="pdfFechLiderPCM(&quot;'+gid+'&quot;,&quot;'+dataRef+'&quot;,&quot;'+fluxo+'&quot;)" style="width:100%;margin-top:8px;padding:10px 12px;border-radius:10px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:13px;font-weight:900;cursor:pointer;font-family:\'DM Sans\',sans-serif">📄 Exportar PDF</button></div></div>'+(local.fechado?'<div style="margin-top:10px;color:var(--green);font-size:12px;font-weight:800">Fechado por '+(local.responsavel||'--')+' as '+(local.hora_fechamento||'--')+'</div>':'')+'</div>'+
+    secTitle('📋','OS do período do Líder')+(ocs.length?'<div style="overflow-x:auto;margin-bottom:18px"><table style="width:100%;border-collapse:collapse;min-width:880px"><thead><tr style="background:var(--surface2)"><th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3)">Prefixo</th><th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3)">Tipo</th><th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3)">Movimento</th><th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text3)">Abertura</th><th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text3)">Fechamento</th><th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--text3)">Previsto</th><th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--text3)">Real</th><th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--text3)">Dif.</th></tr></thead><tbody>'+osRows+'</tbody></table></div>':'<div class="empty" style="margin-bottom:18px">Nenhuma OS neste período</div>');
+  S._fechLiderRel={gid:gid,dataRef:dataRef,fluxo:fluxo,def:def,ocs:ocs,abertas:abertas,fechadas:fechadas,totalPrev:totalPrev,totalReal:totalReal,pendentes:pendentes,periodoLabel:periodoLabel,local:local};
   if(embedded) return html;
   setMain(secTitle('📋','2.6 - Custo',back)+tabs+html);
 }
@@ -7775,6 +7772,74 @@ async function salvarFechLiderPCM(gid,data,fluxo){
   if(res.error&&!pcmIsMissingTable(res.error)){toast('Salvo localmente, banco recusou: '+res.error.message,'err');renderFerrPCM('consolidado');return;}
   toast(res.error?'✅ Fechamento do líder salvo localmente':'✅ Fechamento do líder salvo');
   renderFerrPCM('consolidado');
+}
+async function salvarCustoFechLider(ocId,campo,valor){
+  if(!['custo_previsto','custo_real'].includes(campo))return;
+  var n=String(valor||'').trim()===''?null:parseFloat(String(valor).replace(',','.'));
+  if(n!==null&&isNaN(n)){toast('Valor inválido','err');return;}
+  var payload={};payload[campo]=n;
+  var res=await sb.from('ocorrencias_22').update(payload).eq('id',ocId);
+  if(res.error){toast('Erro ao salvar custo: '+res.error.message,'err');return;}
+  var rel=S._fechLiderRel;
+  if(rel&&rel.ocs){var oc=rel.ocs.find(function(o){return o.id===ocId;});if(oc)oc[campo]=n;}
+  toast('Custo atualizado','ok',1200);
+}
+async function pdfFechLiderPCM(gid,data,fluxo){
+  var rel=S._fechLiderRel;
+  if(!rel||rel.gid!==gid||rel.dataRef!==data||rel.fluxo!==fluxo){
+    toast('Abra o fechamento do líder antes de exportar','err');return;
+  }
+  var esc=function(v){return String(v??'--').replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];});};
+  var fmtR=function(v){return 'R$ '+parseFloat(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});};
+  var fmtH=function(v){return v?new Date(v).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'--';};
+  var tipoMap={preventiva_leve:'Prev. Leve',preventiva_pesada:'Prev. Pesada',preventiva_garantia:'Garantia',corretiva:'Corretiva'};
+  var garagem=S.garagens&&S.garagens.find(function(g){return g.id===gid;});
+  var ocs=(rel.ocs||[]).map(function(o){
+    var prevEl=document.getElementById('fl-prev-'+o.id);
+    var realEl=document.getElementById('fl-real-'+o.id);
+    var prev=prevEl?parseFloat(prevEl.value||0)||0:parseFloat(o.custo_previsto||0)||0;
+    var real=realEl?parseFloat(realEl.value||0)||0:parseFloat(o.custo_real||0)||0;
+    return Object.assign({},o,{_prevPdf:prev,_realPdf:real});
+  });
+  var totalPrev=ocs.reduce(function(s,o){return s+parseFloat(o._prevPdf||0);},0);
+  var totalReal=ocs.reduce(function(s,o){return s+parseFloat(o._realPdf||0);},0);
+  var totalDif=totalReal-totalPrev;
+  var obs=document.getElementById('fech-lider-obs')?.value||rel.local?.observacoes||'';
+  var hora=document.getElementById('fech-lider-hora')?.value||rel.local?.hora_fechamento||'--';
+  var rows=ocs.map(function(o){
+    var mov=(o._abertaPeriodo?'Abertura':'')+(o._abertaPeriodo&&o._fechadaPeriodo?' + ':'')+(o._fechadaPeriodo?'Fechamento':'');
+    var dif=(parseFloat(o._realPdf||0)-parseFloat(o._prevPdf||0));
+    return '<tr><td>'+esc(o.prefixo)+'</td><td>'+esc(tipoMap[o.tipo]||o.tipo)+'</td><td>'+esc(mov||'--')+'</td><td class="center">'+fmtH(o.hora_entrada)+'</td><td class="center">'+fmtH(o.hora_liberacao)+'</td><td class="right">'+(o._prevPdf?fmtR(o._prevPdf):'--')+'</td><td class="right">'+(o._realPdf?fmtR(o._realPdf):'--')+'</td><td class="right '+(dif>0?'nok':dif<0?'ok':'')+'">'+((o._prevPdf||o._realPdf)?fmtR(dif):'--')+'</td></tr>';
+  }).join('');
+  abrirJanelaPDF(`
+    <div class="header">
+      <div>
+        <div class="logo">JTP Operacional</div>
+        <h1>Fechamento Parcial do Líder PCM</h1>
+      </div>
+      <div class="meta">
+        <div><strong>Garagem:</strong> ${esc(garagem?.nome||'--')}</div>
+        <div><strong>Fluxo:</strong> ${esc(rel.def?.label||fluxo)}</div>
+        <div><strong>Período:</strong> ${esc(rel.periodoLabel)}</div>
+        <div><strong>Hora fechamento:</strong> ${esc(hora)}</div>
+      </div>
+    </div>
+    <div class="kpi-row">
+      <div class="kpi"><div class="kpi-val">${ocs.filter(o=>o._abertaPeriodo).length}</div><div class="kpi-lab">OS Abertas</div></div>
+      <div class="kpi"><div class="kpi-val">${ocs.filter(o=>o._fechadaPeriodo).length}</div><div class="kpi-lab">OS Fechadas</div></div>
+      <div class="kpi"><div class="kpi-val">${fmtR(totalPrev)}</div><div class="kpi-lab">Custo Previsto</div></div>
+      <div class="kpi"><div class="kpi-val">${fmtR(totalReal)}</div><div class="kpi-lab">Custo Real</div></div>
+    </div>
+    <h2>OS Trabalhadas No Período</h2>
+    <table>
+      <thead><tr><th>Prefixo</th><th>Tipo</th><th>Movimento</th><th>Abertura</th><th>Fechamento</th><th style="text-align:right">Previsto</th><th style="text-align:right">Real</th><th style="text-align:right">Dif.</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="8">Nenhuma OS trabalhada no período</td></tr>'}</tbody>
+      <tfoot><tr><th colspan="5" style="text-align:right">Total</th><th style="text-align:right">${fmtR(totalPrev)}</th><th style="text-align:right">${fmtR(totalReal)}</th><th style="text-align:right">${fmtR(totalDif)}</th></tr></tfoot>
+    </table>
+    <h2>Observação / Passagem De Bastão</h2>
+    <table><tr><td style="min-height:60px">${esc(obs||'--')}</td></tr></table>
+    <table style="margin-top:24px"><tr><td style="height:42px;border-bottom:1px solid #111"></td><td style="width:60px;border:0"></td><td style="height:42px;border-bottom:1px solid #111"></td></tr><tr><td style="text-align:center;border:0">Líder PCM</td><td style="border:0"></td><td style="text-align:center;border:0">Recebimento / Próximo turno</td></tr></table>
+  `,'JTP_Fechamento_Lider_PCM');
 }
 async function renderFech24(gid,back,tabs){
   setMain(back+tabs+'<div class="loading"><div class="spinner"></div></div>');
