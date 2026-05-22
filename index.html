@@ -5877,7 +5877,6 @@ async function renderFerrPCM(aba='painel'){
     <button class="filtro-btn${aba==='req_compra'?' active':''}" onclick="renderFerrPCM('req_compra')">📦 Valetamento</button>
     <button class="filtro-btn${aba==='consolidado'?' active':''}" onclick="renderFerrPCM('consolidado')">📋 2.6 - Custo</button>
     <button class="filtro-btn${aba==='fech24'?' active':''}" onclick="renderFerrPCM('fech24')">📋 2.4 Fechamento</button>
-    <button class="filtro-btn${aba==='fech_lider'?' active':''}" onclick="renderFerrPCM('fech_lider')">🧭 Fech. Líder</button>
     <button class="filtro-btn${aba==='conf_orc'?' active':''}" onclick="renderFerrPCM('conf_orc')">📊 Conferência</button>
     <button class="filtro-btn${aba==='sap_precos'?' active':''}" onclick="renderFerrPCM('sap_precos')">💲 Preços SAP</button>
     <button class="filtro-btn${aba==='historico'?' active':''}" onclick="renderFerrPCM('historico')">🗂️ Histórico</button>
@@ -6366,7 +6365,7 @@ async function renderFerrPCM(aba='painel'){
   // ── ABA HISTÓRICO ─────────────────────────────────────────
   if(aba==='consolidado'){ return await renderConsolidado(gid,back,tabs); }
   if(aba==='fech24'){       return await renderFech24(gid,back,tabs); }
-  if(aba==='fech_lider'){   return await renderFechLiderPCM(gid,back,tabs); }
+  if(aba==='fech_lider'){   return await renderFerrPCM('consolidado'); }
   if(aba==='custo_turno'){  return await renderCustoTurno(gid,back,tabs); }
   if(aba==='conf_orc'){     return await renderConfOrc(gid,back,tabs); }
   if(aba==='sap_precos'){   return await renderSapPrecos(gid,back,tabs); }
@@ -7356,6 +7355,7 @@ async function renderConsolidado(gid,back,tabs){
   var saldo=orcamento>0?orcamento-totalReal:null;
   var estourou=orcamento>0&&totalReal>orcamento;
   var pctOrc=orcamento>0?Math.round(totalReal/orcamento*100):0;
+  var fechLiderHtml=await renderFechLiderPCM(gid,'','',true);
   var breakdownHtml=Object.entries(byTipo).map(function(e){var t=e[0],v=e[1];var cor=TIPO_CORES[t]||'#94A3B8';var est=orcamento>0&&v.real>v.prev&&v.prev>0;return '<div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid '+cor+';border-radius:10px;padding:12px 14px"><div style="font-size:11px;font-weight:700;margin-bottom:8px">'+(tipoMap[t]||t)+' ('+v.qtd+' OS)</div><div style="font-family:monospace;font-size:15px;font-weight:900;color:'+(est?'var(--red)':v.real>0?'var(--green)':'var(--text3)')+'">'+fmtR(v.real)+'</div>'+(v.prev>0?'<div style="font-size:10px;color:var(--text3);margin-top:2px">prev: '+fmtR(v.prev)+'</div>':'')+(est?'<div style="font-size:10px;color:var(--red);font-weight:700;margin-top:4px">⚠️ acima do previsto</div>':'')+'</div>';}).join('');
   var totalGeralReal=0, totalGeralPrev=0, totalPecas=0;
   var osCards=ocs.map(function(o){
@@ -7385,6 +7385,7 @@ async function renderConsolidado(gid,back,tabs){
   setMain(
     secTitle('📋','Consolidado do Dia Operacional',back)+tabs+
     '<div style="font-size:12px;color:var(--text3);margin:-8px 0 16px">'+labelPeriodo+'</div>'+
+    fechLiderHtml+
     (orcamento>0?
       '<div style="background:var(--surface);border:1px solid '+(estourou?'var(--red)':'var(--border)')+';border-radius:12px;padding:14px 16px;margin-bottom:16px">'+
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="font-size:14px;font-weight:700">'+(estourou?'🚨 Orçamento Estourado':'💰 Orçamento do Dia')+'</div><div style="font-family:monospace;font-size:16px;font-weight:900;color:'+(estourou?'var(--red)':'var(--green)')+'">'+fmtR(totalReal)+' / '+fmtR(orcamento)+'</div></div>'+
@@ -7650,8 +7651,8 @@ function pcmFluxoLiderDef(fluxo,dataRef){
   var p=pcmPeriodoTurno(dataRef,d.ini,d.fim);
   return Object.assign({},d,p);
 }
-async function renderFechLiderPCM(gid,back,tabs){
-  setMain(back+tabs+'<div class="loading"><div class="spinner"></div></div>');
+async function renderFechLiderPCM(gid,back,tabs,embedded){
+  if(!embedded) setMain(back+tabs+'<div class="loading"><div class="spinner"></div></div>');
   var dataRef=S._fechLiderData||hoje();
   var fluxo=S._fechLiderFluxo||'manha';
   var def=pcmFluxoLiderDef(fluxo,dataRef);
@@ -7671,17 +7672,19 @@ async function renderFechLiderPCM(gid,back,tabs){
   var pendentes=ocs.filter(function(o){return o.status!=='liberado';}).length;
   var fmtR=pcmMoeda;
   var fmtH=function(v){return v?new Date(v).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'--';};
-  var fluxoBtn=function(id,label,desc){var d=pcmFluxoLiderDef(id,dataRef),ativo=fluxo===id;return '<button onclick="S._fechLiderFluxo=&quot;'+id+'&quot;;renderFerrPCM(&quot;fech_lider&quot;)" style="text-align:left;padding:10px 12px;border-radius:10px;border:1px solid '+(ativo?'var(--blue)':'var(--border)')+';background:'+(ativo?'#2563EB22':'var(--surface2)')+';color:'+(ativo?'var(--blue)':'var(--text2)')+';font-size:12px;font-weight:900;cursor:pointer;font-family:\'DM Sans\',sans-serif"><div>'+label+'</div><div style="font-size:10px;color:var(--text3);font-weight:700;margin-top:2px">'+desc+' · '+d.ini.slice(11,16)+'-'+d.fim.slice(11,16)+'</div></button>';};
+  var target=embedded?'consolidado':'fech_lider';
+  var fluxoBtn=function(id,label,desc){var d=pcmFluxoLiderDef(id,dataRef),ativo=fluxo===id;return '<button onclick="S._fechLiderFluxo=&quot;'+id+'&quot;;renderFerrPCM(&quot;'+target+'&quot;)" style="text-align:left;padding:10px 12px;border-radius:10px;border:1px solid '+(ativo?'var(--blue)':'var(--border)')+';background:'+(ativo?'#2563EB22':'var(--surface2)')+';color:'+(ativo?'var(--blue)':'var(--text2)')+';font-size:12px;font-weight:900;cursor:pointer;font-family:\'DM Sans\',sans-serif"><div>'+label+'</div><div style="font-size:10px;color:var(--text3);font-weight:700;margin-top:2px">'+desc+' · '+d.ini.slice(11,16)+'-'+d.fim.slice(11,16)+'</div></button>';};
   var osRows=ocs.map(function(o){var mov=(o._abertaPeriodo?'Abertura':'')+(o._abertaPeriodo&&o._fechadaPeriodo?' + ':'')+(o._fechadaPeriodo?'Fechamento':'');return '<tr style="border-bottom:1px solid var(--border2)"><td style="padding:8px 10px;font-family:monospace;color:var(--blue);font-weight:900">'+(o.prefixo||'--')+'</td><td style="padding:8px 10px;font-size:12px">'+(o.tipo||'--')+'</td><td style="padding:8px 10px;font-size:12px;color:var(--text3)">'+mov+'</td><td style="padding:8px 10px;text-align:center;font-family:monospace">'+fmtH(o.hora_entrada)+'</td><td style="padding:8px 10px;text-align:center;font-family:monospace;color:'+(o._fechadaPeriodo?'var(--green)':'var(--text4)')+'">'+fmtH(o.hora_liberacao)+'</td><td style="padding:8px 10px;text-align:right;font-family:monospace;color:var(--amber)">'+(o.custo_previsto?fmtR(o.custo_previsto):'--')+'</td><td style="padding:8px 10px;text-align:right;font-family:monospace;color:var(--blue);font-weight:800">'+(o.custo_real?fmtR(o.custo_real):'--')+'</td></tr>';}).join('');
   var reqRows=reqs.map(function(r){return '<tr style="border-bottom:1px solid var(--border2)"><td style="padding:8px 10px;font-family:monospace;color:var(--blue);font-weight:900">'+(r.prefixo||'--')+'</td><td style="padding:8px 10px;font-size:12px">'+(r.peca||'--')+'</td><td style="padding:8px 10px;text-align:center">'+(r.quantidade||1)+'</td><td style="padding:8px 10px;text-align:right;font-family:monospace;color:var(--amber)">'+(r.valor_estimado?fmtR(r.valor_estimado):'--')+'</td><td style="padding:8px 10px;font-size:12px">'+(r.status||'pendente')+'</td></tr>';}).join('');
   var periodoLabel=new Date(def.ini).toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',timeZone:'America/Manaus'})+' · '+def.ini.slice(11,16)+' ate '+def.fim.slice(11,16);
-  setMain(secTitle('🧭','Fechamento Líder PCM',back)+tabs+
-    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:16px"><div style="display:grid;grid-template-columns:180px 1fr auto;gap:12px;align-items:end"><div><label class="campo-label">Data operacional</label><input class="fi" type="date" value="'+dataRef+'" onchange="S._fechLiderData=this.value;renderFerrPCM(&quot;fech_lider&quot;)"></div><div><label class="campo-label">Fluxo do líder</label><div style="display:grid;grid-template-columns:repeat(3,minmax(150px,1fr));gap:8px">'+fluxoBtn('manha','Parcial manhã','Líder PCM')+fluxoBtn('noite','Parcial noite','Líder PCM')+fluxoBtn('dia','Dia completo','Consolidado')+'</div></div><div style="font-size:12px;color:var(--text3);padding-bottom:9px;min-width:190px">'+periodoLabel+'</div></div></div>'+
+  var html=secTitle('🧭','Fechamento Líder PCM')+
+    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:16px"><div style="display:grid;grid-template-columns:180px 1fr auto;gap:12px;align-items:end"><div><label class="campo-label">Data operacional</label><input class="fi" type="date" value="'+dataRef+'" onchange="S._fechLiderData=this.value;renderFerrPCM(&quot;'+target+'&quot;)"></div><div><label class="campo-label">Fluxo do líder</label><div style="display:grid;grid-template-columns:repeat(3,minmax(150px,1fr));gap:8px">'+fluxoBtn('manha','Parcial manhã','Líder PCM')+fluxoBtn('noite','Parcial noite','Líder PCM')+fluxoBtn('dia','Dia completo','Consolidado')+'</div></div><div style="font-size:12px;color:var(--text3);padding-bottom:9px;min-width:190px">'+periodoLabel+'</div></div></div>'+
     '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:18px">'+[['OS abertas',abertas.length,'var(--amber)'],['OS fechadas',fechadas.length,'var(--green)'],['Pendentes',pendentes,'var(--red)'],['Previsto aberto',fmtR(totalPrev),'var(--amber)'],['Real fechado',fmtR(totalReal),'var(--blue)'],['Req. peças',fmtR(totalReq),'var(--purple)']].map(function(k){return '<div class="kpi2"><div class="kpi2-v" style="color:'+k[2]+';font-size:17px">'+k[1]+'</div><div class="kpi2-l">'+k[0]+'</div></div>';}).join('')+'</div>'+
     '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:18px"><div style="display:grid;grid-template-columns:1fr 150px;gap:10px"><div><label class="campo-label">Observação do Líder PCM</label><textarea class="fi" id="fech-lider-obs" rows="3" style="resize:vertical;font-family:inherit" placeholder="Resumo do parcial, pendências e decisão para o próximo período">'+(local.observacoes||'')+'</textarea></div><div><label class="campo-label">Hora fechamento</label><input class="fi" id="fech-lider-hora" type="time" value="'+(local.hora_fechamento||new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}))+'"><button onclick="salvarFechLiderPCM(&quot;'+gid+'&quot;,&quot;'+dataRef+'&quot;,&quot;'+fluxo+'&quot;)" style="width:100%;margin-top:10px;padding:11px 12px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:13px;font-weight:900;cursor:pointer;font-family:\'DM Sans\',sans-serif">'+(local.fechado?'Atualizar':'Salvar fechamento')+'</button></div></div>'+(local.fechado?'<div style="margin-top:10px;color:var(--green);font-size:12px;font-weight:800">Fechado por '+(local.responsavel||'--')+' as '+(local.hora_fechamento||'--')+'</div>':'')+'</div>'+
     secTitle('📋','OS do período do Líder')+(ocs.length?'<div style="overflow-x:auto;margin-bottom:18px"><table style="width:100%;border-collapse:collapse;min-width:780px"><thead><tr style="background:var(--surface2)"><th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3)">Prefixo</th><th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3)">Tipo</th><th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3)">Movimento</th><th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text3)">Abertura</th><th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text3)">Fechamento</th><th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--text3)">Previsto</th><th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--text3)">Real</th></tr></thead><tbody>'+osRows+'</tbody></table></div>':'<div class="empty" style="margin-bottom:18px">Nenhuma OS neste período</div>')+
-    secTitle('🛒','Requisições do período')+(reqs.length?'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:620px"><thead><tr style="background:var(--surface2)"><th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3)">Prefixo</th><th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3)">Peça</th><th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text3)">Qtd</th><th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--text3)">Valor</th><th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3)">Status</th></tr></thead><tbody>'+reqRows+'</tbody></table></div>':'<div class="empty">Nenhuma requisição neste período</div>')
-  );
+    secTitle('🛒','Requisições do período')+(reqs.length?'<div style="overflow-x:auto;margin-bottom:18px"><table style="width:100%;border-collapse:collapse;min-width:620px"><thead><tr style="background:var(--surface2)"><th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3)">Prefixo</th><th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3)">Peça</th><th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text3)">Qtd</th><th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--text3)">Valor</th><th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text3)">Status</th></tr></thead><tbody>'+reqRows+'</tbody></table></div>':'<div class="empty" style="margin-bottom:18px">Nenhuma requisição neste período</div>');
+  if(embedded) return html;
+  setMain(secTitle('📋','2.6 - Custo',back)+tabs+html);
 }
 async function salvarFechLiderPCM(gid,data,fluxo){
   var def=pcmFluxoLiderDef(fluxo,data);
@@ -7691,9 +7694,9 @@ async function salvarFechLiderPCM(gid,data,fluxo){
   pcmSaveLocal(pcmFechLiderKey(gid,data,fluxo),base);
   var res={error:null};
   try{res=await sb.from('fechamento_lider_pcm').upsert(base,{onConflict:'garagem_id,data,fluxo'});}catch(e){res={error:e};}
-  if(res.error&&!pcmIsMissingTable(res.error)){toast('Salvo localmente, banco recusou: '+res.error.message,'err');renderFerrPCM('fech_lider');return;}
+  if(res.error&&!pcmIsMissingTable(res.error)){toast('Salvo localmente, banco recusou: '+res.error.message,'err');renderFerrPCM('consolidado');return;}
   toast(res.error?'✅ Fechamento do líder salvo localmente':'✅ Fechamento do líder salvo');
-  renderFerrPCM('fech_lider');
+  renderFerrPCM('consolidado');
 }
 async function renderFech24(gid,back,tabs){
   setMain(back+tabs+'<div class="loading"><div class="spinner"></div></div>');
