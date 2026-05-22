@@ -7936,6 +7936,18 @@ const prevIsOutroPlano=r=>!prevIsPesada(r)&&!prevIsLeve(r)&&!prevIsGarantia(r);
 const prevIsOutroRadar=r=>prevIsOutroPlano(r)&&((r.excessoKm||0)>0||r.pendente||(r.excessoKm||0)>=-PREV_OUTROS_LIMITE_KM);
 const prevPlanoPeso=r=>prevIsPesada(r)?4:prevIsGarantia(r)?3:prevIsLeve(r)?2:1;
 const prevIntervaloGarantia=r=>String(r.planoNum)==='029'?30000:20000;
+function prevOrdenarPreventiva(a,b){
+  const aKm=a?.excessoKm??a?.prioridade??0, bKm=b?.excessoKm??b?.prioridade??0;
+  const aDias=a?.excessoDias??a?.base?.excessoDias??0, bDias=b?.excessoDias??b?.base?.excessoDias??0;
+  const aVencKm=aKm>0, bVencKm=bKm>0;
+  if(aVencKm!==bVencKm) return aVencKm?-1:1;
+  if(aVencKm&&aKm!==bKm) return bKm-aKm;
+  const aAtraso=aDias<0, bAtraso=bDias<0;
+  if(aAtraso!==bAtraso) return aAtraso?-1:1;
+  if(aAtraso&&aDias!==bDias) return aDias-bDias;
+  if(aKm!==bKm) return bKm-aKm;
+  return String(a?.prefixo||'').localeCompare(String(b?.prefixo||''));
+}
 const prevSlotKey=(tipo,dia,slot)=>`${tipo}:${dia}:${slot}`;
 const prevSlotValuePrefixo=v=>typeof v==='string'?v:(v&&v.prefixo)||'';
 const prevSlotValueTipo=v=>typeof v==='string'?'':(v&&v.tipo)||'';
@@ -8213,13 +8225,13 @@ function prevGerarPropostas(){
   });
   const pesadas=[], leves=[], garantias=[], outros=[], todos=[];
   [...porCarro.values()].forEach(c=>{
-    c.itens.sort((a,b)=>prevPlanoPeso(b)-prevPlanoPeso(a) || (b.excessoKm||0)-(a.excessoKm||0));
+    c.itens.sort((a,b)=>prevPlanoPeso(b)-prevPlanoPeso(a) || prevOrdenarPreventiva(a,b));
     c.planos=c.itens.map(r=>r.planoNum).filter((v,i,a)=>a.indexOf(v)===i).join(', ');
     c.pesada=c.itens.find(prevIsPesada);
     c.leve=c.itens.find(prevIsLeve);
-    c.garantia=c.garantias.sort((a,b)=>(b.excessoKm||0)-(a.excessoKm||0))[0];
+    c.garantia=c.garantias.sort(prevOrdenarPreventiva)[0];
     c.base=c.itens[0];
-    c.outrosRadar=c.itens.filter(prevIsOutroRadar).sort((a,b)=>(b.excessoKm||0)-(a.excessoKm||0));
+    c.outrosRadar=c.itens.filter(prevIsOutroRadar).sort(prevOrdenarPreventiva);
     c.descricoes=prevServicosDoCarro(c,'').map(s=>s.replace(/^\d+\s+/,''));
     todos.push(c);
     if(c.pesada) pesadas.push({...c,tipo:'pesada',prioridade:c.pesada.excessoKm||0,base:c.pesada,descricoes:prevServicosDoCarro(c,'pesada')});
@@ -8227,10 +8239,10 @@ function prevGerarPropostas(){
     if(c.garantia) garantias.push({...c,tipo:'garantia',prioridade:c.garantia.excessoKm||0,base:c.garantia,intervaloGarantia:prevIntervaloGarantia(c.garantia),descricoes:prevServicosDoCarro(c,'garantia')});
     c.outrosRadar.forEach(r=>outros.push({...c,tipo:'outro',prioridade:r.excessoKm||0,base:r,descricoes:prevServicosDoCarro({...c,base:r},'outro')}));
   });
-  pesadas.sort((a,b)=>(b.prioridade||0)-(a.prioridade||0) || a.prefixo.localeCompare(b.prefixo));
-  leves.sort((a,b)=>(b.prioridade||0)-(a.prioridade||0) || a.prefixo.localeCompare(b.prefixo));
-  garantias.sort((a,b)=>(b.prioridade||0)-(a.prioridade||0) || a.prefixo.localeCompare(b.prefixo));
-  outros.sort((a,b)=>(b.prioridade||0)-(a.prioridade||0) || a.prefixo.localeCompare(b.prefixo));
+  pesadas.sort(prevOrdenarPreventiva);
+  leves.sort(prevOrdenarPreventiva);
+  garantias.sort(prevOrdenarPreventiva);
+  outros.sort(prevOrdenarPreventiva);
   const porPrefixo=new Map(todos.map(c=>[c.prefixo,c]));
   return {pesadas,leves,garantias,outros,todos,porPrefixo};
 }
@@ -8679,10 +8691,10 @@ function prevHtmlGrupos(){
     grupos.get(key).itens.push(r);
   });
   return [...grupos.values()].map(g=>{
-    g.itens.sort((a,b)=>(b.excessoKm||0)-(a.excessoKm||0) || String(a.prefixo).localeCompare(String(b.prefixo)));
+    g.itens.sort(prevOrdenarPreventiva);
     g.maior=Math.max(...g.itens.map(r=>r.excessoKm||0));
     return g;
-  }).sort((a,b)=>(b.maior||0)-(a.maior||0) || String(a.planoNum).localeCompare(String(b.planoNum))).map(prevHtmlGrupo).join('');
+  }).sort((a,b)=>prevOrdenarPreventiva(a.itens[0],b.itens[0]) || String(a.planoNum).localeCompare(String(b.planoNum))).map(prevHtmlGrupo).join('');
 }
 
 function prevHtmlGrupo(g){
@@ -8719,7 +8731,7 @@ async function processarPrevPDF(file){
     const linhas=await prevExtrairLinhasPDF(file);
     const dados=parsearMANPreventiva(linhas);
     if(!dados.length){ toast('Não encontrei linhas válidas de preventivas nesse PDF.','err'); return; }
-    _prevDados=dados.sort((a,b)=>(b.excessoKm||0)-(a.excessoKm||0));
+    _prevDados=dados.sort(prevOrdenarPreventiva);
     _prevImportadoEm=new Date().toISOString();
     _prevGrupoAtivo='propostas';
     _prevBuscaPrefixo='';
