@@ -1900,7 +1900,7 @@ async function salvarListaValetOficina(){
   if(!prefixo){toast('Informe o prefixo','err');return;}
   if(!itens.length){toast('Informe pelo menos uma peça','err');return;}
   if(modo!=='adicionar'){
-    const del=await sb.from('requisicoes_compra').update({status:'cancelado',atualizado_por:S.perfil?.nome||null,atualizado_em:new Date().toISOString()}).eq('garagem_id',gid).eq('data',data).eq('prefixo',prefixo).eq('status','lista_oficina');
+    const del=await sb.from('requisicoes_compra').update({status:'cancelado'}).eq('garagem_id',gid).eq('data',data).eq('prefixo',prefixo).eq('status','lista_oficina');
     if(del.error){toast('Erro ao substituir lista: '+del.error.message,'err');return;}
   }
   const rows=itens.map(it=>({garagem_id:gid,data,prefixo,peca:it.peca,quantidade:it.qtd,status:'lista_oficina',justificativa:(km?`KM ${km} · `:'')+'Lista líder oficina',criado_por:S.perfil?.nome||null,criado_em:new Date().toISOString()}));
@@ -1911,7 +1911,7 @@ async function salvarListaValetOficina(){
 async function excluirListaValetOficina(prefixo){
   const gid=getGid(),data=_valetMobData||proximoSabadoISO();
   if(!confirm(`Excluir os itens em aberto do valetamento ${prefixo}?`))return;
-  const{error}=await sb.from('requisicoes_compra').update({status:'cancelado',atualizado_por:S.perfil?.nome||null,atualizado_em:new Date().toISOString()}).eq('garagem_id',gid).eq('data',data).eq('prefixo',prefixo).eq('status','lista_oficina');
+  const{error}=await sb.from('requisicoes_compra').update({status:'cancelado'}).eq('garagem_id',gid).eq('data',data).eq('prefixo',prefixo).eq('status','lista_oficina');
   if(error){toast('Erro: '+error.message,'err');return;}
   toast('Lista excluída');telaValetOficina();
 }
@@ -1960,7 +1960,7 @@ async function telaValetAlmox(){
   `);
 }
 async function atualizarValetMobile(id,status){
-  const{error}=await sb.from('requisicoes_compra').update({status,atualizado_por:S.perfil?.nome||null,atualizado_em:new Date().toISOString()}).eq('id',id);
+  const{error}=await sb.from('requisicoes_compra').update({status}).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
   toast(status==='separado'?'✅ Item separado':status==='pedido_compra'?'🛒 Negativa enviada para compra':'✅ Compra recebida');
   telaValetAlmox();
