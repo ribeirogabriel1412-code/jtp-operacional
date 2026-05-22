@@ -5848,6 +5848,16 @@ async function atualizarReqCompra(id, status, origem='pcm'){
   if(origem==='almox') renderAlmoxarifado(); else renderFerrPCM('req_compra');
 }
 
+async function excluirReqCompraSite(id){
+  if(!confirm('Excluir este item do valetamento?'))return;
+  const{error}=await sb.from('requisicoes_compra').update({
+    status:'cancelado', atualizado_por:S.perfil?.nome||null, atualizado_em:new Date().toISOString()
+  }).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('Item excluído do valetamento');
+  renderFerrPCM('req_compra');
+}
+
 async function salvarMovPneuSite(){
   const gid=getGid();
   const prefixo=document.getElementById('pneu-pref-site')?.value?.trim();
@@ -6197,7 +6207,7 @@ async function renderFerrPCM(aba='painel'){
         .not('pecas_necessarias','is',null)
         .order('hora_entrada',{ascending:false}).limit(30)
     ]);
-    const reqs=reqRes.data||[];
+    const reqs=(reqRes.data||[]).filter(r=>(r.status||'')!=='cancelado');
     const osPecas=(osRes.data||[]).filter(o=>(o.pecas_necessarias||'').trim());
     const valetMetrica=lerValetamentoMetrica(dataValet);
     const carrosValet=(valetMetrica?.itens||[]);
@@ -6335,10 +6345,12 @@ async function renderFerrPCM(aba='painel'){
               <td style="padding:8px 12px;text-align:center">
                 ${r.status==='lista_oficina'?`
                   <button onclick="complementarListaOficina('${r.id}','${arg(r.prefixo)}','${arg(r.peca)}','${parseInt(r.quantidade||1)}','${arg(r.justificativa)}')" style="padding:5px 10px;border-radius:7px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">Complementar</button>
+                  <button onclick="excluirReqCompraSite('${r.id}')" style="padding:5px 8px;border-radius:7px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;margin-left:4px">Excluir</button>
                 `:['solicitado_pcm','pendente'].includes(r.status||'')?`
                   <button onclick="atualizarReqCompra('${r.id}','aprovado')" style="padding:4px 10px;border-radius:6px;border:1px solid var(--green);background:transparent;color:var(--green);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;margin-right:4px">✅</button>
                   <button onclick="atualizarReqCompra('${r.id}','reprovado')" style="padding:4px 10px;border-radius:6px;border:1px solid var(--red);background:transparent;color:var(--red);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">❌</button>
-                `:'—'}
+                  <button onclick="excluirReqCompraSite('${r.id}')" style="padding:4px 8px;border-radius:6px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;margin-left:4px">Excluir</button>
+                `:`<button onclick="excluirReqCompraSite('${r.id}')" style="padding:4px 8px;border-radius:6px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Excluir</button>`}
               </td>
             </tr>`).join('')}</tbody>
           </table></div>`:'<div class="empty">Nenhum item solicitado para este valetamento</div>'}
