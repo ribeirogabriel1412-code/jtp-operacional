@@ -140,7 +140,7 @@ const S={user:null,perfil:null,garagens:[],tela:'home',turno:'dia'};
 function hoje(){return new Date().toISOString().split('T')[0]}
 function getGid(){return S.perfil?.garagem_id||S.garagens?.[0]?.id}
 function cargo(){return S.perfil?.cargo}
-const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente',lider_pcm:'Líder PCM',assistente_pcm:'Ass. PCM',almoxarifado:'Almoxarifado',lider_operacional:'L. Operacional',lider_suprimentos:'L. Suprimentos',operacoes_seguras:'Op. Seguras',lider_oficina:'L. Oficina',lider_patio:'L. Pátio',lavador:'Lavador',manobrista:'Manobrista',frentista:'Frentista',plantao:'Plantão'};
+const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente',lider_pcm:'Líder PCM',assistente_pcm:'Ass. PCM',almoxarifado:'Almoxarifado',lider_almoxarifado:'Líder Almox.',lider_operacional:'L. Operacional',lider_suprimentos:'L. Suprimentos',operacoes_seguras:'Op. Seguras',lider_oficina:'L. Oficina',lider_patio:'L. Pátio',lavador:'Lavador',manobrista:'Manobrista',frentista:'Frentista',plantao:'Plantão'};
 function toast(msg,tipo='ok',dur=2200){const t=document.getElementById('toast');t.textContent=msg;t.className='show'+(tipo==='err'?' err':'');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',dur);}
 function render(html){document.getElementById('content').innerHTML=html}
 function setTela(t){S.tela=t;buildNav();render('<div class="loading"><div class="sp"></div></div>');TELAS[t]&&TELAS[t]()}
@@ -203,14 +203,17 @@ async function init(){
 async function doLogout(){await sb.auth.signOut();location.reload()}
 
 // NAVBAR
-const TELA_INICIO={lavador:'lavagem',lider_patio:'patio',lider_oficina:'oficina',lider_pcm:'oficina',assistente_pcm:'oficina',manobrista:'patio_man',frentista:'abastecimento',plantao:'recolha'};
+const TELA_INICIO={lavador:'lavagem',lider_patio:'patio',lider_oficina:'oficina',lider_pcm:'oficina',assistente_pcm:'oficina',almoxarifado:'valet_almox',lider_almoxarifado:'valet_almox',lider_suprimentos:'valet_almox',manobrista:'patio_man',frentista:'abastecimento',plantao:'recolha'};
 const NAV={
   lavador:[{id:'lavagem',ic:'🚿',lb:'Lavagem'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_patio:[{id:'patio',ic:'✅',lb:'Validar'},{id:'patio_man',ic:'🚗',lb:'Zona'},{id:'soltura',ic:'🚌',lb:'Soltura'},{id:'abastecimento',ic:'⛽',lb:'Abastec.'},{id:'lav_pesada',ic:'🚿',lb:'Lavagem'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_operacional:[{id:'patio_man',ic:'🚗',lb:'Pátio'},{id:'home',ic:'🏠',lb:'Início'}],
-  lider_oficina:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'home',ic:'🏠',lb:'Início'}],
+  lider_oficina:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'valet_oficina',ic:'📦',lb:'Valet'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_pcm:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'checklist_equip',ic:'📋',lb:'3.4'},{id:'prev26',ic:'💰',lb:'2.6'},{id:'home',ic:'🏠',lb:'Início'}],
   assistente_pcm:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'checklist_equip',ic:'📋',lb:'3.4'},{id:'prev26',ic:'💰',lb:'2.6'},{id:'home',ic:'🏠',lb:'Início'}],
+  almoxarifado:[{id:'valet_almox',ic:'📦',lb:'Kits'},{id:'home',ic:'🏠',lb:'Início'}],
+  lider_almoxarifado:[{id:'valet_almox',ic:'📦',lb:'Kits'},{id:'home',ic:'🏠',lb:'Início'}],
+  lider_suprimentos:[{id:'valet_almox',ic:'📦',lb:'Kits'},{id:'home',ic:'🏠',lb:'Início'}],
   manobrista:[{id:'patio_man',ic:'🚗',lb:'Pátio'},{id:'home',ic:'🏠',lb:'Início'}],
   frentista:[{id:'abastecimento',ic:'⛽',lb:'Abastecer'},{id:'home',ic:'🏠',lb:'Início'}],
   plantao:[{id:'recolha',ic:'🔑',lb:'Recolha'},{id:'home',ic:'🏠',lb:'Início'}],
@@ -220,6 +223,15 @@ function buildNav(){
   const itens=NAV[cargo()]||NAV_DEF;
   document.getElementById('navbar').innerHTML=itens.map(n=>`<button class="nav-btn${S.tela===n.id?' active':''}" onclick="setTela('${n.id}')"><span class="nav-ic">${n.ic}</span><span class="nav-lb">${n.lb}</span></button>`).join('');
 }
+
+function proximoSabadoISO(base=new Date()){
+  const d=new Date(base.getFullYear(),base.getMonth(),base.getDate());
+  const faltam=(6-d.getDay()+7)%7;
+  d.setDate(d.getDate()+faltam);
+  return d.toISOString().slice(0,10);
+}
+function escHtml(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function moeda(v){return 'R$ '+parseFloat(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});}
 
 // ── HOME ─────────────────────────────────────────────────
 async function telaHome(){
@@ -1803,6 +1815,135 @@ async function salv26(){
   const rows=_pids.map(id=>({garagem_id:_pgid,ocorrencia_id:id,data:_pdata,custo_prev:parseFloat(document.getElementById('pv-'+id)?.value||0)||null,custo_real:parseFloat(document.getElementById('rl-'+id)?.value||0)||null,obs:document.getElementById('ob-'+id)?.value?.trim()||null,registrado_por:S.perfil?.nome})).filter(r=>r.custo_prev||r.custo_real||r.obs);
   if(rows.length) await sb.from('previsibilidade_26').insert(rows);
   toast('✅ Salvo!');
+}
+
+// ── VALETAMENTO ───────────────────────────────────────────
+let _valetMobData=proximoSabadoISO();
+function parseItensValetTexto(txt){
+  return String(txt||'').split(/\r?\n/).map(l=>l.trim()).filter(Boolean).map(l=>{
+    let qtd=1,peca=l;
+    let m=l.match(/^(\d+)\s*[-xX ]\s*(.+)$/);
+    if(m){qtd=parseInt(m[1],10)||1;peca=m[2].trim();}
+    else{
+      m=l.match(/^(.+?)\s*(?:x|qtd\.?|quant\.?)\s*(\d+)$/i);
+      if(m){peca=m[1].trim();qtd=parseInt(m[2],10)||1;}
+    }
+    return {peca,qtd};
+  });
+}
+async function telaValetOficina(){
+  const gid=getGid(),data=_valetMobData||proximoSabadoISO();
+  const{data:reqs}=await sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).eq('data',data).order('prefixo',{ascending:true}).order('criado_em',{ascending:true});
+  const lista=(reqs||[]).filter(r=>['lista_oficina','solicitado_pcm','aprovado','separado','pedido_compra','comprado'].includes(r.status||''));
+  const grupos={};
+  lista.forEach(r=>{const k=r.prefixo||'Sem prefixo';if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
+  const cards=Object.entries(grupos).map(([pref,itens])=>{
+    const total=itens.length;
+    const ok=itens.filter(i=>['separado','comprado'].includes(i.status||'')).length;
+    const neg=itens.filter(i=>i.status==='pedido_compra').length;
+    const aberto=itens.filter(i=>i.status==='lista_oficina').length;
+    return `<div class="card" style="margin-bottom:10px;border-left:4px solid ${ok===total?'var(--green)':neg?'var(--amber)':'var(--blue)'}">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+        <div>
+          <div class="prefixo" style="font-size:20px;color:var(--blue)">${escHtml(pref)}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${total} item(ns) · ${ok} separado(s) · ${aberto} aguardando PCM</div>
+        </div>
+        <div style="font-size:11px;font-weight:800;color:${ok===total?'var(--green)':neg?'var(--amber)':'var(--text3)'}">${ok===total?'CESTO DISPONÍVEL':neg?'COMPRA/FUP':'EM ANDAMENTO'}</div>
+      </div>
+      <div style="margin-top:10px;display:flex;flex-direction:column;gap:7px">
+        ${itens.map(i=>`<div style="display:grid;grid-template-columns:34px 1fr auto;gap:8px;align-items:center;font-size:12px;color:var(--text2)">
+          <b style="font-family:'DM Mono',monospace;color:var(--amber)">${i.quantidade||1}x</b>
+          <span>${escHtml(i.peca)}</span>
+          <span style="font-size:10px;color:${i.status==='lista_oficina'?'var(--amber)':i.status==='pedido_compra'?'var(--red)':i.status==='separado'||i.status==='comprado'?'var(--green)':'var(--blue)'};font-weight:800">${escHtml(i.status||'')}</span>
+        </div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+  render(`
+    <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div style="font-weight:800;font-size:17px">📦 Valetamento Oficina</div>
+      <button onclick="abrirListaValetOficina()" style="background:var(--blue);border:none;border-radius:10px;padding:10px 14px;color:#fff;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">Nova lista</button>
+    </div>
+    <div style="padding:10px 14px"><input class="fi2" type="date" value="${data}" onchange="_valetMobData=this.value;telaValetOficina()" style="font-family:'DM Mono',monospace"></div>
+    <div class="sl">${lista.length} item(ns) no valetamento</div>
+    ${cards||'<div class="empty"><div class="empty-ic">📦</div><div style="font-weight:700">Nenhuma lista lançada</div><div style="font-size:12px;color:var(--text3);margin-top:6px">Crie a lista por prefixo para o PCM complementar.</div></div>'}
+  `);
+}
+function abrirListaValetOficina(){
+  openSheet('📦 Lista de peças',`
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div><label class="fl">Data do valetamento</label><input class="fi2" id="val-data" type="date" value="${_valetMobData||proximoSabadoISO()}" style="font-family:'DM Mono',monospace"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><label class="fl">Prefixo</label><input class="fi2" id="val-pref" type="text" placeholder="02.015" style="font-family:'DM Mono',monospace;font-size:20px"></div>
+        <div><label class="fl">KM atual</label><input class="fi2" id="val-km" type="number" placeholder="19880" style="font-family:'DM Mono',monospace;font-size:20px"></div>
+      </div>
+      <div><label class="fl">Peças - uma por linha</label><textarea id="val-itens" placeholder="2 Filtro de óleo&#10;1 Correia do alternador&#10;Pastilha freio x4" style="width:100%;height:180px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;color:var(--text);padding:12px;font-size:15px;line-height:1.45;font-family:inherit;outline:none;box-sizing:border-box"></textarea></div>
+      <button onclick="salvarListaValetOficina()" style="padding:16px;border-radius:12px;border:none;background:var(--green);color:#06131f;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer">Salvar lista</button>
+    </div>`);
+}
+async function salvarListaValetOficina(){
+  const gid=getGid();
+  const data=document.getElementById('val-data')?.value||proximoSabadoISO();
+  const prefixo=document.getElementById('val-pref')?.value?.trim().toUpperCase();
+  const km=document.getElementById('val-km')?.value?.trim();
+  const itens=parseItensValetTexto(document.getElementById('val-itens')?.value);
+  if(!prefixo){toast('Informe o prefixo','err');return;}
+  if(!itens.length){toast('Informe pelo menos uma peça','err');return;}
+  await sb.from('requisicoes_compra').delete().eq('garagem_id',gid).eq('data',data).eq('prefixo',prefixo).eq('status','lista_oficina');
+  const rows=itens.map(it=>({garagem_id:gid,data,prefixo,peca:it.peca,quantidade:it.qtd,status:'lista_oficina',justificativa:(km?`KM ${km} · `:'')+'Lista líder oficina',criado_por:S.perfil?.nome||null,criado_em:new Date().toISOString()}));
+  const{error}=await sb.from('requisicoes_compra').insert(rows);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  _valetMobData=data;closeSheet(true);toast('✅ Lista enviada ao PCM');telaValetOficina();
+}
+async function telaValetAlmox(){
+  const gid=getGid(),data=_valetMobData||proximoSabadoISO();
+  const{data:reqs}=await sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).eq('data',data).order('prefixo',{ascending:true}).order('criado_em',{ascending:true});
+  const lista=(reqs||[]).filter(r=>['solicitado_pcm','aprovado','separado','pedido_compra','comprado','pendente'].includes(r.status||''));
+  const grupos={};
+  lista.forEach(r=>{const k=r.prefixo||'Sem prefixo';if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
+  const cards=Object.entries(grupos).map(([pref,itens])=>{
+    const total=itens.length,ok=itens.filter(i=>['separado','comprado'].includes(i.status||'')).length,neg=itens.filter(i=>i.status==='pedido_compra').length;
+    return `<div class="card" style="margin-bottom:10px;border-left:4px solid ${ok===total?'var(--green)':neg?'var(--red)':'var(--amber)'}">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:10px">
+        <div><div class="prefixo" style="font-size:20px;color:var(--blue)">${escHtml(pref)}</div><div style="font-size:11px;color:var(--text3)">${ok}/${total} separado(s)</div></div>
+        <div style="font-size:11px;font-weight:900;color:${ok===total?'var(--green)':neg?'var(--red)':'var(--amber)'}">${ok===total?'CESTO DISPONÍVEL':neg?'NEGATIVA/COMPRA':'SEPARAR'}</div>
+      </div>
+      ${itens.map(i=>`<div style="padding:9px 0;border-top:1px solid var(--border2)">
+        <div style="display:grid;grid-template-columns:34px 1fr;gap:8px;font-size:13px;color:var(--text)">
+          <b style="font-family:'DM Mono',monospace;color:var(--amber)">${i.quantidade||1}x</b><span>${escHtml(i.peca)}</span>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px;align-items:center;justify-content:space-between">
+          <span style="font-size:10px;font-weight:800;color:${i.status==='pedido_compra'?'var(--red)':i.status==='separado'||i.status==='comprado'?'var(--green)':'var(--text3)'}">${escHtml(i.status||'')}</span>
+          <span style="white-space:nowrap">
+            <button onclick="atualizarValetMobile('${i.id}','separado')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;font-family:inherit">Tem</button>
+            <button onclick="atualizarValetMobile('${i.id}','pedido_compra')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:800;font-family:inherit;margin-left:4px">Negativa</button>
+            <button onclick="atualizarValetMobile('${i.id}','comprado')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:800;font-family:inherit;margin-left:4px">Chegou</button>
+          </span>
+        </div>
+      </div>`).join('')}
+    </div>`;
+  }).join('');
+  const separados=lista.filter(r=>r.status==='separado'||r.status==='comprado').length;
+  const compras=lista.filter(r=>r.status==='pedido_compra').length;
+  render(`
+    <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div style="font-weight:800;font-size:17px">📦 Kits Preventivos</div>
+      <button onclick="telaValetAlmox()" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">🔄</button>
+    </div>
+    <div style="padding:10px 14px"><input class="fi2" type="date" value="${data}" onchange="_valetMobData=this.value;telaValetAlmox()" style="font-family:'DM Mono',monospace"></div>
+    <div style="display:flex;gap:8px;padding:0 14px 10px">
+      <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center"><b style="color:var(--green);font-family:'DM Mono',monospace">${separados}</b><div style="font-size:10px;color:var(--text3)">Separados</div></div>
+      <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center"><b style="color:var(--red);font-family:'DM Mono',monospace">${compras}</b><div style="font-size:10px;color:var(--text3)">Compras</div></div>
+    </div>
+    <div class="sl">${lista.length} item(ns) para almoxarifado</div>
+    ${cards||'<div class="empty"><div class="empty-ic">📦</div><div style="font-weight:700">Nenhum kit liberado pelo PCM</div></div>'}
+  `);
+}
+async function atualizarValetMobile(id,status){
+  const{error}=await sb.from('requisicoes_compra').update({status,atualizado_por:S.perfil?.nome||null,atualizado_em:new Date().toISOString()}).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast(status==='separado'?'✅ Item separado':status==='pedido_compra'?'🛒 Negativa enviada para compra':'✅ Compra recebida');
+  telaValetAlmox();
 }
 
 // ── PÁTIO — MANOBRISTA ────────────────────────────────────
@@ -5201,7 +5342,7 @@ const SECS38=[
 ];
 const TOTAL_38=SECS38.reduce(function(s,sec){return s+sec.itens.length;},0);
 
-const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,prev26:telaPrev26,patio_man:telaPatioMan,recolha:telaRecolha,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip};
+const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,prev26:telaPrev26,valet_oficina:telaValetOficina,valet_almox:telaValetAlmox,patio_man:telaPatioMan,recolha:telaRecolha,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip};
 
 // ── INIT ───────────────────────────────────────────────────
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login').style.display!=='none')doLogin()});
