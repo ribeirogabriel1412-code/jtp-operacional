@@ -5696,7 +5696,6 @@ async function salvarReqCompraSite(){
     cod_sap:codSap||null,
     valor_estimado:valor||null, justificativa:just||null,
     data:dataValet, status:'solicitado_pcm',
-    atualizado_por:S.perfil?.nome||null, atualizado_em:new Date().toISOString(),
   };
   let error;
   if(id){
@@ -5840,9 +5839,7 @@ function salvarChegadaValet(id,data){
 }
 
 async function atualizarReqCompra(id, status, origem='pcm'){
-  const{error}=await sb.from('requisicoes_compra').update({
-    status, atualizado_por:S.perfil?.nome||null, atualizado_em:new Date().toISOString()
-  }).eq('id',id);
+  const{error}=await sb.from('requisicoes_compra').update({status}).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
   toast(status==='separado'?'✅ Item separado!':status==='pedido_compra'?'🛒 Enviado para compra':status==='comprado'?'✅ Compra recebida':status==='aprovado'?'✅ Aprovado!':'Status atualizado');
   if(origem==='almox') renderAlmoxarifado(); else renderFerrPCM('req_compra');
@@ -5850,9 +5847,7 @@ async function atualizarReqCompra(id, status, origem='pcm'){
 
 async function excluirReqCompraSite(id){
   if(!confirm('Excluir este item do valetamento?'))return;
-  const{error}=await sb.from('requisicoes_compra').update({
-    status:'cancelado', atualizado_por:S.perfil?.nome||null, atualizado_em:new Date().toISOString()
-  }).eq('id',id);
+  const{error}=await sb.from('requisicoes_compra').update({status:'cancelado'}).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
   toast('Item excluído do valetamento');
   renderFerrPCM('req_compra');
