@@ -718,7 +718,7 @@ async function carregarReservasDisponiveis(){
   sel.innerHTML=`<option value="">Selecione o reserva...</option>`+
     disponiveis.map(v=>`<option value="${v.prefixo}">${v.prefixo} — ${v.modelo||'—'} (${v.status==='disponivel'?'✅ Disponível':'🔧 '+v.status})</option>`).join('');
 }
-const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',lider_pcm:'Líder PCM',assistente_pcm:'Assistente PCM',almoxarifado:'Almoxarifado',lider_operacional:'Líder Operacional',lider_suprimentos:'Líder de Suprimentos',operacoes_seguras:'Operações Seguras',lider_oficina:'Líder de Oficina',lider_patio:'Líder de Pátio',lavador:'Lavador',manobrista:'Manobrista',frentista:'Frentista',plantao:'Plantão'};
+const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',lider_pcm:'Líder PCM',assistente_pcm:'Assistente PCM',almoxarifado:'Almoxarifado',lider_almoxarifado:'Líder Almoxarifado',lider_operacional:'Líder Operacional',lider_suprimentos:'Líder de Suprimentos',operacoes_seguras:'Operações Seguras',lider_oficina:'Líder de Oficina',lider_patio:'Líder de Pátio',lavador:'Lavador',manobrista:'Manobrista',frentista:'Frentista',plantao:'Plantão'};
 
 // ── FERRAMENTAS E PERMISSÕES ──────────────────────────────
 // ── SISTEMA DE PERMISSÕES 3 NÍVEIS: executa / valida / visualiza ──────────
@@ -1331,13 +1331,31 @@ async function renderAlmoxarifado(){
   const qtdSep=lista.filter(r=>r.status==='separado').length;
   const qtdCompra=lista.filter(r=>r.status==='pedido_compra').length;
   const qtdComprado=lista.filter(r=>r.status==='comprado').length;
+  const grupos={};
+  lista.forEach(r=>{const k=r.prefixo||'Sem prefixo';if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
+  const cestos=Object.entries(grupos);
+  const qtdCestosDisp=cestos.filter(([,itens])=>itens.length&&itens.every(i=>['separado','comprado'].includes(i.status||''))).length;
   setMain(`
     ${secTitle('📦','Almoxarifado - Valetamento',`<input type="date" value="${data}" onchange="S._valetData=this.value;renderAlmoxarifado()" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 10px;font-family:'DM Mono',monospace">`)}
     <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px">
       ${kpi('Itens solicitados',lista.length,undefined,'',false,0)}
       ${kpi('Separados',qtdSep,undefined,'',false,0)}
       ${kpi('Pedido compra',qtdCompra,0,'',true,0)}
-      ${kpi('Comprados',qtdComprado,undefined,'',false,0)}
+      ${kpi('Cestos disponíveis',qtdCestosDisp,undefined,'',false,0)}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;margin-bottom:16px">
+      ${cestos.length?cestos.map(([pref,itens])=>{
+        const ok=itens.filter(i=>['separado','comprado'].includes(i.status||'')).length;
+        const neg=itens.filter(i=>i.status==='pedido_compra').length;
+        const disp=ok===itens.length&&itens.length;
+        return `<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${disp?'var(--green)':neg?'var(--red)':'var(--amber)'};border-radius:10px;padding:12px">
+          <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+            <b style="font-family:'DM Mono',monospace;color:var(--blue);font-size:16px">${safe(pref)}</b>
+            <span style="font-size:10px;font-weight:900;color:${disp?'var(--green)':neg?'var(--red)':'var(--amber)'}">${disp?'CESTO DISPONÍVEL':neg?'FUP COMPRA':'SEPARANDO'}</span>
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-top:6px">${ok}/${itens.length} item(ns) separados ${neg?`· ${neg} negativa(s)`:''}</div>
+        </div>`;
+      }).join(''):`<div class="empty" style="grid-column:1/-1">Nenhum cesto para este sábado</div>`}
     </div>
     <div class="tbl-wrap"><table style="width:100%;border-collapse:collapse">
       <thead><tr style="background:var(--surface2)">
@@ -1359,7 +1377,7 @@ async function renderAlmoxarifado(){
           </td>
           <td style="padding:9px 12px;text-align:center;white-space:nowrap">
             <button onclick="atualizarReqCompra('${r.id}','separado','almox')" style="padding:5px 9px;border-radius:7px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">Separar</button>
-            <button onclick="atualizarReqCompra('${r.id}','pedido_compra','almox')" style="padding:5px 9px;border-radius:7px;border:1px solid var(--amber);background:#F59E0B18;color:var(--amber);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;margin-left:4px">Comprar</button>
+            <button onclick="atualizarReqCompra('${r.id}','pedido_compra','almox')" style="padding:5px 9px;border-radius:7px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;margin-left:4px">Negativa</button>
             <button onclick="atualizarReqCompra('${r.id}','comprado','almox')" style="padding:5px 9px;border-radius:7px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;margin-left:4px">Chegou</button>
           </td>
         </tr>`).join(''):`<tr><td colspan="6"><div class="empty">Nenhum valetamento para este sábado</div></td></tr>`}</tbody>
@@ -5664,6 +5682,8 @@ async function salvarCk38Site(){
 
 async function salvarReqCompraSite(){
   const gid=getGid();
+  const id=document.getElementById('req-id-site')?.value||'';
+  const codSap=document.getElementById('req-sap-site')?.value||null;
   const dataValet=document.getElementById('req-data-site')?.value||S._valetData||proximoSabadoISO();
   const peca=document.getElementById('req-peca-site')?.value?.trim();
   const prefixo=document.getElementById('req-pref-site')?.value?.trim();
@@ -5671,14 +5691,23 @@ async function salvarReqCompraSite(){
   const valor=parseFloat(document.getElementById('req-valor-site')?.value)||0;
   const just=document.getElementById('req-just-site')?.value?.trim();
   if(!peca){toast('Informe a descrição da peça','err');return;}
-  const{error}=await sb.from('requisicoes_compra').insert({
+  const payload={
     garagem_id:gid, peca, prefixo:prefixo||null, quantidade:qtd,
+    cod_sap:codSap||null,
     valor_estimado:valor||null, justificativa:just||null,
     data:dataValet, status:'solicitado_pcm',
-    criado_por:S.perfil?.nome||null, criado_em:new Date().toISOString(),
-  });
+    atualizado_por:S.perfil?.nome||null, atualizado_em:new Date().toISOString(),
+  };
+  let error;
+  if(id){
+    const res=await sb.from('requisicoes_compra').update(payload).eq('id',id);
+    error=res.error;
+  }else{
+    const res=await sb.from('requisicoes_compra').insert({...payload,criado_por:S.perfil?.nome||null,criado_em:new Date().toISOString()});
+    error=res.error;
+  }
   if(error){toast('Erro: '+error.message,'err');return;}
-  toast('✅ Item registrado no valetamento!');
+  toast(id?'✅ Item complementado e enviado ao almox!':'✅ Item registrado no valetamento!');
   renderFerrPCM('req_compra');
 }
 
@@ -5714,6 +5743,7 @@ function preencherValetCarro(prefixo, servicos){
 
 function badgeValetStatus(status){
   const map={
+    lista_oficina:{txt:'Lista oficina',c:'var(--blue)',bg:'#2563EB20'},
     solicitado_pcm:{txt:'Solicitado PCM',c:'var(--amber)',bg:'#F59E0B20'},
     pendente:{txt:'Solicitado PCM',c:'var(--amber)',bg:'#F59E0B20'},
     aprovado:{txt:'Aprovado',c:'var(--green)',bg:'#00C48C20'},
@@ -5755,21 +5785,47 @@ function valetSelecionarPecaSap(cod){
   var it=window._valetSapMap?.[cod];
   if(!it) return;
   var busca=document.getElementById('valet-sap-busca');
+  var sap=document.getElementById('req-sap-site');
   var peca=document.getElementById('req-peca-site');
   var valor=document.getElementById('req-valor-site');
   var drop=document.getElementById('valet-sap-drop');
   if(busca) busca.value=it.cod+' - '+it.desc;
+  if(sap) sap.value=it.cod;
   if(peca) peca.value=it.cod+' - '+it.desc;
   if(valor) valor.value=(parseFloat(it.preco||0)||0).toFixed(2);
   if(drop) drop.style.display='none';
   document.getElementById('req-qtd-site')?.focus();
 }
 
+function complementarListaOficina(id,prefixo,peca,qtd,just){
+  const idEl=document.getElementById('req-id-site');
+  const sapEl=document.getElementById('req-sap-site');
+  const prefEl=document.getElementById('req-pref-site');
+  const pecaEl=document.getElementById('req-peca-site');
+  const qtdEl=document.getElementById('req-qtd-site');
+  const valorEl=document.getElementById('req-valor-site');
+  const justEl=document.getElementById('req-just-site');
+  const buscaEl=document.getElementById('valet-sap-busca');
+  if(idEl) idEl.value=id||'';
+  if(sapEl) sapEl.value='';
+  if(prefEl) prefEl.value=prefixo||'';
+  if(pecaEl) pecaEl.value=peca||'';
+  if(qtdEl) qtdEl.value=qtd||1;
+  if(valorEl) valorEl.value='';
+  if(justEl) justEl.value=just||'Lista líder oficina';
+  if(buscaEl){buscaEl.value=peca||'';buscaEl.focus();}
+  toast('Lista puxada. Complete SAP, valor e envie ao almox.');
+}
+
 function preencherReqCompraSite(prefixo, peca, numero){
+  const idEl=document.getElementById('req-id-site');
+  const sapEl=document.getElementById('req-sap-site');
   const prefEl=document.getElementById('req-pref-site');
   const pecaEl=document.getElementById('req-peca-site');
   const qtdEl=document.getElementById('req-qtd-site');
   const justEl=document.getElementById('req-just-site');
+  if(idEl) idEl.value='';
+  if(sapEl) sapEl.value='';
   if(prefEl) prefEl.value=numero?`${prefixo||''} / ${numero}`:(prefixo||'');
   if(pecaEl) pecaEl.value=peca||'';
   if(qtdEl) qtdEl.value=1;
@@ -6149,18 +6205,23 @@ async function renderFerrPCM(aba='painel'){
     const arg=v=>String(v??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\r?\n/g,' | ');
     const totalVal=reqs.reduce((s,r)=>s+(parseFloat(r.valor_estimado||0)*parseInt(r.quantidade||1)),0);
     const solicitados=reqs.filter(r=>['solicitado_pcm','pendente'].includes(r.status||'')).length;
+    const listasOficina=reqs.filter(r=>r.status==='lista_oficina').length;
     const separados=reqs.filter(r=>r.status==='separado').length;
     const compras=reqs.filter(r=>r.status==='pedido_compra').length;
     const comprados=reqs.filter(r=>r.status==='comprado').length;
 
     setMain(`${back}${tabs}
       ${secTitle('📦','Valetamento de Sábado',`<input type="date" value="${dataValet}" onchange="S._valetData=this.value;renderFerrPCM('req_compra')" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 10px;font-family:'DM Mono',monospace">`)}
-      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px">
+      <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:16px">
         <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--amber);border-radius:10px;padding:14px">
           <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:2px">Carros 11-20</div>
           <div style="font-family:'DM Mono',monospace;font-size:24px;font-weight:800;color:var(--amber);margin-top:6px">${carrosValet.length||osPecas.length}</div>
         </div>
         <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:10px;padding:14px">
+          <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:2px">Aguardando PCM</div>
+          <div style="font-family:'DM Mono',monospace;font-size:24px;font-weight:800;color:var(--blue);margin-top:6px">${listasOficina}</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--green);border-radius:10px;padding:14px">
           <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:2px">Itens solicitados</div>
           <div style="font-family:'DM Mono',monospace;font-size:24px;font-weight:800;color:var(--blue);margin-top:6px">${reqs.length}</div>
         </div>
@@ -6179,6 +6240,8 @@ async function renderFerrPCM(aba='painel'){
           ${secTitle('📝','Solicitar Item do Valetamento')}
           <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
             <input type="hidden" id="req-data-site" value="${dataValet}">
+            <input type="hidden" id="req-id-site" value="">
+            <input type="hidden" id="req-sap-site" value="">
             <div style="position:relative;margin-bottom:10px">
               <label class="campo-label">🔎 Base de Peças SAP</label>
               <input type="text" id="valet-sap-busca" placeholder="Digite código SAP ou descrição da peça" oninput="valetBuscarPecaSap(this)"
@@ -6215,7 +6278,7 @@ async function renderFerrPCM(aba='painel'){
               </div>
             </div>
             <button onclick="salvarReqCompraSite()" style="width:100%;padding:12px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
-              ➕ Adicionar na Cesta
+              ➕ Salvar e enviar ao almox
             </button>
           </div>
           <div style="margin-top:16px">
@@ -6251,7 +6314,7 @@ async function renderFerrPCM(aba='painel'){
         </div>
         <!-- Lista -->
         <div>
-          ${secTitle('🛒','Itens do Valetamento',`<div style="font-size:12px;color:var(--text3)">${solicitados} solicitados · ${separados} separados · ${compras} compras · ${comprados} chegaram</div>`)}
+          ${secTitle('🛒','Itens do Valetamento',`<div style="font-size:12px;color:var(--text3)">${listasOficina} oficina · ${solicitados} solicitados · ${separados} separados · ${compras} compras · ${comprados} chegaram</div>`)}
           ${(reqs||[]).length?`<div class="tbl-wrap"><table style="width:100%;border-collapse:collapse">
             <thead><tr style="background:var(--surface2)">
               <th style="padding:8px 12px;text-align:left;font-size:11px;color:var(--text3)">Prefixo</th>
@@ -6263,14 +6326,16 @@ async function renderFerrPCM(aba='painel'){
             </tr></thead>
             <tbody>${(reqs||[]).map(r=>`<tr style="border-bottom:1px solid var(--border2)">
               <td style="padding:8px 12px;font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${safeText(r.prefixo||'—')}</td>
-              <td style="padding:8px 12px;font-size:12px">${safeText(r.peca)}</td>
+              <td style="padding:8px 12px;font-size:12px">${safeText(r.peca)}${r.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-top:2px">SAP ${safeText(r.cod_sap)}</div>`:''}${r.justificativa?`<div style="font-size:10px;color:var(--text3);margin-top:2px">${safeText(r.justificativa)}</div>`:''}</td>
               <td style="padding:8px 12px;text-align:center;font-size:12px">${r.quantidade}</td>
               <td style="padding:8px 12px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;color:var(--amber)">${r.valor_estimado?'R$ '+(parseFloat(r.valor_estimado)*parseInt(r.quantidade||1)).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</td>
               <td style="padding:8px 12px;text-align:center">
                 ${badgeValetStatus(r.status)}
               </td>
               <td style="padding:8px 12px;text-align:center">
-                ${['solicitado_pcm','pendente'].includes(r.status||'')?`
+                ${r.status==='lista_oficina'?`
+                  <button onclick="complementarListaOficina('${r.id}','${arg(r.prefixo)}','${arg(r.peca)}','${parseInt(r.quantidade||1)}','${arg(r.justificativa)}')" style="padding:5px 10px;border-radius:7px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">Complementar</button>
+                `:['solicitado_pcm','pendente'].includes(r.status||'')?`
                   <button onclick="atualizarReqCompra('${r.id}','aprovado')" style="padding:4px 10px;border-radius:6px;border:1px solid var(--green);background:transparent;color:var(--green);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;margin-right:4px">✅</button>
                   <button onclick="atualizarReqCompra('${r.id}','reprovado')" style="padding:4px 10px;border-radius:6px;border:1px solid var(--red);background:transparent;color:var(--red);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">❌</button>
                 `:'—'}
