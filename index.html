@@ -296,6 +296,7 @@ tr:hover td{background:#0F172A80}
         <button class="sub-btn" onclick="navToSub('ferr-21')">📋 2.1 Fechamento Garagem</button>
         <button class="sub-btn" onclick="navToSub('ferr-26')">💰 2.6 Previsibilidade</button>
         <button class="sub-btn" onclick="navToSub('ferr-ctrl')">✅ Controle Soltura</button>
+        <button class="sub-btn" onclick="navToSub('ferr-almox')">📦 Almoxarifado / Valetamento</button>
       </div>
       <button class="nav-btn" onclick="toggleSub('sub-rel','arr-rel',this)"><span>📋</span> Relatórios <span id="arr-rel" style="margin-left:auto;font-size:10px;color:var(--text4)">▶</span></button>
       <div class="submenu" id="sub-rel">
@@ -770,6 +771,11 @@ const FERRAMENTAS_DEF=[
     valida:   [],
     visualiza:['lider_operacional','gerente_garagem','diretoria'],
   },
+  {id:'ferr-almox', icon:'📦', nome:'Almoxarifado / Valetamento',
+    executa:  ['almoxarifado'],
+    valida:   ['lider_almoxarifado'],
+    visualiza:['lider_pcm','assistente_pcm','lider_oficina','gerente_garagem','diretoria'],
+  },
   {id:'ferr-211', icon:'🔴', nome:'2.11 Carros Indisponíveis',
     executa:  [],
     valida:   [],
@@ -946,7 +952,7 @@ function navToSub(sub){
   S.subtela=sub;
   document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes(sub))b.classList.add('active')});
-  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios};
+  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios};
   if(map[sub]) map[sub]();
 }
 
@@ -1902,6 +1908,7 @@ function renderFerramentas(){
     'ferr-lav':'Programação diária de lavagem com sugestão automática. Lavador executa, Líder de Pátio valida.',
     'ferr-lav-lavador':'Sua lista de lavagem do dia. Marque cada carro ao concluir.',
     'ferr-ctrl':'Status consolidado da oficina e do pátio. Liberado = pronto para soltura.',
+    'ferr-almox':'Cestos de valetamento agrupados por carro. Almoxarifado codifica, separa, nega ou atualiza chegada.',
     'ferr-211':'Todos os veículos parados com tempo, status e previsão. Alerta automático de vencimento.',
     'ferr-212':'Disponibilidade, MTTR, OS por tipo e ranking de mecânicos. Atualizado em tempo real.',
   };
@@ -1945,6 +1952,7 @@ function atualizarSubmenuFerramentas(){
     'ferr-22':'🔧 Painel do Manutentor',
     'ferr-lav':'🧼 3.2 Checklist Lavagem',
     'ferr-ctrl':'✅ Controle Soltura',
+    'ferr-almox':'📦 Almoxarifado / Valetamento',
   };
   const subFerr=document.getElementById('sub-ferr');
   if(!subFerr) return;
