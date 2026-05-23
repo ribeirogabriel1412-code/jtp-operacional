@@ -1842,17 +1842,17 @@ async function telaValetOficina(){
     const total=itens.length;
     const ok=itens.filter(i=>['separado','comprado'].includes(i.status||'')).length;
     const neg=itens.filter(i=>i.status==='pedido_compra').length;
-    const aberto=itens.filter(i=>i.status==='lista_oficina').length;
+    const aberto=itens.filter(i=>['lista_oficina','solicitado_pcm'].includes(i.status||'')).length;
     const parcial=ok>0&&ok<total;
     const farolCor=ok===total?'var(--green)':parcial?'var(--amber)':'var(--red)';
     const farolTxt=ok===total?'VERDE · tudo separado':parcial?'AMARELO · parcial':'VERMELHO · não separado';
-    const textoEdit=itens.filter(i=>i.status==='lista_oficina').map(i=>`${i.quantidade||1} ${i.peca||''}`).join('\n');
+    const textoEdit=itens.filter(i=>['lista_oficina','solicitado_pcm'].includes(i.status||'')).map(i=>`${i.quantidade||1} ${i.peca||''}`).join('\n');
     const kmInfo=(itens.find(i=>String(i.justificativa||'').includes('KM '))?.justificativa||'').match(/KM\s+([^·]+)/)?.[1]?.trim()||'';
     return `<div class="card" style="margin-bottom:10px;border-left:4px solid ${farolCor}">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
         <div>
           <div class="prefixo" style="font-size:20px;color:var(--blue)">${escHtml(pref)}</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">${total} item(ns) · ${ok} separado(s) · ${aberto} aguardando PCM</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${total} item(ns) · ${ok} separado(s) · ${aberto} com almox</div>
         </div>
         <div style="font-size:10px;font-weight:900;color:${farolCor};text-align:right;text-transform:uppercase">${farolTxt}</div>
       </div>
@@ -1860,7 +1860,7 @@ async function telaValetOficina(){
         ${itens.map(i=>`<div style="display:grid;grid-template-columns:34px 1fr auto;gap:8px;align-items:center;font-size:12px;color:var(--text2)">
           <b style="font-family:'DM Mono',monospace;color:var(--amber)">${i.quantidade||1}x</b>
           <span>${escHtml(i.peca)}</span>
-          <span style="font-size:10px;color:${i.status==='lista_oficina'?'var(--amber)':i.status==='pedido_compra'?'var(--red)':i.status==='separado'||i.status==='comprado'?'var(--green)':'var(--blue)'};font-weight:800">${escHtml(i.status||'')}</span>
+          <span style="font-size:10px;color:${i.status==='lista_oficina'||i.status==='solicitado_pcm'?'var(--blue)':i.status==='pedido_compra'?'var(--red)':i.status==='separado'||i.status==='comprado'?'var(--green)':'var(--text3)'};font-weight:800">${escHtml(i.status==='solicitado_pcm'?'com almox':(i.status||''))}</span>
         </div>`).join('')}
       </div>
       <div style="display:flex;gap:6px;margin-top:12px">
@@ -1877,7 +1877,7 @@ async function telaValetOficina(){
     </div>
     <div style="padding:10px 14px"><input class="fi2" type="date" value="${data}" onchange="_valetMobData=this.value;telaValetOficina()" style="font-family:'DM Mono',monospace"></div>
     <div class="sl">${lista.length} item(ns) no valetamento</div>
-    ${cards||'<div class="empty"><div class="empty-ic">📦</div><div style="font-weight:700">Nenhuma lista lançada</div><div style="font-size:12px;color:var(--text3);margin-top:6px">Crie a lista por prefixo para o PCM complementar.</div></div>'}
+    ${cards||'<div class="empty"><div class="empty-ic">📦</div><div style="font-weight:700">Nenhuma lista lançada</div><div style="font-size:12px;color:var(--text3);margin-top:6px">Crie a lista por prefixo para enviar direto ao almox.</div></div>'}
   `);
 }
 function abrirListaValetOficina(prefixo='',km='',itensTxt='',modo='nova'){
@@ -1903,18 +1903,18 @@ async function salvarListaValetOficina(){
   if(!prefixo){toast('Informe o prefixo','err');return;}
   if(!itens.length){toast('Informe pelo menos uma peça','err');return;}
   if(modo!=='adicionar'){
-    const del=await sb.from('requisicoes_compra').update({status:'cancelado'}).eq('garagem_id',gid).eq('data',data).eq('prefixo',prefixo).eq('status','lista_oficina');
+    const del=await sb.from('requisicoes_compra').update({status:'cancelado'}).eq('garagem_id',gid).eq('data',data).eq('prefixo',prefixo).in('status',['lista_oficina','solicitado_pcm']);
     if(del.error){toast('Erro ao substituir lista: '+del.error.message,'err');return;}
   }
-  const rows=itens.map(it=>({garagem_id:gid,data,prefixo,peca:it.peca,quantidade:it.qtd,status:'lista_oficina',justificativa:(km?`KM ${km} · `:'')+'Lista líder oficina',criado_por:S.perfil?.nome||null,criado_em:new Date().toISOString()}));
+  const rows=itens.map(it=>({garagem_id:gid,data,prefixo,peca:it.peca,quantidade:it.qtd,status:'solicitado_pcm',justificativa:(km?`KM ${km} · `:'')+'Lista líder oficina',criado_por:S.perfil?.nome||null,criado_em:new Date().toISOString()}));
   const{error}=await sb.from('requisicoes_compra').insert(rows);
   if(error){toast('Erro: '+error.message,'err');return;}
-  _valetMobData=data;closeSheet(true);toast('✅ Lista enviada ao PCM');telaValetOficina();
+  _valetMobData=data;closeSheet(true);toast('✅ Lista enviada direto ao almox');telaValetOficina();
 }
 async function excluirListaValetOficina(prefixo){
   const gid=getGid(),data=_valetMobData||proximoSabadoISO();
   if(!confirm(`Excluir os itens em aberto do valetamento ${prefixo}?`))return;
-  const{error}=await sb.from('requisicoes_compra').update({status:'cancelado'}).eq('garagem_id',gid).eq('data',data).eq('prefixo',prefixo).eq('status','lista_oficina');
+  const{error}=await sb.from('requisicoes_compra').update({status:'cancelado'}).eq('garagem_id',gid).eq('data',data).eq('prefixo',prefixo).in('status',['lista_oficina','solicitado_pcm']);
   if(error){toast('Erro: '+error.message,'err');return;}
   toast('Lista excluída');telaValetOficina();
 }
@@ -1938,8 +1938,7 @@ async function telaValetAlmox(){
         <div style="display:flex;gap:6px;margin-top:8px;align-items:center;justify-content:space-between">
           <span style="font-size:10px;font-weight:800;color:${i.status==='pedido_compra'?'var(--red)':i.status==='separado'||i.status==='comprado'?'var(--green)':'var(--text3)'}">${escHtml(i.status||'')}</span>
           <span style="white-space:nowrap">
-            <button onclick="atualizarValetMobile('${i.id}','separado')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;font-family:inherit">Tem</button>
-            <button onclick="abrirTrocaValetAlmox('${i.id}')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--amber);background:#F59E0B18;color:var(--amber);font-size:11px;font-weight:800;font-family:inherit;margin-left:4px">Trocar</button>
+            <button onclick="abrirTrocaValetAlmox('${i.id}')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;font-family:inherit">Separar</button>
             <button onclick="atualizarValetMobile('${i.id}','pedido_compra')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:800;font-family:inherit;margin-left:4px">Negativa</button>
             <button onclick="atualizarValetMobile('${i.id}','comprado')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:800;font-family:inherit;margin-left:4px">Chegou</button>
           </span>
