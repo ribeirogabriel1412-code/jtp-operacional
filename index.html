@@ -1335,6 +1335,58 @@ async function renderAlmoxarifado(){
   lista.forEach(r=>{const k=r.prefixo||'Sem prefixo';if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
   const cestos=Object.entries(grupos);
   const qtdCestosDisp=cestos.filter(([,itens])=>itens.length&&itens.every(i=>['separado','comprado'].includes(i.status||''))).length;
+  const totalValor=lista.reduce((s,r)=>s+(parseFloat(r.valor_estimado||0)*parseFloat(r.quantidade||1)),0);
+  const fmtMoney=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+  const acoesItem=r=>{
+    const st=r.status||'';
+    const btnBase="padding:5px 9px;border-radius:7px;font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif";
+    const separar=`<button onclick="abrirTrocaValetAlmoxSite('${r.id}')" style="${btnBase};border:1px solid var(--green);background:#00C48C18;color:var(--green)">Separar</button>`;
+    const trocar=`<button onclick="abrirTrocaValetAlmoxSite('${r.id}')" style="${btnBase};border:1px solid var(--blue);background:#2563EB18;color:var(--blue)">Trocar</button>`;
+    const negativa=`<button onclick="atualizarReqCompra('${r.id}','pedido_compra','almox')" style="${btnBase};border:1px solid var(--red);background:#EF444418;color:var(--red);margin-left:4px">Negativa</button>`;
+    const chegou=`<button onclick="atualizarReqCompra('${r.id}','comprado','almox')" style="${btnBase};border:1px solid var(--blue);background:#2563EB18;color:var(--blue);margin-left:4px">Chegou</button>`;
+    if(st==='pedido_compra')return `<div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;flex-wrap:wrap"><input type="date" value="${chegada(r.id)}" onchange="salvarChegadaValet('${r.id}',this.value)" style="width:132px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 8px;font-family:'DM Mono',monospace;font-size:12px">${chegou}${trocar}</div>`;
+    if(['separado','comprado'].includes(st))return `<div style="display:flex;gap:6px;justify-content:flex-end;align-items:center">${trocar}</div>`;
+    return `<div style="display:flex;gap:6px;justify-content:flex-end;align-items:center">${separar}${negativa}</div>`;
+  };
+  const cards=cestos.length?cestos.map(([pref,itens])=>{
+    const separados=itens.filter(i=>['separado','comprado'].includes(i.status||'')).length;
+    const compras=itens.filter(i=>i.status==='pedido_compra').length;
+    const comprados=itens.filter(i=>i.status==='comprado').length;
+    const valor=itens.reduce((s,r)=>s+(parseFloat(r.valor_estimado||0)*parseFloat(r.quantidade||1)),0);
+    const completo=itens.length&&separados===itens.length;
+    const parcial=separados>0||compras>0||comprados>0;
+    const cor=completo?'var(--green)':parcial?'var(--amber)':'var(--red)';
+    const statusTxt=completo?'CESTO DISPONÍVEL':parcial?'EM SEPARAÇÃO':'PENDENTE';
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${cor};border-radius:10px;overflow:hidden;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start;padding:16px 18px 10px">
+        <div>
+          <div style="font-family:'DM Mono',monospace;color:var(--blue);font-size:22px;font-weight:900">${safe(pref)}</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:4px">${itens.length} item(ns) · ${itens.filter(i=>['solicitado_pcm','pendente','aprovado'].includes(i.status||'')).length} solicitados · ${separados} separado(s)${compras?` · ${compras} compra(s)`:''}</div>
+        </div>
+        <div style="text-align:right;min-width:130px">
+          <div style="font-family:'DM Mono',monospace;color:var(--amber);font-size:17px;font-weight:900">${valor?fmtMoney(valor):'--'}</div>
+          <div style="font-size:10px;color:${cor};font-weight:900;margin-top:2px">${statusTxt}</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(260px,1fr) 92px 126px 150px 280px;background:var(--surface2);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:9px 14px;gap:10px;font-size:11px;color:var(--text3);font-weight:900;letter-spacing:.12em;text-transform:uppercase">
+        <div>Peça</div><div style="text-align:center">Qtd</div><div style="text-align:right">Valor</div><div style="text-align:center">Status</div><div style="text-align:right">Ação</div>
+      </div>
+      ${itens.map(r=>{
+        const valorItem=parseFloat(r.valor_estimado||0)*parseFloat(r.quantidade||1);
+        return `<div style="display:grid;grid-template-columns:minmax(260px,1fr) 92px 126px 150px 280px;gap:10px;align-items:center;padding:11px 14px;border-bottom:1px solid var(--border2)">
+          <div style="min-width:0">
+            <div style="font-size:13px;font-weight:800;color:var(--text);white-space:normal">${safe(r.peca||'Item sem descrição')}</div>
+            <div style="font-size:10px;color:var(--amber);font-weight:900;margin-top:4px">${r.cod_sap?`SAP&nbsp; ${safe(r.cod_sap)}`:'SEM SAP'}</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:3px">${safe(r.justificativa||'Lista líder oficina')}</div>
+          </div>
+          <div style="text-align:center;font-family:'DM Mono',monospace;font-weight:900">${safe(r.quantidade||1)}</div>
+          <div style="text-align:right;font-family:'DM Mono',monospace;color:var(--amber);font-weight:900">${valorItem?fmtMoney(valorItem):'--'}</div>
+          <div style="text-align:center">${badgeValetStatus(r.status)}</div>
+          <div style="text-align:right">${acoesItem(r)}</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).join(''):`<div class="empty">Nenhum valetamento para este sábado</div>`;
   setMain(`
     ${secTitle('📦','Almoxarifado - Valetamento',`<input type="date" value="${data}" onchange="S._valetData=this.value;renderAlmoxarifado()" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 10px;font-family:'DM Mono',monospace">`)}
     <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px">
@@ -1343,45 +1395,8 @@ async function renderAlmoxarifado(){
       ${kpi('Pedido compra',qtdCompra,0,'',true,0)}
       ${kpi('Cestos disponíveis',qtdCestosDisp,undefined,'',false,0)}
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;margin-bottom:16px">
-      ${cestos.length?cestos.map(([pref,itens])=>{
-        const ok=itens.filter(i=>['separado','comprado'].includes(i.status||'')).length;
-        const neg=itens.filter(i=>i.status==='pedido_compra').length;
-        const disp=ok===itens.length&&itens.length;
-        return `<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${disp?'var(--green)':neg?'var(--red)':'var(--amber)'};border-radius:10px;padding:12px">
-          <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
-            <b style="font-family:'DM Mono',monospace;color:var(--blue);font-size:16px">${safe(pref)}</b>
-            <span style="font-size:10px;font-weight:900;color:${disp?'var(--green)':neg?'var(--red)':'var(--amber)'}">${disp?'CESTO DISPONÍVEL':neg?'FUP COMPRA':'SEPARANDO'}</span>
-          </div>
-          <div style="font-size:11px;color:var(--text3);margin-top:6px">${ok}/${itens.length} item(ns) separados ${neg?`· ${neg} negativa(s)`:''}</div>
-        </div>`;
-      }).join(''):`<div class="empty" style="grid-column:1/-1">Nenhum cesto para este sábado</div>`}
-    </div>
-    <div class="tbl-wrap"><table style="width:100%;border-collapse:collapse">
-      <thead><tr style="background:var(--surface2)">
-        <th style="padding:9px 12px;text-align:left;font-size:11px;color:var(--text3)">Carro / OS</th>
-        <th style="padding:9px 12px;text-align:left;font-size:11px;color:var(--text3)">Item</th>
-        <th style="padding:9px 12px;text-align:center;font-size:11px;color:var(--text3)">Qtd</th>
-        <th style="padding:9px 12px;text-align:center;font-size:11px;color:var(--text3)">Status</th>
-        <th style="padding:9px 12px;text-align:left;font-size:11px;color:var(--text3)">Chegada</th>
-        <th style="padding:9px 12px;text-align:center;font-size:11px;color:var(--text3)">Ação Almox.</th>
-      </tr></thead>
-      <tbody>${lista.length?lista.map(r=>`
-        <tr style="border-bottom:1px solid var(--border2)">
-          <td style="padding:9px 12px;font-family:'DM Mono',monospace;font-weight:800;color:var(--blue)">${safe(r.prefixo||'—')}</td>
-          <td style="padding:9px 12px;font-size:12px">${safe(r.peca)}${r.justificativa?`<div style="font-size:10px;color:var(--text3);margin-top:3px">${safe(r.justificativa)}</div>`:''}</td>
-          <td style="padding:9px 12px;text-align:center;font-family:'DM Mono',monospace">${r.quantidade||1}</td>
-          <td style="padding:9px 12px;text-align:center">${badgeValetStatus(r.status)}</td>
-          <td style="padding:9px 12px">
-            <input type="date" id="cheg-${r.id}" value="${chegada(r.id)}" onchange="salvarChegadaValet('${r.id}',this.value)" style="width:140px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 8px;font-family:'DM Mono',monospace;font-size:12px">
-          </td>
-          <td style="padding:9px 12px;text-align:center;white-space:nowrap">
-            <button onclick="atualizarReqCompra('${r.id}','separado','almox')" style="padding:5px 9px;border-radius:7px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">Separar</button>
-            <button onclick="atualizarReqCompra('${r.id}','pedido_compra','almox')" style="padding:5px 9px;border-radius:7px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;margin-left:4px">Negativa</button>
-            <button onclick="atualizarReqCompra('${r.id}','comprado','almox')" style="padding:5px 9px;border-radius:7px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;margin-left:4px">Chegou</button>
-          </td>
-        </tr>`).join(''):`<tr><td colspan="6"><div class="empty">Nenhum valetamento para este sábado</div></td></tr>`}</tbody>
-    </table></div>
+    ${secTitle('🛒','Itens do Valetamento',`${cestos.length} cesto(s) · ${lista.length} item(ns) · ${qtdSep} separados · ${qtdCompra} compras · ${fmtMoney(totalValor)}`)}
+    <div>${cards}</div>
   `);
 }
 
@@ -5885,6 +5900,112 @@ function preencherReqCompraSite(prefixo, peca, numero){
 function salvarChegadaValet(id,data){
   localStorage.setItem('valet_chegada_'+id,JSON.stringify({data,por:S.perfil?.nome||null,em:new Date().toISOString()}));
   toast('Previsão de chegada atualizada.');
+}
+
+window._almoxEstoqueValetMap=window._almoxEstoqueValetMap||{};
+let _almoxEstoqueValetTimer=null;
+async function abrirTrocaValetAlmoxSite(id){
+  const{data:item,error}=await sb.from('requisicoes_compra').select('*').eq('id',id).single();
+  if(error||!item){toast('Não consegui abrir este item: '+(error?.message||'registro não encontrado'),'err');return;}
+  document.getElementById('modal-almox-valet')?.remove();
+  const qtd=parseInt(item.quantidade||1)||1;
+  const valor=parseFloat(item.valor_estimado||0)||0;
+  document.body.insertAdjacentHTML('beforeend',`
+    <div id="modal-almox-valet" style="position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:9999;display:flex;align-items:center;justify-content:center;padding:18px">
+      <div style="width:min(760px,96vw);max-height:92vh;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.45)">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid var(--border)">
+          <div>
+            <h3 style="margin:0;font-size:18px">📦 Separar item do valetamento</h3>
+            <div style="font-size:12px;color:var(--text3);margin-top:4px">${prevEsc(item.prefixo||'Sem prefixo')} · escolha o item com saldo e confirme</div>
+          </div>
+          <button onclick="document.getElementById('modal-almox-valet')?.remove()" style="width:34px;height:34px;border-radius:9px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-weight:900;cursor:pointer">×</button>
+        </div>
+        <div style="padding:18px">
+          <label style="display:block;font-size:11px;color:var(--text3);font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:6px">Buscar no estoque</label>
+          <input id="almox-valet-busca" oninput="buscarEstoqueValetAlmoxSite(this.value)" value="${prevEsc(item.cod_sap?`${item.cod_sap} - ${item.peca||''}`:(item.peca||''))}" placeholder="Digite código ou descrição com saldo" style="width:100%;background:var(--surface2);border:1px solid var(--blue);border-radius:9px;color:var(--text);padding:12px 14px;font-size:14px">
+          <div id="almox-valet-resultados" style="margin-top:10px;max-height:230px;overflow:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface2)"></div>
+          <div style="display:grid;grid-template-columns:1fr 110px 150px;gap:10px;margin-top:14px">
+            <div>
+              <label style="display:block;font-size:11px;color:var(--text3);font-weight:900;margin-bottom:6px">Peça selecionada</label>
+              <input id="almox-valet-peca" value="${prevEsc(item.peca||'')}" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:11px 12px">
+              <input type="hidden" id="almox-valet-cod" value="${prevEsc(item.cod_sap||'')}">
+            </div>
+            <div>
+              <label style="display:block;font-size:11px;color:var(--text3);font-weight:900;margin-bottom:6px">Qtd</label>
+              <input id="almox-valet-qtd" type="number" min="1" value="${qtd}" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:11px 12px;text-align:center;font-family:'DM Mono',monospace">
+            </div>
+            <div>
+              <label style="display:block;font-size:11px;color:var(--text3);font-weight:900;margin-bottom:6px">Valor unit.</label>
+              <input id="almox-valet-valor" type="number" step="0.01" min="0" value="${valor?valor.toFixed(2):''}" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:11px 12px;text-align:right;font-family:'DM Mono',monospace">
+            </div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+            <button onclick="document.getElementById('modal-almox-valet')?.remove()" style="padding:10px 14px;border-radius:9px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-weight:800;cursor:pointer">Cancelar</button>
+            <button onclick="salvarTrocaValetAlmoxSite('${id}')" style="padding:10px 16px;border-radius:9px;border:1px solid var(--green);background:var(--green);color:#001b13;font-weight:900;cursor:pointer">Salvar e separar</button>
+          </div>
+        </div>
+      </div>
+    </div>`);
+  buscarEstoqueValetAlmoxSite(item.peca||'');
+  document.getElementById('almox-valet-busca')?.focus();
+}
+
+async function buscarEstoqueValetAlmoxSite(q){
+  const box=document.getElementById('almox-valet-resultados');
+  if(!box)return;
+  const termo=String(q||'').trim();
+  if(termo.length<2){box.innerHTML='<div style="padding:12px;color:var(--text3);font-size:12px">Digite ao menos 2 letras para pesquisar.</div>';return;}
+  if(_almoxEstoqueValetTimer)clearTimeout(_almoxEstoqueValetTimer);
+  _almoxEstoqueValetTimer=setTimeout(async()=>{
+    const gid=getGid();
+    const{data,error}=await sb.from('estoque')
+      .select('id,descricao,quantidade,custo_unitario,unidade')
+      .eq('garagem_id',gid)
+      .ilike('descricao','%'+termo+'%')
+      .limit(15);
+    if(error){box.innerHTML=`<div style="padding:12px;color:var(--red);font-size:12px">${prevEsc(error.message)}</div>`;return;}
+    const itens=(data||[]).filter(x=>parseFloat(x.quantidade||0)>0);
+    if(!itens.length){box.innerHTML='<div style="padding:12px;color:var(--text3);font-size:12px">Nenhum item com saldo encontrado.</div>';return;}
+    itens.forEach(x=>{
+      const cod=x.id;
+      window._almoxEstoqueValetMap[String(cod)]={cod:String(cod),desc:x.descricao||'',saldo:parseFloat(x.quantidade||0),valor:parseFloat(x.custo_unitario||0)||0};
+    });
+    box.innerHTML=itens.map(x=>{
+      const cod=String(x.id).replace(/"/g,'&quot;');
+      const val=parseFloat(x.custo_unitario||0)||0;
+      return `<button onclick="selecionarEstoqueValetAlmoxSite(&quot;${cod}&quot;)" style="width:100%;text-align:left;padding:10px 12px;border:0;border-bottom:1px solid var(--border2);background:transparent;color:var(--text);cursor:pointer;font-family:'DM Sans',sans-serif">
+        <div style="display:flex;justify-content:space-between;gap:10px"><b style="font-family:'DM Mono',monospace;color:var(--amber);font-size:12px">${prevEsc(x.id)}</b><span style="color:var(--green);font-family:'DM Mono',monospace;font-size:12px">Saldo ${Number(x.quantidade||0).toLocaleString('pt-BR')} ${prevEsc(x.unidade||'UN')} · R$ ${val.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+        <div style="font-size:12px;margin-top:3px">${prevEsc(x.descricao||'')}</div>
+      </button>`;
+    }).join('');
+  },220);
+}
+
+function selecionarEstoqueValetAlmoxSite(cod){
+  const it=window._almoxEstoqueValetMap?.[String(cod)];
+  if(!it)return;
+  const busca=document.getElementById('almox-valet-busca');
+  const peca=document.getElementById('almox-valet-peca');
+  const codigo=document.getElementById('almox-valet-cod');
+  const valor=document.getElementById('almox-valet-valor');
+  if(busca)busca.value=it.cod+' - '+it.desc;
+  if(peca)peca.value=it.cod+' - '+it.desc;
+  if(codigo)codigo.value=it.cod;
+  if(valor)valor.value=(it.valor||0).toFixed(2);
+}
+
+async function salvarTrocaValetAlmoxSite(id){
+  const cod=document.getElementById('almox-valet-cod')?.value?.trim()||null;
+  const peca=document.getElementById('almox-valet-peca')?.value?.trim();
+  const quantidade=parseInt(document.getElementById('almox-valet-qtd')?.value)||1;
+  const valor=parseFloat(document.getElementById('almox-valet-valor')?.value||0)||0;
+  if(!peca){toast('Escolha ou informe a peça antes de separar.','err');return;}
+  const payload={cod_sap:cod,peca,quantidade,valor_estimado:valor,status:'separado'};
+  const{error}=await sb.from('requisicoes_compra').update(payload).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  document.getElementById('modal-almox-valet')?.remove();
+  toast('Item codificado e separado.');
+  renderAlmoxarifado();
 }
 
 async function atualizarReqCompra(id, status, origem='pcm'){
