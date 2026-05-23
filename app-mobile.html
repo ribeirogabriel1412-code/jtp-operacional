@@ -1843,15 +1843,18 @@ async function telaValetOficina(){
     const ok=itens.filter(i=>['separado','comprado'].includes(i.status||'')).length;
     const neg=itens.filter(i=>i.status==='pedido_compra').length;
     const aberto=itens.filter(i=>i.status==='lista_oficina').length;
+    const parcial=ok>0&&ok<total;
+    const farolCor=ok===total?'var(--green)':parcial?'var(--amber)':'var(--red)';
+    const farolTxt=ok===total?'VERDE · tudo separado':parcial?'AMARELO · parcial':'VERMELHO · não separado';
     const textoEdit=itens.filter(i=>i.status==='lista_oficina').map(i=>`${i.quantidade||1} ${i.peca||''}`).join('\n');
     const kmInfo=(itens.find(i=>String(i.justificativa||'').includes('KM '))?.justificativa||'').match(/KM\s+([^·]+)/)?.[1]?.trim()||'';
-    return `<div class="card" style="margin-bottom:10px;border-left:4px solid ${ok===total?'var(--green)':neg?'var(--amber)':'var(--blue)'}">
+    return `<div class="card" style="margin-bottom:10px;border-left:4px solid ${farolCor}">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
         <div>
           <div class="prefixo" style="font-size:20px;color:var(--blue)">${escHtml(pref)}</div>
           <div style="font-size:11px;color:var(--text3);margin-top:2px">${total} item(ns) · ${ok} separado(s) · ${aberto} aguardando PCM</div>
         </div>
-        <div style="font-size:11px;font-weight:800;color:${ok===total?'var(--green)':neg?'var(--amber)':'var(--text3)'}">${ok===total?'CESTO DISPONÍVEL':neg?'COMPRA/FUP':'EM ANDAMENTO'}</div>
+        <div style="font-size:10px;font-weight:900;color:${farolCor};text-align:right;text-transform:uppercase">${farolTxt}</div>
       </div>
       <div style="margin-top:10px;display:flex;flex-direction:column;gap:7px">
         ${itens.map(i=>`<div style="display:grid;grid-template-columns:34px 1fr auto;gap:8px;align-items:center;font-size:12px;color:var(--text2)">
@@ -1930,12 +1933,13 @@ async function telaValetAlmox(){
       </div>
       ${itens.map(i=>`<div style="padding:9px 0;border-top:1px solid var(--border2)">
         <div style="display:grid;grid-template-columns:34px 1fr;gap:8px;font-size:13px;color:var(--text)">
-          <b style="font-family:'DM Mono',monospace;color:var(--amber)">${i.quantidade||1}x</b><span>${escHtml(i.peca)}</span>
+          <b style="font-family:'DM Mono',monospace;color:var(--amber)">${i.quantidade||1}x</b><span>${escHtml(i.peca)}${i.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-top:2px">${escHtml(i.cod_sap)}</div>`:''}</span>
         </div>
         <div style="display:flex;gap:6px;margin-top:8px;align-items:center;justify-content:space-between">
           <span style="font-size:10px;font-weight:800;color:${i.status==='pedido_compra'?'var(--red)':i.status==='separado'||i.status==='comprado'?'var(--green)':'var(--text3)'}">${escHtml(i.status||'')}</span>
           <span style="white-space:nowrap">
             <button onclick="atualizarValetMobile('${i.id}','separado')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;font-family:inherit">Tem</button>
+            <button onclick="abrirTrocaValetAlmox('${i.id}')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--amber);background:#F59E0B18;color:var(--amber);font-size:11px;font-weight:800;font-family:inherit;margin-left:4px">Trocar</button>
             <button onclick="atualizarValetMobile('${i.id}','pedido_compra')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:800;font-family:inherit;margin-left:4px">Negativa</button>
             <button onclick="atualizarValetMobile('${i.id}','comprado')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:800;font-family:inherit;margin-left:4px">Chegou</button>
           </span>
@@ -1964,6 +1968,62 @@ async function atualizarValetMobile(id,status){
   if(error){toast('Erro: '+error.message,'err');return;}
   toast(status==='separado'?'✅ Item separado':status==='pedido_compra'?'🛒 Negativa enviada para compra':'✅ Compra recebida');
   telaValetAlmox();
+}
+async function abrirTrocaValetAlmox(id){
+  const{data:item,error}=await sb.from('requisicoes_compra').select('*').eq('id',id).single();
+  if(error||!item){toast('Item não encontrado','err');return;}
+  openSheet('🔁 Trocar item do kit',`
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px">
+        <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase">Solicitado</div>
+        <div style="font-size:13px;color:var(--text);margin-top:4px">${escHtml(item.quantidade||1)}x ${escHtml(item.peca||'')}</div>
+      </div>
+      <div><label class="fl">Buscar item com saldo</label><input class="fi2" id="troca-busca" placeholder="Digite código ou descrição" oninput="buscarEstoqueValetMobile(this.value,'${id}')" autofocus></div>
+      <div id="troca-resultados" style="max-height:240px;overflow-y:auto"></div>
+      <input type="hidden" id="troca-cod" value="${escHtml(item.cod_sap||'')}">
+      <div><label class="fl">Item escolhido</label><input class="fi2" id="troca-peca" value="${escHtml(item.peca||'')}" placeholder="Descrição"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><label class="fl">Qtd</label><input class="fi2" id="troca-qtd" type="number" min="1" value="${item.quantidade||1}" style="font-family:'DM Mono',monospace"></div>
+        <div><label class="fl">Valor unit.</label><input class="fi2" id="troca-valor" type="number" step="0.01" value="${item.valor_estimado||''}" style="font-family:'DM Mono',monospace"></div>
+      </div>
+      <button onclick="salvarTrocaValetAlmox('${id}')" style="padding:14px;border-radius:12px;border:none;background:var(--green);color:#06131f;font-size:15px;font-weight:900;font-family:inherit">Salvar troca e separar</button>
+    </div>`);
+}
+async function buscarEstoqueValetMobile(q,id){
+  const box=document.getElementById('troca-resultados');
+  if(!box)return;
+  q=String(q||'').trim();
+  if(q.length<2){box.innerHTML='';return;}
+  const gid=getGid();
+  const{data:est}=await sb.from('estoque').select('id,descricao,quantidade,custo_unitario,unidade').eq('garagem_id',gid).ilike('descricao','%'+q+'%').limit(12);
+  const lista=(est||[]).filter(x=>parseFloat(x.quantidade||0)>0);
+  if(!lista.length){box.innerHTML='<div style="font-size:12px;color:var(--text3);padding:10px">Nenhum item com saldo encontrado.</div>';return;}
+  box.innerHTML=lista.map(it=>`<button onclick="selecionarEstoqueValetMobile('${String(it.id).replace(/'/g,'\\u0027')}','${String(it.descricao||'').replace(/'/g,'\\u0027')}',${parseFloat(it.quantidade||0)||0},${parseFloat(it.custo_unitario||0)||0})" style="width:100%;text-align:left;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:6px;color:var(--text);font-family:inherit">
+    <div style="font-size:13px;font-weight:800">${escHtml(it.descricao||'')}</div>
+    <div style="font-size:11px;color:var(--green);margin-top:3px">Saldo: ${parseFloat(it.quantidade||0)} ${escHtml(it.unidade||'UN')} · ${moeda(it.custo_unitario||0)}</div>
+  </button>`).join('');
+}
+function selecionarEstoqueValetMobile(cod,desc,saldo,custo){
+  const codEl=document.getElementById('troca-cod');
+  const pecaEl=document.getElementById('troca-peca');
+  const valEl=document.getElementById('troca-valor');
+  const busca=document.getElementById('troca-busca');
+  const box=document.getElementById('troca-resultados');
+  if(codEl)codEl.value=cod;
+  if(pecaEl)pecaEl.value=desc;
+  if(valEl)valEl.value=(parseFloat(custo||0)||0).toFixed(2);
+  if(busca)busca.value=desc;
+  if(box)box.innerHTML=`<div style="font-size:12px;color:var(--green);padding:8px 2px">Selecionado · saldo ${saldo}</div>`;
+}
+async function salvarTrocaValetAlmox(id){
+  const cod=document.getElementById('troca-cod')?.value||null;
+  const peca=document.getElementById('troca-peca')?.value?.trim();
+  const qtd=parseInt(document.getElementById('troca-qtd')?.value)||1;
+  const valor=parseFloat(document.getElementById('troca-valor')?.value)||0;
+  if(!peca){toast('Escolha ou escreva o item','err');return;}
+  const{error}=await sb.from('requisicoes_compra').update({cod_sap:cod,peca,quantidade:qtd,valor_estimado:valor||null,status:'separado'}).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  closeSheet(true);toast('✅ Item trocado e separado');telaValetAlmox();
 }
 
 // ── PÁTIO — MANOBRISTA ────────────────────────────────────
