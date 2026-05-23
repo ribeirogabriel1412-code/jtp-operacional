@@ -5854,16 +5854,14 @@ function valetInlineSelecionar(id,cod){
   if(drop)drop.style.display='none';
 }
 async function salvarValetInline(id,prefixo){
-  var cod=document.getElementById('val-cod-'+id)?.value||null;
   var peca=document.getElementById('val-peca-'+id)?.value?.trim();
   var qtd=parseInt(document.getElementById('val-qtd-'+id)?.value)||1;
-  var valor=parseFloat(document.getElementById('val-valor-'+id)?.value)||0;
-  var just=document.getElementById('val-just-'+id)?.value?.trim()||'Complementado pelo PCM';
+  var just=document.getElementById('val-just-'+id)?.value?.trim()||'Enviado ao almox para separação';
   if(!peca){toast('Informe a peça','err');return;}
-  var payload={cod_sap:cod||null,peca,prefixo:prefixo||null,quantidade:qtd,valor_estimado:valor||null,justificativa:just,status:'solicitado_pcm'};
+  var payload={peca,prefixo:prefixo||null,quantidade:qtd,justificativa:just,status:'solicitado_pcm'};
   var res=await sb.from('requisicoes_compra').update(payload).eq('id',id);
   if(res.error){toast('Erro: '+res.error.message,'err');return;}
-  toast('Item salvo e enviado ao almox');
+  toast('Item enviado ao almox para codificar e separar');
   renderFerrPCM('req_compra');
 }
 
@@ -6269,20 +6267,20 @@ async function renderFerrPCM(aba='painel'){
     const valetPorCarro={};
     reqs.forEach(r=>{const k=r.prefixo||'Sem prefixo';if(!valetPorCarro[k])valetPorCarro[k]=[];valetPorCarro[k].push(r);});
     const acaoValet=r=>r.status==='lista_oficina'
-      ?`<button onclick="salvarValetInline('${rowId(r)}','${arg(r.prefixo)}')" style="padding:5px 9px;border-radius:7px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">Salvar</button><button onclick="excluirReqCompraSite('${r.id}')" style="padding:5px 8px;border-radius:7px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;margin-left:4px">Excluir</button>`
+      ?`<button onclick="salvarValetInline('${rowId(r)}','${arg(r.prefixo)}')" style="padding:5px 9px;border-radius:7px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">Enviar almox</button><button onclick="excluirReqCompraSite('${r.id}')" style="padding:5px 8px;border-radius:7px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;margin-left:4px">Excluir</button>`
       :['solicitado_pcm','pendente'].includes(r.status||'')
-        ?`<button onclick="atualizarReqCompra('${r.id}','aprovado')" style="padding:4px 9px;border-radius:6px;border:1px solid var(--green);background:transparent;color:var(--green);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;margin-right:4px">✅</button><button onclick="atualizarReqCompra('${r.id}','reprovado')" style="padding:4px 9px;border-radius:6px;border:1px solid var(--red);background:transparent;color:var(--red);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">❌</button><button onclick="excluirReqCompraSite('${r.id}')" style="padding:4px 8px;border-radius:6px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;margin-left:4px">Excluir</button>`
+        ?`<span style="font-size:11px;color:var(--text3);font-weight:800">Com almox</span><button onclick="excluirReqCompraSite('${r.id}')" style="padding:4px 8px;border-radius:6px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;margin-left:6px">Excluir</button>`
         :`<button onclick="excluirReqCompraSite('${r.id}')" style="padding:4px 8px;border-radius:6px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Excluir</button>`;
     const valetCards=Object.entries(valetPorCarro).map(([pref,itens])=>{
       const valorCarro=itens.reduce((s,r)=>s+(parseFloat(r.valor_estimado||0)*parseInt(r.quantidade||1)),0);
-      const abertos=itens.filter(r=>r.status==='lista_oficina').length;
+      const abertos=itens.filter(r=>['lista_oficina','solicitado_pcm'].includes(r.status||'')).length;
       const ok=itens.filter(r=>['separado','comprado'].includes(r.status||'')).length;
       const compra=itens.filter(r=>r.status==='pedido_compra').length;
       const cor=abertos?'var(--blue)':compra?'var(--red)':ok===itens.length?'var(--green)':'var(--amber)';
       return `<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${cor};border-radius:10px;margin-bottom:12px;overflow:hidden">
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:12px 14px;background:var(--surface2)">
-          <div><div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:900;color:var(--blue)">${safeText(pref)}</div><div style="font-size:11px;color:var(--text3);margin-top:2px">${itens.length} item(ns) · ${abertos} aguardando PCM · ${ok} separado(s)</div></div>
-          <div style="text-align:right"><div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:900;color:var(--amber)">${valorCarro?'R$ '+valorCarro.toLocaleString('pt-BR',{minimumFractionDigits:2}):'--'}</div><div style="font-size:10px;color:${cor};font-weight:900;text-transform:uppercase">${abertos?'Completar lista':compra?'Compra/FUP':ok===itens.length?'Cesto OK':'Em andamento'}</div></div>
+          <div><div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:900;color:var(--blue)">${safeText(pref)}</div><div style="font-size:11px;color:var(--text3);margin-top:2px">${itens.length} item(ns) · ${abertos} com almox · ${ok} separado(s)</div></div>
+          <div style="text-align:right"><div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:900;color:var(--amber)">${valorCarro?'R$ '+valorCarro.toLocaleString('pt-BR',{minimumFractionDigits:2}):'--'}</div><div style="font-size:10px;color:${cor};font-weight:900;text-transform:uppercase">${compra?'Compra/FUP':ok===itens.length?'Cesto OK':abertos?'Com almox':'Em andamento'}</div></div>
         </div>
         <table style="width:100%;border-collapse:collapse">
           <thead><tr style="background:rgba(15,23,42,.35)"><th style="padding:7px 10px;text-align:left;font-size:10px;color:var(--text3)">Peça</th><th style="padding:7px 10px;text-align:center;font-size:10px;color:var(--text3);width:54px">Qtd</th><th style="padding:7px 10px;text-align:right;font-size:10px;color:var(--text3);width:95px">Valor</th><th style="padding:7px 10px;text-align:center;font-size:10px;color:var(--text3);width:115px">Status</th><th style="padding:7px 10px;text-align:center;font-size:10px;color:var(--text3);width:210px">Ação</th></tr></thead>
@@ -6311,7 +6309,7 @@ async function renderFerrPCM(aba='painel'){
           <div style="font-family:'DM Mono',monospace;font-size:24px;font-weight:800;color:var(--amber);margin-top:6px">${carrosValet.length||osPecas.length}</div>
         </div>
         <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:10px;padding:14px">
-          <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:2px">Aguardando PCM</div>
+          <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:2px">Com almox</div>
           <div style="font-family:'DM Mono',monospace;font-size:24px;font-weight:800;color:var(--blue);margin-top:6px">${listasOficina}</div>
         </div>
         <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--green);border-radius:10px;padding:14px">
