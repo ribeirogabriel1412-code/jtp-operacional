@@ -5816,6 +5816,57 @@ function complementarListaOficina(id,prefixo,peca,qtd,just){
   toast('Lista puxada. Complete SAP, valor e envie ao almox.');
 }
 
+var _valetInlineTimer=null;
+window._valetInlineSapMap=window._valetInlineSapMap||{};
+function valetInlineDropId(id){return 'valet-inline-drop-'+String(id).replace(/[^a-zA-Z0-9_-]/g,'');}
+async function valetInlineBuscar(inputEl,id){
+  var q=(inputEl.value||'').trim();
+  var drop=document.getElementById(valetInlineDropId(id));
+  if(!drop)return;
+  if(q.length<2){drop.style.display='none';return;}
+  if(_valetInlineTimer)clearTimeout(_valetInlineTimer);
+  _valetInlineTimer=setTimeout(async function(){
+    var gid=getGid();
+    var res=await sb.from('sap_precos').select('cod_sap,descricao,preco_unit,unidade').eq('garagem_id',gid).or('cod_sap.ilike.%'+q+'%,descricao.ilike.%'+q+'%').limit(8);
+    var data=res.data||[];
+    if(!data.length){drop.innerHTML='<div style="padding:8px 10px;font-size:11px;color:var(--text3)">Nenhuma peça encontrada</div>';drop.style.display='block';return;}
+    data.forEach(function(r){window._valetInlineSapMap[String(r.cod_sap)]={cod:r.cod_sap,desc:r.descricao,preco:parseFloat(r.preco_unit||0)||0};});
+    drop.innerHTML=data.map(function(r){
+      var cod=String(r.cod_sap).replace(/'/g,'\\u0027');
+      var p=parseFloat(r.preco_unit||0)||0;
+      return '<button onclick="valetInlineSelecionar(&quot;'+id+'&quot;,&quot;'+cod+'&quot;)" style="width:100%;text-align:left;padding:8px 10px;border:0;border-bottom:1px solid var(--border2);background:var(--surface);color:var(--text);cursor:pointer;font-family:DM Sans,sans-serif"><div style="display:flex;justify-content:space-between;gap:8px"><b style="font-family:monospace;color:var(--amber);font-size:11px">'+prevEsc(r.cod_sap)+'</b><b style="font-family:monospace;color:var(--green);font-size:11px">R$ '+p.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</b></div><div style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">'+prevEsc(r.descricao)+'</div></button>';
+    }).join('');
+    drop.style.display='block';
+  },220);
+}
+function valetInlineSelecionar(id,cod){
+  var it=window._valetInlineSapMap?.[String(cod)];
+  if(!it)return;
+  var busca=document.getElementById('val-sap-'+id);
+  var peca=document.getElementById('val-peca-'+id);
+  var valor=document.getElementById('val-valor-'+id);
+  var sap=document.getElementById('val-cod-'+id);
+  var drop=document.getElementById(valetInlineDropId(id));
+  if(busca)busca.value=it.cod+' - '+it.desc;
+  if(peca)peca.value=it.cod+' - '+it.desc;
+  if(sap)sap.value=it.cod;
+  if(valor)valor.value=(it.preco||0).toFixed(2);
+  if(drop)drop.style.display='none';
+}
+async function salvarValetInline(id,prefixo){
+  var cod=document.getElementById('val-cod-'+id)?.value||null;
+  var peca=document.getElementById('val-peca-'+id)?.value?.trim();
+  var qtd=parseInt(document.getElementById('val-qtd-'+id)?.value)||1;
+  var valor=parseFloat(document.getElementById('val-valor-'+id)?.value)||0;
+  var just=document.getElementById('val-just-'+id)?.value?.trim()||'Complementado pelo PCM';
+  if(!peca){toast('Informe a peça','err');return;}
+  var payload={cod_sap:cod||null,peca,prefixo:prefixo||null,quantidade:qtd,valor_estimado:valor||null,justificativa:just,status:'solicitado_pcm'};
+  var res=await sb.from('requisicoes_compra').update(payload).eq('id',id);
+  if(res.error){toast('Erro: '+res.error.message,'err');return;}
+  toast('Item salvo e enviado ao almox');
+  renderFerrPCM('req_compra');
+}
+
 function preencherReqCompraSite(prefixo, peca, numero){
   const idEl=document.getElementById('req-id-site');
   const sapEl=document.getElementById('req-sap-site');
@@ -6214,10 +6265,11 @@ async function renderFerrPCM(aba='painel'){
     const separados=reqs.filter(r=>r.status==='separado').length;
     const compras=reqs.filter(r=>r.status==='pedido_compra').length;
     const comprados=reqs.filter(r=>r.status==='comprado').length;
+    const rowId=r=>String(r.id||'').replace(/[^a-zA-Z0-9_-]/g,'');
     const valetPorCarro={};
     reqs.forEach(r=>{const k=r.prefixo||'Sem prefixo';if(!valetPorCarro[k])valetPorCarro[k]=[];valetPorCarro[k].push(r);});
     const acaoValet=r=>r.status==='lista_oficina'
-      ?`<button onclick="complementarListaOficina('${r.id}','${arg(r.prefixo)}','${arg(r.peca)}','${parseInt(r.quantidade||1)}','${arg(r.justificativa)}')" style="padding:5px 9px;border-radius:7px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">Complementar</button><button onclick="excluirReqCompraSite('${r.id}')" style="padding:5px 8px;border-radius:7px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;margin-left:4px">Excluir</button>`
+      ?`<button onclick="salvarValetInline('${rowId(r)}','${arg(r.prefixo)}')" style="padding:5px 9px;border-radius:7px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">Salvar</button><button onclick="excluirReqCompraSite('${r.id}')" style="padding:5px 8px;border-radius:7px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;margin-left:4px">Excluir</button>`
       :['solicitado_pcm','pendente'].includes(r.status||'')
         ?`<button onclick="atualizarReqCompra('${r.id}','aprovado')" style="padding:4px 9px;border-radius:6px;border:1px solid var(--green);background:transparent;color:var(--green);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;margin-right:4px">✅</button><button onclick="atualizarReqCompra('${r.id}','reprovado')" style="padding:4px 9px;border-radius:6px;border:1px solid var(--red);background:transparent;color:var(--red);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">❌</button><button onclick="excluirReqCompraSite('${r.id}')" style="padding:4px 8px;border-radius:6px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;margin-left:4px">Excluir</button>`
         :`<button onclick="excluirReqCompraSite('${r.id}')" style="padding:4px 8px;border-radius:6px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Excluir</button>`;
@@ -6234,7 +6286,19 @@ async function renderFerrPCM(aba='painel'){
         </div>
         <table style="width:100%;border-collapse:collapse">
           <thead><tr style="background:rgba(15,23,42,.35)"><th style="padding:7px 10px;text-align:left;font-size:10px;color:var(--text3)">Peça</th><th style="padding:7px 10px;text-align:center;font-size:10px;color:var(--text3);width:54px">Qtd</th><th style="padding:7px 10px;text-align:right;font-size:10px;color:var(--text3);width:95px">Valor</th><th style="padding:7px 10px;text-align:center;font-size:10px;color:var(--text3);width:115px">Status</th><th style="padding:7px 10px;text-align:center;font-size:10px;color:var(--text3);width:210px">Ação</th></tr></thead>
-          <tbody>${itens.map(r=>`<tr style="border-top:1px solid var(--border2)"><td style="padding:8px 10px;font-size:12px">${safeText(r.peca)}${r.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-top:2px">SAP ${safeText(r.cod_sap)}</div>`:''}${r.justificativa?`<div style="font-size:10px;color:var(--text3);margin-top:2px">${safeText(r.justificativa)}</div>`:''}</td><td style="padding:8px 10px;text-align:center;font-family:'DM Mono',monospace">${r.quantidade||1}</td><td style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;color:var(--amber)">${r.valor_estimado?'R$ '+(parseFloat(r.valor_estimado)*parseInt(r.quantidade||1)).toLocaleString('pt-BR',{minimumFractionDigits:2}):'--'}</td><td style="padding:8px 10px;text-align:center">${badgeValetStatus(r.status)}</td><td style="padding:8px 10px;text-align:center;white-space:nowrap">${acaoValet(r)}</td></tr>`).join('')}</tbody>
+          <tbody>${itens.map(r=>{
+            const rid=rowId(r);
+            const inline=r.status==='lista_oficina';
+            return `<tr style="border-top:1px solid var(--border2)">
+              <td style="padding:8px 10px;font-size:12px">
+                ${inline?`<input type="hidden" id="val-cod-${rid}" value="${safeText(r.cod_sap||'')}"><div style="position:relative;margin-bottom:6px"><input id="val-sap-${rid}" value="${safeText(r.cod_sap?`${r.cod_sap} - ${r.peca}`:'')}" placeholder="Pesquisar SAP..." oninput="valetInlineBuscar(this,'${rid}')" style="width:100%;background:var(--surface2);border:1px solid var(--blue);border-radius:7px;color:var(--text);padding:7px 9px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box"><div id="${valetInlineDropId(rid)}" style="display:none;position:absolute;z-index:40;left:0;right:0;top:34px;max-height:210px;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:0 14px 30px #0008"></div></div><input id="val-peca-${rid}" value="${safeText(r.peca||'')}" placeholder="Descrição da peça" style="width:100%;background:transparent;border:0;border-bottom:1px solid var(--border2);color:var(--text);padding:5px 2px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none"><input id="val-just-${rid}" value="${safeText(r.justificativa||'Lista líder oficina')}" placeholder="Justificativa" style="width:100%;background:transparent;border:0;color:var(--text3);padding:4px 2px 0;font-size:10px;font-family:'DM Sans',sans-serif;outline:none">`:`${safeText(r.peca)}${r.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-top:2px">SAP ${safeText(r.cod_sap)}</div>`:''}${r.justificativa?`<div style="font-size:10px;color:var(--text3);margin-top:2px">${safeText(r.justificativa)}</div>`:''}`}
+              </td>
+              <td style="padding:8px 10px;text-align:center;font-family:'DM Mono',monospace">${inline?`<input id="val-qtd-${rid}" type="number" min="1" value="${r.quantidade||1}" style="width:54px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px;text-align:center;font-family:'DM Mono',monospace">`:(r.quantidade||1)}</td>
+              <td style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;color:var(--amber)">${inline?`<input id="val-valor-${rid}" type="number" step="0.01" value="${r.valor_estimado||''}" placeholder="0,00" style="width:90px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--amber);padding:6px;text-align:right;font-family:'DM Mono',monospace">`:(r.valor_estimado?'R$ '+(parseFloat(r.valor_estimado)*parseInt(r.quantidade||1)).toLocaleString('pt-BR',{minimumFractionDigits:2}):'--')}</td>
+              <td style="padding:8px 10px;text-align:center">${badgeValetStatus(r.status)}</td>
+              <td style="padding:8px 10px;text-align:center;white-space:nowrap">${acaoValet(r)}</td>
+            </tr>`;
+          }).join('')}</tbody>
         </table>
       </div>`;
     }).join('');
