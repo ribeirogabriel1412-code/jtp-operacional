@@ -230,6 +230,34 @@ function proximoSabadoISO(base=new Date()){
   d.setDate(d.getDate()+faltam);
   return d.toISOString().slice(0,10);
 }
+async function resolverDataValetMobile(gid,dataPreferida,usuarioEscolheu=false){
+  if(usuarioEscolheu) return dataPreferida||proximoSabadoISO();
+  const alvo=dataPreferida||proximoSabadoISO();
+  try{
+    const atual=await sb.from('requisicoes_compra')
+      .select('data')
+      .eq('garagem_id',gid)
+      .is('ocorrencia_id',null)
+      .neq('status','cancelado')
+      .not('data','is',null)
+      .eq('data',alvo)
+      .limit(1);
+    if((atual.data||[]).length){_valetMobData=alvo;return alvo;}
+    const ult=await sb.from('requisicoes_compra')
+      .select('data')
+      .eq('garagem_id',gid)
+      .is('ocorrencia_id',null)
+      .neq('status','cancelado')
+      .not('data','is',null)
+      .lte('data',alvo)
+      .order('data',{ascending:false})
+      .limit(1);
+    const encontrada=ult.data?.[0]?.data;
+    if(encontrada){_valetMobData=encontrada;return encontrada;}
+  }catch(e){console.warn('[VALET DATA]',e);}
+  _valetMobData=alvo;
+  return alvo;
+}
 function escHtml(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function moeda(v){return 'R$ '+parseFloat(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});}
 
@@ -1818,7 +1846,7 @@ async function salv26(){
 }
 
 // ── VALETAMENTO ───────────────────────────────────────────
-let _valetMobData=proximoSabadoISO();
+let _valetMobData=null;
 function parseItensValetTexto(txt){
   return String(txt||'').split(/\r?\n/).map(l=>l.trim()).filter(Boolean).map(l=>{
     let qtd=1,peca=l;
@@ -1832,7 +1860,7 @@ function parseItensValetTexto(txt){
   });
 }
 async function telaValetOficina(){
-  const gid=getGid(),data=_valetMobData||proximoSabadoISO();
+  const gid=getGid(),data=await resolverDataValetMobile(getGid(),_valetMobData||proximoSabadoISO(),!!_valetMobData);
   const{data:reqs}=await sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).eq('data',data).order('prefixo',{ascending:true}).order('criado_em',{ascending:true});
   const lista=(reqs||[]).filter(r=>['lista_oficina','solicitado_pcm','aprovado','separado','pedido_compra','comprado'].includes(r.status||''));
   const grupos={};
@@ -1919,7 +1947,7 @@ async function excluirListaValetOficina(prefixo){
   toast('Lista excluída');telaValetOficina();
 }
 async function telaValetAlmox(){
-  const gid=getGid(),data=_valetMobData||proximoSabadoISO();
+  const gid=getGid(),data=await resolverDataValetMobile(getGid(),_valetMobData||proximoSabadoISO(),!!_valetMobData);
   const{data:reqs}=await sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).eq('data',data).order('prefixo',{ascending:true}).order('criado_em',{ascending:true});
   const lista=(reqs||[]).filter(r=>['solicitado_pcm','aprovado','separado','pedido_compra','comprado','pendente'].includes(r.status||''));
   const grupos={};
