@@ -362,6 +362,8 @@ tr:hover td{background:#0F172A80}
       <div><label class="fl">Cargo *</label>
         <select class="fs" id="mu-cargo" style="margin-bottom:0" onchange="toggleGaraModal()">
           <option value="gerente_garagem">Gerente de Garagem</option>
+          <option value="coordenador">Coordenador</option>
+          <option value="supervisor">Supervisor</option>
           <option value="lider_pcm">Líder PCM</option>
           <option value="assistente_pcm">Assistente PCM</option>
           <option value="almoxarifado">Almoxarifado</option>
@@ -695,7 +697,7 @@ function isEscalante(){return ['lider_operacional','gerente_garagem','diretoria'
 // Valida saída 2.10 e lavagem — usa permissão da ferramenta
 function isLiderPatio(){return podeValidar('ferr-210')||podeExecutar('ferr-210');}
 // Supervisão geral
-function isSupervisao(){return ['diretoria','gerente_garagem','lider_operacional','lider_pcm','assistente_pcm'].includes(cargo())||isAdmin()}
+function isSupervisao(){return ['diretoria','gerente_garagem','coordenador','supervisor','lider_operacional','lider_pcm','assistente_pcm'].includes(cargo())||isAdmin()}
 // Lavador vê programação e faz checklist
 function isLavadorOuPatio(){return ['lavador','lider_patio','gerente_garagem','diretoria'].includes(cargo())||isAdmin()}
 
@@ -719,7 +721,7 @@ async function carregarReservasDisponiveis(){
   sel.innerHTML=`<option value="">Selecione o reserva...</option>`+
     disponiveis.map(v=>`<option value="${v.prefixo}">${v.prefixo} — ${v.modelo||'—'} (${v.status==='disponivel'?'✅ Disponível':'🔧 '+v.status})</option>`).join('');
 }
-const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',lider_pcm:'Líder PCM',assistente_pcm:'Assistente PCM',almoxarifado:'Almoxarifado',lider_almoxarifado:'Líder Almoxarifado',lider_operacional:'Líder Operacional',lider_suprimentos:'Líder de Suprimentos',operacoes_seguras:'Operações Seguras',lider_oficina:'Líder de Oficina',lider_patio:'Líder de Pátio',lavador:'Lavador',manobrista:'Manobrista',frentista:'Frentista',plantao:'Plantão'};
+const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',coordenador:'Coordenador',supervisor:'Supervisor',lider_pcm:'Líder PCM',assistente_pcm:'Assistente PCM',almoxarifado:'Almoxarifado',lider_almoxarifado:'Líder Almoxarifado',lider_operacional:'Líder Operacional',lider_suprimentos:'Líder de Suprimentos',operacoes_seguras:'Operações Seguras',lider_oficina:'Líder de Oficina',lider_patio:'Líder de Pátio',lavador:'Lavador',manobrista:'Manobrista',frentista:'Frentista',plantao:'Plantão'};
 
 // ── FERRAMENTAS E PERMISSÕES ──────────────────────────────
 // ── SISTEMA DE PERMISSÕES 3 NÍVEIS: executa / valida / visualiza ──────────
@@ -913,10 +915,10 @@ async function doLogin(){
   const btnLavLavador=document.getElementById('btn-lav-lavador');
   if(btnLavLavador) btnLavLavador.style.display=isLavador()?'block':'none';
 
-  // Botão Supervisão — diretoria, gerente, operações seguras
+  // Botão Supervisão — diretoria, coordenação, supervisão, gerente e operações seguras
   const btnSup=document.getElementById('btn-supervisao');
   if(btnSup){
-    const temSup=['diretoria','gerente_garagem','operacoes_seguras'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
+    const temSup=['diretoria','gerente_garagem','coordenador','supervisor','operacoes_seguras'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
     btnSup.style.display=temSup?'flex':'none';
   }
 
@@ -1434,6 +1436,9 @@ async function renderSupervisao(gidFiltro=null){
   const data=hoje();
   const turno=S.turno||'dia';
   const agora=new Date();
+  const dataValet=typeof resolverDataValetComDados==='function'
+    ?await resolverDataValetComDados(gid,typeof proximoSabadoISO==='function'?proximoSabadoISO():data,false)
+    :data;
 
   setMain(`<div class="loading"><div class="spinner"></div></div>`);
 
@@ -1454,6 +1459,10 @@ async function renderSupervisao(gidFiltro=null){
     {data:soltura},
     {data:lavagem},
     {data:fechPCM},
+    {data:fechGaragem},
+    {data:relatorios},
+    {data:libs38},
+    {data:valetamentos},
   ]=await Promise.all([
     sb.from('frota').select('*').eq('garagem_id',gid),
     sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado'),
@@ -1461,7 +1470,11 @@ async function renderSupervisao(gidFiltro=null){
       .gte('hora_liberacao',new Date(agora.getFullYear(),agora.getMonth(),agora.getDate()).toISOString()),
     sb.from('soltura_2_10').select('*').eq('garagem_id',gid).eq('data',data),
     sb.from('checklist_lavagem').select('*').eq('garagem_id',gid).eq('data',data),
-    sb.from('fechamento_turno_pcm').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno).order('created_at',{ascending:false}).limit(1),
+    sb.from('fechamento_turno_pcm').select('*').eq('garagem_id',gid).eq('data',data).order('created_at',{ascending:false}),
+    sb.from('fechamento_turno_garagem').select('*').eq('garagem_id',gid).eq('data',data).order('created_at',{ascending:false}),
+    sb.from('relatorios_gerados').select('*').eq('garagem_id',gid).eq('data_evento',data).order('created_at',{ascending:false}),
+    sb.from('checklist_38').select('*').eq('garagem_id',gid).eq('data',data).order('created_at',{ascending:false}),
+    sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).eq('data',dataValet).neq('status','cancelado').order('criado_em',{ascending:true}),
   ]);
 
   // ── KPIs FROTA ────────────────────────────────────────────
@@ -1497,6 +1510,58 @@ async function renderSupervisao(gidFiltro=null){
   const sPend=(soltura||[]).filter(r=>r.saiu===null||r.saiu===undefined).length;
   const pctSoltura=sTot>0?((sSaiu/sTot)*100).toFixed(1):null;
   const soltOk=pctSoltura!==null&&parseFloat(pctSoltura)>=99.5;
+
+  // ── FAROL DE RELATÓRIOS E PROCESSOS ─────────────────────
+  const rels=relatorios||[];
+  const temRel210=rels.some(r=>String(r.tipo||r.numero||'').includes('2.10')&&r.status==='fechado');
+  const temRelCusto=rels.some(r=>['2.4','2.6'].some(t=>String(r.tipo||r.numero||'').includes(t)));
+  const custoFechado=(fechPCM||[]).length>0||temRelCusto;
+  const garagemFechada=(fechGaragem||[]).length>0||rels.some(r=>String(r.tipo||r.numero||'').includes('2.1')&&r.status==='fechado');
+  const liberacoes38=(libs38||[]).length;
+  const valetLista=(valetamentos||[]).filter(i=>i.status!=='cancelado');
+  const valetGrupos={};
+  valetLista.forEach(i=>{
+    const p=i.prefixo||'SEM PREFIXO';
+    if(!valetGrupos[p]) valetGrupos[p]=[];
+    valetGrupos[p].push(i);
+  });
+  const valetCestos=Object.keys(valetGrupos).length;
+  const valetCompras=valetLista.filter(i=>['pedido_compra','compra_aberta','comprado','aguardando_compra'].includes(i.status)).length;
+  const valetSeparados=valetLista.filter(i=>['separado','chegou','comprado'].includes(i.status)).length;
+  const valetCestosOk=Object.values(valetGrupos).filter(lista=>lista.length&&lista.every(i=>['separado','chegou','comprado'].includes(i.status))).length;
+  const valetStatus=valetCestos===0?'idle':valetCompras>0?'nok':valetCestosOk===valetCestos?'ok':'warn';
+  const lavStatus=lavTot===0?'idle':lavExec>=lavTot?'ok':lavExec>0?'warn':'nok';
+  const soltStatus=sTot===0?'idle':temRel210&&soltOk?'ok':sTot>0&&sPend===0?'warn':'nok';
+  const manutStatus=prevVencida>0?'nok':ocsA>0?'warn':'ok';
+  const farois=[
+    {ic:'💰',titulo:'Custo PCM',status:custoFechado?'ok':'nok',meta:'2.4 / 2.6',det:custoFechado?`${(fechPCM||[]).length||1} fechamento enviado`:'Sem fechamento enviado'},
+    {ic:'📋',titulo:'Soltura 2.10',status:soltStatus,meta:'Relatório de soltura',det:sTot?`${sSaiu}/${sTot} saíram · ${sPend} pendente(s)`: 'Escala não importada'},
+    {ic:'🏁',titulo:'Fechamento garagem',status:garagemFechada?'ok':'nok',meta:'2.1 / turno',det:garagemFechada?'Fechamento registrado':'Sem fechamento registrado'},
+    {ic:'🚿',titulo:'Lavagem',status:lavStatus,meta:'Dia / semanal',det:lavTot?`${lavExec}/${lavTot} lavados · ${lavValid} vistoriados`:'Sem plano importado'},
+    {ic:'✅',titulo:'Liberação oficina',status:liberacoes38>0?'ok':ocsF>0?'warn':'idle',meta:'Checklist 3.8',det:liberacoes38?`${liberacoes38} liberação(ões) feita(s)`:ocsF?'OS liberadas sem 3.8 no dia':'Sem liberação no dia'},
+    {ic:'📦',titulo:'Preventiva / valetamento',status:valetStatus,meta:`Valet ${dataValet.split('-').reverse().join('/')}`,det:valetCestos?`${valetCestosOk}/${valetCestos} cestos disponíveis · ${valetCompras} compra(s)`: 'Sem lista de valetamento'},
+    {ic:'🛒',titulo:'Peças em compra',status:valetCompras>0?'nok':'ok',meta:'Suprimentos',det:valetCompras?`${valetCompras} item(ns) aguardando compra`:'Sem pendência de compra'},
+    {ic:'🔧',titulo:'OS vencidas',status:manutStatus,meta:'Manutenção',det:`${ocsA} aberta(s) · ${prevVencida} vencida(s)`}
+  ];
+  const farolCfg={
+    ok:{c:'var(--green)',bd:'#00C48C50',bg:'#00C48C10',txt:'OK'},
+    warn:{c:'var(--amber)',bd:'#F59E0B55',bg:'#F59E0B10',txt:'PARCIAL'},
+    nok:{c:'var(--red)',bd:'#EF444455',bg:'#EF444410',txt:'PENDENTE'},
+    idle:{c:'var(--text3)',bd:'var(--border)',bg:'var(--surface2)',txt:'SEM DADOS'}
+  };
+  const farolHtml=farois.map(f=>{
+    const cfg=farolCfg[f.status]||farolCfg.idle;
+    return`<div style="background:var(--surface);border:1px solid ${cfg.bd};border-left:3px solid ${cfg.c};border-radius:10px;padding:12px 14px;min-height:104px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span style="font-size:16px">${f.ic}</span>
+        <div style="font-weight:800;font-size:13px;color:var(--text)">${f.titulo}</div>
+        <span style="margin-left:auto;background:${cfg.bg};border:1px solid ${cfg.bd};color:${cfg.c};border-radius:999px;padding:3px 8px;font-size:9px;font-weight:900">${cfg.txt}</span>
+      </div>
+      <div style="color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em">${f.meta}</div>
+      <div style="color:var(--text2);font-size:12px;margin-top:6px">${f.det}</div>
+    </div>`;
+  }).join('');
+  const farolOk=farois.filter(f=>f.status==='ok').length;
 
   // ── LISTA INDISPONÍVEIS ───────────────────────────────────
   const indispon=(ocsAbertas||[]).sort((a,b)=>new Date(a.hora_entrada)-new Date(b.hora_entrada));
@@ -1648,6 +1713,11 @@ async function renderSupervisao(gidFiltro=null){
       </div>
     </div>
 
+    ${secTitle('🧭','Farol de relatórios e processos',`${farolOk}/${farois.length} concluídos`)}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-bottom:20px">
+      ${farolHtml}
+    </div>
+
     <!-- INDISPONÍVEIS DETALHADO -->
     ${ocsA>0?`
     <div style="font-size:14px;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px">
@@ -1696,7 +1766,7 @@ async function renderAdmin(){
   setMain(`
     ${secTitle('⚙️',`Gestão de Usuários — ${(users||[]).length} cadastrados`,`<button class="btn-add" onclick="abrirModalUser()">+ Novo Usuário</button>`)}
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px">
-      ${['diretoria','gerente_garagem','lider_pcm','assistente_pcm','almoxarifado','lider_operacional','lider_patio','lider_suprimentos','operacoes_seguras','lider_oficina'].map(c=>{
+      ${['diretoria','gerente_garagem','coordenador','supervisor','lider_pcm','assistente_pcm','almoxarifado','lider_operacional','lider_patio','lider_suprimentos','operacoes_seguras','lider_oficina'].map(c=>{
         const cnt=(users||[]).filter(u=>u.cargo===c).length;
         return`<div style="text-align:center"><div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:700;color:var(--text)">${cnt}</div><div style="color:var(--text3);font-size:10px;margin-top:2px">${CARGOS[c]}</div></div>`
       }).join('')}
