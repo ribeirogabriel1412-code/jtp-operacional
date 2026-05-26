@@ -8952,7 +8952,34 @@ async function prevSalvarProgramacaoPreventivaBanco(semana){
       res=await sb.from('programacao_preventiva').insert(min);
     }
     if(res.error)console.warn('[PREV BANCO]',res.error);
+    await prevSalvarMarcadoresPreventivaReq(semana,rows);
   }catch(e){console.warn('[PREV BANCO]',e);}
+}
+async function prevSalvarMarcadoresPreventivaReq(semana,rows){
+  try{
+    const gid=getGid();
+    const programados=(rows||[]).filter(r=>r.prefixo&&['preventiva_pesada','pesada'].includes(r.tipo));
+    await sb.from('requisicoes_compra')
+      .update({status:'cancelado'})
+      .eq('garagem_id',gid)
+      .eq('status','programado_preventiva')
+      .gte('data',semana.inicio)
+      .lte('data',semana.fim);
+    if(!programados.length)return;
+    const marcadores=programados.map(r=>({
+      garagem_id:gid,
+      data:r.data,
+      prefixo:r.prefixo,
+      peca:'Programação preventiva pesada',
+      quantidade:1,
+      status:'programado_preventiva',
+      justificativa:`Programação preventiva pesada · ${r.servicos||''}`.trim(),
+      criado_por:S.perfil?.nome||null,
+      criado_em:new Date().toISOString()
+    }));
+    const res=await sb.from('requisicoes_compra').insert(marcadores);
+    if(res.error)console.warn('[PREV MARCADORES]',res.error);
+  }catch(e){console.warn('[PREV MARCADORES]',e);}
 }
 
 function prevUltimasProgramacoes(){
