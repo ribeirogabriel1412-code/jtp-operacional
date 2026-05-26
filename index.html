@@ -1330,9 +1330,16 @@ async function renderAlmoxarifado(){
   const gid=getGid();
   const data=await resolverDataValetComDados(gid,S._valetData||proximoSabadoISO(),!!S._valetData);
   setMain(`<div class="loading"><div class="spinner"></div></div>`);
-  const{data:reqs}=await sb.from('requisicoes_compra')
-    .select('*').eq('garagem_id',gid).eq('data',data)
-    .order('prefixo',{ascending:true}).order('criado_em',{ascending:true});
+  const[{data:reqs},{data:datasValet}]=await Promise.all([
+    sb.from('requisicoes_compra')
+      .select('*').eq('garagem_id',gid).eq('data',data)
+      .order('prefixo',{ascending:true}).order('criado_em',{ascending:true}),
+    sb.from('requisicoes_compra')
+      .select('data').eq('garagem_id',gid)
+      .neq('status','cancelado')
+      .not('data','is',null)
+      .order('data',{ascending:false}).limit(60)
+  ]);
   const lista=(reqs||[]).filter(r=>['solicitado_pcm','separado','pedido_compra','comprado','pendente','aprovado'].includes(r.status||''));
   const safe=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const pedidoOficina=r=>extrairPedidoOficinaValet(r.justificativa,r.peca,r.cod_sap);
@@ -1347,6 +1354,7 @@ async function renderAlmoxarifado(){
   const totalValor=lista.reduce((s,r)=>s+(parseFloat(r.valor_estimado||0)*parseFloat(r.quantidade||1)),0);
   const fmtMoney=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
   const rowId=r=>String(r.id||'').replace(/[^a-zA-Z0-9_-]/g,'');
+  const seletorSemana=renderSeletorSemanaValet(data,(datasValet||[]).map(r=>r.data),'renderAlmoxarifado()');
   const acoesItem=r=>{
     const st=r.status||'';
     const isSup=S.perfil?.cargo==='lider_suprimentos'||S.perfil?.is_admin;
@@ -1413,7 +1421,7 @@ async function renderAlmoxarifado(){
     </div>`;
   }).join(''):`<div class="empty">Nenhum valetamento para este sábado</div>`;
   setMain(`
-    ${secTitle('📦','Almoxarifado - Valetamento',`<input type="date" value="${data}" onchange="S._valetData=this.value;renderAlmoxarifado()" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 10px;font-family:'DM Mono',monospace">`)}
+    ${secTitle('📦','Almoxarifado - Valetamento',seletorSemana)}
     <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px">
       ${kpi('Itens solicitados',lista.length,undefined,'',false,0)}
       ${kpi('Separados',qtdSep,undefined,'',false,0)}
@@ -5825,6 +5833,41 @@ function proximoSabadoISO(base=new Date()){
   const faltam=(6-d.getDay()+7)%7;
   d.setDate(d.getDate()+faltam);
   return d.toISOString().slice(0,10);
+}
+function parseISODateLocal(iso){
+  const [y,m,d]=String(iso||'').split('-').map(Number);
+  return new Date(y||new Date().getFullYear(),(m||1)-1,d||1);
+}
+function isoDateLocal(d){
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function fmtDiaMes(d){
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+function semanaExecucaoValet(dataValet){
+  const ini=parseISODateLocal(dataValet);
+  ini.setDate(ini.getDate()+9);
+  const fim=new Date(ini);
+  fim.setDate(ini.getDate()+4);
+  return {inicio:isoDateLocal(ini),fim:isoDateLocal(fim),label:`Semana ${fmtDiaMes(ini)} ~ ${fmtDiaMes(fim)}`};
+}
+function renderSeletorSemanaValet(dataAtual,datas,onchangeFn){
+  const base=dataAtual||proximoSabadoISO();
+  const opcoes=new Set([base,proximoSabadoISO()]);
+  (datas||[]).filter(Boolean).forEach(d=>opcoes.add(d));
+  const sab=parseISODateLocal(proximoSabadoISO());
+  for(let i=-2;i<=6;i++){
+    const d=new Date(sab);
+    d.setDate(sab.getDate()+(i*7));
+    opcoes.add(isoDateLocal(d));
+  }
+  const opts=[...opcoes].sort().map(d=>{
+    const sem=semanaExecucaoValet(d);
+    const feito=parseISODateLocal(d);
+    const label=`${sem.label} · Valet ${fmtDiaMes(feito)}`;
+    return `<option value="${d}" ${d===base?'selected':''}>${label}</option>`;
+  }).join('');
+  return `<select onchange="S._valetData=this.value;${onchangeFn||'renderAlmoxarifado()'}" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 10px;font-family:'DM Sans',sans-serif;font-weight:800;min-width:250px;outline:none">${opts}</select>`;
 }
 async function resolverDataValetComDados(gid,dataPreferida,usuarioEscolheu=false){
   if(usuarioEscolheu) return dataPreferida||proximoSabadoISO();
