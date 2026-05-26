@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"><!-- JTP v2.2 -->
@@ -1340,7 +1340,7 @@ async function renderAlmoxarifado(){
       .not('data','is',null)
       .order('data',{ascending:false}).limit(60)
   ]);
-  const lista=(reqs||[]).filter(r=>['solicitado_pcm','separado','pedido_compra','comprado','pendente','aprovado'].includes(r.status||''));
+  const lista=(reqs||[]).filter(r=>r.cod_sap!=='__PROG_PREV__'&&['solicitado_pcm','separado','pedido_compra','comprado','pendente','aprovado'].includes(r.status||''));
   const safe=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const pedidoOficina=r=>extrairPedidoOficinaValet(r.justificativa,r.peca,r.cod_sap);
   const chegada=id=>JSON.parse(localStorage.getItem('valet_chegada_'+id)||'{}')?.data||'';
@@ -1530,7 +1530,7 @@ async function renderSupervisao(gidFiltro=null){
   const custoFechado=(fechPCM||[]).length>0||temRelCusto;
   const garagemFechada=(fechGaragem||[]).length>0||rels.some(r=>String(r.tipo||r.numero||'').includes('2.1')&&r.status==='fechado');
   const liberacoes38=(libs38||[]).length;
-  const valetLista=(valetamentos||[]).filter(i=>i.status!=='cancelado');
+  const valetLista=(valetamentos||[]).filter(i=>i.status!=='cancelado'&&i.cod_sap!=='__PROG_PREV__');
   const valetGrupos={};
   valetLista.forEach(i=>{
     const p=i.prefixo||'SEM PREFIXO';
@@ -6874,7 +6874,7 @@ async function renderFerrPCM(aba='painel'){
         .not('pecas_necessarias','is',null)
         .order('hora_entrada',{ascending:false}).limit(30)
     ]);
-    const reqs=(reqRes.data||[]).filter(r=>(r.status||'')!=='cancelado');
+    const reqs=(reqRes.data||[]).filter(r=>(r.status||'')!=='cancelado'&&r.cod_sap!=='__PROG_PREV__');
     const osPecas=(osRes.data||[]).filter(o=>(o.pecas_necessarias||'').trim());
     const valetMetrica=lerValetamentoMetrica(dataValet);
     const carrosValet=(valetMetrica?.itens||[]);
@@ -8959,10 +8959,17 @@ async function prevSalvarMarcadoresPreventivaReq(semana,rows){
   try{
     const gid=getGid();
     const programados=(rows||[]).filter(r=>r.prefixo&&['preventiva_pesada','pesada'].includes(r.tipo));
+    const valetDate=(()=>{const d=parseISODateLocal(semana.inicio);d.setDate(d.getDate()-9);return isoDateLocal(d);})();
     await sb.from('requisicoes_compra')
       .update({status:'cancelado'})
       .eq('garagem_id',gid)
       .eq('status','programado_preventiva')
+      .gte('data',semana.inicio)
+      .lte('data',semana.fim);
+    await sb.from('requisicoes_compra')
+      .update({status:'cancelado'})
+      .eq('garagem_id',gid)
+      .eq('cod_sap','__PROG_PREV__')
       .gte('data',semana.inicio)
       .lte('data',semana.fim);
     if(!programados.length)return;
@@ -8971,14 +8978,40 @@ async function prevSalvarMarcadoresPreventivaReq(semana,rows){
       data:r.data,
       prefixo:r.prefixo,
       peca:'Programação preventiva pesada',
+      cod_sap:'__PROG_PREV__',
       quantidade:1,
-      status:'programado_preventiva',
+      status:'solicitado_pcm',
       justificativa:`Programação preventiva pesada · ${r.servicos||''}`.trim(),
       criado_por:S.perfil?.nome||null,
       criado_em:new Date().toISOString()
     }));
     const res=await sb.from('requisicoes_compra').insert(marcadores);
     if(res.error)console.warn('[PREV MARCADORES]',res.error);
+    const atuais=await sb.from('requisicoes_compra')
+      .select('id,prefixo,justificativa,status')
+      .eq('garagem_id',gid)
+      .eq('data',valetDate)
+      .neq('status','cancelado');
+    const porPrefixo={};
+    (atuais.data||[]).forEach(item=>{
+      const k=almoxPrefKey(item.prefixo);
+      if(!k)return;
+      if(!porPrefixo[k])porPrefixo[k]=[];
+      porPrefixo[k].push(item);
+    });
+    for(const prog of programados){
+      const k=almoxPrefKey(prog.prefixo);
+      const itens=porPrefixo[k]||[];
+      for(const item of itens){
+        if(item.status==='programado_preventiva')continue;
+        const base=String(item.justificativa||'Lista líder oficina')
+          .replace(/\s*[|·]\s*Programado preventiva:\s*\d{4}-\d{2}-\d{2}/ig,'')
+          .trim();
+        await sb.from('requisicoes_compra').update({
+          justificativa:`${base||'Lista líder oficina'} · Programado preventiva: ${prog.data}`
+        }).eq('id',item.id);
+      }
+    }
   }catch(e){console.warn('[PREV MARCADORES]',e);}
 }
 
