@@ -300,17 +300,52 @@ function mobSemanaPeriodo(data){
   fim.setDate(ini.getDate()+4);
   return {inicio:mobISO(ini),fim:mobISO(fim),inicioBR:mobDiaMes(mobISO(ini)),fimBR:mobDiaMes(mobISO(fim))};
 }
+function mobNormalizarData(v,ref=hoje()){
+  if(!v)return '';
+  if(v instanceof Date)return mobISO(v);
+  const s=String(v).trim();
+  const iso=(s.match(/\d{4}-\d{2}-\d{2}/)||[])[0];
+  if(iso)return iso;
+  const br=s.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
+  if(br){
+    const y=br[3]?String(br[3]).padStart(4,'20'):String(ref).slice(0,4);
+    return `${y}-${String(br[2]).padStart(2,'0')}-${String(br[1]).padStart(2,'0')}`;
+  }
+  return s.slice(0,10);
+}
 function mobProgData(row){
-  return String(row?.data||row?.iso||row?.data_programada||row?.data_prevista||row?.dia||row?.dt||'').slice(0,10);
+  return mobNormalizarData(row?.data||row?.iso||row?.data_programada||row?.data_prevista||row?.data_execucao||row?.data_os||row?.programado_para||row?.data_programacao||row?.dia||row?.dt||row?.created_at);
 }
 function mobProgPrefixo(row){
-  return row?.prefixo||row?.veiculo||row?.carro||row?.prefixo_veiculo||row?.codigo_veiculo||'';
+  return row?.prefixo||row?.veiculo||row?.carro||row?.prefixo_veiculo||row?.codigo_veiculo||row?.codigo||row?.placa_prefixo||'';
 }
 function mobProgTipo(row){
-  return String(row?.tipo||row?.tipo_preventiva||row?.tipo_os||row?.categoria||row?.plano_tipo||'').toLowerCase();
+  const bruto=String(row?.tipo||row?.tipo_preventiva||row?.tipo_os||row?.categoria||row?.plano_tipo||row?.tipo_manutencao||'').toLowerCase();
+  const texto=`${bruto} ${mobProgServ(row)}`.toLowerCase();
+  if(/pesada|preventiva_pesada|plano\s*002|\b002\b/.test(texto))return 'pesada';
+  if(/óleo|oleo/.test(texto))return 'oleo';
+  if(/leve/.test(texto))return 'leve';
+  return bruto;
 }
 function mobProgServ(row){
-  return String(row?.servicos||row?.servico||row?.descricao||row?.plano_nome||row?.planoNome||row?.observacao||row?.obs||'');
+  return String(row?.servicos||row?.servico||row?.descricao||row?.plano_nome||row?.planoNome||row?.plano||row?.observacao||row?.obs||row?.itens_servico||'');
+}
+function mobExpandProgRows(rows){
+  const out=[];
+  const push=(r,base={})=>{
+    if(!r)return;
+    if(Array.isArray(r)){r.forEach(x=>push(x,base));return;}
+    if(typeof r==='string'){
+      try{push(JSON.parse(r),base);}catch(e){}
+      return;
+    }
+    if(typeof r!=='object')return;
+    const filhos=r.itens||r.programacao||r.programacoes||r.escala||r.dados||r.carros||null;
+    if(Array.isArray(filhos)){filhos.forEach(x=>push(x,{...base,...r}));}
+    else out.push({...base,...r});
+  };
+  (rows||[]).forEach(r=>push(r));
+  return out;
 }
 function mobProgramaFromSemanaLocal(data){
   const semana=mobSemanaDaData(data);
@@ -323,8 +358,13 @@ async function mobBuscarProgramacaoPreventivaDia(gid,data){
   const periodo=mobSemanaPeriodo(data);
   let itens=[];
   try{
-    const res=await sb.from('programacao_preventiva').select('*').eq('garagem_id',gid).limit(800);
-    itens=(res.data||[]).map(r=>({
+    let res=await sb.from('programacao_preventiva').select('*').eq('garagem_id',gid).limit(1200);
+    let rows=res.data||[];
+    if(!rows.length){
+      res=await sb.from('programacao_preventiva').select('*').limit(1200);
+      rows=(res.data||[]).filter(r=>!r.garagem_id||r.garagem_id===gid||r.garagem===gid);
+    }
+    itens=mobExpandProgRows(rows).map(r=>({
       raw:r,
       prefixo:mobProgPrefixo(r),
       iso:mobProgData(r),
@@ -2060,7 +2100,7 @@ async function telaPrevOficina(){
   let itens=programados.filter(i=>{
     if(!i.prefixo)return false;
     const serv=String(i.servicos||i.planoNome||'').toLowerCase();
-    return ['pesada','preventiva_pesada'].includes(i.tipo)||/óleo|oleo/.test(serv);
+    return ['pesada','preventiva_pesada','oleo'].includes(i.tipo)||/pesada|óleo|oleo|\b002\b/.test(serv);
   });
   if(!itens.length&&reqs.length){
     const vistos=new Set();
