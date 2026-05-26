@@ -8934,7 +8934,7 @@ async function prevSalvarProgramacaoPreventivaBanco(semana){
       garagem_id:gid,
       data:i.iso,
       prefixo:i.prefixo,
-      tipo:i.tipo,
+      tipo:i.tipo==='pesada'?'preventiva_pesada':i.tipo==='leve'?'preventiva_leve':i.tipo,
       servicos:i.servicos||i.planoNome||'',
       plano:i.plano||'',
       plano_nome:i.planoNome||'',
@@ -8947,7 +8947,7 @@ async function prevSalvarProgramacaoPreventivaBanco(semana){
     await sb.from('programacao_preventiva').delete().eq('garagem_id',gid).gte('data',semana.inicio).lte('data',semana.fim);
     if(!rows.length)return;
     let res=await sb.from('programacao_preventiva').insert(rows);
-    if(res.error&&String(res.error.message||'').includes('column')){
+    if(res.error&&/column|schema|cache/i.test(String(res.error.message||''))){
       const min=rows.map(r=>({garagem_id:r.garagem_id,data:r.data,prefixo:r.prefixo,tipo:r.tipo,servicos:r.servicos}));
       res=await sb.from('programacao_preventiva').insert(min);
     }
