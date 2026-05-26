@@ -208,7 +208,7 @@ const NAV={
   lavador:[{id:'lavagem',ic:'🚿',lb:'Lavagem'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_patio:[{id:'patio',ic:'✅',lb:'Validar'},{id:'patio_man',ic:'🚗',lb:'Zona'},{id:'soltura',ic:'🚌',lb:'Soltura'},{id:'abastecimento',ic:'⛽',lb:'Abastec.'},{id:'lav_pesada',ic:'🚿',lb:'Lavagem'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_operacional:[{id:'patio_man',ic:'🚗',lb:'Pátio'},{id:'home',ic:'🏠',lb:'Início'}],
-  lider_oficina:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'valet_oficina',ic:'📦',lb:'Valet'},{id:'home',ic:'🏠',lb:'Início'}],
+  lider_oficina:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'valet_oficina',ic:'📦',lb:'Valet'},{id:'prev_oficina',ic:'🧰',lb:'Prev.'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_pcm:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'checklist_equip',ic:'📋',lb:'3.4'},{id:'prev26',ic:'💰',lb:'2.6'},{id:'home',ic:'🏠',lb:'Início'}],
   assistente_pcm:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'checklist_equip',ic:'📋',lb:'3.4'},{id:'prev26',ic:'💰',lb:'2.6'},{id:'home',ic:'🏠',lb:'Início'}],
   almoxarifado:[{id:'valet_almox',ic:'📦',lb:'Kits'},{id:'home',ic:'🏠',lb:'Início'}],
@@ -257,6 +257,40 @@ async function resolverDataValetMobile(gid,dataPreferida,usuarioEscolheu=false){
   }catch(e){console.warn('[VALET DATA]',e);}
   _valetMobData=alvo;
   return alvo;
+}
+function mobParseISO(iso){
+  const [y,m,d]=String(iso||'').split('-').map(Number);
+  return new Date(y||new Date().getFullYear(),(m||1)-1,d||1);
+}
+function mobISO(d){
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function mobDiaMes(iso){
+  const d=mobParseISO(iso);
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+function mobPrefKey(p){return String(p||'').replace(/\D/g,'').replace(/^0+/,'');}
+function mobPrevHistKey(){
+  let gid='geral';
+  try{gid=getGid()||'geral';}catch(e){}
+  return `jtp_prev_historicos_v1:${gid}`;
+}
+function mobPrevHistoricos(){
+  try{
+    const h=JSON.parse(localStorage.getItem(mobPrevHistKey())||'{}')||{};
+    return {semanas:Array.isArray(h.semanas)?h.semanas:[],importacoes:Array.isArray(h.importacoes)?h.importacoes:[]};
+  }catch(e){return {semanas:[],importacoes:[]};}
+}
+function mobSemanaLabel(s){return `${s?.inicioBR||'--/--'} a ${s?.fimBR||'--/--'}`;}
+function mobSemanaDaData(data){
+  const semanas=mobPrevHistoricos().semanas||[];
+  return semanas.find(s=>s.inicio<=data&&s.fim>=data)||semanas[0]||null;
+}
+function mobDataValetDaSemana(semana){
+  if(!semana?.inicio)return proximoSabadoISO();
+  const d=mobParseISO(semana.inicio);
+  d.setDate(d.getDate()-9);
+  return mobISO(d);
 }
 function escHtml(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function moeda(v){return 'R$ '+parseFloat(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});}
@@ -1945,6 +1979,82 @@ async function excluirListaValetOficina(prefixo){
   const{error}=await sb.from('requisicoes_compra').update({status:'cancelado'}).eq('garagem_id',gid).eq('data',data).eq('prefixo',prefixo).in('status',['lista_oficina','solicitado_pcm']);
   if(error){toast('Erro: '+error.message,'err');return;}
   toast('Lista excluída');telaValetOficina();
+}
+let _prevOficinaData=hoje();
+async function telaPrevOficina(){
+  const gid=getGid();
+  const data=_prevOficinaData||hoje();
+  const semana=mobSemanaDaData(data);
+  if(!semana){
+    render(`
+      <div style="padding:14px"><div style="font-weight:800;font-size:17px">🧰 Preventiva do dia</div></div>
+      <div style="padding:0 14px 10px"><input class="fi2" type="date" value="${data}" onchange="_prevOficinaData=this.value;telaPrevOficina()" style="font-family:'DM Mono',monospace"></div>
+      <div class="empty"><div class="empty-ic">🧰</div><div style="font-weight:700">Sem programação consolidada</div><div style="font-size:12px;color:var(--text3);margin-top:6px">Consolide a escala preventiva no site para aparecer aqui.</div></div>
+    `);
+    return;
+  }
+  const dataValet=mobDataValetDaSemana(semana);
+  const{data:reqs}=await sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).eq('data',dataValet).neq('status','cancelado').order('prefixo',{ascending:true}).order('criado_em',{ascending:true});
+  const grupos={};
+  (reqs||[]).forEach(r=>{const k=mobPrefKey(r.prefixo);if(!k)return;if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
+  const itens=(semana.itens||[]).filter(i=>{
+    if(!i.prefixo||i.iso!==data)return false;
+    const serv=String(i.servicos||i.planoNome||'').toLowerCase();
+    return ['pesada','preventiva_pesada'].includes(i.tipo)||/óleo|oleo/.test(serv);
+  });
+  const statusKit=p=>{
+    const lista=grupos[mobPrefKey(p.prefixo)]||[];
+    if(!lista.length)return {txt:['pesada','preventiva_pesada'].includes(p.tipo)?'SEM LISTA':'TROCA ÓLEO',cor:['pesada','preventiva_pesada'].includes(p.tipo)?'var(--red)':'var(--amber)'};
+    const ok=lista.filter(i=>['separado','comprado'].includes(i.status||'')).length;
+    const compra=lista.filter(i=>i.status==='pedido_compra').length;
+    if(ok===lista.length)return {txt:'VERDE · KIT LIBERADO',cor:'var(--green)'};
+    if(compra)return {txt:'VERMELHO · COMPRA',cor:'var(--red)'};
+    if(ok>0)return {txt:'AMARELO · PARCIAL',cor:'var(--amber)'};
+    return {txt:'VERMELHO · NÃO SEPARADO',cor:'var(--red)'};
+  };
+  const compraInfo=just=>{
+    const txt=String(just||'');
+    const num=(txt.match(/Solicitação compra:\s*([^|·\n]+)/i)||[])[1]?.trim()||'';
+    const prazo=(txt.match(/Prazo entrega:\s*([^|·\n]+)/i)||[])[1]?.trim()||'';
+    return {num,prazo};
+  };
+  const cards=itens.map(p=>{
+    const kit=grupos[mobPrefKey(p.prefixo)]||[];
+    const st=statusKit(p);
+    return `<div class="card" style="margin-bottom:10px;border-left:4px solid ${st.cor}">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+        <div>
+          <div class="prefixo" style="font-size:20px;color:var(--blue)">${escHtml(p.prefixo)}</div>
+          <div style="font-size:11px;color:${['pesada','preventiva_pesada'].includes(p.tipo)?'var(--amber)':'var(--green)'};font-weight:900;text-transform:uppercase;margin-top:2px">${['pesada','preventiva_pesada'].includes(p.tipo)?'Preventiva pesada':'Troca de óleo'}</div>
+        </div>
+        <div style="font-size:10px;font-weight:900;color:${st.cor};text-align:right;text-transform:uppercase">${st.txt}</div>
+      </div>
+      <div style="margin-top:10px;color:var(--text3);font-size:11px;line-height:1.35">${kit.length?'Itens do kit preventivo':'Não tem lista feita pelo líder de oficina'}</div>
+      ${kit.length?`<div style="margin-top:9px;display:flex;flex-direction:column;gap:8px">${kit.map(i=>{
+        const comp=compraInfo(i.justificativa);
+        return `<div style="display:grid;grid-template-columns:34px 1fr auto;gap:8px;align-items:start;font-size:12px;color:var(--text2)">
+          <b style="font-family:'DM Mono',monospace;color:var(--amber)">${i.quantidade||1}x</b>
+          <span>${escHtml(i.peca)}${i.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-top:2px">${escHtml(i.cod_sap)}</div>`:''}${i.status==='pedido_compra'?`<div style="font-size:10px;color:var(--red);font-weight:800;margin-top:3px">Compra${comp.num?` nº ${escHtml(comp.num)}`:''}${comp.prazo?` · prazo ${escHtml(comp.prazo.split('-').reverse().join('/'))}`:' · prazo não informado'}</div>`:''}</span>
+          <span style="font-size:10px;color:${i.status==='pedido_compra'?'var(--red)':i.status==='separado'||i.status==='comprado'?'var(--green)':'var(--blue)'};font-weight:900;text-align:right">${escHtml(i.status==='solicitado_pcm'?'com almox':i.status==='pedido_compra'?'compra':i.status||'')}</span>
+        </div>`;
+      }).join('')}</div>`:''}
+    </div>`;
+  }).join('');
+  const qtdPesadas=itens.filter(i=>['pesada','preventiva_pesada'].includes(i.tipo)).length;
+  const liberados=itens.filter(i=>{const kit=grupos[mobPrefKey(i.prefixo)]||[];return kit.length&&kit.every(k=>['separado','comprado'].includes(k.status||''));}).length;
+  render(`
+    <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div><div style="font-weight:800;font-size:17px">🧰 Preventiva do dia</div><div style="font-size:11px;color:var(--text3);margin-top:3px">Semana ${escHtml(mobSemanaLabel(semana))} · Valet ${mobDiaMes(dataValet)}</div></div>
+      <button onclick="telaPrevOficina()" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:9px 11px;color:var(--text);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">🔄</button>
+    </div>
+    <div style="padding:10px 14px"><input class="fi2" type="date" value="${data}" onchange="_prevOficinaData=this.value;telaPrevOficina()" style="font-family:'DM Mono',monospace"></div>
+    <div style="display:flex;gap:8px;padding:0 14px 10px">
+      <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center"><b style="color:var(--amber);font-family:'DM Mono',monospace">${qtdPesadas}</b><div style="font-size:10px;color:var(--text3)">Pesadas</div></div>
+      <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center"><b style="color:var(--green);font-family:'DM Mono',monospace">${liberados}</b><div style="font-size:10px;color:var(--text3)">Kits OK</div></div>
+    </div>
+    <div class="sl">${itens.length} preventiva(s) pesada/óleo no dia</div>
+    ${cards||'<div class="empty"><div class="empty-ic">🧰</div><div style="font-weight:700">Sem preventiva pesada ou troca de óleo no dia</div></div>'}
+  `);
 }
 async function telaValetAlmox(){
   const gid=getGid(),data=await resolverDataValetMobile(getGid(),_valetMobData||proximoSabadoISO(),!!_valetMobData);
@@ -5449,7 +5559,7 @@ const SECS38=[
 ];
 const TOTAL_38=SECS38.reduce(function(s,sec){return s+sec.itens.length;},0);
 
-const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,prev26:telaPrev26,valet_oficina:telaValetOficina,valet_almox:telaValetAlmox,patio_man:telaPatioMan,recolha:telaRecolha,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip};
+const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,prev26:telaPrev26,valet_oficina:telaValetOficina,prev_oficina:telaPrevOficina,valet_almox:telaValetAlmox,patio_man:telaPatioMan,recolha:telaRecolha,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip};
 
 // ── INIT ───────────────────────────────────────────────────
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login').style.display!=='none')doLogin()});
