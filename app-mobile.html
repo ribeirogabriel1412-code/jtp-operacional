@@ -376,7 +376,7 @@ async function mobBuscarProgramacaoPreventivaDia(gid,data){
       res=await sb.from('programacao_preventiva').select('*').limit(1200);
       rows=(res.data||[]).filter(r=>!r.garagem_id||r.garagem_id===gid||r.garagem===gid);
     }
-    itens=mobExpandProgRows(rows).map(r=>{
+    let exp=mobExpandProgRows(rows).map(r=>{
       let iso=mobProgData(r);
       const idxLabel=mobDiaSemanaIdx(r.dia||r.label||r.dia_semana||r.weekday);
       if((!iso||iso===String(r.dia||'').slice(0,10))&&idxLabel!==null){
@@ -390,8 +390,17 @@ async function mobBuscarProgramacaoPreventivaDia(gid,data){
       iso,
       tipo:mobProgTipo(r),
       servicos:mobProgServ(r),
+      criado_em:r.criado_em||r.created_at||r.atualizado_em||r.updated_at||'',
+      semana_inicio:r.semana_inicio||r.inicio||periodo.inicio,
+      semana_fim:r.semana_fim||r.fim||periodo.fim,
       origem:'banco'
-    };}).filter(i=>i.prefixo&&i.iso===data);
+    };}).filter(i=>i.prefixo&&i.iso>=periodo.inicio&&i.iso<=periodo.fim);
+    if(exp.length){
+      const loteMaisRecente=exp.map(i=>String(i.criado_em||'')).sort().pop()||'';
+      const dataLote=loteMaisRecente?loteMaisRecente.slice(0,16):'';
+      const recentes=dataLote?exp.filter(i=>String(i.criado_em||'').slice(0,16)===dataLote):exp;
+      itens=recentes.filter(i=>i.iso===data);
+    }
   }catch(e){console.warn('[PREV DIA BANCO]',e);}
   if(!itens.length){
     const loc=mobProgramaFromSemanaLocal(data);
