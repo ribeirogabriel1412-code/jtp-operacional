@@ -1356,6 +1356,7 @@ async function renderAlmoxarifado(){
   const rowId=r=>String(r.id||'').replace(/[^a-zA-Z0-9_-]/g,'');
   const seletorSemana=renderSeletorSemanaValet(data,(datasValet||[]).map(r=>r.data),'renderAlmoxarifado()');
   const preventivasSemana=renderAlmoxPreventivasProgramadas(data,grupos);
+  const relatorioCestos=renderAlmoxRelatorioCestosDia(data);
   const acoesItem=r=>{
     const st=r.status||'';
     const isSup=S.perfil?.cargo==='lider_suprimentos'||S.perfil?.is_admin;
@@ -1429,6 +1430,7 @@ async function renderAlmoxarifado(){
       ${kpi('Pedido compra',qtdCompra,0,'',true,0)}
       ${kpi('Cestos disponíveis',qtdCestosDisp,undefined,'',false,0)}
     </div>
+    ${relatorioCestos}
     ${preventivasSemana}
     ${secTitle('🛒','Itens do Valetamento',`${cestos.length} cesto(s) · ${lista.length} item(ns) · ${qtdSep} separados · ${qtdCompra} compras · ${fmtMoney(totalValor)}`)}
     <div>${cards}</div>
@@ -5879,20 +5881,50 @@ function buscarSemanaPreventivaDoValet(dataValet){
     || semanas.find(s=>s.inicio<=exec.fim&&s.fim>=exec.inicio)
     || null;
 }
+function almoxPrefKey(p){
+  return String(p||'').replace(/\D/g,'').replace(/^0+/,'');
+}
+function almoxDiasPesadaSemana(dataValet){
+  const semana=buscarSemanaPreventivaDoValet(dataValet);
+  if(!semana) return [];
+  return (semana.dias||[]).map(d=>{
+    const itens=(semana.itens||[]).filter(i=>i.prefixo&&i.iso===d.iso&&['pesada','preventiva_pesada'].includes(i.tipo));
+    return {...d,itens};
+  }).filter(d=>d.itens.length);
+}
+function renderAlmoxRelatorioCestosDia(dataValet){
+  const dias=almoxDiasPesadaSemana(dataValet);
+  if(!dias.length){
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--amber);border-radius:10px;padding:12px 14px;margin-bottom:16px;color:var(--text3);font-size:12px">
+      📄 Relatório de cesto preventivo disponível após consolidar preventivas pesadas na semana.
+    </div>`;
+  }
+  return `<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:10px;padding:12px 14px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <div>
+      <div style="font-size:14px;font-weight:900;color:var(--text)">📄 Relatório de cesto preventivo</div>
+      <div style="font-size:12px;color:var(--text3);margin-top:3px">Exporta por dia todos os prefixos de preventiva pesada e seus itens separados/pendentes.</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="almox-rel-dia" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-family:'DM Sans',sans-serif;font-weight:800;min-width:210px">
+        ${dias.map(d=>`<option value="${d.iso}">${String(d.label||'').replace(/^\w/,c=>c.toUpperCase())} ${d.data} · ${d.itens.length} pesada(s)</option>`).join('')}
+      </select>
+      <button onclick="gerarRelatorioCestoPreventivoDia('${dataValet}',document.getElementById('almox-rel-dia')?.value)" style="padding:9px 14px;border-radius:8px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:12px;font-weight:900;cursor:pointer;font-family:'DM Sans',sans-serif">Exportar PDF</button>
+    </div>
+  </div>`;
+}
 function renderAlmoxPreventivasProgramadas(dataValet,gruposReq){
   const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const exec=semanaExecucaoValet(dataValet);
   const semana=buscarSemanaPreventivaDoValet(dataValet);
-  const prefKey=p=>String(p||'').replace(/\D/g,'').replace(/^0+/,'');
   const gruposNorm={};
   Object.entries(gruposReq||{}).forEach(([pref,itens])=>{
-    const k=prefKey(pref);
+    const k=almoxPrefKey(pref);
     if(!k) return;
     if(!gruposNorm[k]) gruposNorm[k]=[];
     gruposNorm[k].push(...(itens||[]));
   });
   const statusCesto=pref=>{
-    const itens=gruposNorm[prefKey(pref)]||[];
+    const itens=gruposNorm[almoxPrefKey(pref)]||[];
     if(!itens.length) return {txt:'SEM LISTA',c:'var(--red)',bg:'#EF444418'};
     const separados=itens.filter(i=>['separado','comprado'].includes(i.status||'')).length;
     const compras=itens.filter(i=>i.status==='pedido_compra').length;
@@ -5916,7 +5948,7 @@ function renderAlmoxPreventivasProgramadas(dataValet,gruposReq){
   const itens=(semana.itens||[]).filter(i=>i.prefixo).sort((a,b)=>String(a.iso||'').localeCompare(String(b.iso||''))||String(a.tipo||'').localeCompare(String(b.tipo||'')));
   const dias=(semana.dias||[]).filter(d=>itens.some(i=>i.iso===d.iso));
   const totalPesadas=itens.filter(i=>['pesada','preventiva_pesada'].includes(i.tipo)).length;
-  const totalComLista=itens.filter(i=>(gruposNorm[prefKey(i.prefixo)]||[]).length).length;
+  const totalComLista=itens.filter(i=>(gruposNorm[almoxPrefKey(i.prefixo)]||[]).length).length;
   return `<section style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:10px;padding:14px;margin-bottom:16px">
     <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px">
       <div>
@@ -5956,6 +5988,76 @@ function renderAlmoxPreventivasProgramadas(dataValet,gruposReq){
       }).join('')}
     </div>
   </section>`;
+}
+async function gerarRelatorioCestoPreventivoDia(dataValet,isoDia){
+  if(!dataValet||!isoDia){toast('Selecione o dia do relatório','err');return;}
+  const semana=buscarSemanaPreventivaDoValet(dataValet);
+  if(!semana){toast('Não encontrei a semana preventiva consolidada','err');return;}
+  const gid=getGid();
+  const garagem=S.garagens?.find(g=>g.id===gid);
+  const dia=(semana.dias||[]).find(d=>d.iso===isoDia)||{label:'Dia',data:isoDia};
+  const pesadas=(semana.itens||[]).filter(i=>i.prefixo&&i.iso===isoDia&&['pesada','preventiva_pesada'].includes(i.tipo));
+  if(!pesadas.length){toast('Esse dia não tem preventiva pesada programada','err');return;}
+  const{data:reqs,error}=await sb.from('requisicoes_compra')
+    .select('*')
+    .eq('garagem_id',gid)
+    .eq('data',dataValet)
+    .neq('status','cancelado')
+    .order('prefixo',{ascending:true})
+    .order('criado_em',{ascending:true});
+  if(error){toast('Erro ao buscar itens: '+error.message,'err');return;}
+  const esc=v=>String(v??'--').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const fmtR=v=>'R$ '+parseFloat(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});
+  const grupos={};
+  (reqs||[]).forEach(r=>{
+    const k=almoxPrefKey(r.prefixo);
+    if(!k) return;
+    if(!grupos[k]) grupos[k]=[];
+    grupos[k].push(r);
+  });
+  const statusTxt=st=>({solicitado_pcm:'Solicitado PCM',pendente:'Pendente',aprovado:'Aprovado',separado:'Separado',pedido_compra:'Pedido compra',comprado:'Comprado',lista_oficina:'Lista oficina'}[st]||st||'--');
+  let totalGeral=0,totalItens=0,totalSeparados=0,totalCompras=0;
+  const blocos=pesadas.map(p=>{
+    const itens=grupos[almoxPrefKey(p.prefixo)]||[];
+    const totalPrefixo=itens.reduce((s,r)=>s+(parseFloat(r.valor_estimado||0)*parseFloat(r.quantidade||1)),0);
+    totalGeral+=totalPrefixo;
+    totalItens+=itens.length;
+    totalSeparados+=itens.filter(r=>['separado','comprado'].includes(r.status||'')).length;
+    totalCompras+=itens.filter(r=>r.status==='pedido_compra').length;
+    const rows=itens.map(r=>{
+      const qtd=parseFloat(r.quantidade||1);
+      const unit=parseFloat(r.valor_estimado||0);
+      return `<tr><td>${esc(r.cod_sap||'--')}</td><td>${esc(r.peca)}</td><td class="center">${qtd}</td><td class="right">${unit?fmtR(unit):'--'}</td><td class="right">${unit?fmtR(unit*qtd):'--'}</td><td>${esc(statusTxt(r.status))}</td></tr>`;
+    }).join('');
+    return `<div class="prefixo-head"><div><b>Prefixo</b><span>${esc(p.prefixo)}</span></div><div><b>Tipo</b><span>Preventiva Pesada</span></div><div><b>Valor total</b><span>${fmtR(totalPrefixo)}</span></div></div>
+      <table class="zebra"><thead><tr><th>SAP</th><th>Item</th><th class="center">Qtd</th><th class="right">Valor item</th><th class="right">Total</th><th>Status</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="6" class="center">Sem lista de peças vinculada para este prefixo</td></tr>'}</tbody></table>
+      <div class="servicos"><b>Serviços da preventiva:</b> ${esc(p.servicos||p.planoNome||'Preventiva pesada')}</div>`;
+  }).join('');
+  const gerado=new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'});
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cesto Preventivo</title><style>
+    *{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#000;background:#fff;margin:0;padding:8px;font-size:10px}
+    .top-print{position:sticky;top:0;z-index:5;background:#f3f4f6;border:1px solid #ddd;border-radius:6px;padding:8px;margin-bottom:8px;display:flex;gap:8px;align-items:center}
+    .top-print button{border:0;border-radius:6px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer}.print{background:#111;color:#fff}.close{background:#e5e7eb;color:#111}
+    .head{text-align:center;border:3px solid #111;padding:10px 8px;margin-bottom:10px;font-weight:900;font-size:16px;letter-spacing:.2px}
+    table{width:100%;border-collapse:collapse;margin-bottom:8px}td,th{border:1px solid #222;padding:5px 8px;vertical-align:middle}th{background:#eee;text-align:left;text-transform:uppercase;font-size:10px;font-weight:900}
+    .info td{font-size:13px}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0 12px}.kpi{border:1px solid #111;border-radius:7px;text-align:center;padding:8px 5px;font-size:13px}.kpi b{display:block;font-size:17px;line-height:1.05}
+    .sec{background:#111;color:#fff;font-weight:900;font-size:15px;padding:8px 10px;margin:10px 0 6px}.zebra tr:nth-child(even){background:#f4f4f4}.right{text-align:right}.center{text-align:center}
+    .prefixo-head{display:grid;grid-template-columns:1fr 1fr 1fr;border:1px solid #111;margin-top:8px}.prefixo-head div{padding:7px 9px;border-right:1px solid #111}.prefixo-head div:last-child{border-right:0}.prefixo-head b{display:block;font-size:10px;text-transform:uppercase}.prefixo-head span{font-size:16px;font-weight:900}
+    .servicos{border:1px solid #222;border-top:0;padding:7px 9px;margin-top:-8px;margin-bottom:10px;background:#fafafa}.assin{display:grid;grid-template-columns:1fr 80px 1fr;gap:0;margin-top:70px}.linha{border-top:1px solid #111;text-align:center;padding-top:6px;font-size:12px}
+    @media print{.top-print{display:none!important}body{padding:5px}@page{size:A4 landscape;margin:7mm}}
+  </style></head><body>
+    <div class="top-print"><button class="print" onclick="window.print()">Imprimir / Salvar PDF</button><button class="close" onclick="window.close()">Fechar</button><span>Padrao operacional JTP</span></div>
+    <div class="head">GRUPO JTP | CESTO PREVENTIVO | ${esc(garagem?.nome||'Garagem')}</div>
+    <table class="info"><tr><td><b>Semana:</b> ${esc(prevSemanaLabel(semana))}</td><td><b>Dia:</b> ${esc(dia.label)} - ${esc(dia.data)}</td><td><b>Valetamento:</b> ${esc(dataValet.split('-').reverse().join('/'))}</td><td><b>Gerado:</b> ${esc(gerado)}</td></tr></table>
+    <div class="kpis"><div class="kpi">Prefixos pesada<b>${pesadas.length}</b></div><div class="kpi">Itens listados<b>${totalItens}</b></div><div class="kpi">Separados<b>${totalSeparados}</b></div><div class="kpi">Valor total<b>${fmtR(totalGeral)}</b></div></div>
+    <div class="sec">Lista de cestos preventivos do dia</div>
+    ${blocos}
+    <div class="sec">Resumo do dia</div>
+    <table><tr><td><b>Total de prefixos:</b> ${pesadas.length}</td><td><b>Total de itens:</b> ${totalItens}</td><td><b>Itens em compra:</b> ${totalCompras}</td><td><b>Valor total:</b> ${fmtR(totalGeral)}</td></tr></table>
+    <div class="assin"><div class="linha">Almoxarifado</div><div></div><div class="linha">Lider Oficina / PCM</div></div>
+  </body></html>`;
+  abrirRelatorioHTMLPCM(html,'JTP_Cesto_Preventivo_'+String(isoDia).replace(/-/g,'')+'.pdf');
 }
 async function resolverDataValetComDados(gid,dataPreferida,usuarioEscolheu=false){
   if(usuarioEscolheu) return dataPreferida||proximoSabadoISO();
