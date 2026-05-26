@@ -1355,6 +1355,7 @@ async function renderAlmoxarifado(){
   const fmtMoney=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
   const rowId=r=>String(r.id||'').replace(/[^a-zA-Z0-9_-]/g,'');
   const seletorSemana=renderSeletorSemanaValet(data,(datasValet||[]).map(r=>r.data),'renderAlmoxarifado()');
+  const preventivasSemana=renderAlmoxPreventivasProgramadas(data,grupos);
   const acoesItem=r=>{
     const st=r.status||'';
     const isSup=S.perfil?.cargo==='lider_suprimentos'||S.perfil?.is_admin;
@@ -1428,6 +1429,7 @@ async function renderAlmoxarifado(){
       ${kpi('Pedido compra',qtdCompra,0,'',true,0)}
       ${kpi('Cestos disponíveis',qtdCestosDisp,undefined,'',false,0)}
     </div>
+    ${preventivasSemana}
     ${secTitle('🛒','Itens do Valetamento',`${cestos.length} cesto(s) · ${lista.length} item(ns) · ${qtdSep} separados · ${qtdCompra} compras · ${fmtMoney(totalValor)}`)}
     <div>${cards}</div>
   `);
@@ -5868,6 +5870,84 @@ function renderSeletorSemanaValet(dataAtual,datas,onchangeFn){
     return `<option value="${d}" ${d===base?'selected':''}>${label}</option>`;
   }).join('');
   return `<select onchange="S._valetData=this.value;${onchangeFn||'renderAlmoxarifado()'}" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 10px;font-family:'DM Sans',sans-serif;font-weight:800;min-width:250px;outline:none">${opts}</select>`;
+}
+function buscarSemanaPreventivaDoValet(dataValet){
+  const exec=semanaExecucaoValet(dataValet);
+  const h=typeof prevHistoricos==='function'?prevHistoricos():{semanas:[]};
+  const semanas=h.semanas||[];
+  return semanas.find(s=>s.inicio===exec.inicio&&s.fim===exec.fim)
+    || semanas.find(s=>s.inicio<=exec.fim&&s.fim>=exec.inicio)
+    || null;
+}
+function renderAlmoxPreventivasProgramadas(dataValet,gruposReq){
+  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const exec=semanaExecucaoValet(dataValet);
+  const semana=buscarSemanaPreventivaDoValet(dataValet);
+  const statusCesto=pref=>{
+    const itens=(gruposReq||{})[pref]||[];
+    if(!itens.length) return {txt:'SEM LISTA',c:'var(--red)',bg:'#EF444418'};
+    const separados=itens.filter(i=>['separado','comprado'].includes(i.status||'')).length;
+    const compras=itens.filter(i=>i.status==='pedido_compra').length;
+    if(itens.length&&separados===itens.length) return {txt:'CESTO OK',c:'var(--green)',bg:'#00C48C18'};
+    if(compras) return {txt:`${compras} COMPRA`,c:'var(--red)',bg:'#EF444418'};
+    return {txt:`${separados}/${itens.length} SEP.`,c:'var(--amber)',bg:'#F59E0B18'};
+  };
+  const tipoCfg={garantia:{l:'Garantia',c:'var(--purple)'},pesada:{l:'Pesada',c:'var(--amber)'},leve:{l:'Leve',c:'var(--green)'},preventiva_pesada:{l:'Pesada',c:'var(--amber)'},preventiva_leve:{l:'Leve',c:'var(--green)'}};
+  if(!semana){
+    return `<section style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--amber);border-radius:10px;padding:14px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+        <div>
+          <div style="font-size:14px;font-weight:900;color:var(--text)">📆 Preventivas programadas</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:4px">Semana ${fmtDiaMes(parseISODateLocal(exec.inicio))} ~ ${fmtDiaMes(parseISODateLocal(exec.fim))}</div>
+        </div>
+        <span style="background:#F59E0B18;border:1px solid #F59E0B55;color:var(--amber);border-radius:999px;padding:5px 10px;font-size:10px;font-weight:900">SEM ESCALA CONSOLIDADA</span>
+      </div>
+      <div style="color:var(--text3);font-size:12px;margin-top:12px">Consolide a programação no módulo de Preventivas para o almoxarife enxergar todos os carros da semana.</div>
+    </section>`;
+  }
+  const itens=(semana.itens||[]).filter(i=>i.prefixo).sort((a,b)=>String(a.iso||'').localeCompare(String(b.iso||''))||String(a.tipo||'').localeCompare(String(b.tipo||'')));
+  const dias=(semana.dias||[]).filter(d=>itens.some(i=>i.iso===d.iso));
+  const totalPesadas=itens.filter(i=>['pesada','preventiva_pesada'].includes(i.tipo)).length;
+  const totalComLista=itens.filter(i=>(gruposReq||{})[i.prefixo]?.length).length;
+  return `<section style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:10px;padding:14px;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px">
+      <div>
+        <div style="font-size:14px;font-weight:900;color:var(--text)">📆 Preventivas programadas</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:4px">Semana ${esc(prevSemanaLabel(semana))} · Valet ${fmtDiaMes(parseISODateLocal(dataValet))}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-family:'DM Mono',monospace;color:var(--blue);font-size:18px;font-weight:900">${itens.length}</div>
+        <div style="font-size:10px;color:var(--text3);font-weight:900">${totalPesadas} pesadas · ${totalComLista} com lista</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px">
+      ${dias.map(d=>{
+        const doDia=itens.filter(i=>i.iso===d.iso);
+        return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:9px;overflow:hidden">
+          <div style="padding:9px 10px;background:var(--surface2);border-bottom:1px solid var(--border)">
+            <div style="font-weight:900;color:var(--text);text-transform:capitalize">${esc(d.label)}</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:2px">${esc(d.data)} · ${doDia.length} carro(s)</div>
+          </div>
+          <div style="padding:8px;display:grid;gap:7px">
+            ${doDia.map(i=>{
+              const st=statusCesto(i.prefixo);
+              const cfg=tipoCfg[i.tipo]||{l:i.tipo||'Prev.',c:'var(--text3)'};
+              return `<div style="border:1px solid var(--border2);border-left:3px solid ${cfg.c};border-radius:8px;padding:8px;background:rgba(15,23,42,.35)">
+                <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+                  <div>
+                    <div style="font-family:'DM Mono',monospace;color:var(--blue);font-size:15px;font-weight:900">${esc(i.prefixo)}</div>
+                    <div style="color:${cfg.c};font-size:10px;font-weight:900;text-transform:uppercase;margin-top:2px">${esc(cfg.l)}</div>
+                  </div>
+                  <span style="background:${st.bg};border:1px solid ${st.c}55;color:${st.c};border-radius:999px;padding:3px 7px;font-size:9px;font-weight:900;white-space:nowrap">${st.txt}</span>
+                </div>
+                <div style="color:var(--text2);font-size:11px;line-height:1.35;margin-top:7px">${esc(i.servicos||i.planoNome||'Preventiva')}</div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  </section>`;
 }
 async function resolverDataValetComDados(gid,dataPreferida,usuarioEscolheu=false){
   if(usuarioEscolheu) return dataPreferida||proximoSabadoISO();
