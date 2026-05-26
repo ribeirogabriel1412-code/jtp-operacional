@@ -370,6 +370,32 @@ async function mobBuscarProgramacaoPreventivaDia(gid,data){
   const diaIdx=mobParseISO(data).getDay();
   let itens=[];
   try{
+    const marc=await sb.from('requisicoes_compra')
+      .select('*')
+      .eq('garagem_id',gid)
+      .eq('data',data)
+      .eq('status','programado_preventiva')
+      .order('prefixo',{ascending:true});
+    const rows=marc.data||[];
+    if(rows.length){
+      const vistos=new Set();
+      itens=rows.filter(r=>{
+        const k=mobPrefKey(r.prefixo);
+        if(!k||vistos.has(k))return false;
+        vistos.add(k);
+        return true;
+      }).map(r=>({
+        raw:r,
+        prefixo:r.prefixo,
+        iso:data,
+        tipo:'pesada',
+        servicos:String(r.justificativa||'').replace(/Programação preventiva pesada\s*·?\s*/i,''),
+        origem:'marcador'
+      }));
+      return {semana:{inicio:periodo.inicio,fim:periodo.fim,inicioBR:periodo.inicioBR,fimBR:periodo.fimBR},itens};
+    }
+  }catch(e){console.warn('[PREV MARCADORES]',e);}
+  try{
     let res=await sb.from('programacao_preventiva').select('*').eq('garagem_id',gid).limit(1200);
     let rows=res.data||[];
     if(!rows.length){
@@ -419,7 +445,7 @@ async function mobBuscarReqsValetParaDia(gid,data,programados){
   const datas=[mobISO(valet),_valetMobData,await resolverDataValetMobile(gid,_valetMobData||proximoSabadoISO(),!!_valetMobData)].filter(Boolean);
   for(const dt of [...new Set(datas)]){
     try{
-      const res=await sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).eq('data',dt).neq('status','cancelado').order('prefixo',{ascending:true}).order('criado_em',{ascending:true});
+      const res=await sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).eq('data',dt).neq('status','cancelado').neq('status','programado_preventiva').order('prefixo',{ascending:true}).order('criado_em',{ascending:true});
       const rows=res.data||[];
       if(rows.length){
         const programKeys=new Set((programados||[]).map(p=>mobPrefKey(p.prefixo)));
@@ -431,7 +457,7 @@ async function mobBuscarReqsValetParaDia(gid,data,programados){
   try{
     const ini=new Date(mobParseISO(periodo.inicio));ini.setDate(ini.getDate()-21);
     const fim=new Date(mobParseISO(periodo.fim));fim.setDate(fim.getDate()+1);
-    const res=await sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).gte('data',mobISO(ini)).lte('data',mobISO(fim)).neq('status','cancelado').order('data',{ascending:false}).order('prefixo',{ascending:true});
+    const res=await sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).gte('data',mobISO(ini)).lte('data',mobISO(fim)).neq('status','cancelado').neq('status','programado_preventiva').order('data',{ascending:false}).order('prefixo',{ascending:true});
     const rows=res.data||[];
     const programKeys=new Set((programados||[]).map(p=>mobPrefKey(p.prefixo)));
     const candidatos=rows.filter(r=>programKeys.has(mobPrefKey(r.prefixo)));
@@ -2149,15 +2175,7 @@ async function telaPrevOficina(){
     const serv=String(i.servicos||i.planoNome||'').toLowerCase();
     return ['pesada','preventiva_pesada','oleo'].includes(i.tipo)||/pesada|óleo|oleo|\b002\b/.test(serv);
   });
-  if(!itens.length&&reqs.length){
-    const vistos=new Set();
-    itens=reqs.filter(r=>{
-      const k=mobPrefKey(r.prefixo);
-      if(!k||vistos.has(k))return false;
-      vistos.add(k);
-      return true;
-    }).map(r=>({prefixo:r.prefixo,iso:data,tipo:'preventiva_pesada',servicos:'Lista de cesto preventivo',origem:'cesto'}));
-  }
+  // Sem programação do dia, não mistura cestos de outros dias. Isso evita descasar a escala.
   const statusKit=p=>{
     const lista=grupos[mobPrefKey(p.prefixo)]||[];
     if(!lista.length)return {txt:['pesada','preventiva_pesada'].includes(p.tipo)?'SEM LISTA':'TROCA ÓLEO',cor:['pesada','preventiva_pesada'].includes(p.tipo)?'var(--red)':'var(--amber)'};
