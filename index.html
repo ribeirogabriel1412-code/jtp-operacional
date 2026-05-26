@@ -5883,8 +5883,16 @@ function renderAlmoxPreventivasProgramadas(dataValet,gruposReq){
   const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const exec=semanaExecucaoValet(dataValet);
   const semana=buscarSemanaPreventivaDoValet(dataValet);
+  const prefKey=p=>String(p||'').replace(/\D/g,'').replace(/^0+/,'');
+  const gruposNorm={};
+  Object.entries(gruposReq||{}).forEach(([pref,itens])=>{
+    const k=prefKey(pref);
+    if(!k) return;
+    if(!gruposNorm[k]) gruposNorm[k]=[];
+    gruposNorm[k].push(...(itens||[]));
+  });
   const statusCesto=pref=>{
-    const itens=(gruposReq||{})[pref]||[];
+    const itens=gruposNorm[prefKey(pref)]||[];
     if(!itens.length) return {txt:'SEM LISTA',c:'var(--red)',bg:'#EF444418'};
     const separados=itens.filter(i=>['separado','comprado'].includes(i.status||'')).length;
     const compras=itens.filter(i=>i.status==='pedido_compra').length;
@@ -5908,7 +5916,7 @@ function renderAlmoxPreventivasProgramadas(dataValet,gruposReq){
   const itens=(semana.itens||[]).filter(i=>i.prefixo).sort((a,b)=>String(a.iso||'').localeCompare(String(b.iso||''))||String(a.tipo||'').localeCompare(String(b.tipo||'')));
   const dias=(semana.dias||[]).filter(d=>itens.some(i=>i.iso===d.iso));
   const totalPesadas=itens.filter(i=>['pesada','preventiva_pesada'].includes(i.tipo)).length;
-  const totalComLista=itens.filter(i=>(gruposReq||{})[i.prefixo]?.length).length;
+  const totalComLista=itens.filter(i=>(gruposNorm[prefKey(i.prefixo)]||[]).length).length;
   return `<section style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:10px;padding:14px;margin-bottom:16px">
     <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px">
       <div>
