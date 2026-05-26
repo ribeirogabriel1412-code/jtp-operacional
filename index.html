@@ -8926,6 +8926,34 @@ function prevSalvarSemanaHistorico(escala,linhas){
   prevSalvarHistoricos(h);
   return rec;
 }
+async function prevSalvarProgramacaoPreventivaBanco(semana){
+  try{
+    if(!semana?.itens?.length)return;
+    const gid=getGid();
+    const rows=(semana.itens||[]).filter(i=>i.prefixo).map(i=>({
+      garagem_id:gid,
+      data:i.iso,
+      prefixo:i.prefixo,
+      tipo:i.tipo,
+      servicos:i.servicos||i.planoNome||'',
+      plano:i.plano||'',
+      plano_nome:i.planoNome||'',
+      status:i.status||'sugerido',
+      semana_inicio:semana.inicio||null,
+      semana_fim:semana.fim||null,
+      criado_por:S.perfil?.nome||null,
+      criado_em:new Date().toISOString()
+    }));
+    await sb.from('programacao_preventiva').delete().eq('garagem_id',gid).gte('data',semana.inicio).lte('data',semana.fim);
+    if(!rows.length)return;
+    let res=await sb.from('programacao_preventiva').insert(rows);
+    if(res.error&&String(res.error.message||'').includes('column')){
+      const min=rows.map(r=>({garagem_id:r.garagem_id,data:r.data,prefixo:r.prefixo,tipo:r.tipo,servicos:r.servicos}));
+      res=await sb.from('programacao_preventiva').insert(min);
+    }
+    if(res.error)console.warn('[PREV BANCO]',res.error);
+  }catch(e){console.warn('[PREV BANCO]',e);}
+}
 
 function prevUltimasProgramacoes(){
   const h=prevHistoricos();
@@ -9309,6 +9337,7 @@ function prevConsolidarEscala(){
   const validados=linhas.filter(l=>l.validado).length;
   const semanaSalva=prevSalvarSemanaHistorico(escala,linhas);
   const valetSalvo=prevSalvarValetamentoDaEscala(p);
+  prevSalvarProgramacaoPreventivaBanco(semanaSalva);
   let modal=document.getElementById('modal-prev-consolidado');
   if(!modal){
     modal=document.createElement('div');
