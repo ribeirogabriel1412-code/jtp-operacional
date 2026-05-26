@@ -9572,10 +9572,10 @@ function prevHtmlHistoricos(){
       <section style="background:var(--surface);border:1px solid var(--border);border-radius:11px;overflow:hidden">
         <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:8px"><b style="color:var(--text)">📆 Semanas consolidadas</b><span style="color:var(--text3);font-size:12px">${semanas.length}</span></div>
         <div style="display:grid;gap:8px;padding:10px;max-height:520px;overflow:auto">
-          ${semanas.map(s=>`<button onclick="prevAbrirHistoricoSemana('${s.id}')" style="text-align:left;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:11px;color:var(--text);cursor:pointer">
-            <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><b style="font-size:15px;color:var(--blue)">Semana ${prevEsc(prevSemanaLabel(s))}</b><div style="font-size:11px;color:var(--text3);margin-top:3px">Atualizado em ${new Date(s.atualizadoEm||s.criadoEm).toLocaleString('pt-BR')}</div></div><span class="btn" style="font-size:10px;padding:5px 8px">Abrir</span></div>
+          ${semanas.map(s=>`<div style="text-align:left;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:11px;color:var(--text)">
+            <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><button onclick="prevAbrirHistoricoSemana('${s.id}')" style="background:transparent;border:0;padding:0;text-align:left;color:inherit;cursor:pointer;flex:1;font-family:inherit"><b style="font-size:15px;color:var(--blue)">Semana ${prevEsc(prevSemanaLabel(s))}</b><div style="font-size:11px;color:var(--text3);margin-top:3px">Atualizado em ${new Date(s.atualizadoEm||s.criadoEm).toLocaleString('pt-BR')}</div></button><div style="display:flex;gap:6px;align-items:center"><button onclick="prevDiagnosticarSyncApp('${s.id}')" style="font-size:10px;padding:5px 8px;border-radius:7px;border:1px solid var(--amber);background:#F59E0B18;color:var(--amber);font-weight:900;cursor:pointer;font-family:inherit">Diagnóstico</button><button onclick="prevSincronizarSemanaApp('${s.id}')" style="font-size:10px;padding:5px 8px;border-radius:7px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-weight:900;cursor:pointer;font-family:inherit">Sincronizar app</button><button onclick="prevAbrirHistoricoSemana('${s.id}')" class="btn" style="font-size:10px;padding:5px 8px">Abrir</button></div></div>
             <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:9px;font-size:12px"><span style="color:var(--green)">${s.totais?.programadas||0} programadas</span><span style="color:var(--amber)">${s.totais?.slotsAbertos||0} vagas abertas</span><span style="color:var(--blue)">${s.totais?.validadas||0} validadas</span><span style="color:var(--purple)">${s.totais?.alteradas||0} alteradas</span></div>
-          </button>`).join('') || `<div style="padding:22px;text-align:center;color:var(--text3)">Nenhuma semana consolidada ainda.</div>`}
+          </div>`).join('') || `<div style="padding:22px;text-align:center;color:var(--text3)">Nenhuma semana consolidada ainda.</div>`}
         </div>
       </section>
     </div>
@@ -9594,6 +9594,147 @@ function prevAbrirHistoricoImportacao(id){
     <div style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:650px"><thead><tr style="background:rgba(2,6,23,.65);color:var(--text3);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;text-align:left"><th style="padding:9px">Plano</th><th style="padding:9px">Descrição</th><th style="padding:9px;text-align:right">Itens</th><th style="padding:9px;text-align:right">Maior vencimento</th></tr></thead><tbody>${(imp.planos||[]).map(p=>`<tr style="border-top:1px solid var(--border)"><td style="padding:9px;color:var(--blue);font-weight:900">${prevEsc(p.planoNum)}</td><td style="padding:9px;color:var(--text2)">${prevEsc(p.planoNome)}</td><td style="padding:9px;text-align:right;color:var(--text2)">${p.qtd}</td><td style="padding:9px;text-align:right;color:${(p.maior||0)>0?'var(--red)':'var(--green)'};font-weight:900">${prevFmtKm(p.maior)}</td></tr>`).join('')}</tbody></table></div>
   </div>`;
   modal.style.display='flex';
+}
+async function prevSincronizarSemanaApp(id){
+  const semana=prevHistoricos().semanas.find(s=>s.id===id);
+  if(!semana){toast('Semana não encontrada','err');return;}
+  toast('Sincronizando semana com o app...');
+  await prevSalvarProgramacaoPreventivaBanco(semana);
+  toast('✅ Semana sincronizada com o app. Atualize a aba Prev. no celular.');
+}
+
+function prevDataValetDaSemana(semana){
+  const d=parseISODateLocal(semana?.inicio);
+  d.setDate(d.getDate()-9);
+  return isoDateLocal(d);
+}
+
+function prevDiagGrupoPrefixos(rows){
+  const mapa={};
+  (rows||[]).forEach(r=>{
+    const k=almoxPrefKey(r.prefixo);
+    if(!k)return;
+    if(!mapa[k])mapa[k]={prefixo:r.prefixo,qtd:0,statuses:{},datas:{}};
+    mapa[k].qtd++;
+    mapa[k].statuses[r.status||'--']=(mapa[k].statuses[r.status||'--']||0)+1;
+    mapa[k].datas[r.data||'--']=(mapa[k].datas[r.data||'--']||0)+1;
+  });
+  return Object.values(mapa).sort((a,b)=>String(a.prefixo).localeCompare(String(b.prefixo)));
+}
+
+async function prevDiagQuery(nome,promise,mapper){
+  try{
+    const res=await promise;
+    const data=res.data||[];
+    return {
+      nome,
+      ok:!res.error,
+      erro:res.error?.message||'',
+      total:data.length,
+      amostra:(mapper?data.map(mapper):data).slice(0,25)
+    };
+  }catch(e){
+    return {nome,ok:false,erro:String(e?.message||e),total:0,amostra:[]};
+  }
+}
+
+async function prevDiagnosticarSyncApp(id){
+  const semana=prevHistoricos().semanas.find(s=>s.id===id);
+  if(!semana){toast('Semana não encontrada','err');return;}
+  let modal=document.getElementById('modal-prev-diag');
+  if(!modal){
+    modal=document.createElement('div');
+    modal.id='modal-prev-diag';
+    modal.className='modal-ov';
+    modal.onclick=e=>{if(e.target===modal)modal.style.display='none'};
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML=`<div class="modal" style="max-width:980px;max-height:88vh;overflow:auto">
+    <div class="modal-title"><span>Diagnóstico preventivas no app</span><button class="btn-x" onclick="document.getElementById('modal-prev-diag').style.display='none'">✕</button></div>
+    <div class="loading"><div class="spinner"></div> Conferindo banco, marcadores e cestos...</div>
+  </div>`;
+  modal.style.display='flex';
+  const gid=getGid();
+  const valetDate=prevDataValetDaSemana(semana);
+  const pesadas=(semana.itens||[]).filter(i=>i.prefixo&&['pesada','preventiva_pesada'].includes(i.tipo));
+  const porDia={};
+  pesadas.forEach(i=>{
+    const d=i.iso||'sem data';
+    if(!porDia[d])porDia[d]=[];
+    porDia[d].push({prefixo:i.prefixo,tipo:i.tipo,servicos:i.servicos||''});
+  });
+  const prog=await prevDiagQuery('programacao_preventiva',
+    sb.from('programacao_preventiva')
+      .select('*')
+      .eq('garagem_id',gid)
+      .gte('data',semana.inicio)
+      .lte('data',semana.fim)
+      .limit(200),
+    r=>({data:r.data,prefixo:r.prefixo,tipo:r.tipo,status:r.status,servicos:r.servicos||r.plano_nome||''})
+  );
+  const marc=await prevDiagQuery('marcadores_requisicoes',
+    sb.from('requisicoes_compra')
+      .select('id,data,prefixo,cod_sap,peca,status,justificativa,criado_em')
+      .eq('garagem_id',gid)
+      .gte('data',semana.inicio)
+      .lte('data',semana.fim)
+      .neq('status','cancelado')
+      .limit(300),
+    r=>({data:r.data,prefixo:r.prefixo,cod_sap:r.cod_sap,status:r.status,peca:r.peca,justificativa:r.justificativa})
+  );
+  const cestos=await prevDiagQuery('cestos_valetamento',
+    sb.from('requisicoes_compra')
+      .select('id,data,prefixo,cod_sap,peca,status,quantidade,valor_unitario,justificativa')
+      .eq('garagem_id',gid)
+      .eq('data',valetDate)
+      .neq('status','cancelado')
+      .limit(300),
+    r=>({data:r.data,prefixo:r.prefixo,cod_sap:r.cod_sap,status:r.status,qtd:r.quantidade,peca:r.peca,valor:r.valor_unitario,justificativa:r.justificativa})
+  );
+  const marcadores=(marc.amostra||[]).filter(r=>r.cod_sap==='__PROG_PREV__'||String(r.peca||'').includes('Programação preventiva'));
+  const cestosReais=(cestos.amostra||[]).filter(r=>r.cod_sap!=='__PROG_PREV__');
+  const faltandoMarcador=pesadas.filter(p=>!marcadores.some(m=>almoxPrefKey(m.prefixo)===almoxPrefKey(p.prefixo)&&m.data===p.iso));
+  const faltandoCesto=pesadas.filter(p=>!cestosReais.some(c=>almoxPrefKey(c.prefixo)===almoxPrefKey(p.prefixo)));
+  const erroHtml=[prog,marc,cestos].filter(x=>!x.ok).map(x=>`<div style="padding:10px;border:1px solid var(--red);background:#EF444418;border-radius:8px;color:var(--red);font-size:12px"><b>${prevEsc(x.nome)}</b>: ${prevEsc(x.erro)}</div>`).join('');
+  modal.innerHTML=`<div class="modal" style="max-width:1040px;max-height:88vh;overflow:auto">
+    <div class="modal-title"><span>Diagnóstico preventivas no app</span><button class="btn-x" onclick="document.getElementById('modal-prev-diag').style.display='none'">✕</button></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
+      <div class="card"><div class="label">Semana local</div><div class="big blue">${pesadas.length}</div><div style="font-size:11px;color:var(--text3)">pesadas esperadas</div></div>
+      <div class="card"><div class="label">Tabela programação</div><div class="big ${prog.ok?'green':'red'}">${prog.total}</div><div style="font-size:11px;color:var(--text3)">${prog.ok?'consulta ok':'erro'}</div></div>
+      <div class="card"><div class="label">Marcadores app</div><div class="big ${marcadores.length?'green':'red'}">${marcadores.length}</div><div style="font-size:11px;color:var(--text3)">linhas __PROG_PREV__</div></div>
+      <div class="card"><div class="label">Cestos valet</div><div class="big ${cestosReais.length?'green':'amber'}">${cestosReais.length}</div><div style="font-size:11px;color:var(--text3)">data ${prevEsc(valetDate)}</div></div>
+    </div>
+    ${erroHtml||''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0">
+      <button class="btn primary" onclick="prevSincronizarSemanaApp('${id}')">Sincronizar novamente</button>
+      <button class="btn" onclick="navigator.clipboard?.writeText(document.getElementById('prev-diag-json').textContent);toast('Diagnóstico copiado')">Copiar diagnóstico</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <section style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px">
+        <b style="color:var(--text)">O que o app deveria mostrar</b>
+        <div style="font-size:12px;color:var(--text3);margin:5px 0 10px">Garagem ${prevEsc(gid)} · Semana ${prevEsc(prevSemanaLabel(semana))} · Valet ${prevEsc(valetDate)}</div>
+        ${Object.entries(porDia).map(([dia,itens])=>`<div style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px"><b style="color:var(--amber)">${prevEsc(dia)}</b>${itens.map(i=>`<div style="font-size:12px;color:var(--text2);margin-top:4px"><b style="color:var(--blue)">${prevEsc(i.prefixo)}</b> ${prevEsc(i.servicos)}</div>`).join('')}</div>`).join('')||'<div style="color:var(--text3)">Nenhuma pesada na semana local.</div>'}
+      </section>
+      <section style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px">
+        <b style="color:var(--text)">Possíveis falhas</b>
+        <div style="display:grid;gap:8px;margin-top:10px">
+          <div style="font-size:12px;color:${faltandoMarcador.length?'var(--red)':'var(--green)'}"><b>${faltandoMarcador.length}</b> pesada(s) sem marcador para o app ler</div>
+          <div style="font-size:12px;color:${faltandoCesto.length?'var(--amber)':'var(--green)'}"><b>${faltandoCesto.length}</b> pesada(s) sem lista de cesto no valet ${prevEsc(valetDate)}</div>
+          <div style="font-size:12px;color:var(--text3)">Se marcador estiver 0, o problema está na gravação/permissão. Se marcador existir mas app não mostra, o problema está na leitura do app. Se cesto estiver 0, a lista foi feita em outra data ou outro prefixo.</div>
+        </div>
+      </section>
+    </div>
+    <pre id="prev-diag-json" style="white-space:pre-wrap;background:#020617;border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:12px;color:var(--text2);font-size:11px;max-height:300px;overflow:auto">${prevEsc(JSON.stringify({
+      garagem_id:gid,
+      semana:{inicio:semana.inicio,fim:semana.fim,label:prevSemanaLabel(semana),valetDate},
+      pesadasLocal:porDia,
+      programacaoBanco:prog,
+      marcadoresBanco:{total:marcadores.length,porPrefixo:prevDiagGrupoPrefixos(marcadores),amostra:marcadores},
+      cestosBanco:{total:cestosReais.length,porPrefixo:prevDiagGrupoPrefixos(cestosReais),amostra:cestosReais},
+      faltandoMarcador,
+      faltandoCesto
+    },null,2))}</pre>
+  </div>`;
 }
 
 async function prevBuscarOsSemana(semana){
