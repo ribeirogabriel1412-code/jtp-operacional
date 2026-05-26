@@ -341,6 +341,9 @@ function mobProgTipo(row){
 function mobProgServ(row){
   return String(row?.servicos||row?.servico||row?.descricao||row?.plano_nome||row?.planoNome||row?.plano||row?.observacao||row?.obs||row?.itens_servico||'');
 }
+function mobDiaProgramadoReq(r){
+  return (String(r?.justificativa||'').match(/Programado preventiva:\s*(\d{4}-\d{2}-\d{2})/i)||[])[1]||'';
+}
 function mobExpandProgRows(rows){
   const out=[];
   const push=(r,base={})=>{
@@ -374,9 +377,9 @@ async function mobBuscarProgramacaoPreventivaDia(gid,data){
       .select('*')
       .eq('garagem_id',gid)
       .eq('data',data)
-      .eq('status','programado_preventiva')
+      .neq('status','cancelado')
       .order('prefixo',{ascending:true});
-    const rows=marc.data||[];
+    const rows=(marc.data||[]).filter(r=>r.status==='programado_preventiva'||r.cod_sap==='__PROG_PREV__');
     if(rows.length){
       const vistos=new Set();
       itens=rows.filter(r=>{
@@ -446,7 +449,7 @@ async function mobBuscarReqsValetParaDia(gid,data,programados){
   for(const dt of [...new Set(datas)]){
     try{
       const res=await sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).eq('data',dt).neq('status','cancelado').neq('status','programado_preventiva').order('prefixo',{ascending:true}).order('criado_em',{ascending:true});
-      const rows=res.data||[];
+      const rows=(res.data||[]).filter(r=>r.cod_sap!=='__PROG_PREV__');
       if(rows.length){
         const programKeys=new Set((programados||[]).map(p=>mobPrefKey(p.prefixo)));
         const bate=rows.some(r=>programKeys.has(mobPrefKey(r.prefixo)));
@@ -458,7 +461,7 @@ async function mobBuscarReqsValetParaDia(gid,data,programados){
     const ini=new Date(mobParseISO(periodo.inicio));ini.setDate(ini.getDate()-21);
     const fim=new Date(mobParseISO(periodo.fim));fim.setDate(fim.getDate()+1);
     const res=await sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).gte('data',mobISO(ini)).lte('data',mobISO(fim)).neq('status','cancelado').neq('status','programado_preventiva').order('data',{ascending:false}).order('prefixo',{ascending:true});
-    const rows=res.data||[];
+    const rows=(res.data||[]).filter(r=>r.cod_sap!=='__PROG_PREV__');
     const programKeys=new Set((programados||[]).map(p=>mobPrefKey(p.prefixo)));
     const candidatos=rows.filter(r=>programKeys.has(mobPrefKey(r.prefixo)));
     if(candidatos.length){
@@ -466,6 +469,11 @@ async function mobBuscarReqsValetParaDia(gid,data,programados){
       candidatos.forEach(r=>{if(!porData[r.data])porData[r.data]=[];porData[r.data].push(r);});
       const best=Object.entries(porData).sort((a,b)=>b[1].length-a[1].length||String(b[0]).localeCompare(String(a[0])))[0];
       if(best)return {dataValet:best[0],rows:best[1]};
+    }
+    const tagueados=rows.filter(r=>mobDiaProgramadoReq(r)===data);
+    if(tagueados.length){
+      const dataVal=tagueados[0].data||datas[0]||proximoSabadoISO();
+      return {dataValet:dataVal,rows:tagueados};
     }
   }catch(e){console.warn('[REQ VALET RANGE]',e);}
   return {dataValet:datas[0]||proximoSabadoISO(),rows:[]};
@@ -2074,7 +2082,7 @@ function parseItensValetTexto(txt){
 async function telaValetOficina(){
   const gid=getGid(),data=await resolverDataValetMobile(getGid(),_valetMobData||proximoSabadoISO(),!!_valetMobData);
   const{data:reqs}=await sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).eq('data',data).order('prefixo',{ascending:true}).order('criado_em',{ascending:true});
-  const lista=(reqs||[]).filter(r=>['lista_oficina','solicitado_pcm','aprovado','separado','pedido_compra','comprado'].includes(r.status||''));
+  const lista=(reqs||[]).filter(r=>r.cod_sap!=='__PROG_PREV__'&&['lista_oficina','solicitado_pcm','aprovado','separado','pedido_compra','comprado'].includes(r.status||''));
   const grupos={};
   const jsArg=v=>String(v??'').replace(/\\/g,'\\\\').replace(/'/g,'\\u0027').replace(/"/g,'&quot;').replace(/\r?\n/g,'\\n');
   lista.forEach(r=>{const k=r.prefixo||'Sem prefixo';if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
@@ -2175,7 +2183,16 @@ async function telaPrevOficina(){
     const serv=String(i.servicos||i.planoNome||'').toLowerCase();
     return ['pesada','preventiva_pesada','oleo'].includes(i.tipo)||/pesada|óleo|oleo|\b002\b/.test(serv);
   });
-  // Sem programação do dia, não mistura cestos de outros dias. Isso evita descasar a escala.
+  if(!itens.length&&reqs.some(r=>mobDiaProgramadoReq(r)===data)){
+    const vistos=new Set();
+    itens=reqs.filter(r=>mobDiaProgramadoReq(r)===data).filter(r=>{
+      const k=mobPrefKey(r.prefixo);
+      if(!k||vistos.has(k))return false;
+      vistos.add(k);
+      return true;
+    }).map(r=>({prefixo:r.prefixo,iso:data,tipo:'pesada',servicos:'Programado preventiva pesada',origem:'tag-cesto'}));
+  }
+  // Sem programação marcada, não mistura cestos de outros dias. Isso evita descasar a escala.
   const statusKit=p=>{
     const lista=grupos[mobPrefKey(p.prefixo)]||[];
     if(!lista.length)return {txt:['pesada','preventiva_pesada'].includes(p.tipo)?'SEM LISTA':'TROCA ÓLEO',cor:['pesada','preventiva_pesada'].includes(p.tipo)?'var(--red)':'var(--amber)'};
@@ -2233,7 +2250,7 @@ async function telaPrevOficina(){
 async function telaValetAlmox(){
   const gid=getGid(),data=await resolverDataValetMobile(getGid(),_valetMobData||proximoSabadoISO(),!!_valetMobData);
   const{data:reqs}=await sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).eq('data',data).order('prefixo',{ascending:true}).order('criado_em',{ascending:true});
-  const lista=(reqs||[]).filter(r=>['solicitado_pcm','aprovado','separado','pedido_compra','comprado','pendente'].includes(r.status||''));
+  const lista=(reqs||[]).filter(r=>r.cod_sap!=='__PROG_PREV__'&&['solicitado_pcm','aprovado','separado','pedido_compra','comprado','pendente'].includes(r.status||''));
   const grupos={};
   lista.forEach(r=>{const k=r.prefixo||'Sem prefixo';if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
   const cards=Object.entries(grupos).map(([pref,itens])=>{
