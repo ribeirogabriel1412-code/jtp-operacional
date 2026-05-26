@@ -9323,7 +9323,7 @@ function prevHtmlEscalaSemanal(escala,ultimas){
   </section>`;
 }
 
-function prevConsolidarEscala(){
+async function prevConsolidarEscala(){
   const p=prevGerarPropostas();
   const escala=prevMontarEscala(p);
   const linhas=[];
@@ -9337,7 +9337,7 @@ function prevConsolidarEscala(){
   const validados=linhas.filter(l=>l.validado).length;
   const semanaSalva=prevSalvarSemanaHistorico(escala,linhas);
   const valetSalvo=prevSalvarValetamentoDaEscala(p);
-  prevSalvarProgramacaoPreventivaBanco(semanaSalva);
+  await prevSalvarProgramacaoPreventivaBanco(semanaSalva);
   let modal=document.getElementById('modal-prev-consolidado');
   if(!modal){
     modal=document.createElement('div');
