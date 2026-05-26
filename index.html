@@ -5945,19 +5945,19 @@ function renderAlmoxPreventivasProgramadas(dataValet,gruposReq){
       <div style="color:var(--text3);font-size:12px;margin-top:12px">Consolide a programação no módulo de Preventivas para o almoxarife enxergar todos os carros da semana.</div>
     </section>`;
   }
-  const itens=(semana.itens||[]).filter(i=>i.prefixo).sort((a,b)=>String(a.iso||'').localeCompare(String(b.iso||''))||String(a.tipo||'').localeCompare(String(b.tipo||'')));
+  const itens=(semana.itens||[]).filter(i=>i.prefixo&&['pesada','preventiva_pesada'].includes(i.tipo)).sort((a,b)=>String(a.iso||'').localeCompare(String(b.iso||'')));
   const dias=(semana.dias||[]).filter(d=>itens.some(i=>i.iso===d.iso));
-  const totalPesadas=itens.filter(i=>['pesada','preventiva_pesada'].includes(i.tipo)).length;
+  const totalPesadas=itens.length;
   const totalComLista=itens.filter(i=>(gruposNorm[almoxPrefKey(i.prefixo)]||[]).length).length;
   return `<section style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:10px;padding:14px;margin-bottom:16px">
     <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px">
       <div>
         <div style="font-size:14px;font-weight:900;color:var(--text)">📆 Preventivas programadas</div>
-        <div style="font-size:12px;color:var(--text3);margin-top:4px">Semana ${esc(prevSemanaLabel(semana))} · Valet ${fmtDiaMes(parseISODateLocal(dataValet))}</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:4px">Semana ${esc(prevSemanaLabel(semana))} · somente preventivas pesadas · Valet ${fmtDiaMes(parseISODateLocal(dataValet))}</div>
       </div>
       <div style="text-align:right">
-        <div style="font-family:'DM Mono',monospace;color:var(--blue);font-size:18px;font-weight:900">${itens.length}</div>
-        <div style="font-size:10px;color:var(--text3);font-weight:900">${totalPesadas} pesadas · ${totalComLista} com lista</div>
+        <div style="font-family:'DM Mono',monospace;color:var(--blue);font-size:18px;font-weight:900">${totalPesadas}</div>
+        <div style="font-size:10px;color:var(--text3);font-weight:900">pesadas · ${totalComLista} com lista</div>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px">
@@ -5980,7 +5980,7 @@ function renderAlmoxPreventivasProgramadas(dataValet,gruposReq){
                   </div>
                   <span style="background:${st.bg};border:1px solid ${st.c}55;color:${st.c};border-radius:999px;padding:3px 7px;font-size:9px;font-weight:900;white-space:nowrap">${st.txt}</span>
                 </div>
-                <div style="color:var(--text2);font-size:11px;line-height:1.35;margin-top:7px">${esc(i.servicos||i.planoNome||'Preventiva')}</div>
+                <div style="color:var(--text3);font-size:11px;line-height:1.35;margin-top:7px">${st.txt==='SEM LISTA'?'Não tem lista feita pelo líder de oficina':'Lista de peças vinculada ao cesto'}</div>
               </div>`;
             }).join('')}
           </div>
@@ -6027,12 +6027,16 @@ async function gerarRelatorioCestoPreventivoDia(dataValet,isoDia){
     const rows=itens.map(r=>{
       const qtd=parseFloat(r.quantidade||1);
       const unit=parseFloat(r.valor_estimado||0);
-      return `<tr><td>${esc(r.cod_sap||'--')}</td><td>${esc(r.peca)}</td><td class="center">${qtd}</td><td class="right">${unit?fmtR(unit):'--'}</td><td class="right">${unit?fmtR(unit*qtd):'--'}</td><td>${esc(statusTxt(r.status))}</td></tr>`;
+      const compra=extrairCompraValet(r.justificativa);
+      const separadoPor=extrairSeparacaoValet(r.justificativa);
+      const compraInfo=(r.status==='pedido_compra'||compra.numero||compra.prazo)
+        ?`<div class="compra-info">Compra${compra.numero?` nº ${esc(compra.numero)}`:''}${compra.prazo?` · Prazo ${esc(compra.prazo.split('-').reverse().join('/'))}`:' · prazo não informado'}</div>`:'';
+      const responsavel=separadoPor||((r.status==='separado'||r.status==='comprado')?'Almoxarifado':'--');
+      return `<tr class="${r.status==='pedido_compra'?'compra-row':''}"><td>${esc(r.cod_sap||'--')}</td><td>${esc(r.peca)}${compraInfo}</td><td class="center">${qtd}</td><td class="right">${unit?fmtR(unit):'--'}</td><td class="right">${unit?fmtR(unit*qtd):'--'}</td><td>${esc(statusTxt(r.status))}</td><td>${esc(responsavel)}</td></tr>`;
     }).join('');
     return `<div class="prefixo-head"><div><b>Prefixo</b><span>${esc(p.prefixo)}</span></div><div><b>Tipo</b><span>Preventiva Pesada</span></div><div><b>Valor total</b><span>${fmtR(totalPrefixo)}</span></div></div>
-      <table class="zebra"><thead><tr><th>SAP</th><th>Item</th><th class="center">Qtd</th><th class="right">Valor item</th><th class="right">Total</th><th>Status</th></tr></thead>
-      <tbody>${rows||'<tr><td colspan="6" class="center">Sem lista de peças vinculada para este prefixo</td></tr>'}</tbody></table>
-      <div class="servicos"><b>Serviços da preventiva:</b> ${esc(p.servicos||p.planoNome||'Preventiva pesada')}</div>`;
+      <table class="zebra"><thead><tr><th>SAP</th><th>Item</th><th class="center">Qtd</th><th class="right">Valor item</th><th class="right">Total</th><th>Status</th><th>Separado por</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="7" class="center sem-lista">Não tem lista feita pelo líder de oficina</td></tr>'}</tbody></table>`;
   }).join('');
   const gerado=new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'});
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cesto Preventivo</title><style>
@@ -6044,7 +6048,7 @@ async function gerarRelatorioCestoPreventivoDia(dataValet,isoDia){
     .info td{font-size:13px}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0 12px}.kpi{border:1px solid #111;border-radius:7px;text-align:center;padding:8px 5px;font-size:13px}.kpi b{display:block;font-size:17px;line-height:1.05}
     .sec{background:#111;color:#fff;font-weight:900;font-size:15px;padding:8px 10px;margin:10px 0 6px}.zebra tr:nth-child(even){background:#f4f4f4}.right{text-align:right}.center{text-align:center}
     .prefixo-head{display:grid;grid-template-columns:1fr 1fr 1fr;border:1px solid #111;margin-top:8px}.prefixo-head div{padding:7px 9px;border-right:1px solid #111}.prefixo-head div:last-child{border-right:0}.prefixo-head b{display:block;font-size:10px;text-transform:uppercase}.prefixo-head span{font-size:16px;font-weight:900}
-    .servicos{border:1px solid #222;border-top:0;padding:7px 9px;margin-top:-8px;margin-bottom:10px;background:#fafafa}.assin{display:grid;grid-template-columns:1fr 80px 1fr;gap:0;margin-top:70px}.linha{border-top:1px solid #111;text-align:center;padding-top:6px;font-size:12px}
+    .compra-row td{background:#fee2e2!important;color:#7f1d1d;font-weight:700}.compra-info{margin-top:3px;font-size:9px;font-weight:900;color:#991b1b}.sem-lista{font-weight:900;color:#991b1b;background:#fee2e2!important}.assin{display:grid;grid-template-columns:1fr 80px 1fr;gap:0;margin-top:70px}.linha{border-top:1px solid #111;text-align:center;padding-top:6px;font-size:12px}
     @media print{.top-print{display:none!important}body{padding:5px}@page{size:A4 landscape;margin:7mm}}
   </style></head><body>
     <div class="top-print"><button class="print" onclick="window.print()">Imprimir / Salvar PDF</button><button class="close" onclick="window.close()">Fechar</button><span>Padrao operacional JTP</span></div>
@@ -6281,6 +6285,10 @@ function extrairCompraValet(justificativa){
   const aberta=(txt.match(/Compra aberta:\s*([^|·\n]+)/i)||[])[1]?.trim()||'';
   return{numero,prazo,aberta};
 }
+function extrairSeparacaoValet(justificativa){
+  const txt=String(justificativa||'');
+  return (txt.match(/Separado por:\s*([^|·\n]+)/i)||[])[1]?.trim()||'';
+}
 function montarJustValetComOriginal(base,original,extra=''){
   const partes=[];
   const limpo=limparCompraValet(limparPedidoOficinaValet(base));
@@ -6352,7 +6360,8 @@ async function salvarValetAlmoxInline(rowId,id){
   const valor=parseFloat(document.getElementById('almox-valor-'+rowId)?.value||0)||0;
   if(!peca){toast('Informe ou selecione a peça antes de separar.','err');return;}
   const atual=await sb.from('requisicoes_compra').select('justificativa').eq('id',id).single();
-  const payload={cod_sap:cod,peca,quantidade,valor_estimado:valor,status:'separado',justificativa:montarJustValetComOriginal(atual.data?.justificativa,original)};
+  const sep=`Separado por: ${S.perfil?.nome||'Almoxarifado'}`;
+  const payload={cod_sap:cod,peca,quantidade,valor_estimado:valor,status:'separado',justificativa:montarJustValetComOriginal(atual.data?.justificativa,original,sep)};
   const{error}=await sb.from('requisicoes_compra').update(payload).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
   toast('Item salvo e separado.');
