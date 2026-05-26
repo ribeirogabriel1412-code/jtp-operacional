@@ -292,6 +292,71 @@ function mobDataValetDaSemana(semana){
   d.setDate(d.getDate()-9);
   return mobISO(d);
 }
+function mobSemanaPeriodo(data){
+  const d=mobParseISO(data);
+  const ini=new Date(d);
+  ini.setDate(d.getDate()-((d.getDay()+6)%7));
+  const fim=new Date(ini);
+  fim.setDate(ini.getDate()+4);
+  return {inicio:mobISO(ini),fim:mobISO(fim),inicioBR:mobDiaMes(mobISO(ini)),fimBR:mobDiaMes(mobISO(fim))};
+}
+function mobProgData(row){
+  return String(row?.data||row?.iso||row?.data_programada||row?.data_prevista||row?.dia||row?.dt||'').slice(0,10);
+}
+function mobProgPrefixo(row){
+  return row?.prefixo||row?.veiculo||row?.carro||row?.prefixo_veiculo||row?.codigo_veiculo||'';
+}
+function mobProgTipo(row){
+  return String(row?.tipo||row?.tipo_preventiva||row?.tipo_os||row?.categoria||row?.plano_tipo||'').toLowerCase();
+}
+function mobProgServ(row){
+  return String(row?.servicos||row?.servico||row?.descricao||row?.plano_nome||row?.planoNome||row?.observacao||row?.obs||'');
+}
+function mobProgramaFromSemanaLocal(data){
+  const semana=mobSemanaDaData(data);
+  if(!semana)return {semana:null,itens:[]};
+  return {semana,itens:(semana.itens||[]).filter(i=>i.prefixo&&i.iso===data).map(i=>({
+    prefixo:i.prefixo,iso:i.iso,tipo:i.tipo,servicos:i.servicos||i.planoNome||'',origem:'local'
+  }))};
+}
+async function mobBuscarProgramacaoPreventivaDia(gid,data){
+  const periodo=mobSemanaPeriodo(data);
+  let itens=[];
+  try{
+    const res=await sb.from('programacao_preventiva').select('*').eq('garagem_id',gid).limit(800);
+    itens=(res.data||[]).map(r=>({
+      raw:r,
+      prefixo:mobProgPrefixo(r),
+      iso:mobProgData(r),
+      tipo:mobProgTipo(r),
+      servicos:mobProgServ(r),
+      origem:'banco'
+    })).filter(i=>i.prefixo&&i.iso===data);
+  }catch(e){console.warn('[PREV DIA BANCO]',e);}
+  if(!itens.length){
+    const loc=mobProgramaFromSemanaLocal(data);
+    itens=loc.itens;
+  }
+  return {semana:{inicio:periodo.inicio,fim:periodo.fim,inicioBR:periodo.inicioBR,fimBR:periodo.fimBR},itens};
+}
+async function mobBuscarReqsValetParaDia(gid,data,programados){
+  const periodo=mobSemanaPeriodo(data);
+  const valet=new Date(mobParseISO(periodo.inicio));
+  valet.setDate(valet.getDate()-9);
+  const datas=[mobISO(valet),_valetMobData,await resolverDataValetMobile(gid,_valetMobData||proximoSabadoISO(),!!_valetMobData)].filter(Boolean);
+  for(const dt of [...new Set(datas)]){
+    try{
+      const res=await sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).eq('data',dt).neq('status','cancelado').order('prefixo',{ascending:true}).order('criado_em',{ascending:true});
+      const rows=res.data||[];
+      if(rows.length){
+        const programKeys=new Set((programados||[]).map(p=>mobPrefKey(p.prefixo)));
+        const bate=rows.some(r=>programKeys.has(mobPrefKey(r.prefixo)));
+        if(bate||!programKeys.size)return {dataValet:dt,rows};
+      }
+    }catch(e){console.warn('[REQ VALET DIA]',e);}
+  }
+  return {dataValet:datas[0]||proximoSabadoISO(),rows:[]};
+}
 function escHtml(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function moeda(v){return 'R$ '+parseFloat(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});}
 
@@ -1984,24 +2049,28 @@ let _prevOficinaData=hoje();
 async function telaPrevOficina(){
   const gid=getGid();
   const data=_prevOficinaData||hoje();
-  const semana=mobSemanaDaData(data);
-  if(!semana){
-    render(`
-      <div style="padding:14px"><div style="font-weight:800;font-size:17px">🧰 Preventiva do dia</div></div>
-      <div style="padding:0 14px 10px"><input class="fi2" type="date" value="${data}" onchange="_prevOficinaData=this.value;telaPrevOficina()" style="font-family:'DM Mono',monospace"></div>
-      <div class="empty"><div class="empty-ic">🧰</div><div style="font-weight:700">Sem programação consolidada</div><div style="font-size:12px;color:var(--text3);margin-top:6px">Consolide a escala preventiva no site para aparecer aqui.</div></div>
-    `);
-    return;
-  }
-  const dataValet=mobDataValetDaSemana(semana);
-  const{data:reqs}=await sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).eq('data',dataValet).neq('status','cancelado').order('prefixo',{ascending:true}).order('criado_em',{ascending:true});
+  const prog=await mobBuscarProgramacaoPreventivaDia(gid,data);
+  const semana=prog.semana;
+  const programados=prog.itens||[];
+  const reqPack=await mobBuscarReqsValetParaDia(gid,data,programados);
+  const dataValet=reqPack.dataValet;
+  const reqs=reqPack.rows||[];
   const grupos={};
   (reqs||[]).forEach(r=>{const k=mobPrefKey(r.prefixo);if(!k)return;if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
-  const itens=(semana.itens||[]).filter(i=>{
-    if(!i.prefixo||i.iso!==data)return false;
+  let itens=programados.filter(i=>{
+    if(!i.prefixo)return false;
     const serv=String(i.servicos||i.planoNome||'').toLowerCase();
     return ['pesada','preventiva_pesada'].includes(i.tipo)||/óleo|oleo/.test(serv);
   });
+  if(!itens.length&&reqs.length){
+    const vistos=new Set();
+    itens=reqs.filter(r=>{
+      const k=mobPrefKey(r.prefixo);
+      if(!k||vistos.has(k))return false;
+      vistos.add(k);
+      return true;
+    }).map(r=>({prefixo:r.prefixo,iso:data,tipo:'preventiva_pesada',servicos:'Lista de cesto preventivo',origem:'cesto'}));
+  }
   const statusKit=p=>{
     const lista=grupos[mobPrefKey(p.prefixo)]||[];
     if(!lista.length)return {txt:['pesada','preventiva_pesada'].includes(p.tipo)?'SEM LISTA':'TROCA ÓLEO',cor:['pesada','preventiva_pesada'].includes(p.tipo)?'var(--red)':'var(--amber)'};
@@ -2053,7 +2122,7 @@ async function telaPrevOficina(){
       <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center"><b style="color:var(--green);font-family:'DM Mono',monospace">${liberados}</b><div style="font-size:10px;color:var(--text3)">Kits OK</div></div>
     </div>
     <div class="sl">${itens.length} preventiva(s) pesada/óleo no dia</div>
-    ${cards||'<div class="empty"><div class="empty-ic">🧰</div><div style="font-weight:700">Sem preventiva pesada ou troca de óleo no dia</div></div>'}
+    ${cards||'<div class="empty"><div class="empty-ic">🧰</div><div style="font-weight:700">Sem preventiva pesada ou troca de óleo no dia</div><div style="font-size:12px;color:var(--text3);margin-top:6px">Se existir no site, confirme se a programação foi consolidada/salva no banco.</div></div>'}
   `);
 }
 async function telaValetAlmox(){
