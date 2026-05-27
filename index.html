@@ -780,7 +780,7 @@ const FERRAMENTAS_DEF=[
     visualiza:['lider_pcm','assistente_pcm','lider_oficina','gerente_garagem','diretoria'],
   },
   {id:'ferr-33', icon:'👣', nome:'3.3 Ronda Operacional',
-    executa:  ['lider_pcm','lider_suprimentos','lider_patio','lider_operacional','supervisor'],
+    executa:  ['lider_pcm','almoxarifado','lider_almoxarifado','lider_suprimentos','lider_patio','lider_operacional','supervisor'],
     valida:   ['coordenador'],
     visualiza:['gerente_garagem','diretoria','operacoes_seguras'],
   },
@@ -805,7 +805,26 @@ const PAPEL_CFG={
 
 // Persiste no localStorage — admin pode sobrescrever
 function getPermsFerr(){
-  try{return JSON.parse(localStorage.getItem('jtp_perms_ferr3')||'null')||null;}catch{return null;}
+  try{
+    const salvo=JSON.parse(localStorage.getItem('jtp_perms_ferr3')||'null');
+    if(!salvo)return null;
+    let mudou=false;
+    FERRAMENTAS_DEF.forEach(f=>{
+      if(!salvo[f.id]){
+        salvo[f.id]={executa:[...(f.executa||[])],valida:[...(f.valida||[])],visualiza:[...(f.visualiza||[])]};
+        mudou=true;
+      }else{
+        PAPEIS.forEach(papel=>{
+          if(!Array.isArray(salvo[f.id][papel])){
+            salvo[f.id][papel]=[...(f[papel]||[])];
+            mudou=true;
+          }
+        });
+      }
+    });
+    if(mudou)setPermsFerr(salvo);
+    return salvo;
+  }catch{return null;}
 }
 function setPermsFerr(perms){localStorage.setItem('jtp_perms_ferr3',JSON.stringify(perms));}
 
@@ -10097,7 +10116,7 @@ const RONDA33_SETORES=[
     ['r2_pcm_07','O checklist 3.2 de análise hora a hora da manutenção foi finalizado?',2],
     ['r2_pcm_08','Todo veículo de corretiva liberado realizou o checklist de liberação?',2],
   ]},
-  {id:'almox',nome:'Almoxarifado / Suprimentos',cargos:['lider_suprimentos'],itens:[
+  {id:'almox',nome:'Almoxarifado / Suprimentos',cargos:['almoxarifado','lider_almoxarifado','lider_suprimentos'],itens:[
     ['r1_almox_01','Os kits preventivos da preventiva foram separados corretamente?',1],
     ['r1_almox_02','Foi realizada a passagem de bastão entre turnos?',1],
     ['r1_almox_03','O turno anterior realizou o inventário rotativo?',1],
@@ -10125,11 +10144,15 @@ const RONDA33_RESUMOS=[
   {id:'dobras',nome:'Dobras / Horas Extras OCIBMAR',cargos:['lider_operacional','lider_patio','supervisor'],grid:['Matrícula','Motivo','Tratativas']},
   {id:'manut_indisp',nome:'Manutenção - Veículos Indisponíveis',cargos:['lider_pcm'],grid:['Prefixo','Solicitações','Custo 2.6','Tratativas']},
   {id:'manut_andamento',nome:'Manutenção - Em Andamento',cargos:['lider_pcm'],grid:['Prefixo','Mecânico','Principal pendência']},
-  {id:'suprimentos',nome:'Suprimentos',cargos:['lider_suprimentos'],campos:['Kits preventivos separados (D-1)']},
-  {id:'sol_pendentes',nome:'Solicitações Pendentes',cargos:['lider_suprimentos'],grid:['Prefixo','Solicitações','Status']},
+  {id:'suprimentos',nome:'Suprimentos',cargos:['almoxarifado','lider_almoxarifado','lider_suprimentos'],campos:['Kits preventivos separados (D-1)']},
+  {id:'sol_pendentes',nome:'Solicitações Pendentes',cargos:['almoxarifado','lider_almoxarifado','lider_suprimentos'],grid:['Prefixo','Solicitações','Status']},
 ];
 function ronda33PodeEditarSetor(setor){const c=S.perfil?.cargo;return S.perfil?.is_admin||c==='coordenador'||(setor.cargos||[]).includes(c);}
 function ronda33PodeVerificar(){return S.perfil?.is_admin||S.perfil?.cargo==='coordenador';}
+function ronda33PodeVerTudo(){
+  const c=S.perfil?.cargo;
+  return S.perfil?.is_admin||['coordenador','gerente_garagem','diretoria','operacoes_seguras'].includes(c);
+}
 function ronda33Badge(st){const m={ok:['OK','var(--green)','#00C48C20'],nok:['NOK','var(--red)','#EF444420'],na:['N/A','var(--text3)','var(--surface2)']};const x=m[st]||['--','var(--text4)','var(--surface2)'];return `<span style="padding:3px 8px;border-radius:7px;font-size:10px;font-weight:900;color:${x[1]};background:${x[2]}">${x[0]}</span>`;}
 async function renderFerr33(){
   const gid=getGid(), data=S._r33Data||hoje(), turno=S._r33Turno||S.turno||'dia', podeVer=ronda33PodeVerificar();
@@ -10150,14 +10173,15 @@ async function renderFerr33(){
   const rodadaHtml=rodada=>{
     const rec=porRodada[rodada]||{dados:{respostas:{},resumos:{}}};
     const dados=rec.dados||{}, respostas=dados.respostas||{}, resumos=dados.resumos||{};
-    const linhas=RONDA33_SETORES.flatMap(setor=>setor.itens.filter(i=>i[2]===rodada).map(it=>({setor,it})));
+    const setoresVisiveis=ronda33PodeVerTudo()?RONDA33_SETORES:RONDA33_SETORES.filter(ronda33PodeEditarSetor);
+    const linhas=setoresVisiveis.flatMap(setor=>setor.itens.filter(i=>i[2]===rodada).map(it=>({setor,it})));
     return `<section style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px">
       <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"><b>Verificação ${rodada}ª Rodada</b><span style="color:var(--text3);font-size:12px">${linhas.length} itens</span></div>
       <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:980px;font-size:12px"><thead><tr style="background:var(--surface2);color:var(--text3);text-transform:uppercase;letter-spacing:.12em;font-size:10px"><th style="padding:9px;text-align:left">Setor</th><th style="padding:9px;text-align:left">Item</th><th style="padding:9px">Status</th><th style="padding:9px;text-align:left">Observação</th><th style="padding:9px">Preenchido por</th><th style="padding:9px">Coord.</th></tr></thead><tbody>
         ${linhas.map(({setor,it})=>{const r=respostas[it[0]]||{};return `<tr style="border-top:1px solid var(--border2)"><td style="padding:9px;color:var(--blue);font-weight:900">${setor.nome}</td><td style="padding:9px;color:var(--text)">${it[1]}</td><td style="padding:9px;text-align:center">${ronda33Badge(r.status)}</td><td style="padding:9px;color:var(--text2)">${prevEsc(r.obs||'--')}</td><td style="padding:9px;text-align:center;color:var(--text3)">${prevEsc(r.por||'--')}</td><td style="padding:9px;text-align:center">${podeVer?`<button onclick="salvarVerificacao33(${rodada},'${it[0]}',${r.verificado?'false':'true'})" class="btn-sm" style="font-size:10px">${r.verificado?'✓ Validado':'Validar'}</button>`:(r.verificado?ronda33Badge('ok'):'--')}</td></tr>`}).join('')}
       </tbody></table></div>
       <div style="padding:12px 14px;border-top:1px solid var(--border);display:grid;gap:10px">
-        ${RONDA33_RESUMOS.filter(s=>s.campos||s.grid).map(s=>`<details><summary style="cursor:pointer;color:var(--text);font-weight:900">${s.nome}</summary><pre style="white-space:pre-wrap;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text2);font-size:11px;margin-top:8px">${prevEsc(JSON.stringify(resumos[s.id]||{},null,2))}</pre></details>`).join('')}
+        ${RONDA33_RESUMOS.filter(s=>(s.campos||s.grid)&&(ronda33PodeVerTudo()||ronda33PodeEditarSetor(s))).map(s=>`<details><summary style="cursor:pointer;color:var(--text);font-weight:900">${s.nome}</summary><pre style="white-space:pre-wrap;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text2);font-size:11px;margin-top:8px">${prevEsc(JSON.stringify(resumos[s.id]||{},null,2))}</pre></details>`).join('')}
       </div>
     </section>`;
   };
