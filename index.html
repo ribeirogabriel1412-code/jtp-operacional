@@ -1645,6 +1645,168 @@ async function concluirCompraValetPrefixo(grupoId){
   renderAlmoxarifado();
 }
 
+const SUPERVISAO_ROTINA=[
+  {id:'r33_0030',doc:'3.3 - Ronda operacional rodada 1',ferr:'APP',hora:'00:30',resp:'Ocibmar',cargo:'Supervisor',tipo:'3.3',rodada:1},
+  {id:'r33_0330',doc:'3.3 - Ronda operacional rodada 2',ferr:'APP',hora:'03:30',resp:'Ocibmar',cargo:'Supervisor',tipo:'3.3',rodada:2},
+  {id:'r34_0350',doc:'3.4 - Funcionalidade de ativos',ferr:'APP',hora:'03:50',resp:'Natan',cargo:'Assist. PCM',tipo:'3.4'},
+  {id:'r21_0420',doc:'2.1 - Fechamento de turno',ferr:'SITE',hora:'04:20',resp:'Ocibmar',cargo:'Supervisor',tipo:'2.1'},
+  {id:'r26_0420',doc:'2.6 - Custo (Fechamento)',ferr:'SITE',hora:'04:20',resp:'Natan',cargo:'Líder PCM',tipo:'2.6'},
+  {id:'r22f_0420',doc:'2.2 - Priorização de veículos (Fechamento)',ferr:'WHATSAPP',hora:'04:20',resp:'Natan',cargo:'Líder PCM',tipo:'2.2'},
+  {id:'r24_0420',doc:'2.4 - Fechamento PCM',ferr:'SITE',hora:'04:20',resp:'Natan',cargo:'Assist. PCM',tipo:'2.4'},
+  {id:'r32_0420',doc:'3.2 - Checklist de acompanhamento da manutenção',ferr:'-',hora:'04:20',resp:'Gutemberg',cargo:'Líder de oficina',tipo:'3.2'},
+  {id:'r38_0420',doc:'3.8 - Checklist de soltura',ferr:'APP',hora:'04:20',resp:'Gutemberg',cargo:'Líder de oficina',tipo:'3.8'},
+  {id:'r23_0620',doc:'2.3 - Fechamento Almox',ferr:'-',hora:'06:20',resp:'Daniel',cargo:'Almoxarife',tipo:'2.3'},
+  {id:'r218_0730',doc:'2.18 - SOS',ferr:'-',hora:'07:30',resp:'Gabriel',cargo:'Assist. PCM',tipo:'2.18'},
+  {id:'r22_0900',doc:'2.2 - Priorização de veículos',ferr:'WHATSAPP',hora:'09:00',resp:'Alcides / Geremias / Leonan',cargo:'Coordenador / Líder PCM / Líder Almox',tipo:'2.2'},
+  {id:'r33_1030',doc:'3.3 - Ronda operacional rodada 1',ferr:'APP',hora:'10:30',resp:'Alcides / Geremias / Leonan',cargo:'Coordenador / Líder PCM / Líder Almox',tipo:'3.3',rodada:1},
+  {id:'r22_1200',doc:'2.2 - Priorização de veículos',ferr:'WHATSAPP',hora:'12:00',resp:'Geremias',cargo:'Coordenador / Líder PCM',tipo:'2.2'},
+  {id:'r34_1320',doc:'3.4 - Funcionalidade de ativos',ferr:'APP',hora:'13:20',resp:'Gabriel',cargo:'Assist. PCM',tipo:'3.4'},
+  {id:'r24_1320',doc:'2.4 - Fechamento PCM',ferr:'SITE',hora:'13:20',resp:'Gabriel',cargo:'Assist. PCM',tipo:'2.4'},
+  {id:'r23_1420',doc:'2.3 - Fechamento Almox',ferr:'--',hora:'14:20',resp:'Henrique',cargo:'Almoxarife',tipo:'2.3'},
+  {id:'r32_1620',doc:'3.2 - Checklist de acompanhamento da manutenção',ferr:'--',hora:'16:20',resp:'Saulo',cargo:'Líder de oficina',tipo:'3.2'},
+  {id:'r38_1620',doc:'3.8 - Checklist de soltura',ferr:'APP',hora:'16:20',resp:'Saulo',cargo:'Líder de oficina',tipo:'3.8'},
+  {id:'r219_1630',doc:'2.19 - Controle de solicitação de compra',ferr:'--',hora:'16:30',resp:'Leonan',cargo:'Líder Almox',tipo:'2.19'},
+  {id:'r33_1700',doc:'3.3 - Ronda operacional rodada 2',ferr:'APP',hora:'17:00',resp:'Alcides / Geremias / Leonan',cargo:'Coordenador / Líder PCM / Líder Almox',tipo:'3.3',rodada:2},
+  {id:'r22f_1700',doc:'2.2 - Priorização de veículos (Fechamento)',ferr:'WHATSAPP',hora:'17:00',resp:'Geremias',cargo:'Líder PCM',tipo:'2.2'},
+  {id:'r21_1800',doc:'2.1 - Fechamento de turno',ferr:'SITE',hora:'18:00',resp:'Alcides',cargo:'Coordenador',tipo:'2.1'},
+  {id:'r26_1800',doc:'2.6 - Custo (Fechamento)',ferr:'SITE',hora:'18:00',resp:'Geremias',cargo:'Líder PCM',tipo:'2.6'},
+  {id:'r34_2120',doc:'3.4 - Funcionalidade de ativos',ferr:'APP',hora:'21:20',resp:'Wadalla',cargo:'Assist. PCM',tipo:'3.4'},
+  {id:'r24_2120',doc:'2.4 - Fechamento PCM',ferr:'SITE',hora:'21:20',resp:'Wadalla',cargo:'Assist. PCM',tipo:'2.4'},
+  {id:'r22_2130',doc:'2.2 - Priorização de veículos',ferr:'WHATSAPP',hora:'21:30',resp:'Ocibmar / Natan',cargo:'Supervisor / Líder PCM',tipo:'2.2'},
+  {id:'r23_2320',doc:'2.3 - Fechamento Almox',ferr:'--',hora:'23:20',resp:'João',cargo:'Almoxarife',tipo:'2.3'},
+  {id:'r22_2345',doc:'2.2 - Priorização de veículos',ferr:'WHATSAPP',hora:'23:45',resp:'Ocibmar / Natan',cargo:'Supervisor / Líder PCM',tipo:'2.2'},
+];
+
+function supDueDate(data,hora){
+  return new Date(`${data}T${hora}:00-04:00`);
+}
+function supRowTime(row){
+  return row?.fechado_em||row?.enviado_em||row?.created_at||row?.criado_em||row?.registrado_em||row?.updated_at||null;
+}
+function supFindRotinaEnvio(a,ctx){
+  const rel=(ctx.relatorios||[]).find(r=>String(r.tipo||'').includes('SUP:'+a.id)||String(r.numero||'').includes(a.id)||String(r.tipo||r.numero||'').includes(a.tipo));
+  if(rel)return{row:rel,quando:supRowTime(rel),fonte:'Relatório enviado'};
+  if(a.tipo==='3.3'){
+    const row=(ctx.ck33||[]).filter(r=>Number(r.rodada)===Number(a.rodada)).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
+    if(row)return{row,quando:supRowTime(row),fonte:'Checklist 3.3'};
+  }
+  if(a.tipo==='3.4'){
+    const row=(ctx.ck34||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
+    if(row)return{row,quando:supRowTime(row),fonte:'Checklist 3.4'};
+  }
+  if(a.tipo==='3.8'){
+    const row=(ctx.libs38||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
+    if(row)return{row,quando:supRowTime(row),fonte:'Checklist 3.8'};
+  }
+  if(a.tipo==='2.1'){
+    const row=(ctx.fechGaragem||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
+    if(row)return{row,quando:supRowTime(row),fonte:'Fechamento 2.1'};
+  }
+  if(a.tipo==='2.4'){
+    const row=(ctx.fechPCM||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
+    if(row)return{row,quando:supRowTime(row),fonte:'Fechamento 2.4'};
+  }
+  if(a.tipo==='2.6'){
+    const row=(ctx.prev26||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
+    if(row)return{row,quando:supRowTime(row),fonte:'Custo 2.6'};
+  }
+  if(a.tipo==='2.19'){
+    const row=(ctx.valetamentos||[]).filter(r=>['pedido_compra','comprado'].includes(r.status||'')).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
+    if(row)return{row,quando:supRowTime(row),fonte:'Solicitação compra'};
+  }
+  return null;
+}
+function renderSupervisaoRotina(data,ctx){
+  const agora=new Date();
+  const rows=SUPERVISAO_ROTINA.map(a=>{
+    const due=supDueDate(data,a.hora);
+    const found=supFindRotinaEnvio(a,ctx);
+    const quando=found?.quando?new Date(found.quando):null;
+    const enviado=!!quando;
+    const atraso=enviado?Math.round((quando-due)/60000):Math.round((agora-due)/60000);
+    const status=enviado?(atraso<=0?'ok':'late'):(agora>due?'miss':'wait');
+    return{...a,due,found,quando,enviado,atraso,status};
+  });
+  const feitos=rows.filter(r=>r.enviado).length;
+  const noPrazo=rows.filter(r=>r.status==='ok').length;
+  const atrasados=rows.filter(r=>r.status==='late'||r.status==='miss').length;
+  const pendentes=rows.filter(r=>r.status==='wait'||r.status==='miss').length;
+  const cfg={
+    ok:{txt:'ENVIADO',c:'var(--green)',bg:'#00C48C14',bd:'#00C48C45'},
+    late:{txt:'ENVIADO ATRASADO',c:'var(--amber)',bg:'#F59E0B14',bd:'#F59E0B45'},
+    wait:{txt:'AGUARDANDO',c:'var(--blue)',bg:'#2563EB14',bd:'#2563EB45'},
+    miss:{txt:'NÃO ENVIADO',c:'var(--red)',bg:'#EF444414',bd:'#EF444445'},
+  };
+  const linha=rows.map(r=>{
+    const c=cfg[r.status];
+    const horaReal=r.quando?r.quando.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'--';
+    const dif=r.enviado?(r.atraso<=0?'No prazo':`+${r.atraso} min`):(r.status==='miss'?`Atrasado ${r.atraso} min`:'Aguardando');
+    return`<tr style="border-bottom:1px solid var(--border2);background:${r.status==='miss'?'#EF444408':'transparent'}">
+      <td style="padding:9px 10px;font-weight:800;color:var(--text)">${r.doc}</td>
+      <td style="padding:9px 10px;color:var(--text2);font-size:11px">${r.ferr}</td>
+      <td style="padding:9px 10px;font-family:'DM Mono',monospace;color:var(--text);font-weight:900">${r.hora}</td>
+      <td style="padding:9px 10px;font-family:'DM Mono',monospace;color:${r.enviado?'var(--green)':'var(--text3)'};font-weight:900">${horaReal}</td>
+      <td style="padding:9px 10px;color:var(--text2);font-size:11px">${r.resp}</td>
+      <td style="padding:9px 10px;color:var(--text3);font-size:11px">${r.cargo}</td>
+      <td style="padding:9px 10px"><span style="display:inline-block;border:1px solid ${c.bd};background:${c.bg};color:${c.c};border-radius:999px;padding:4px 8px;font-size:9px;font-weight:900">${c.txt}</span></td>
+      <td style="padding:9px 10px;color:${r.status==='miss'||r.status==='late'?'var(--amber)':'var(--text3)'};font-size:11px">${dif}</td>
+      <td style="padding:9px 10px;text-align:right">${r.enviado?'--':`<button onclick="registrarEnvioSupervisaoRotina('${r.id}','${data}','${ctx.gid}')" style="padding:5px 8px;border-radius:7px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:10px;font-weight:900;cursor:pointer">Registrar envio</button>`}</td>
+    </tr>`;
+  }).join('');
+  return`
+    ${secTitle('🕒','Quadro de atividades e envios',`${feitos}/${rows.length} enviados · ${noPrazo} no prazo`)}
+    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px">
+      ${kpi('Enviados',feitos,rows.length,'',false,0)}
+      ${kpi('No prazo',noPrazo,undefined,'',false,0)}
+      ${kpi('Pendentes',pendentes,0,'',pendentes>0,0)}
+      ${kpi('Atrasos',atrasados,0,'',atrasados>0,0)}
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:20px">
+      <div style="overflow:auto;max-height:520px">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:980px">
+          <thead style="position:sticky;top:0;background:var(--surface2);z-index:1">
+            <tr>
+              <th style="padding:9px 10px;text-align:left;color:var(--text3);font-size:10px;letter-spacing:.12em;text-transform:uppercase">Documento</th>
+              <th style="padding:9px 10px;text-align:left;color:var(--text3);font-size:10px;letter-spacing:.12em;text-transform:uppercase">Ferramenta</th>
+              <th style="padding:9px 10px;text-align:left;color:var(--text3);font-size:10px;letter-spacing:.12em;text-transform:uppercase">Prazo</th>
+              <th style="padding:9px 10px;text-align:left;color:var(--text3);font-size:10px;letter-spacing:.12em;text-transform:uppercase">Envio</th>
+              <th style="padding:9px 10px;text-align:left;color:var(--text3);font-size:10px;letter-spacing:.12em;text-transform:uppercase">Responsável</th>
+              <th style="padding:9px 10px;text-align:left;color:var(--text3);font-size:10px;letter-spacing:.12em;text-transform:uppercase">Cargo</th>
+              <th style="padding:9px 10px;text-align:left;color:var(--text3);font-size:10px;letter-spacing:.12em;text-transform:uppercase">Status</th>
+              <th style="padding:9px 10px;text-align:left;color:var(--text3);font-size:10px;letter-spacing:.12em;text-transform:uppercase">Régua</th>
+              <th style="padding:9px 10px;text-align:right;color:var(--text3);font-size:10px;letter-spacing:.12em;text-transform:uppercase">Ação</th>
+            </tr>
+          </thead>
+          <tbody>${linha}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+async function registrarEnvioSupervisaoRotina(id,data,gid){
+  const item=SUPERVISAO_ROTINA.find(x=>x.id===id);
+  if(!item){toast('Atividade não encontrada','err');return;}
+  const payload={
+    numero:`SUP-${id}-${data}`,
+    tipo:`SUP:${id}`,
+    data_evento:data,
+    turno:S.turno||'dia',
+    garagem_id:gid||getGid(),
+    status:'fechado',
+    fechado_em:new Date().toISOString(),
+    preenchido_por:S.perfil?.id||null,
+    preenchido_por_nome:S.perfil?.nome||item.resp,
+    observacao:`${item.doc} · Prazo ${item.hora} · ${item.ferr}`
+  };
+  let{error}=await sb.from('relatorios_gerados').insert(payload);
+  if(error?.message?.includes('observacao')) error=(await sb.from('relatorios_gerados').insert({...payload,observacao:undefined})).error;
+  if(error?.message?.includes('preenchido_por')) error=(await sb.from('relatorios_gerados').insert({...payload,observacao:undefined,preenchido_por:undefined})).error;
+  if(error){toast('Erro ao registrar envio: '+error.message,'err');return;}
+  toast('Envio registrado na supervisão.');
+  renderSupervisao(gid||getGid());
+}
+
 // ADMIN — GESTÃO DE USUÁRIOS
 // ══════════════════════════════════════════════════════════════
 // SUPERVISÃO — painel consolidado por garagem
@@ -1683,6 +1845,9 @@ async function renderSupervisao(gidFiltro=null){
     {data:relatorios},
     {data:libs38},
     {data:valetamentos},
+    {data:ck33},
+    {data:ck34},
+    {data:prev26},
   ]=await Promise.all([
     sb.from('frota').select('*').eq('garagem_id',gid),
     sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado'),
@@ -1695,6 +1860,9 @@ async function renderSupervisao(gidFiltro=null){
     sb.from('relatorios_gerados').select('*').eq('garagem_id',gid).eq('data_evento',data).order('created_at',{ascending:false}),
     sb.from('checklist_38').select('*').eq('garagem_id',gid).eq('data',data).order('created_at',{ascending:false}),
     sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).eq('data',dataValet).neq('status','cancelado').order('criado_em',{ascending:true}),
+    sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).order('created_at',{ascending:false}),
+    sb.from('checklist_equipamentos').select('*').eq('garagem_id',gid).eq('data',data).order('criado_em',{ascending:false}),
+    sb.from('previsibilidade_26').select('*').eq('garagem_id',gid).eq('data',data),
   ]);
 
   // ── KPIs FROTA ────────────────────────────────────────────
@@ -1801,6 +1969,7 @@ async function renderSupervisao(gidFiltro=null){
       <td style="padding:8px 12px;font-size:11px;color:var(--text3)">${o.mecanico||'—'}</td>
     </tr>`;
   }).join('');
+  const rotinaHtml=renderSupervisaoRotina(data,{gid,relatorios:rels,ck33,ck34,libs38,fechGaragem,fechPCM,prev26,valetamentos:valetLista});
 
   setMain(`
     <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
@@ -1811,6 +1980,8 @@ async function renderSupervisao(gidFiltro=null){
       </div>
       <button onclick="renderSupervisao('${gid}')" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:8px 14px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">🔄 Atualizar</button>
     </div>
+
+    ${rotinaHtml}
 
     <!-- 4 BLOCOS PRINCIPAIS -->
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:20px">
