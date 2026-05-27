@@ -292,6 +292,7 @@ tr:hover td{background:#0F172A80}
         <button class="sub-btn" onclick="navToSub('ferr-211')">🔴 2.11 Carros Indisponíveis</button>
         <button class="sub-btn" onclick="navToSub('ferr-212')">📊 2.12 Indicadores Técnicos</button>
         <button class="sub-btn" onclick="navToSub('ferr-lav')">🧼 3.2 Checklist Lavagem</button>
+        <button class="sub-btn" onclick="navToSub('ferr-33')">👣 3.3 Ronda Operacional</button>
         <button class="sub-btn" id="btn-lav-lavador" onclick="navToSub('ferr-lav-lavador')" style="display:none">🚿 Minha Lista de Lavagem</button>
         <button class="sub-btn" onclick="navToSub('ferr-21')">📋 2.1 Fechamento Garagem</button>
         <button class="sub-btn" onclick="navToSub('ferr-26')">💰 2.6 Previsibilidade</button>
@@ -778,6 +779,11 @@ const FERRAMENTAS_DEF=[
     valida:   ['lider_almoxarifado'],
     visualiza:['lider_pcm','assistente_pcm','lider_oficina','gerente_garagem','diretoria'],
   },
+  {id:'ferr-33', icon:'👣', nome:'3.3 Ronda Operacional',
+    executa:  ['lider_pcm','lider_suprimentos','lider_patio','lider_operacional','supervisor'],
+    valida:   ['coordenador'],
+    visualiza:['gerente_garagem','diretoria','operacoes_seguras'],
+  },
   {id:'ferr-211', icon:'🔴', nome:'2.11 Carros Indisponíveis',
     executa:  [],
     valida:   [],
@@ -954,7 +960,7 @@ function navToSub(sub){
   S.subtela=sub;
   document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes(sub))b.classList.add('active')});
-  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios};
+  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios};
   if(map[sub]) map[sub]();
 }
 
@@ -1328,6 +1334,7 @@ function toggleSolturaDetalhe(){
 function renderManutencao(){setMain(`${secTitle('🔧','Ordens de Serviço')}<div class="empty"><div style="font-size:40px">🔧</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Em desenvolvimento</div></div><div class="info-blue info-banner">🔗 Fase 2: OS integradas ao banco + integração Praxio</div>`)}
 async function renderAlmoxarifado(){
   const gid=getGid();
+  const cdHabilitado=fluxoCdHabilitado(gid);
   const data=await resolverDataValetComDados(gid,S._valetData||proximoSabadoISO(),!!S._valetData);
   setMain(`<div class="loading"><div class="spinner"></div></div>`);
   const[{data:reqs},{data:datasValet}]=await Promise.all([
@@ -1340,13 +1347,17 @@ async function renderAlmoxarifado(){
       .not('data','is',null)
       .order('data',{ascending:false}).limit(60)
   ]);
-  const lista=(reqs||[]).filter(r=>r.cod_sap!=='__PROG_PREV__'&&['solicitado_pcm','separado','pedido_compra','comprado','pendente','aprovado'].includes(r.status||''));
+  const statusPermitidos=cdHabilitado
+    ?['solicitado_pcm','separado','pedido_compra','comprado','pendente','aprovado','cd_solicitado','cd_disponivel','cd_negativo']
+    :['solicitado_pcm','separado','pedido_compra','comprado','pendente','aprovado'];
+  const lista=(reqs||[]).filter(r=>r.cod_sap!=='__PROG_PREV__'&&!String(r.peca||'').includes('Programação preventiva')&&statusPermitidos.includes(r.status||''));
   const safe=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const pedidoOficina=r=>extrairPedidoOficinaValet(r.justificativa,r.peca,r.cod_sap);
   const chegada=id=>JSON.parse(localStorage.getItem('valet_chegada_'+id)||'{}')?.data||'';
   const qtdSep=lista.filter(r=>r.status==='separado').length;
   const qtdCompra=lista.filter(r=>r.status==='pedido_compra').length;
   const qtdComprado=lista.filter(r=>r.status==='comprado').length;
+  const qtdCd=lista.filter(r=>['cd_solicitado','cd_disponivel','cd_negativo'].includes(r.status||'')).length;
   const grupos={};
   lista.forEach(r=>{const k=r.prefixo||'Sem prefixo';if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
   const cestos=Object.entries(grupos);
@@ -1364,16 +1375,26 @@ async function renderAlmoxarifado(){
     const btnBase="padding:5px 9px;border-radius:7px;font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif";
     const rid=rowId(r);
     const salvar=`<button onclick="salvarValetAlmoxInline('${rid}','${r.id}')" style="${btnBase};border:1px solid var(--green);background:#00C48C18;color:var(--green)">Salvar / separar</button>`;
+    const pedirCd=cdHabilitado?`<button onclick="solicitarCdValetAlmox('${rid}','${r.id}')" style="${btnBase};border:1px solid var(--purple);background:#8B5CF618;color:var(--purple);margin-left:4px">Solicitar CD</button>`:'';
     const negativa=`<button onclick="abrirCompraValetAlmox('${rid}','${r.id}')" style="${btnBase};border:1px solid var(--red);background:#EF444418;color:var(--red);margin-left:4px">Abrir compra</button>`;
     const chegou=`<button onclick="atualizarReqCompra('${r.id}','comprado','almox')" style="${btnBase};border:1px solid var(--blue);background:#2563EB18;color:var(--blue);margin-left:4px">Chegou</button>`;
     const reabrir=`<button onclick="voltarValetParaAlmox('${r.id}')" style="${btnBase};border:1px solid var(--amber);background:#F59E0B18;color:var(--amber)">Voltar almox</button>`;
+    if(st==='cd_solicitado'){
+      return `<div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;flex-wrap:wrap"><button onclick="responderCdValetAlmox('${r.id}',true)" style="${btnBase};border:1px solid var(--green);background:#00C48C18;color:var(--green)">CD tem</button><button onclick="responderCdValetAlmox('${r.id}',false)" style="${btnBase};border:1px solid var(--red);background:#EF444418;color:var(--red)">CD não tem</button>${reabrir}</div>`;
+    }
+    if(st==='cd_disponivel'){
+      return `<div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;flex-wrap:wrap"><button onclick="receberCdValetAlmox('${r.id}')" style="${btnBase};border:1px solid var(--green);background:#00C48C18;color:var(--green)">Receber do CD</button>${reabrir}</div>`;
+    }
+    if(st==='cd_negativo'){
+      return `<div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;flex-wrap:wrap">${negativa}${reabrir}</div>`;
+    }
     if(st==='pedido_compra'){
       const comp=extrairCompraValet(r.justificativa);
       const compraSup=isSup?`<div style="display:grid;grid-template-columns:1fr 128px;gap:6px;width:100%;min-width:260px"><input id="comp-num-${rid}" value="${safe(comp.numero||'')}" placeholder="Nº solicitação" style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 8px;font-size:11px;font-family:'DM Mono',monospace"><input id="comp-prazo-${rid}" type="date" value="${safe(comp.prazo||chegada(r.id)||'')}" style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 8px;font-size:11px;font-family:'DM Mono',monospace"><button onclick="salvarFupCompraValet('${rid}','${r.id}')" style="${btnBase};border:1px solid var(--blue);background:#2563EB18;color:var(--blue);grid-column:1/-1">Salvar compra / prazo</button></div>`:`<div style="font-size:11px;color:var(--text3);text-align:right;line-height:1.35">${comp.numero?`Solic. <b style="color:var(--blue)">${safe(comp.numero)}</b>`:'Aguardando suprimentos'}${comp.prazo?`<br>Prazo <b style="color:var(--amber)">${safe(comp.prazo)}</b>`:''}</div>`;
       return `<div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;flex-wrap:wrap">${compraSup}${podeCancelarCompra?reabrir:''}${chegou}</div>`;
     }
     if(['separado','comprado'].includes(st))return `<div style="display:flex;gap:6px;justify-content:flex-end;align-items:center">${salvar}</div>`;
-    return `<div style="display:flex;gap:6px;justify-content:flex-end;align-items:center">${salvar}${negativa}</div>`;
+    return `<div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;flex-wrap:wrap">${salvar}${pedirCd}${negativa}</div>`;
   };
   const cards=cestos.length?cestos.map(([pref,itens])=>{
     const separados=itens.filter(i=>['separado','comprado'].includes(i.status||'')).length;
@@ -1388,7 +1409,7 @@ async function renderAlmoxarifado(){
       <div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start;padding:16px 18px 10px">
         <div>
           <div style="font-family:'DM Mono',monospace;color:var(--blue);font-size:22px;font-weight:900">${safe(pref)}</div>
-          <div style="font-size:12px;color:var(--text3);margin-top:4px">${itens.length} item(ns) · ${itens.filter(i=>['solicitado_pcm','pendente','aprovado'].includes(i.status||'')).length} solicitados · ${separados} separado(s)${compras?` · ${compras} compra(s)`:''}</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:4px">${itens.length} item(ns) · ${itens.filter(i=>['solicitado_pcm','pendente','aprovado'].includes(i.status||'')).length} solicitados · ${separados} separado(s)${compras?` · ${compras} compra(s)`:''}${itens.filter(i=>['cd_solicitado','cd_disponivel','cd_negativo'].includes(i.status||'')).length?` · ${itens.filter(i=>['cd_solicitado','cd_disponivel','cd_negativo'].includes(i.status||'')).length} CD`:''}</div>
         </div>
         <div style="text-align:right;min-width:130px">
           <div style="font-family:'DM Mono',monospace;color:var(--amber);font-size:17px;font-weight:900">${valor?fmtMoney(valor):'--'}</div>
@@ -1424,9 +1445,10 @@ async function renderAlmoxarifado(){
   }).join(''):`<div class="empty">Nenhum valetamento para este sábado</div>`;
   setMain(`
     ${secTitle('📦','Almoxarifado - Valetamento',seletorSemana)}
-    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px">
+    <div style="display:grid;grid-template-columns:repeat(${cdHabilitado?5:4},minmax(0,1fr));gap:10px;margin-bottom:16px">
       ${kpi('Itens solicitados',lista.length,undefined,'',false,0)}
       ${kpi('Separados',qtdSep,undefined,'',false,0)}
+      ${cdHabilitado?kpi('Fluxo CD',qtdCd,undefined,'',false,0):''}
       ${kpi('Pedido compra',qtdCompra,0,'',true,0)}
       ${kpi('Cestos disponíveis',qtdCestosDisp,undefined,'',false,0)}
     </div>
@@ -1530,7 +1552,7 @@ async function renderSupervisao(gidFiltro=null){
   const custoFechado=(fechPCM||[]).length>0||temRelCusto;
   const garagemFechada=(fechGaragem||[]).length>0||rels.some(r=>String(r.tipo||r.numero||'').includes('2.1')&&r.status==='fechado');
   const liberacoes38=(libs38||[]).length;
-  const valetLista=(valetamentos||[]).filter(i=>i.status!=='cancelado'&&i.cod_sap!=='__PROG_PREV__');
+  const valetLista=(valetamentos||[]).filter(i=>i.status!=='cancelado'&&i.cod_sap!=='__PROG_PREV__'&&!String(i.peca||'').includes('Programação preventiva'));
   const valetGrupos={};
   valetLista.forEach(i=>{
     const p=i.prefixo||'SEM PREFIXO';
@@ -2050,6 +2072,7 @@ function atualizarSubmenuFerramentas(){
     'ferr-210':'📋 2.10 Soltura de Frota',
     'ferr-22':'🔧 Painel do Manutentor',
     'ferr-lav':'🧼 3.2 Checklist Lavagem',
+    'ferr-33':'👣 3.3 Ronda Operacional',
     'ferr-ctrl':'✅ Controle Soltura',
     'ferr-almox':'📦 Almoxarifado / Valetamento',
   };
@@ -4284,6 +4307,13 @@ function getGid(){
   return S.garagens?.[0]?.id;
 }
 
+function fluxoCdHabilitado(gid=getGid()){
+  const g=S.garagens?.find(x=>x.id===gid);
+  const nome=String(`${g?.nome||''} ${g?.cidade||''} ${g?.sigla||''}`)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  return nome.includes('braganca');
+}
+
 // Define garagem ativa e recarrega a tela atual
 function setGidAtivo(gid){
   S.gidAtivo=gid;
@@ -6122,6 +6152,9 @@ function badgeValetStatus(status){
     pendente:{txt:'Solicitado PCM',c:'var(--amber)',bg:'#F59E0B20'},
     aprovado:{txt:'Aprovado',c:'var(--green)',bg:'#00C48C20'},
     separado:{txt:'Separado',c:'var(--green)',bg:'#00C48C20'},
+    cd_solicitado:{txt:'Solicitado CD',c:'var(--purple)',bg:'#8B5CF620'},
+    cd_disponivel:{txt:'CD positivo',c:'var(--green)',bg:'#00C48C20'},
+    cd_negativo:{txt:'CD negativo',c:'var(--red)',bg:'#EF444420'},
     pedido_compra:{txt:'Pedido compra',c:'var(--red)',bg:'#EF444420'},
     comprado:{txt:'Comprado / chegou',c:'var(--blue)',bg:'#2563EB20'},
     reprovado:{txt:'Reprovado',c:'var(--red)',bg:'#EF444420'}
@@ -6298,6 +6331,63 @@ function montarJustValetComOriginal(base,original,extra=''){
   return partes.join(' · ')||'Lista líder oficina';
 }
 
+function montarMensagemFluxoPecas(etapa,item){
+  const garagem=S.garagens.find(g=>g.id===(item?.garagem_id||getGid()))?.nome||'Garagem';
+  const qtd=item?.quantidade||1;
+  const prefixo=item?.prefixo||'Sem prefixo';
+  const peca=item?.peca||'Item não informado';
+  const sap=item?.cod_sap?`SAP ${item.cod_sap}`:'Sem SAP';
+  const autor=S.perfil?.nome||'Usuário';
+  const mapa={
+    cd_solicitado:{titulo:'Solicitação ao CD',prox:'Centro de Distribuição',acao:'Almoxarifado solicitou averiguação no estoque do CD.'},
+    cd_disponivel:{titulo:'CD positivo',prox:'Almoxarifado',acao:'CD confirmou disponibilidade. Retirar do estoque do CD e transferir para o almoxarifado.'},
+    cd_negativo:{titulo:'CD negativo',prox:'Almoxarifado / Suprimentos',acao:'CD informou indisponibilidade. Almoxarifado deve abrir solicitação de compra.'},
+    pedido_compra:{titulo:'Solicitação de compra',prox:'Líder de Suprimentos',acao:'Item indisponível no almoxarifado/CD. Necessário abrir compra.'},
+    separado:{titulo:'Item separado',prox:'PCM / Oficina',acao:'Item separado e disponível para o kit preventivo.'},
+    comprado:{titulo:'Compra recebida',prox:'Almoxarifado / PCM',acao:'Item comprado chegou e deve ser direcionado ao kit.'}
+  };
+  const cfg=mapa[etapa]||{titulo:'Movimentação de peça',prox:'Próxima etapa',acao:'Movimentação registrada no sistema.'};
+  return `JTP Operacional - ${cfg.titulo}
+
+Garagem: ${garagem}
+Prefixo: ${prefixo}
+Item: ${qtd}x ${peca}
+Código: ${sap}
+Status: ${cfg.titulo}
+Responsável: ${autor}
+Próxima etapa: ${cfg.prox}
+
+${cfg.acao}
+
+Rastreabilidade: ${item?.id||'registro pendente'} · ${new Date().toLocaleString('pt-BR')}`;
+}
+
+function abrirNotificacaoFluxoPecas(etapa,item){
+  const msg=montarMensagemFluxoPecas(etapa,item||{});
+  const assunto=encodeURIComponent((msg.split('\n')[0]||'JTP Operacional').trim());
+  const corpo=encodeURIComponent(msg);
+  const whatsUrl=localStorage.getItem('jtp_whats_cd_url')||'';
+  let modal=document.getElementById('modal-notif-fluxo');
+  if(!modal){
+    modal=document.createElement('div');
+    modal.id='modal-notif-fluxo';
+    modal.className='modal-ov';
+    modal.onclick=e=>{if(e.target===modal)modal.style.display='none'};
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML=`<div class="modal" style="max-width:680px">
+    <div class="modal-title"><span>Notificação padrão da movimentação</span><button class="btn-x" onclick="document.getElementById('modal-notif-fluxo').style.display='none'">✕</button></div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Copie ou dispare a mensagem para a próxima etapa. Depois vamos automatizar isso no backend.</div>
+    <textarea id="notif-fluxo-msg" style="width:100%;min-height:210px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:12px;font-family:'DM Mono',monospace;font-size:12px;box-sizing:border-box">${prevEsc(msg)}</textarea>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+      <button class="btn primary" onclick="navigator.clipboard?.writeText(document.getElementById('notif-fluxo-msg').value);toast('Mensagem copiada')">Copiar mensagem</button>
+      <button class="btn" onclick="location.href='mailto:?subject=${assunto}&body=${corpo}'">Abrir e-mail</button>
+      <button class="btn" onclick="${whatsUrl?`window.open('${whatsUrl}${whatsUrl.includes('?')?'&':'?'}text=${corpo}','_blank')`:`navigator.clipboard?.writeText(document.getElementById('notif-fluxo-msg').value);toast('Configure o link do grupo WhatsApp em jtp_whats_cd_url. Mensagem copiada.')`}">WhatsApp grupo</button>
+    </div>
+  </div>`;
+  modal.style.display='flex';
+}
+
 window._almoxEstoqueValetMap=window._almoxEstoqueValetMap||{};
 window._almoxValetInlineMap=window._almoxValetInlineMap||{};
 let _almoxEstoqueValetTimer=null;
@@ -6359,12 +6449,63 @@ async function salvarValetAlmoxInline(rowId,id){
   const quantidade=parseInt(document.getElementById('almox-qtd-'+rowId)?.value)||1;
   const valor=parseFloat(document.getElementById('almox-valor-'+rowId)?.value||0)||0;
   if(!peca){toast('Informe ou selecione a peça antes de separar.','err');return;}
-  const atual=await sb.from('requisicoes_compra').select('justificativa').eq('id',id).single();
+  const atual=await sb.from('requisicoes_compra').select('*').eq('id',id).single();
   const sep=`Separado por: ${S.perfil?.nome||'Almoxarifado'}`;
   const payload={cod_sap:cod,peca,quantidade,valor_estimado:valor,status:'separado',justificativa:montarJustValetComOriginal(atual.data?.justificativa,original,sep)};
   const{error}=await sb.from('requisicoes_compra').update(payload).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
+  abrirNotificacaoFluxoPecas('separado',{...(atual.data||{}),...payload,id});
   toast('Item salvo e separado.');
+  renderAlmoxarifado();
+}
+
+async function solicitarCdValetAlmox(rowId,id){
+  const original=document.getElementById('almox-original-'+rowId)?.value?.trim()||document.getElementById('almox-peca-'+rowId)?.value?.trim()||'';
+  const peca=document.getElementById('almox-peca-'+rowId)?.value?.trim()||original;
+  const cod=document.getElementById('almox-cod-'+rowId)?.value?.trim()||null;
+  const quantidade=parseInt(document.getElementById('almox-qtd-'+rowId)?.value)||1;
+  const valor=parseFloat(document.getElementById('almox-valor-'+rowId)?.value||0)||0;
+  if(!confirm('Solicitar averiguação deste item ao Centro de Distribuição?'))return;
+  const atual=await sb.from('requisicoes_compra').select('*').eq('id',id).single();
+  const extra=`CD solicitado por: ${S.perfil?.nome||'Almoxarifado'} · Aguardando retorno do CD`;
+  const payload={cod_sap:cod,peca,quantidade,valor_estimado:valor,status:'cd_solicitado',justificativa:montarJustValetComOriginal(atual.data?.justificativa,original,extra)};
+  const{error}=await sb.from('requisicoes_compra').update(payload).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  abrirNotificacaoFluxoPecas('cd_solicitado',{...(atual.data||{}),...payload,id});
+  toast('Solicitação enviada ao CD.');
+  renderAlmoxarifado();
+}
+
+async function responderCdValetAlmox(id,positivo){
+  const atual=await sb.from('requisicoes_compra').select('*').eq('id',id).single();
+  if(atual.error||!atual.data){toast('Item não encontrado','err');return;}
+  const etapa=positivo?'cd_disponivel':'cd_negativo';
+  const extra=positivo
+    ?`CD positivo por: ${S.perfil?.nome||'CD'} · Disponível para transferência ao almoxarifado`
+    :`CD negativo por: ${S.perfil?.nome||'CD'} · Sem saldo no CD`;
+  const original=extrairPedidoOficinaValet(atual.data.justificativa,atual.data.peca,atual.data.cod_sap);
+  const{error}=await sb.from('requisicoes_compra').update({
+    status:etapa,
+    justificativa:montarJustValetComOriginal(atual.data.justificativa,original,extra)
+  }).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  abrirNotificacaoFluxoPecas(etapa,{...atual.data,status:etapa,id});
+  toast(positivo?'CD confirmou disponibilidade.':'CD informou negativa.');
+  renderAlmoxarifado();
+}
+
+async function receberCdValetAlmox(id){
+  const atual=await sb.from('requisicoes_compra').select('*').eq('id',id).single();
+  if(atual.error||!atual.data){toast('Item não encontrado','err');return;}
+  const original=extrairPedidoOficinaValet(atual.data.justificativa,atual.data.peca,atual.data.cod_sap);
+  const extra=`Transferido do CD para almox por: ${S.perfil?.nome||'Almoxarifado'} · Separado por: ${S.perfil?.nome||'Almoxarifado'}`;
+  const{error}=await sb.from('requisicoes_compra').update({
+    status:'separado',
+    justificativa:montarJustValetComOriginal(atual.data.justificativa,original,extra)
+  }).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  abrirNotificacaoFluxoPecas('separado',{...atual.data,status:'separado',id});
+  toast('Item recebido do CD e separado.');
   renderAlmoxarifado();
 }
 
@@ -6378,6 +6519,7 @@ async function abrirCompraValetAlmox(rowId,id){
     justificativa:montarJustValetComOriginal(atual.data?.justificativa,original,extra)
   }).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
+  abrirNotificacaoFluxoPecas('pedido_compra',{...(atual.data||{}),status:'pedido_compra',id});
   toast('Item enviado para fluxo de compra.');
   renderAlmoxarifado();
 }
@@ -6874,7 +7016,7 @@ async function renderFerrPCM(aba='painel'){
         .not('pecas_necessarias','is',null)
         .order('hora_entrada',{ascending:false}).limit(30)
     ]);
-    const reqs=(reqRes.data||[]).filter(r=>(r.status||'')!=='cancelado'&&r.cod_sap!=='__PROG_PREV__');
+    const reqs=(reqRes.data||[]).filter(r=>(r.status||'')!=='cancelado'&&r.cod_sap!=='__PROG_PREV__'&&!String(r.peca||'').includes('Programação preventiva'));
     const osPecas=(osRes.data||[]).filter(o=>(o.pecas_necessarias||'').trim());
     const valetMetrica=lerValetamentoMetrica(dataValet);
     const carrosValet=(valetMetrica?.itens||[]);
@@ -8944,14 +9086,9 @@ async function prevSalvarProgramacaoPreventivaBanco(semana){
       criado_por:S.perfil?.nome||null,
       criado_em:new Date().toISOString()
     }));
-    await sb.from('programacao_preventiva').delete().eq('garagem_id',gid).gte('data',semana.inicio).lte('data',semana.fim);
     if(!rows.length)return;
-    let res=await sb.from('programacao_preventiva').insert(rows);
-    if(res.error&&/column|schema|cache/i.test(String(res.error.message||''))){
-      const min=rows.map(r=>({garagem_id:r.garagem_id,data:r.data,prefixo:r.prefixo,tipo:r.tipo,servicos:r.servicos}));
-      res=await sb.from('programacao_preventiva').insert(min);
-    }
-    if(res.error)console.warn('[PREV BANCO]',res.error);
+    // A tabela programacao_preventiva não tem o mesmo schema entre ambientes.
+    // Para o app, a fonte confiável passa a ser o marcador interno em requisicoes_compra.
     await prevSalvarMarcadoresPreventivaReq(semana,rows);
   }catch(e){console.warn('[PREV BANCO]',e);}
 }
@@ -8985,7 +9122,34 @@ async function prevSalvarMarcadoresPreventivaReq(semana,rows){
       criado_por:S.perfil?.nome||null,
       criado_em:new Date().toISOString()
     }));
-    const res=await sb.from('requisicoes_compra').insert(marcadores);
+    const tentativasMarcadores=[
+      marcadores,
+      marcadores.map(m=>({
+        garagem_id:m.garagem_id,
+        data:m.data,
+        prefixo:m.prefixo,
+        peca:m.peca,
+        cod_sap:m.cod_sap,
+        quantidade:m.quantidade,
+        status:m.status,
+        justificativa:m.justificativa
+      })),
+      marcadores.map(m=>({
+        garagem_id:m.garagem_id,
+        data:m.data,
+        prefixo:m.prefixo,
+        peca:m.peca,
+        quantidade:m.quantidade,
+        status:m.status,
+        justificativa:`${m.justificativa} · Marcador app`
+      }))
+    ];
+    let res={error:null};
+    for(const payload of tentativasMarcadores){
+      res=await sb.from('requisicoes_compra').insert(payload);
+      if(!res.error)break;
+      console.warn('[PREV MARCADORES TENTATIVA]',res.error);
+    }
     if(res.error)console.warn('[PREV MARCADORES]',res.error);
     const atuais=await sb.from('requisicoes_compra')
       .select('id,prefixo,justificativa,status')
@@ -9663,15 +9827,7 @@ async function prevDiagnosticarSyncApp(id){
     if(!porDia[d])porDia[d]=[];
     porDia[d].push({prefixo:i.prefixo,tipo:i.tipo,servicos:i.servicos||''});
   });
-  const prog=await prevDiagQuery('programacao_preventiva',
-    sb.from('programacao_preventiva')
-      .select('*')
-      .eq('garagem_id',gid)
-      .gte('data',semana.inicio)
-      .lte('data',semana.fim)
-      .limit(200),
-    r=>({data:r.data,prefixo:r.prefixo,tipo:r.tipo,status:r.status,servicos:r.servicos||r.plano_nome||''})
-  );
+  const prog={nome:'programacao_preventiva',ok:true,erro:'Tabela ignorada neste fluxo: sem coluna data no banco atual.',total:0,amostra:[]};
   const marc=await prevDiagQuery('marcadores_requisicoes',
     sb.from('requisicoes_compra')
       .select('id,data,prefixo,cod_sap,peca,status,justificativa,criado_em')
@@ -9692,7 +9848,7 @@ async function prevDiagnosticarSyncApp(id){
     r=>({data:r.data,prefixo:r.prefixo,cod_sap:r.cod_sap,status:r.status,qtd:r.quantidade,peca:r.peca,valor:r.valor_unitario,justificativa:r.justificativa})
   );
   const marcadores=(marc.amostra||[]).filter(r=>r.cod_sap==='__PROG_PREV__'||String(r.peca||'').includes('Programação preventiva'));
-  const cestosReais=(cestos.amostra||[]).filter(r=>r.cod_sap!=='__PROG_PREV__');
+  const cestosReais=(cestos.amostra||[]).filter(r=>r.cod_sap!=='__PROG_PREV__'&&!String(r.peca||'').includes('Programação preventiva'));
   const faltandoMarcador=pesadas.filter(p=>!marcadores.some(m=>almoxPrefKey(m.prefixo)===almoxPrefKey(p.prefixo)&&m.data===p.iso));
   const faltandoCesto=pesadas.filter(p=>!cestosReais.some(c=>almoxPrefKey(c.prefixo)===almoxPrefKey(p.prefixo)));
   const erroHtml=[prog,marc,cestos].filter(x=>!x.ok).map(x=>`<div style="padding:10px;border:1px solid var(--red);background:#EF444418;border-radius:8px;color:var(--red);font-size:12px"><b>${prevEsc(x.nome)}</b>: ${prevEsc(x.erro)}</div>`).join('');
@@ -9700,7 +9856,7 @@ async function prevDiagnosticarSyncApp(id){
     <div class="modal-title"><span>Diagnóstico preventivas no app</span><button class="btn-x" onclick="document.getElementById('modal-prev-diag').style.display='none'">✕</button></div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
       <div class="card"><div class="label">Semana local</div><div class="big blue">${pesadas.length}</div><div style="font-size:11px;color:var(--text3)">pesadas esperadas</div></div>
-      <div class="card"><div class="label">Tabela programação</div><div class="big ${prog.ok?'green':'red'}">${prog.total}</div><div style="font-size:11px;color:var(--text3)">${prog.ok?'consulta ok':'erro'}</div></div>
+      <div class="card"><div class="label">Tabela programação</div><div class="big amber">OFF</div><div style="font-size:11px;color:var(--text3)">usando marcadores</div></div>
       <div class="card"><div class="label">Marcadores app</div><div class="big ${marcadores.length?'green':'red'}">${marcadores.length}</div><div style="font-size:11px;color:var(--text3)">linhas __PROG_PREV__</div></div>
       <div class="card"><div class="label">Cestos valet</div><div class="big ${cestosReais.length?'green':'amber'}">${cestosReais.length}</div><div style="font-size:11px;color:var(--text3)">data ${prevEsc(valetDate)}</div></div>
     </div>
@@ -9920,6 +10076,106 @@ function abrirModalProgramarPrev(){ renderFerrPrev(); }
 function carregarImportacao(){ renderFerrPrev(); }
 function excluirImportacao(){ _prevDados=[];_prevImportadoEm='';_prevBuscaPrefixo='';_prevGrupoAtivo='propostas';_prevEscalaAlteracoes={};_prevValidados={};renderFerrPrev(); }
 function verHistoricoImportacoes(){ _prevGrupoAtivo='historico'; renderFerrPrev(); }
+
+const RONDA33_SETORES=[
+  {id:'pcm',nome:'Planejamento e PCM',cargos:['lider_pcm'],itens:[
+    ['r1_pcm_01','As O.S. preventivas foram abertas?',1],
+    ['r1_pcm_02','Foi realizada a passagem de bastão entre os PCMs?',1],
+    ['r1_pcm_03','Realizou a conferência de óleo e aditivos nos veículos via Praxio?',1],
+    ['r1_pcm_04','Foi conferido o abastecimento diesel e arla via Praxio?',1],
+    ['r1_pcm_05','Veículos em garantia foram informados para a concessionária?',1],
+    ['r1_pcm_06','As preventivas foram distribuídas e estão em andamento?',1],
+    ['r1_pcm_07','Foi realizada a priorização dos veículos conforme o esperado?',1],
+    ['r1_pcm_08','Foi realizado o relatório de custo em relação ao bacalhau?',1],
+    ['r1_pcm_09','Se houve SOS, foi realizado o relatório 2.10 de SOS?',1],
+    ['r2_pcm_01','Todas as preventivas foram realizadas?',2],
+    ['r2_pcm_02','Serviços pendentes foram liberados?',2],
+    ['r2_pcm_03','Todos os veículos planejados foram liberados?',2],
+    ['r2_pcm_04','Todas as O.S. foram fechadas?',2],
+    ['r2_pcm_05','O relatório 2.4 de fechamento de PCM foi finalizado?',2],
+    ['r2_pcm_06','O checklist 3.4 de verificação de ferramentas foi finalizado?',2],
+    ['r2_pcm_07','O checklist 3.2 de análise hora a hora da manutenção foi finalizado?',2],
+    ['r2_pcm_08','Todo veículo de corretiva liberado realizou o checklist de liberação?',2],
+  ]},
+  {id:'almox',nome:'Almoxarifado / Suprimentos',cargos:['lider_suprimentos'],itens:[
+    ['r1_almox_01','Os kits preventivos da preventiva foram separados corretamente?',1],
+    ['r1_almox_02','Foi realizada a passagem de bastão entre turnos?',1],
+    ['r1_almox_03','O turno anterior realizou o inventário rotativo?',1],
+    ['r1_almox_04','O inventário rotativo teve algum desvio?',1],
+    ['r2_almox_01','Todas as solicitações de compra foram realizadas?',2],
+    ['r2_almox_02','O SLA de entrega das peças foi cumprido?',2],
+    ['r2_almox_03','As peças em garantia foram solicitadas?',2],
+    ['r2_almox_04','Os itens solicitados foram utilizados?',2],
+    ['r2_almox_05','As peças recondicionadas foram enviadas ao fornecedor?',2],
+    ['r2_almox_06','Foi realizado o teste de Arla antes do recebimento?',2],
+    ['r2_almox_07','Foi realizado o teste de Diesel antes do recebimento?',2],
+  ]},
+  {id:'operacao',nome:'Pátio e Operação',cargos:['lider_patio','lider_operacional','supervisor'],itens:[
+    ['r1_op_01','Veículos de preventiva foram recolhidos?',1],
+    ['r1_op_02','Veículos de preventiva foram lavados?',1],
+    ['r2_op_01','Todos os veículos escalados de lavagem foram lavados?',2],
+    ['r2_op_02','A programação de soltura foi cumprida?',2],
+    ['r2_op_03','Foi realizado todos os checklist de entrada?',2],
+    ['r2_op_04','Foi realizado todos os checklist de saída?',2],
+  ]},
+];
+const RONDA33_RESUMOS=[
+  {id:'operacao_ocibmar',nome:'Operação / OCIBMAR',cargos:['lider_operacional','lider_patio','supervisor'],campos:['Soltura de Frota','Recolhas Anormais (RA)','Recolhas Operacionais (RO)','SOS / Veículos Socorridos','Lavagens Completas','Lavagens Simples','Lavagens Escovão','Sinistros','Partes Perdidas']},
+  {id:'absenteismo',nome:'Absenteísmo OCIBMAR',cargos:['lider_operacional','lider_patio','supervisor'],grid:['Matrícula','Motivo','Matrícula reserva','Tratativas']},
+  {id:'dobras',nome:'Dobras / Horas Extras OCIBMAR',cargos:['lider_operacional','lider_patio','supervisor'],grid:['Matrícula','Motivo','Tratativas']},
+  {id:'manut_indisp',nome:'Manutenção - Veículos Indisponíveis',cargos:['lider_pcm'],grid:['Prefixo','Solicitações','Custo 2.6','Tratativas']},
+  {id:'manut_andamento',nome:'Manutenção - Em Andamento',cargos:['lider_pcm'],grid:['Prefixo','Mecânico','Principal pendência']},
+  {id:'suprimentos',nome:'Suprimentos',cargos:['lider_suprimentos'],campos:['Kits preventivos separados (D-1)']},
+  {id:'sol_pendentes',nome:'Solicitações Pendentes',cargos:['lider_suprimentos'],grid:['Prefixo','Solicitações','Status']},
+];
+function ronda33PodeEditarSetor(setor){const c=S.perfil?.cargo;return S.perfil?.is_admin||c==='coordenador'||(setor.cargos||[]).includes(c);}
+function ronda33PodeVerificar(){return S.perfil?.is_admin||S.perfil?.cargo==='coordenador';}
+function ronda33Badge(st){const m={ok:['OK','var(--green)','#00C48C20'],nok:['NOK','var(--red)','#EF444420'],na:['N/A','var(--text3)','var(--surface2)']};const x=m[st]||['--','var(--text4)','var(--surface2)'];return `<span style="padding:3px 8px;border-radius:7px;font-size:10px;font-weight:900;color:${x[1]};background:${x[2]}">${x[0]}</span>`;}
+async function renderFerr33(){
+  const gid=getGid(), data=S._r33Data||hoje(), turno=S._r33Turno||S.turno||'dia', podeVer=ronda33PodeVerificar();
+  const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  setMain(`<div class="loading"><div class="spinner"></div> Carregando 3.3...</div>`);
+  const {data:rows,error}=await sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno);
+  if(error){
+    setMain(`${secTitle('👣','3.3 Ronda Operacional',back)}
+      <div class="info-blue info-banner" style="border-color:#EF444455;color:var(--red)">Tabela checklist_33 ainda não existe ou o banco recusou a consulta. Rode o arquivo SQL criado em Downloads/checklist_33.sql no Supabase.</div>`);
+    return;
+  }
+  const porRodada={};(rows||[]).forEach(r=>porRodada[r.rodada]=r);
+  const top=`<div style="display:grid;grid-template-columns:190px 160px 1fr;gap:10px;align-items:end;margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px">
+    <div><label class="campo-label">Data</label><input class="fi" type="date" value="${data}" onchange="S._r33Data=this.value;renderFerr33()"></div>
+    <div><label class="campo-label">Turno</label><select class="fi" onchange="S._r33Turno=this.value;renderFerr33()"><option value="dia"${turno==='dia'?' selected':''}>Dia</option><option value="noite"${turno==='noite'?' selected':''}>Noite</option></select></div>
+    <div style="color:var(--text3);font-size:12px;padding-bottom:10px">Coordenador visualiza o check inteiro e valida cada preenchimento.</div>
+  </div>`;
+  const rodadaHtml=rodada=>{
+    const rec=porRodada[rodada]||{dados:{respostas:{},resumos:{}}};
+    const dados=rec.dados||{}, respostas=dados.respostas||{}, resumos=dados.resumos||{};
+    const linhas=RONDA33_SETORES.flatMap(setor=>setor.itens.filter(i=>i[2]===rodada).map(it=>({setor,it})));
+    return `<section style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px">
+      <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"><b>Verificação ${rodada}ª Rodada</b><span style="color:var(--text3);font-size:12px">${linhas.length} itens</span></div>
+      <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:980px;font-size:12px"><thead><tr style="background:var(--surface2);color:var(--text3);text-transform:uppercase;letter-spacing:.12em;font-size:10px"><th style="padding:9px;text-align:left">Setor</th><th style="padding:9px;text-align:left">Item</th><th style="padding:9px">Status</th><th style="padding:9px;text-align:left">Observação</th><th style="padding:9px">Preenchido por</th><th style="padding:9px">Coord.</th></tr></thead><tbody>
+        ${linhas.map(({setor,it})=>{const r=respostas[it[0]]||{};return `<tr style="border-top:1px solid var(--border2)"><td style="padding:9px;color:var(--blue);font-weight:900">${setor.nome}</td><td style="padding:9px;color:var(--text)">${it[1]}</td><td style="padding:9px;text-align:center">${ronda33Badge(r.status)}</td><td style="padding:9px;color:var(--text2)">${prevEsc(r.obs||'--')}</td><td style="padding:9px;text-align:center;color:var(--text3)">${prevEsc(r.por||'--')}</td><td style="padding:9px;text-align:center">${podeVer?`<button onclick="salvarVerificacao33(${rodada},'${it[0]}',${r.verificado?'false':'true'})" class="btn-sm" style="font-size:10px">${r.verificado?'✓ Validado':'Validar'}</button>`:(r.verificado?ronda33Badge('ok'):'--')}</td></tr>`}).join('')}
+      </tbody></table></div>
+      <div style="padding:12px 14px;border-top:1px solid var(--border);display:grid;gap:10px">
+        ${RONDA33_RESUMOS.filter(s=>s.campos||s.grid).map(s=>`<details><summary style="cursor:pointer;color:var(--text);font-weight:900">${s.nome}</summary><pre style="white-space:pre-wrap;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text2);font-size:11px;margin-top:8px">${prevEsc(JSON.stringify(resumos[s.id]||{},null,2))}</pre></details>`).join('')}
+      </div>
+    </section>`;
+  };
+  setMain(`${secTitle('👣','3.3 Ronda Operacional',back)}${top}${rodadaHtml(1)}${rodadaHtml(2)}`);
+}
+async function salvarVerificacao33(rodada,itemId,valor){
+  const gid=getGid(), data=S._r33Data||hoje(), turno=S._r33Turno||S.turno||'dia';
+  const atual=await sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno).eq('rodada',rodada).maybeSingle();
+  if(atual.error){toast('Erro: '+atual.error.message,'err');return;}
+  const rec=atual.data||{dados:{respostas:{},resumos:{}}};
+  const dados=rec.dados||{respostas:{},resumos:{}};
+  dados.respostas=dados.respostas||{};
+  dados.respostas[itemId]={...(dados.respostas[itemId]||{}),verificado:valor,verificado_por:S.perfil?.nome||null,verificado_em:new Date().toISOString()};
+  const payload={garagem_id:gid,data,turno,rodada,dados,status:valor?'validado':'em_andamento',verificado_por:S.perfil?.nome||null,verificado_em:new Date().toISOString()};
+  const res=rec.id?await sb.from('checklist_33').update(payload).eq('id',rec.id):await sb.from('checklist_33').insert(payload);
+  if(res.error){toast('Erro: '+res.error.message,'err');return;}
+  toast(valor?'Item validado':'Validação removida');renderFerr33();
+}
 async function renderFerr211(){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
   const gid=getGid();
