@@ -217,8 +217,8 @@ const NAV={
   lider_oficina:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'valet_oficina',ic:'📦',lb:'Valet'},{id:'prev_oficina',ic:'🧰',lb:'Prev.'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_pcm:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'checklist_equip',ic:'📋',lb:'3.4'},{id:'prev26',ic:'💰',lb:'2.6'},{id:'home',ic:'🏠',lb:'Início'}],
   assistente_pcm:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'checklist_equip',ic:'📋',lb:'3.4'},{id:'prev26',ic:'💰',lb:'2.6'},{id:'home',ic:'🏠',lb:'Início'}],
-  almoxarifado:[{id:'valet_almox',ic:'📦',lb:'Kits'},{id:'home',ic:'🏠',lb:'Início'}],
-  lider_almoxarifado:[{id:'valet_almox',ic:'📦',lb:'Kits'},{id:'home',ic:'🏠',lb:'Início'}],
+  almoxarifado:[{id:'valet_almox',ic:'📦',lb:'Kits'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'home',ic:'🏠',lb:'Início'}],
+  lider_almoxarifado:[{id:'valet_almox',ic:'📦',lb:'Kits'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_suprimentos:[{id:'valet_almox',ic:'📦',lb:'Kits'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'home',ic:'🏠',lb:'Início'}],
   coordenador:[{id:'ronda33',ic:'👣',lb:'3.3'},{id:'home',ic:'🏠',lb:'Início'}],
   supervisor:[{id:'ronda33',ic:'👣',lb:'3.3'},{id:'home',ic:'🏠',lb:'Início'}],
@@ -2423,7 +2423,7 @@ async function salvarTrocaValetAlmox(id){
 
 const R33_SETORES=[
   {id:'pcm',nome:'Planejamento e PCM',cargos:['lider_pcm'],itens:[['r1_pcm_01','As O.S. preventivas foram abertas?',1],['r1_pcm_02','Foi realizada a passagem de bastão entre os PCMs?',1],['r1_pcm_03','Realizou a conferência de óleo e aditivos nos veículos via Praxio?',1],['r1_pcm_04','Foi conferido o abastecimento diesel e arla via Praxio?',1],['r1_pcm_05','Veículos em garantia foram informados para a concessionária?',1],['r1_pcm_06','As preventivas foram distribuídas e estão em andamento?',1],['r1_pcm_07','Foi realizada a priorização dos veículos conforme o esperado?',1],['r1_pcm_08','Foi realizado o relatório de custo em relação ao bacalhau?',1],['r1_pcm_09','Se houve SOS, foi realizado o relatório 2.10 de SOS?',1],['r2_pcm_01','Todas as preventivas foram realizadas?',2],['r2_pcm_02','Serviços pendentes foram liberados?',2],['r2_pcm_03','Todos os veículos planejados foram liberados?',2],['r2_pcm_04','Todas as O.S. foram fechadas?',2],['r2_pcm_05','O relatório 2.4 de fechamento de PCM foi finalizado?',2],['r2_pcm_06','O checklist 3.4 de verificação de ferramentas foi finalizado?',2],['r2_pcm_07','O checklist 3.2 de análise hora a hora da manutenção foi finalizado?',2],['r2_pcm_08','Todo veículo de corretiva liberado realizou o checklist de liberação?',2]]},
-  {id:'almox',nome:'Almoxarifado / Suprimentos',cargos:['lider_suprimentos'],itens:[['r1_almox_01','Os kits preventivos da preventiva foram separados corretamente?',1],['r1_almox_02','Foi realizada a passagem de bastão entre turnos?',1],['r1_almox_03','O turno anterior realizou o inventário rotativo?',1],['r1_almox_04','O inventário rotativo teve algum desvio?',1],['r2_almox_01','Todas as solicitações de compra foram realizadas?',2],['r2_almox_02','O SLA de entrega das peças foi cumprido?',2],['r2_almox_03','As peças em garantia foram solicitadas?',2],['r2_almox_04','Os itens solicitados foram utilizados?',2],['r2_almox_05','As peças recondicionadas foram enviadas ao fornecedor?',2],['r2_almox_06','Foi realizado o teste de Arla antes do recebimento?',2],['r2_almox_07','Foi realizado o teste de Diesel antes do recebimento?',2]]},
+  {id:'almox',nome:'Almoxarifado / Suprimentos',cargos:['almoxarifado','lider_almoxarifado','lider_suprimentos'],itens:[['r1_almox_01','Os kits preventivos da preventiva foram separados corretamente?',1],['r1_almox_02','Foi realizada a passagem de bastão entre turnos?',1],['r1_almox_03','O turno anterior realizou o inventário rotativo?',1],['r1_almox_04','O inventário rotativo teve algum desvio?',1],['r2_almox_01','Todas as solicitações de compra foram realizadas?',2],['r2_almox_02','O SLA de entrega das peças foi cumprido?',2],['r2_almox_03','As peças em garantia foram solicitadas?',2],['r2_almox_04','Os itens solicitados foram utilizados?',2],['r2_almox_05','As peças recondicionadas foram enviadas ao fornecedor?',2],['r2_almox_06','Foi realizado o teste de Arla antes do recebimento?',2],['r2_almox_07','Foi realizado o teste de Diesel antes do recebimento?',2]]},
   {id:'op',nome:'Pátio e Operação',cargos:['lider_patio','lider_operacional','supervisor'],itens:[['r1_op_01','Veículos de preventiva foram recolhidos?',1],['r1_op_02','Veículos de preventiva foram lavados?',1],['r2_op_01','Todos os veículos escalados de lavagem foram lavados?',2],['r2_op_02','A programação de soltura foi cumprida?',2],['r2_op_03','Foi realizado todos os checklist de entrada?',2],['r2_op_04','Foi realizado todos os checklist de saída?',2]]}
 ];
 const R33_RESUMOS=[
@@ -2432,8 +2432,8 @@ const R33_RESUMOS=[
   {id:'dobras',nome:'Dobras / Horas Extras OCIBMAR',cargos:['lider_operacional','lider_patio','supervisor']},
   {id:'manut_indisp',nome:'Manutenção - Veículos Indisponíveis',cargos:['lider_pcm']},
   {id:'manut_andamento',nome:'Manutenção - Em Andamento',cargos:['lider_pcm']},
-  {id:'suprimentos',nome:'Suprimentos',cargos:['lider_suprimentos']},
-  {id:'sol_pendentes',nome:'Solicitações Pendentes',cargos:['lider_suprimentos']}
+  {id:'suprimentos',nome:'Suprimentos',cargos:['almoxarifado','lider_almoxarifado','lider_suprimentos']},
+  {id:'sol_pendentes',nome:'Solicitações Pendentes',cargos:['almoxarifado','lider_almoxarifado','lider_suprimentos']}
 ];
 let _r33Data=hoje(),_r33Turno='dia',_r33Cache={};
 function r33Coord(){return S.perfil?.is_admin||cargo()==='coordenador'}
