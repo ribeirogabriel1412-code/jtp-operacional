@@ -1414,8 +1414,8 @@ async function renderAlmoxarifado(){
     }
     if(st==='pedido_compra'){
       const comp=extrairCompraValet(r.justificativa);
-      const compraSup=isSup?`<div style="font-size:11px;color:var(--text3);text-align:right;line-height:1.35">Atualize na fila de compras<br>${comp.numero?`Solic. <b style="color:var(--blue)">${safe(comp.numero)}</b>`:'Aguardando requisição'}${comp.prazo?` · <b style="color:var(--amber)">${safe(comp.prazo)}</b>`:''}</div>`:`<div style="font-size:11px;color:var(--text3);text-align:right;line-height:1.35">${comp.numero?`Solic. <b style="color:var(--blue)">${safe(comp.numero)}</b>`:'Aguardando suprimentos'}${comp.prazo?`<br>Prazo <b style="color:var(--amber)">${safe(comp.prazo)}</b>`:''}</div>`;
-      return `<div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;flex-wrap:wrap">${compraSup}${podeCancelarCompra?reabrir:''}${chegou}</div>`;
+      const compraSup=isSup?`<div style="font-size:11px;color:var(--text3);text-align:right;line-height:1.35">Na aba Solicitações<br>${comp.numero?`Req. <b style="color:var(--blue)">${safe(comp.numero)}</b>`:'Aguardando requisição'}</div>`:`<div style="font-size:11px;color:var(--text3);text-align:right;line-height:1.35">${comp.numero?`Req. <b style="color:var(--blue)">${safe(comp.numero)}</b>`:'Aguardando suprimentos'}${comp.prazo?`<br>Prazo <b style="color:var(--amber)">${safe(comp.prazo)}</b>`:''}</div>`;
+      return `<div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;flex-wrap:wrap">${compraSup}${podeCancelarCompra?reabrir:''}</div>`;
     }
     if(['separado','comprado'].includes(st))return `<div style="display:flex;gap:6px;justify-content:flex-end;align-items:center">${salvar}</div>`;
     return `<div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;flex-wrap:wrap">${salvar}${pedirCd}${negativa}</div>`;
@@ -1476,10 +1476,10 @@ async function renderAlmoxarifado(){
       ${kpi('Pedido compra',qtdCompra,0,'',true,0)}
       ${kpi('Cestos disponíveis',qtdCestosDisp,undefined,'',false,0)}
     </div>
+    ${painelCompras}
     ${relatorioCestos}
     ${preventivasSemana}
-    ${painelCompras}
-    ${secTitle('🛒','Itens do Valetamento',`${cestos.length} cesto(s) · ${lista.length} item(ns) · ${qtdSep} separados · ${qtdCompra} compras · ${fmtMoney(totalValor)}`)}
+    <div id="almox-itens-valet">${secTitle('🛒','Itens do Valetamento',`${cestos.length} cesto(s) · ${lista.length} item(ns) · ${qtdSep} separados · ${qtdCompra} compras · ${fmtMoney(totalValor)}`)}</div>
     <div>${cards}</div>
   `);
 }
@@ -1490,84 +1490,159 @@ function renderPainelComprasSuprimentosValet(data,lista,safe,rowId,fmtMoney){
   const compras=(lista||[]).filter(r=>['pedido_compra','comprado'].includes(r.status||''));
   const hojeIso=hoje();
   const abertas=compras.filter(r=>r.status==='pedido_compra');
-  const vencidas=abertas.filter(r=>{
-    const comp=extrairCompraValet(r.justificativa);
-    const prazo=comp.prazo||JSON.parse(localStorage.getItem('valet_chegada_'+r.id)||'{}')?.data||'';
-    return prazo&&prazo<hojeIso;
-  }).length;
-  const comReq=abertas.filter(r=>extrairCompraValet(r.justificativa).numero).length;
-  const recebidas=compras.filter(r=>r.status==='comprado').length;
-  const total=abertas.reduce((s,r)=>s+(parseFloat(r.valor_estimado||0)*parseFloat(r.quantidade||1)),0);
   const grupos={};
   compras.forEach(r=>{const k=r.prefixo||'Sem prefixo';if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
-  const cards=Object.entries(grupos).length?Object.entries(grupos).map(([prefixo,itens])=>{
+  window._comprasValetPrefixos={};
+  const grupoEntries=Object.entries(grupos);
+  const grupoAbertos=grupoEntries.filter(([,itens])=>itens.some(i=>i.status==='pedido_compra'));
+  const vencidas=grupoAbertos.filter(([,itens])=>{
+    const comp=extrairCompraValet(itens[0]?.justificativa);
+    const prazo=comp.prazo||JSON.parse(localStorage.getItem('valet_chegada_'+itens[0]?.id)||'{}')?.data||'';
+    return prazo&&prazo<hojeIso;
+  }).length;
+  const comReq=grupoAbertos.filter(([,itens])=>extrairCompraValet(itens[0]?.justificativa).numero).length;
+  const recebidas=compras.filter(r=>r.status==='comprado').length;
+  const total=abertas.reduce((s,r)=>s+(parseFloat(r.valor_estimado||0)*parseFloat(r.quantidade||1)),0);
+  const cards=grupoEntries.length?grupoEntries.map(([prefixo,itens],idx)=>{
     const valorPrefixo=itens.reduce((s,r)=>s+(parseFloat(r.valor_estimado||0)*parseFloat(r.quantidade||1)),0);
-    return`<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--red);border-radius:10px;overflow:hidden;margin-bottom:12px">
+    const abertosPrefixo=itens.filter(i=>i.status==='pedido_compra');
+    const concluidosPrefixo=itens.filter(i=>i.status==='comprado');
+    const comp=extrairCompraValet(itens[0]?.justificativa);
+    const prazo=comp.prazo||JSON.parse(localStorage.getItem('valet_chegada_'+itens[0]?.id)||'{}')?.data||'';
+    const atrasado=prazo&&prazo<hojeIso&&abertosPrefixo.length>0;
+    const grupoId='compra-prefixo-'+idx+'-'+String(prefixo).replace(/[^a-zA-Z0-9_-]/g,'');
+    window._comprasValetPrefixos[grupoId]=itens.map(i=>i.id);
+    const fups=[...new Set(itens.flatMap(i=>extrairCompraValet(i.justificativa).fups||[]))].slice(-6);
+    const statusTxt=abertosPrefixo.length?'EM COMPRA':'CONCLUÍDO';
+    const statusCor=abertosPrefixo.length?(atrasado?'var(--red)':'var(--amber)'):'var(--green)';
+    return`<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${statusCor};border-radius:10px;overflow:hidden;margin-bottom:12px">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;padding:14px 16px;border-bottom:1px solid var(--border)">
         <div>
           <div style="font-family:'DM Mono',monospace;color:var(--blue);font-size:20px;font-weight:900">${safe(prefixo)}</div>
-          <div style="font-size:12px;color:var(--text3);margin-top:3px">${itens.length} item(ns) em compra · ${itens.filter(i=>i.status==='comprado').length} recebido(s)</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:3px">${itens.length} item(ns) · ${concluidosPrefixo.length} concluído(s) · ${abertosPrefixo.length} em compra</div>
         </div>
         <div style="text-align:right">
           <div style="font-family:'DM Mono',monospace;color:var(--amber);font-size:17px;font-weight:900">${fmtMoney(valorPrefixo)}</div>
-          <div style="font-size:10px;color:var(--red);font-weight:900;margin-top:2px">SUPRIMENTOS</div>
+          <div style="font-size:10px;color:${statusCor};font-weight:900;margin-top:2px">${statusTxt}</div>
         </div>
       </div>
-      ${itens.map(r=>{
-        const rid=rowId(r);
-        const comp=extrairCompraValet(r.justificativa);
-        const original=extrairPedidoOficinaValet(r.justificativa,r.peca,r.cod_sap);
-        const prazo=comp.prazo||JSON.parse(localStorage.getItem('valet_chegada_'+r.id)||'{}')?.data||'';
-        const atrasado=prazo&&prazo<hojeIso&&r.status!=='comprado';
-        const fupHist=(comp.fups||[]).slice(-4).map(f=>`<div style="border-left:2px solid var(--blue);padding-left:7px;margin-top:4px;color:var(--text2);font-size:10px">${safe(f)}</div>`).join('');
-        return`<div style="display:grid;grid-template-columns:minmax(280px,1fr) 72px 118px 150px 150px 240px;gap:10px;align-items:start;padding:12px 14px;border-bottom:1px solid var(--border2)">
-          <div style="min-width:0">
-            <div style="font-weight:800;color:var(--text);font-size:12px">${safe(r.peca||original||'Item sem descrição')}</div>
-            <div style="font-size:10px;color:var(--text3);margin-top:3px">Pedido oficina: <b style="color:var(--text2)">${safe(original||'--')}</b></div>
-            <div style="font-size:10px;color:var(--amber);font-weight:900;margin-top:3px">${r.cod_sap?`SAP ${safe(r.cod_sap)}`:'SEM SAP'}</div>
-            <input id="comp-desc-${rid}" value="${safe(comp.descricao||r.peca||original||'')}" placeholder="Descrição para compra" style="margin-top:7px;width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 9px;font-size:11px">
-          </div>
+      <div style="padding:14px 16px;background:var(--surface2);border-bottom:1px solid var(--border)">
+        <div style="display:grid;grid-template-columns:180px 150px minmax(260px,1fr) 250px;gap:10px;align-items:start">
           <div>
-            <div style="font-size:10px;color:var(--text3);font-weight:900;margin-bottom:5px;text-align:center">QTD</div>
-            <input id="comp-qtd-${rid}" type="number" min="1" value="${safe(r.quantidade||1)}" style="width:64px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px;text-align:center;font-family:'DM Mono',monospace;font-weight:900">
-          </div>
-          <div>
-            <div style="font-size:10px;color:var(--text3);font-weight:900;margin-bottom:5px;text-align:right">VALOR</div>
-            <input id="comp-valor-${rid}" type="number" step="0.01" min="0" value="${safe(comp.valor||r.valor_estimado||'')}" placeholder="0,00" style="width:112px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--amber);padding:7px;text-align:right;font-family:'DM Mono',monospace;font-weight:900">
-          </div>
-          <div>
-            <div style="font-size:10px;color:var(--text3);font-weight:900;margin-bottom:5px">REQUISIÇÃO</div>
-            <input id="comp-num-${rid}" value="${safe(comp.numero||'')}" placeholder="Nº requisição" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid ${comp.numero?'var(--blue)':'var(--border)'};border-radius:7px;color:var(--text);padding:7px 9px;font-family:'DM Mono',monospace;font-size:11px">
-            <div style="margin-top:7px">${badgeValetStatus(r.status)}</div>
+            <div style="font-size:10px;color:var(--text3);font-weight:900;margin-bottom:5px">Nº SOLICITAÇÃO</div>
+            <input id="comp-grupo-num-${grupoId}" value="${safe(comp.numero||'')}" placeholder="Nº solicitação" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid ${comp.numero?'var(--blue)':'var(--border)'};border-radius:8px;color:var(--text);padding:9px 10px;font-family:'DM Mono',monospace;font-size:12px">
           </div>
           <div>
             <div style="font-size:10px;color:var(--text3);font-weight:900;margin-bottom:5px">PREVISÃO</div>
-            <input id="comp-prazo-${rid}" type="date" value="${safe(prazo)}" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid ${atrasado?'var(--red)':'var(--border)'};border-radius:7px;color:${atrasado?'var(--red)':'var(--text)'};padding:7px 9px;font-family:'DM Mono',monospace;font-size:11px">
-            ${atrasado?'<div style="font-size:10px;color:var(--red);font-weight:900;margin-top:4px">ATRASADO</div>':''}
+            <input id="comp-grupo-prazo-${grupoId}" type="date" value="${safe(prazo)}" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid ${atrasado?'var(--red)':'var(--border)'};border-radius:8px;color:${atrasado?'var(--red)':'var(--text)'};padding:9px 10px;font-family:'DM Mono',monospace;font-size:12px">
           </div>
           <div>
-            <textarea id="comp-fup-${rid}" placeholder="FUP com compras matricial..." style="width:100%;min-height:58px;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 9px;font-size:11px;resize:vertical"></textarea>
-            ${fupHist?`<div style="margin-top:6px">${fupHist}</div>`:''}
-            <div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;margin-top:8px">
-              <button onclick="salvarFupCompraValet('${rid}','${r.id}','sup')" style="padding:6px 9px;border-radius:7px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:900;cursor:pointer">Salvar FUP</button>
-              <button onclick="atualizarReqCompra('${r.id}','comprado','almox')" style="padding:6px 9px;border-radius:7px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:900;cursor:pointer">Chegou</button>
-              <button onclick="voltarValetParaAlmox('${r.id}')" style="padding:6px 9px;border-radius:7px;border:1px solid var(--amber);background:#F59E0B18;color:var(--amber);font-size:11px;font-weight:900;cursor:pointer">Voltar almox</button>
-            </div>
+            <div style="font-size:10px;color:var(--text3);font-weight:900;margin-bottom:5px">ATUALIZAÇÃO / FUP</div>
+            <textarea id="comp-grupo-fup-${grupoId}" placeholder="Digite a atualização com compras matricial..." style="width:100%;min-height:42px;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 10px;font-size:12px;resize:vertical"></textarea>
           </div>
+          <div style="display:flex;gap:6px;justify-content:flex-end;align-items:end;flex-wrap:wrap;padding-top:20px">
+            ${abertosPrefixo.length?`<button onclick="salvarSolicitacaoCompraPrefixo('${grupoId}')" style="padding:9px 12px;border-radius:8px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:900;cursor:pointer">Salvar atualização</button>
+            <button onclick="concluirCompraValetPrefixo('${grupoId}')" style="padding:9px 12px;border-radius:8px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:900;cursor:pointer">Chegou / concluir</button>`:`<span style="font-size:11px;color:var(--green);font-weight:900">Compra concluída</span>`}
+          </div>
+        </div>
+        ${fups.length?`<div style="margin-top:10px;display:grid;gap:5px">${fups.map(f=>`<div style="border-left:2px solid var(--blue);padding-left:8px;color:var(--text2);font-size:11px">${safe(f)}</div>`).join('')}</div>`:''}
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(300px,1fr) 80px 140px 130px;background:var(--surface);border-bottom:1px solid var(--border);padding:8px 14px;gap:10px;font-size:10px;color:var(--text3);font-weight:900;letter-spacing:.12em;text-transform:uppercase">
+        <div>Itens da solicitação</div><div style="text-align:center">Qtd</div><div style="text-align:right">Valor</div><div style="text-align:center">Status</div>
+      </div>
+      ${itens.map(r=>{
+        const original=extrairPedidoOficinaValet(r.justificativa,r.peca,r.cod_sap);
+        return`<div style="display:grid;grid-template-columns:minmax(300px,1fr) 80px 140px 130px;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border2)">
+          <div style="min-width:0">
+            <div style="font-weight:800;color:var(--text);font-size:12px">${safe(r.peca||original||'Item sem descrição')}</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:3px">Pedido oficina: ${safe(original||'--')}</div>
+            <div style="font-size:10px;color:var(--amber);font-weight:900;margin-top:2px">${r.cod_sap?`SAP ${safe(r.cod_sap)}`:'SEM SAP'}</div>
+          </div>
+          <div style="text-align:center;font-family:'DM Mono',monospace;font-weight:900;color:var(--text)">${safe(r.quantidade||1)}</div>
+          <div style="text-align:right;font-family:'DM Mono',monospace;color:var(--amber);font-weight:900">${fmtMoney((parseFloat(r.valor_estimado||0)||0)*(parseFloat(r.quantidade||1)||1))}</div>
+          <div style="text-align:center">${badgeValetStatus(r.status)}</div>
         </div>`;
       }).join('')}
     </div>`;
   }).join(''):`<div class="empty">Nenhum item em compra aberto para suprimentos</div>`;
   return`
-    ${secTitle('🛒','Fila de Compras - Líder de Suprimentos',`Valet ${data.split('-').reverse().join('/')} · ${abertas.length} aberto(s) · ${fmtMoney(total)}`)}
+    ${secTitle('🧾','Solicitações de Compra - Suprimentos',`Valet ${data.split('-').reverse().join('/')} · ${grupoAbertos.length} solicitação(ões) aberta(s) · ${fmtMoney(total)}`)}
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <button style="padding:8px 14px;border-radius:8px;border:1px solid var(--blue);background:var(--blue-d);color:#fff;font-weight:900;font-size:12px">🧾 Solicitações</button>
+      <button onclick="document.getElementById('almox-itens-valet')?.scrollIntoView({behavior:'smooth',block:'start'})" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-weight:800;font-size:12px;cursor:pointer">📦 Itens / cestos</button>
+    </div>
     <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px">
-      ${kpi('Abertas',abertas.length,undefined,'',abertas.length>0,0)}
-      ${kpi('Com requisição',comReq,undefined,'',false,0)}
+      ${kpi('Solicitações',grupoAbertos.length,undefined,'',grupoAbertos.length>0,0)}
+      ${kpi('Com número',comReq,undefined,'',false,0)}
       ${kpi('Atrasadas',vencidas,0,'',vencidas>0,0)}
-      ${kpi('Recebidas',recebidas,undefined,'',false,0)}
+      ${kpi('Itens concluídos',recebidas,undefined,'',false,0)}
     </div>
     <div style="margin-bottom:18px">${cards}</div>
   `;
+}
+
+async function salvarSolicitacaoCompraPrefixo(grupoId){
+  const ids=window._comprasValetPrefixos?.[grupoId]||[];
+  if(!ids.length){toast('Não encontrei os itens desta solicitação.','err');return;}
+  const numero=document.getElementById('comp-grupo-num-'+grupoId)?.value?.trim()||'';
+  const prazo=document.getElementById('comp-grupo-prazo-'+grupoId)?.value?.trim()||'';
+  const fup=document.getElementById('comp-grupo-fup-'+grupoId)?.value?.trim()||'';
+  if(!numero&&!fup&&!prazo){toast('Informe o número, previsão ou um FUP para salvar.','err');return;}
+  const{data:itens,error}=await sb.from('requisicoes_compra').select('*').in('id',ids);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  const agora=new Date().toLocaleString('pt-BR');
+  for(const item of itens||[]){
+    const original=extrairPedidoOficinaValet(item.justificativa,item.peca,item.cod_sap);
+    const compraAtual=extrairCompraValet(item.justificativa);
+    const fupLinha=fup?`${agora} - ${S.perfil?.nome||'Suprimentos'}: ${fup}`:'';
+    const fups=[...(compraAtual.fups||[]),fupLinha].filter(Boolean);
+    const extras=[
+      `Solicitação compra: ${numero||compraAtual.numero||'Pendente'}`,
+      prazo?`Prazo entrega: ${prazo}`:(compraAtual.prazo?`Prazo entrega: ${compraAtual.prazo}`:''),
+      compraAtual.descricao?`Descrição compra: ${compraAtual.descricao}`:'',
+      compraAtual.valor?`Valor compra: ${compraAtual.valor}`:'',
+      ...fups.map(x=>`FUP compras: ${x}`)
+    ].filter(Boolean).join(' · ');
+    const upd={justificativa:montarJustValetComOriginal(item.justificativa,original,extras)};
+    const res=await sb.from('requisicoes_compra').update(upd).eq('id',item.id);
+    if(res.error){toast('Erro: '+res.error.message,'err');return;}
+    if(prazo)salvarChegadaValet(item.id,prazo);
+  }
+  abrirNotificacaoFluxoPecas('pedido_compra',{...(itens?.[0]||{}),status:'pedido_compra',justificativa:`Solicitação compra: ${numero}${prazo?` · Prazo entrega: ${prazo}`:''}${fup?` · FUP compras: ${fup}`:''}`});
+  toast('Solicitação atualizada para o prefixo.');
+  renderAlmoxarifado();
+}
+
+async function concluirCompraValetPrefixo(grupoId){
+  const ids=window._comprasValetPrefixos?.[grupoId]||[];
+  if(!ids.length){toast('Não encontrei os itens desta solicitação.','err');return;}
+  const numero=document.getElementById('comp-grupo-num-'+grupoId)?.value?.trim()||'';
+  const prazo=document.getElementById('comp-grupo-prazo-'+grupoId)?.value?.trim()||'';
+  const fup=document.getElementById('comp-grupo-fup-'+grupoId)?.value?.trim()||'Chegada confirmada';
+  const{data:itens,error}=await sb.from('requisicoes_compra').select('*').in('id',ids);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  const agora=new Date().toLocaleString('pt-BR');
+  for(const item of itens||[]){
+    const original=extrairPedidoOficinaValet(item.justificativa,item.peca,item.cod_sap);
+    const compraAtual=extrairCompraValet(item.justificativa);
+    const fups=[...(compraAtual.fups||[]),`${agora} - ${S.perfil?.nome||'Suprimentos'}: ${fup}`].filter(Boolean);
+    const extras=[
+      `Solicitação compra: ${numero||compraAtual.numero||'Concluída'}`,
+      prazo?`Prazo entrega: ${prazo}`:(compraAtual.prazo?`Prazo entrega: ${compraAtual.prazo}`:''),
+      compraAtual.descricao?`Descrição compra: ${compraAtual.descricao}`:'',
+      compraAtual.valor?`Valor compra: ${compraAtual.valor}`:'',
+      ...fups.map(x=>`FUP compras: ${x}`)
+    ].filter(Boolean).join(' · ');
+    const res=await sb.from('requisicoes_compra').update({
+      status:'comprado',
+      justificativa:montarJustValetComOriginal(item.justificativa,original,extras)
+    }).eq('id',item.id);
+    if(res.error){toast('Erro: '+res.error.message,'err');return;}
+    if(prazo)salvarChegadaValet(item.id,prazo);
+  }
+  abrirNotificacaoFluxoPecas('comprado',{...(itens?.[0]||{}),status:'comprado'});
+  toast('Compra concluída e itens marcados como recebidos.');
+  renderAlmoxarifado();
 }
 
 // ADMIN — GESTÃO DE USUÁRIOS
