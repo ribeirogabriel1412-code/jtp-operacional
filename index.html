@@ -10186,9 +10186,6 @@ async function renderFerr33(){
       <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:980px;font-size:12px"><thead><tr style="background:var(--surface2);color:var(--text3);text-transform:uppercase;letter-spacing:.12em;font-size:10px"><th style="padding:9px;text-align:left">Setor</th><th style="padding:9px;text-align:left">Item</th><th style="padding:9px">Status</th><th style="padding:9px;text-align:left">Observação</th><th style="padding:9px">Preenchido por</th><th style="padding:9px">Coord.</th></tr></thead><tbody>
         ${linhas.map(({setor,it})=>{const r=respostas[it[0]]||{};return `<tr style="border-top:1px solid var(--border2)"><td style="padding:9px;color:var(--blue);font-weight:900">${setor.nome}</td><td style="padding:9px;color:var(--text)">${it[1]}</td><td style="padding:9px;text-align:center">${ronda33Badge(r.status)}</td><td style="padding:9px;color:var(--text2)">${prevEsc(r.obs||'--')}</td><td style="padding:9px;text-align:center;color:var(--text3)">${prevEsc(r.por||'--')}</td><td style="padding:9px;text-align:center">${podeVer?`<button onclick="salvarVerificacao33(${rodada},'${it[0]}',${r.verificado?'false':'true'})" class="btn-sm" style="font-size:10px">${r.verificado?'✓ Validado':'Validar'}</button>`:(r.verificado?ronda33Badge('ok'):'--')}</td></tr>`}).join('')}
       </tbody></table></div>
-      <div style="padding:12px 14px;border-top:1px solid var(--border);display:grid;gap:10px">
-        ${RONDA33_RESUMOS.filter(s=>(s.campos||s.grid)&&(ronda33PodeVerTudo()||ronda33PodeEditarSetor(s))).map(s=>`<details><summary style="cursor:pointer;color:var(--text);font-weight:900">${s.nome}</summary><pre style="white-space:pre-wrap;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text2);font-size:11px;margin-top:8px">${prevEsc(JSON.stringify(resumos[s.id]||{},null,2))}</pre></details>`).join('')}
-      </div>
     </section>`;
   };
   setMain(`${secTitle('👣','3.3 Ronda Operacional',back)}${top}${rodadaHtml(1)}${rodadaHtml(2)}`);
@@ -10218,15 +10215,6 @@ async function gerarRelatorio33(){
         </tr>`).join('')}</tbody>
       </table>`;
   };
-  const resumoTabela=()=>{
-    const blocos=RONDA33_RESUMOS.map(s=>{
-      const v1=porRodada[1]?.dados?.resumos?.[s.id], v2=porRodada[2]?.dados?.resumos?.[s.id];
-      const val=v2||v1||{};
-      const texto=val.texto||JSON.stringify(val||{},null,2);
-      return `<tr><td style="${B}font-weight:700;width:180px">${prevEsc(s.nome)}</td><td style="${B}white-space:pre-wrap">${prevEsc(texto&&texto!=='{}'?texto:'--')}</td></tr>`;
-    }).join('');
-    return `<div class="sec-header">Complementos / Passagem de Bastão</div><table>${blocos}</table>`;
-  };
   const todos=RONDA33_SETORES.flatMap(s=>s.itens.map(i=>({s,i})));
   const resp=Object.assign({},porRodada[1]?.dados?.respostas||{},porRodada[2]?.dados?.respostas||{});
   const preenchidos=todos.filter(x=>resp[x.i[0]]?.status).length;
@@ -10255,7 +10243,6 @@ ${barraPrint('👣 3.3 · Ronda Operacional · '+(garagem?.nome||''),'JTP_33_Ron
 </table>
 ${rodadaTabela(1)}
 ${rodadaTabela(2)}
-${resumoTabela()}
 <div style="height:50px"></div>
 <table style="border:none;margin-top:18px"><tr>
   <td style="border:none;text-align:center;border-top:1px solid #000;width:45%">Supervisor / Coordenador</td>
