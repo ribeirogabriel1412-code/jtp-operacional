@@ -780,8 +780,8 @@ const FERRAMENTAS_DEF=[
     visualiza:['lider_pcm','assistente_pcm','lider_oficina','gerente_garagem','diretoria'],
   },
   {id:'ferr-33', icon:'👣', nome:'3.3 Ronda Operacional',
-    executa:  ['lider_pcm','almoxarifado','lider_almoxarifado','lider_suprimentos','lider_patio','lider_operacional','supervisor'],
-    valida:   ['coordenador'],
+    executa:  ['lider_pcm','lider_oficina','almoxarifado','lider_almoxarifado','lider_suprimentos','lider_patio','lider_operacional'],
+    valida:   ['supervisor','coordenador'],
     visualiza:['gerente_garagem','diretoria','operacoes_seguras'],
   },
   {id:'ferr-211', icon:'🔴', nome:'2.11 Carros Indisponíveis',
@@ -820,6 +820,10 @@ function getPermsFerr(){
             mudou=true;
           }
         });
+        if(f.id==='ferr-33'){
+          salvo[f.id]={executa:[...(f.executa||[])],valida:[...(f.valida||[])],visualiza:[...(f.visualiza||[])]};
+          mudou=true;
+        }
       }
     });
     if(mudou)setPermsFerr(salvo);
@@ -10097,7 +10101,7 @@ function excluirImportacao(){ _prevDados=[];_prevImportadoEm='';_prevBuscaPrefix
 function verHistoricoImportacoes(){ _prevGrupoAtivo='historico'; renderFerrPrev(); }
 
 const RONDA33_SETORES=[
-  {id:'pcm',nome:'Planejamento e PCM',cargos:['lider_pcm'],itens:[
+  {id:'pcm',nome:'PCM / Oficina',cargos:['lider_pcm','lider_oficina'],itens:[
     ['r1_pcm_01','As O.S. preventivas foram abertas?',1],
     ['r1_pcm_02','Foi realizada a passagem de bastão entre os PCMs?',1],
     ['r1_pcm_03','Realizou a conferência de óleo e aditivos nos veículos via Praxio?',1],
@@ -10129,7 +10133,7 @@ const RONDA33_SETORES=[
     ['r2_almox_06','Foi realizado o teste de Arla antes do recebimento?',2],
     ['r2_almox_07','Foi realizado o teste de Diesel antes do recebimento?',2],
   ]},
-  {id:'operacao',nome:'Pátio e Operação',cargos:['lider_patio','lider_operacional','supervisor'],itens:[
+  {id:'operacao',nome:'Pátio e Operação',cargos:['lider_patio','lider_operacional'],itens:[
     ['r1_op_01','Veículos de preventiva foram recolhidos?',1],
     ['r1_op_02','Veículos de preventiva foram lavados?',1],
     ['r2_op_01','Todos os veículos escalados de lavagem foram lavados?',2],
@@ -10139,19 +10143,20 @@ const RONDA33_SETORES=[
   ]},
 ];
 const RONDA33_RESUMOS=[
-  {id:'operacao_ocibmar',nome:'Operação / OCIBMAR',cargos:['lider_operacional','lider_patio','supervisor'],campos:['Soltura de Frota','Recolhas Anormais (RA)','Recolhas Operacionais (RO)','SOS / Veículos Socorridos','Lavagens Completas','Lavagens Simples','Lavagens Escovão','Sinistros','Partes Perdidas']},
-  {id:'absenteismo',nome:'Absenteísmo OCIBMAR',cargos:['lider_operacional','lider_patio','supervisor'],grid:['Matrícula','Motivo','Matrícula reserva','Tratativas']},
-  {id:'dobras',nome:'Dobras / Horas Extras OCIBMAR',cargos:['lider_operacional','lider_patio','supervisor'],grid:['Matrícula','Motivo','Tratativas']},
-  {id:'manut_indisp',nome:'Manutenção - Veículos Indisponíveis',cargos:['lider_pcm'],grid:['Prefixo','Solicitações','Custo 2.6','Tratativas']},
-  {id:'manut_andamento',nome:'Manutenção - Em Andamento',cargos:['lider_pcm'],grid:['Prefixo','Mecânico','Principal pendência']},
+  {id:'operacao_ocibmar',nome:'Operação / OCIBMAR',cargos:['lider_operacional','lider_patio'],campos:['Soltura de Frota','Recolhas Anormais (RA)','Recolhas Operacionais (RO)','SOS / Veículos Socorridos','Lavagens Completas','Lavagens Simples','Lavagens Escovão','Sinistros','Partes Perdidas']},
+  {id:'absenteismo',nome:'Absenteísmo OCIBMAR',cargos:['lider_operacional','lider_patio'],grid:['Matrícula','Motivo','Matrícula reserva','Tratativas']},
+  {id:'dobras',nome:'Dobras / Horas Extras OCIBMAR',cargos:['lider_operacional','lider_patio'],grid:['Matrícula','Motivo','Tratativas']},
+  {id:'manut_indisp',nome:'Manutenção - Veículos Indisponíveis',cargos:['lider_pcm','lider_oficina'],grid:['Prefixo','Solicitações','Custo 2.6','Tratativas']},
+  {id:'manut_andamento',nome:'Manutenção - Em Andamento',cargos:['lider_pcm','lider_oficina'],grid:['Prefixo','Mecânico','Principal pendência']},
   {id:'suprimentos',nome:'Suprimentos',cargos:['almoxarifado','lider_almoxarifado','lider_suprimentos'],campos:['Kits preventivos separados (D-1)']},
   {id:'sol_pendentes',nome:'Solicitações Pendentes',cargos:['almoxarifado','lider_almoxarifado','lider_suprimentos'],grid:['Prefixo','Solicitações','Status']},
 ];
-function ronda33PodeEditarSetor(setor){const c=S.perfil?.cargo;return S.perfil?.is_admin||c==='coordenador'||(setor.cargos||[]).includes(c);}
-function ronda33PodeVerificar(){return S.perfil?.is_admin||S.perfil?.cargo==='coordenador';}
+function ronda33PodeValidar(){return S.perfil?.is_admin||['supervisor','coordenador'].includes(S.perfil?.cargo);}
+function ronda33PodeEditarSetor(setor){const c=S.perfil?.cargo;return ronda33PodeValidar()||(setor.cargos||[]).includes(c);}
+function ronda33PodeVerificar(){return ronda33PodeValidar();}
 function ronda33PodeVerTudo(){
   const c=S.perfil?.cargo;
-  return S.perfil?.is_admin||['coordenador','gerente_garagem','diretoria','operacoes_seguras'].includes(c);
+  return S.perfil?.is_admin||['supervisor','coordenador','gerente_garagem','diretoria','operacoes_seguras'].includes(c);
 }
 function ronda33Badge(st){const m={ok:['OK','var(--green)','#00C48C20'],nok:['NOK','var(--red)','#EF444420'],na:['N/A','var(--text3)','var(--surface2)']};const x=m[st]||['--','var(--text4)','var(--surface2)'];return `<span style="padding:3px 8px;border-radius:7px;font-size:10px;font-weight:900;color:${x[1]};background:${x[2]}">${x[0]}</span>`;}
 async function renderFerr33(){
@@ -10165,10 +10170,11 @@ async function renderFerr33(){
     return;
   }
   const porRodada={};(rows||[]).forEach(r=>porRodada[r.rodada]=r);
-  const top=`<div style="display:grid;grid-template-columns:190px 160px 1fr;gap:10px;align-items:end;margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px">
+  const top=`<div style="display:grid;grid-template-columns:190px 160px 1fr auto;gap:10px;align-items:end;margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px">
     <div><label class="campo-label">Data</label><input class="fi" type="date" value="${data}" onchange="S._r33Data=this.value;renderFerr33()"></div>
     <div><label class="campo-label">Turno</label><select class="fi" onchange="S._r33Turno=this.value;renderFerr33()"><option value="dia"${turno==='dia'?' selected':''}>Dia</option><option value="noite"${turno==='noite'?' selected':''}>Noite</option></select></div>
-    <div style="color:var(--text3);font-size:12px;padding-bottom:10px">Coordenador visualiza o check inteiro e valida cada preenchimento.</div>
+    <div style="color:var(--text3);font-size:12px;padding-bottom:10px">Cada líder preenche seu tema. Supervisor e coordenador visualizam tudo, preenchem se necessário e validam o turno.</div>
+    <button class="btn-primary" onclick="gerarRelatorio33()" style="height:44px;white-space:nowrap">📄 Exportar PDF</button>
   </div>`;
   const rodadaHtml=rodada=>{
     const rec=porRodada[rodada]||{dados:{respostas:{},resumos:{}}};
@@ -10186,6 +10192,78 @@ async function renderFerr33(){
     </section>`;
   };
   setMain(`${secTitle('👣','3.3 Ronda Operacional',back)}${top}${rodadaHtml(1)}${rodadaHtml(2)}`);
+}
+async function gerarRelatorio33(){
+  const gid=getGid(), garagem=S.garagens?.find(g=>g.id===gid), data=S._r33Data||hoje(), turno=S._r33Turno||S.turno||'dia';
+  const {data:rows,error}=await sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno);
+  if(error){toast('Erro ao gerar PDF: '+error.message,'err');return;}
+  const porRodada={};(rows||[]).forEach(r=>porRodada[r.rodada]=r);
+  const statusTxt={ok:'OK',nok:'NOK',na:'N/A'};
+  const statusCor={ok:'#DCFCE7',nok:'#FEE2E2',na:'#F3F4F6'};
+  const B='border:1px solid #333;';
+  const rodadaTabela=rodada=>{
+    const rec=porRodada[rodada]||{dados:{respostas:{},resumos:{}}};
+    const respostas=rec.dados?.respostas||{};
+    const linhas=RONDA33_SETORES.flatMap(setor=>setor.itens.filter(i=>i[2]===rodada).map(it=>({setor,it,r:respostas[it[0]]||{}})));
+    return `<div class="sec-header">Verificação ${rodada}ª Rodada</div>
+      <table>
+        <thead><tr><th style="${B}width:130px">Setor</th><th style="${B}">Item</th><th style="${B}width:55px">Status</th><th style="${B}">Observação</th><th style="${B}width:110px">Preenchido por</th><th style="${B}width:75px">Validação</th></tr></thead>
+        <tbody>${linhas.map(({setor,it,r})=>`<tr>
+          <td style="${B}font-weight:700">${prevEsc(setor.nome)}</td>
+          <td style="${B}">${prevEsc(it[1])}</td>
+          <td style="${B}text-align:center;background:${statusCor[r.status]||'#fff'};font-weight:900">${statusTxt[r.status]||'--'}</td>
+          <td style="${B}">${prevEsc(r.obs||'--')}</td>
+          <td style="${B}text-align:center">${prevEsc(r.por||'--')}</td>
+          <td style="${B}text-align:center;font-weight:900">${r.verificado?'OK':'--'}</td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+  };
+  const resumoTabela=()=>{
+    const blocos=RONDA33_RESUMOS.map(s=>{
+      const v1=porRodada[1]?.dados?.resumos?.[s.id], v2=porRodada[2]?.dados?.resumos?.[s.id];
+      const val=v2||v1||{};
+      const texto=val.texto||JSON.stringify(val||{},null,2);
+      return `<tr><td style="${B}font-weight:700;width:180px">${prevEsc(s.nome)}</td><td style="${B}white-space:pre-wrap">${prevEsc(texto&&texto!=='{}'?texto:'--')}</td></tr>`;
+    }).join('');
+    return `<div class="sec-header">Complementos / Passagem de Bastão</div><table>${blocos}</table>`;
+  };
+  const todos=RONDA33_SETORES.flatMap(s=>s.itens.map(i=>({s,i})));
+  const resp=Object.assign({},porRodada[1]?.dados?.respostas||{},porRodada[2]?.dados?.respostas||{});
+  const preenchidos=todos.filter(x=>resp[x.i[0]]?.status).length;
+  const nok=todos.filter(x=>resp[x.i[0]]?.status==='nok').length;
+  const validados=todos.filter(x=>resp[x.i[0]]?.verificado).length;
+  const gerado=new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'});
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${estiloRelJTP()}</style></head><body>
+${barraPrint('👣 3.3 · Ronda Operacional · '+(garagem?.nome||''),'JTP_33_RondaOperacional')}
+<div class="cabecalho">
+  <div style="font-size:12px;font-weight:900">GRUPO JTP | RONDA OPERACIONAL 3.3 | ${prevEsc(garagem?.nome||'')}</div>
+</div>
+<table style="margin-bottom:6px">
+  <tr>
+    <td style="${B}"><b>Data/turno:</b> ${formatData(data)} · ${turno==='dia'?'Dia':'Noite'}</td>
+    <td style="${B}"><b>Gerado:</b> ${gerado}</td>
+    <td style="${B}"><b>Responsável:</b> ${prevEsc(S.perfil?.nome||'--')}</td>
+  </tr>
+</table>
+<table style="margin-bottom:8px">
+  <tr>
+    <td style="${B}text-align:center"><span class="campo-label">Itens</span><br><b>${todos.length}</b></td>
+    <td style="${B}text-align:center"><span class="campo-label">Preenchidos</span><br><b>${preenchidos}</b></td>
+    <td style="${B}text-align:center"><span class="campo-label">NOK</span><br><b>${nok}</b></td>
+    <td style="${B}text-align:center"><span class="campo-label">Validados</span><br><b>${validados}</b></td>
+  </tr>
+</table>
+${rodadaTabela(1)}
+${rodadaTabela(2)}
+${resumoTabela()}
+<div style="height:50px"></div>
+<table style="border:none;margin-top:18px"><tr>
+  <td style="border:none;text-align:center;border-top:1px solid #000;width:45%">Supervisor / Coordenador</td>
+  <td style="border:none;width:10%"></td>
+  <td style="border:none;text-align:center;border-top:1px solid #000;width:45%">Operação / Garagem</td>
+</tr></table>
+</body></html>`;
+  abrirRelatorioHTMLPCM(html,`JTP_33_RondaOperacional_${data.replace(/-/g,'')}_${turno}.pdf`);
 }
 async function salvarVerificacao33(rodada,itemId,valor){
   const gid=getGid(), data=S._r33Data||hoje(), turno=S._r33Turno||S.turno||'dia';
