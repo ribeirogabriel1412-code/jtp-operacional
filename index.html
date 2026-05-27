@@ -1391,6 +1391,7 @@ async function renderAlmoxarifado(){
   const seletorSemana=renderSeletorSemanaValet(data,(datasValet||[]).map(r=>r.data),'renderAlmoxarifado()');
   const preventivasSemana=renderAlmoxPreventivasProgramadas(data,grupos);
   const relatorioCestos=renderAlmoxRelatorioCestosDia(data);
+  const painelCompras=renderPainelComprasSuprimentosValet(data,lista,safe,rowId,fmtMoney);
   const acoesItem=r=>{
     const st=r.status||'';
     const isSup=S.perfil?.cargo==='lider_suprimentos'||S.perfil?.is_admin;
@@ -1413,7 +1414,7 @@ async function renderAlmoxarifado(){
     }
     if(st==='pedido_compra'){
       const comp=extrairCompraValet(r.justificativa);
-      const compraSup=isSup?`<div style="display:grid;grid-template-columns:1fr 128px;gap:6px;width:100%;min-width:260px"><input id="comp-num-${rid}" value="${safe(comp.numero||'')}" placeholder="Nº solicitação" style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 8px;font-size:11px;font-family:'DM Mono',monospace"><input id="comp-prazo-${rid}" type="date" value="${safe(comp.prazo||chegada(r.id)||'')}" style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 8px;font-size:11px;font-family:'DM Mono',monospace"><button onclick="salvarFupCompraValet('${rid}','${r.id}')" style="${btnBase};border:1px solid var(--blue);background:#2563EB18;color:var(--blue);grid-column:1/-1">Salvar compra / prazo</button></div>`:`<div style="font-size:11px;color:var(--text3);text-align:right;line-height:1.35">${comp.numero?`Solic. <b style="color:var(--blue)">${safe(comp.numero)}</b>`:'Aguardando suprimentos'}${comp.prazo?`<br>Prazo <b style="color:var(--amber)">${safe(comp.prazo)}</b>`:''}</div>`;
+      const compraSup=isSup?`<div style="font-size:11px;color:var(--text3);text-align:right;line-height:1.35">Atualize na fila de compras<br>${comp.numero?`Solic. <b style="color:var(--blue)">${safe(comp.numero)}</b>`:'Aguardando requisição'}${comp.prazo?` · <b style="color:var(--amber)">${safe(comp.prazo)}</b>`:''}</div>`:`<div style="font-size:11px;color:var(--text3);text-align:right;line-height:1.35">${comp.numero?`Solic. <b style="color:var(--blue)">${safe(comp.numero)}</b>`:'Aguardando suprimentos'}${comp.prazo?`<br>Prazo <b style="color:var(--amber)">${safe(comp.prazo)}</b>`:''}</div>`;
       return `<div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;flex-wrap:wrap">${compraSup}${podeCancelarCompra?reabrir:''}${chegou}</div>`;
     }
     if(['separado','comprado'].includes(st))return `<div style="display:flex;gap:6px;justify-content:flex-end;align-items:center">${salvar}</div>`;
@@ -1477,9 +1478,96 @@ async function renderAlmoxarifado(){
     </div>
     ${relatorioCestos}
     ${preventivasSemana}
+    ${painelCompras}
     ${secTitle('🛒','Itens do Valetamento',`${cestos.length} cesto(s) · ${lista.length} item(ns) · ${qtdSep} separados · ${qtdCompra} compras · ${fmtMoney(totalValor)}`)}
     <div>${cards}</div>
   `);
+}
+
+function renderPainelComprasSuprimentosValet(data,lista,safe,rowId,fmtMoney){
+  const isSup=S.perfil?.cargo==='lider_suprimentos'||S.perfil?.is_admin;
+  if(!isSup)return'';
+  const compras=(lista||[]).filter(r=>['pedido_compra','comprado'].includes(r.status||''));
+  const hojeIso=hoje();
+  const abertas=compras.filter(r=>r.status==='pedido_compra');
+  const vencidas=abertas.filter(r=>{
+    const comp=extrairCompraValet(r.justificativa);
+    const prazo=comp.prazo||JSON.parse(localStorage.getItem('valet_chegada_'+r.id)||'{}')?.data||'';
+    return prazo&&prazo<hojeIso;
+  }).length;
+  const comReq=abertas.filter(r=>extrairCompraValet(r.justificativa).numero).length;
+  const recebidas=compras.filter(r=>r.status==='comprado').length;
+  const total=abertas.reduce((s,r)=>s+(parseFloat(r.valor_estimado||0)*parseFloat(r.quantidade||1)),0);
+  const grupos={};
+  compras.forEach(r=>{const k=r.prefixo||'Sem prefixo';if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
+  const cards=Object.entries(grupos).length?Object.entries(grupos).map(([prefixo,itens])=>{
+    const valorPrefixo=itens.reduce((s,r)=>s+(parseFloat(r.valor_estimado||0)*parseFloat(r.quantidade||1)),0);
+    return`<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--red);border-radius:10px;overflow:hidden;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;padding:14px 16px;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font-family:'DM Mono',monospace;color:var(--blue);font-size:20px;font-weight:900">${safe(prefixo)}</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:3px">${itens.length} item(ns) em compra · ${itens.filter(i=>i.status==='comprado').length} recebido(s)</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-family:'DM Mono',monospace;color:var(--amber);font-size:17px;font-weight:900">${fmtMoney(valorPrefixo)}</div>
+          <div style="font-size:10px;color:var(--red);font-weight:900;margin-top:2px">SUPRIMENTOS</div>
+        </div>
+      </div>
+      ${itens.map(r=>{
+        const rid=rowId(r);
+        const comp=extrairCompraValet(r.justificativa);
+        const original=extrairPedidoOficinaValet(r.justificativa,r.peca,r.cod_sap);
+        const prazo=comp.prazo||JSON.parse(localStorage.getItem('valet_chegada_'+r.id)||'{}')?.data||'';
+        const atrasado=prazo&&prazo<hojeIso&&r.status!=='comprado';
+        const fupHist=(comp.fups||[]).slice(-4).map(f=>`<div style="border-left:2px solid var(--blue);padding-left:7px;margin-top:4px;color:var(--text2);font-size:10px">${safe(f)}</div>`).join('');
+        return`<div style="display:grid;grid-template-columns:minmax(280px,1fr) 72px 118px 150px 150px 240px;gap:10px;align-items:start;padding:12px 14px;border-bottom:1px solid var(--border2)">
+          <div style="min-width:0">
+            <div style="font-weight:800;color:var(--text);font-size:12px">${safe(r.peca||original||'Item sem descrição')}</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:3px">Pedido oficina: <b style="color:var(--text2)">${safe(original||'--')}</b></div>
+            <div style="font-size:10px;color:var(--amber);font-weight:900;margin-top:3px">${r.cod_sap?`SAP ${safe(r.cod_sap)}`:'SEM SAP'}</div>
+            <input id="comp-desc-${rid}" value="${safe(comp.descricao||r.peca||original||'')}" placeholder="Descrição para compra" style="margin-top:7px;width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 9px;font-size:11px">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text3);font-weight:900;margin-bottom:5px;text-align:center">QTD</div>
+            <input id="comp-qtd-${rid}" type="number" min="1" value="${safe(r.quantidade||1)}" style="width:64px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px;text-align:center;font-family:'DM Mono',monospace;font-weight:900">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text3);font-weight:900;margin-bottom:5px;text-align:right">VALOR</div>
+            <input id="comp-valor-${rid}" type="number" step="0.01" min="0" value="${safe(comp.valor||r.valor_estimado||'')}" placeholder="0,00" style="width:112px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--amber);padding:7px;text-align:right;font-family:'DM Mono',monospace;font-weight:900">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text3);font-weight:900;margin-bottom:5px">REQUISIÇÃO</div>
+            <input id="comp-num-${rid}" value="${safe(comp.numero||'')}" placeholder="Nº requisição" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid ${comp.numero?'var(--blue)':'var(--border)'};border-radius:7px;color:var(--text);padding:7px 9px;font-family:'DM Mono',monospace;font-size:11px">
+            <div style="margin-top:7px">${badgeValetStatus(r.status)}</div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text3);font-weight:900;margin-bottom:5px">PREVISÃO</div>
+            <input id="comp-prazo-${rid}" type="date" value="${safe(prazo)}" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid ${atrasado?'var(--red)':'var(--border)'};border-radius:7px;color:${atrasado?'var(--red)':'var(--text)'};padding:7px 9px;font-family:'DM Mono',monospace;font-size:11px">
+            ${atrasado?'<div style="font-size:10px;color:var(--red);font-weight:900;margin-top:4px">ATRASADO</div>':''}
+          </div>
+          <div>
+            <textarea id="comp-fup-${rid}" placeholder="FUP com compras matricial..." style="width:100%;min-height:58px;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 9px;font-size:11px;resize:vertical"></textarea>
+            ${fupHist?`<div style="margin-top:6px">${fupHist}</div>`:''}
+            <div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;margin-top:8px">
+              <button onclick="salvarFupCompraValet('${rid}','${r.id}','sup')" style="padding:6px 9px;border-radius:7px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:900;cursor:pointer">Salvar FUP</button>
+              <button onclick="atualizarReqCompra('${r.id}','comprado','almox')" style="padding:6px 9px;border-radius:7px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:900;cursor:pointer">Chegou</button>
+              <button onclick="voltarValetParaAlmox('${r.id}')" style="padding:6px 9px;border-radius:7px;border:1px solid var(--amber);background:#F59E0B18;color:var(--amber);font-size:11px;font-weight:900;cursor:pointer">Voltar almox</button>
+            </div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).join(''):`<div class="empty">Nenhum item em compra aberto para suprimentos</div>`;
+  return`
+    ${secTitle('🛒','Fila de Compras - Líder de Suprimentos',`Valet ${data.split('-').reverse().join('/')} · ${abertas.length} aberto(s) · ${fmtMoney(total)}`)}
+    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px">
+      ${kpi('Abertas',abertas.length,undefined,'',abertas.length>0,0)}
+      ${kpi('Com requisição',comReq,undefined,'',false,0)}
+      ${kpi('Atrasadas',vencidas,0,'',vencidas>0,0)}
+      ${kpi('Recebidas',recebidas,undefined,'',false,0)}
+    </div>
+    <div style="margin-bottom:18px">${cards}</div>
+  `;
 }
 
 // ADMIN — GESTÃO DE USUÁRIOS
@@ -6332,6 +6420,9 @@ function limparCompraValet(justificativa){
     .replace(/\s*[|·]\s*Compra aberta:[^|·\n]*/ig,'')
     .replace(/\s*[|·]\s*Solicitação compra:[^|·\n]*/ig,'')
     .replace(/\s*[|·]\s*Prazo entrega:[^|·\n]*/ig,'')
+    .replace(/\s*[|·]\s*Descrição compra:[^|·\n]*/ig,'')
+    .replace(/\s*[|·]\s*Valor compra:[^|·\n]*/ig,'')
+    .replace(/\s*[|·]\s*FUP compras:[^|·\n]*/ig,'')
     .trim();
 }
 function extrairCompraValet(justificativa){
@@ -6339,7 +6430,10 @@ function extrairCompraValet(justificativa){
   const numero=(txt.match(/Solicitação compra:\s*([^|·\n]+)/i)||[])[1]?.trim()||'';
   const prazo=(txt.match(/Prazo entrega:\s*([^|·\n]+)/i)||[])[1]?.trim()||'';
   const aberta=(txt.match(/Compra aberta:\s*([^|·\n]+)/i)||[])[1]?.trim()||'';
-  return{numero,prazo,aberta};
+  const descricao=(txt.match(/Descrição compra:\s*([^|·\n]+)/i)||[])[1]?.trim()||'';
+  const valor=(txt.match(/Valor compra:\s*([^|·\n]+)/i)||[])[1]?.trim()||'';
+  const fups=[...txt.matchAll(/FUP compras:\s*([^|·\n]+)/gi)].map(m=>m[1]?.trim()).filter(Boolean);
+  return{numero,prazo,aberta,descricao,valor,fups};
 }
 function extrairSeparacaoValet(justificativa){
   const txt=String(justificativa||'');
@@ -6534,8 +6628,7 @@ async function receberCdValetAlmox(id){
 
 async function abrirCompraValetAlmox(rowId,id){
   const original=document.getElementById('almox-original-'+rowId)?.value?.trim()||document.getElementById('almox-peca-'+rowId)?.value?.trim()||'';
-  if(!confirm('Abrir solicitação de compra para o Líder de Suprimentos?'))return;
-  const atual=await sb.from('requisicoes_compra').select('justificativa').eq('id',id).single();
+  const atual=await sb.from('requisicoes_compra').select('*').eq('id',id).single();
   const extra='Compra aberta: aguardando líder de suprimentos';
   const{error}=await sb.from('requisicoes_compra').update({
     status:'pedido_compra',
@@ -6547,24 +6640,41 @@ async function abrirCompraValetAlmox(rowId,id){
   renderAlmoxarifado();
 }
 
-async function salvarFupCompraValet(rowId,id){
+async function salvarFupCompraValet(rowId,id,origem='almox'){
   const numero=document.getElementById('comp-num-'+rowId)?.value?.trim();
   const prazo=document.getElementById('comp-prazo-'+rowId)?.value?.trim();
+  const descricao=document.getElementById('comp-desc-'+rowId)?.value?.trim();
+  const valorRaw=document.getElementById('comp-valor-'+rowId)?.value?.trim();
+  const qtdRaw=document.getElementById('comp-qtd-'+rowId)?.value?.trim();
+  const fup=document.getElementById('comp-fup-'+rowId)?.value?.trim();
   if(!numero){toast('Informe o número da solicitação de compra.','err');return;}
-  const atual=await sb.from('requisicoes_compra').select('justificativa').eq('id',id).single();
+  const atual=await sb.from('requisicoes_compra').select('*').eq('id',id).single();
   const original=extrairPedidoOficinaValet(atual.data?.justificativa,'','');
-  const extra=`Solicitação compra: ${numero}${prazo?` · Prazo entrega: ${prazo}`:''}`;
-  const{error}=await sb.from('requisicoes_compra').update({
-    justificativa:montarJustValetComOriginal(atual.data?.justificativa,original,extra)
-  }).eq('id',id);
+  const compraAtual=extrairCompraValet(atual.data?.justificativa);
+  const fupLinha=fup?`${new Date().toLocaleString('pt-BR')} - ${S.perfil?.nome||'Suprimentos'}: ${fup}`:'';
+  const fups=[...(compraAtual.fups||[]),fupLinha].filter(Boolean);
+  const valor=valorRaw?parseFloat(valorRaw.replace(',','.')):null;
+  const qtd=qtdRaw?parseInt(qtdRaw,10):null;
+  const extras=[
+    `Solicitação compra: ${numero}`,
+    prazo?`Prazo entrega: ${prazo}`:'',
+    descricao?`Descrição compra: ${descricao}`:'',
+    valor!==null&&!Number.isNaN(valor)?`Valor compra: ${valor.toFixed(2)}`:'',
+    ...fups.map(x=>`FUP compras: ${x}`)
+  ].filter(Boolean).join(' · ');
+  const update={justificativa:montarJustValetComOriginal(atual.data?.justificativa,original,extras)};
+  if(descricao)update.peca=descricao;
+  if(valor!==null&&!Number.isNaN(valor))update.valor_estimado=valor;
+  if(qtd&&qtd>0)update.quantidade=qtd;
+  const{error}=await sb.from('requisicoes_compra').update(update).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
   if(prazo)salvarChegadaValet(id,prazo);
+  abrirNotificacaoFluxoPecas('pedido_compra',{...(atual.data||{}),...update,status:'pedido_compra',id});
   toast('Compra atualizada para todos acompanharem.');
   renderAlmoxarifado();
 }
 
 async function voltarValetParaAlmox(id){
-  if(!confirm('Voltar este item de compra para separação do almoxarifado?'))return;
   const{error}=await sb.from('requisicoes_compra').update({status:'solicitado_pcm'}).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
   toast('Item voltou para o almoxarifado.');
