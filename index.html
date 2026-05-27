@@ -10143,9 +10143,9 @@ const RONDA33_SETORES=[
   ]},
 ];
 const RONDA33_RESUMOS=[
-  {id:'operacao_ocibmar',nome:'Operação / OCIBMAR',cargos:['lider_operacional','lider_patio'],campos:['Soltura de Frota','Recolhas Anormais (RA)','Recolhas Operacionais (RO)','SOS / Veículos Socorridos','Lavagens Completas','Lavagens Simples','Lavagens Escovão','Sinistros','Partes Perdidas']},
-  {id:'absenteismo',nome:'Absenteísmo OCIBMAR',cargos:['lider_operacional','lider_patio'],grid:['Matrícula','Motivo','Matrícula reserva','Tratativas']},
-  {id:'dobras',nome:'Dobras / Horas Extras OCIBMAR',cargos:['lider_operacional','lider_patio'],grid:['Matrícula','Motivo','Tratativas']},
+  {id:'operacao_ocibmar',nome:'Operação / OCIBMAR',cargos:['lider_patio'],campos:['Soltura de Frota','Recolhas Anormais (RA)','Recolhas Operacionais (RO)','SOS / Veículos Socorridos','Lavagens Completas','Lavagens Simples','Lavagens Escovão','Sinistros','Partes Perdidas']},
+  {id:'absenteismo',nome:'Absenteísmo OCIBMAR',cargos:['lider_patio'],grid:['Matrícula','Motivo','Matrícula reserva','Tratativas']},
+  {id:'dobras',nome:'Dobras / Horas Extras OCIBMAR',cargos:['lider_patio'],grid:['Matrícula','Motivo','Tratativas']},
   {id:'manut_indisp',nome:'Manutenção - Veículos Indisponíveis',cargos:['lider_pcm','lider_oficina'],grid:['Prefixo','Solicitações','Custo 2.6','Tratativas']},
   {id:'manut_andamento',nome:'Manutenção - Em Andamento',cargos:['lider_pcm','lider_oficina'],grid:['Prefixo','Mecânico','Principal pendência']},
   {id:'suprimentos',nome:'Suprimentos',cargos:['almoxarifado','lider_almoxarifado','lider_suprimentos'],campos:['Kits preventivos separados (D-1)']},
@@ -10174,7 +10174,7 @@ async function renderFerr33(){
     <div><label class="campo-label">Data</label><input class="fi" type="date" value="${data}" onchange="S._r33Data=this.value;renderFerr33()"></div>
     <div><label class="campo-label">Turno</label><select class="fi" onchange="S._r33Turno=this.value;renderFerr33()"><option value="dia"${turno==='dia'?' selected':''}>Dia</option><option value="noite"${turno==='noite'?' selected':''}>Noite</option></select></div>
     <div style="color:var(--text3);font-size:12px;padding-bottom:10px">Cada líder preenche seu tema. Supervisor e coordenador visualizam tudo, preenchem se necessário e validam o turno.</div>
-    <button class="btn-primary" onclick="gerarRelatorio33()" style="height:44px;white-space:nowrap">📄 Exportar PDF</button>
+    <button class="btn-add" onclick="gerarRelatorio33()" style="height:44px;white-space:nowrap;background:var(--blue);border-color:var(--blue);color:#fff">📄 Exportar PDF</button>
   </div>`;
   const rodadaHtml=rodada=>{
     const rec=porRodada[rodada]||{dados:{respostas:{},resumos:{}}};
