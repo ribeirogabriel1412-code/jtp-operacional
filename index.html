@@ -886,24 +886,37 @@ async function doLogin(){
   erro.style.display='none';
   const btn=document.getElementById('btn-login');btn.textContent='Entrando...';btn.disabled=true;
 
-  const{data,error}=await sb.auth.signInWithPassword({email,password:senha});
+  let data,error;
+  try{
+    const res=await sb.auth.signInWithPassword({email,password:senha});
+    data=res.data;error=res.error;
+  }catch(e){
+    btn.textContent='Entrar no Sistema';btn.disabled=false;
+    erro.textContent='Falha de conexão com o Supabase. Verifique internet/Vercel e tente novamente.';
+    erro.style.display='block';
+    console.error('[LOGIN] Falha inesperada:',e);
+    return;
+  }
   btn.textContent='Entrar no Sistema';btn.disabled=false;
 
   if(error){
     erro.textContent=error.message.includes('Invalid')?'E-mail ou senha incorretos.':error.message;
-    erro.style.display='block';return;
+    erro.style.display='block';
+    console.warn('[LOGIN] Supabase recusou:',error);
+    return;
   }
 
   S.user=data.user;
   S.accessToken=data.session?.access_token; // JWT do usuário para REST calls
 
   // Busca perfil
-  const{data:perfil}=await sb.from('perfis').select('*').eq('id',data.user.id).single();
+  const{data:perfil,error:perfilError}=await sb.from('perfis').select('*').eq('id',data.user.id).single();
   S.perfil=perfil;
 
-  if(!perfil){
-    erro.textContent='Perfil não encontrado. Contate o administrador.';
+  if(perfilError||!perfil){
+    erro.textContent='Login autenticou, mas o perfil não foi encontrado/liberado na tabela perfis.';
     erro.style.display='block';
+    console.warn('[LOGIN] Perfil não encontrado:',{userId:data.user.id,email:data.user.email,perfilError});
     await sb.auth.signOut();return;
   }
 
