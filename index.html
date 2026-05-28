@@ -10548,6 +10548,8 @@ function ronda33PodeVerTudo(){
   return S.perfil?.is_admin||['supervisor','coordenador','gerente_garagem','diretoria','operacoes_seguras'].includes(c);
 }
 function ronda33Badge(st){const m={ok:['OK','var(--green)','#00C48C20'],nok:['NOK','var(--red)','#EF444420'],na:['N/A','var(--text3)','var(--surface2)']};const x=m[st]||['--','var(--text4)','var(--surface2)'];return `<span style="padding:3px 8px;border-radius:7px;font-size:10px;font-weight:900;color:${x[1]};background:${x[2]}">${x[0]}</span>`;}
+function ronda33RegistroLider(r){return r?.registro_lider||r?.obs_lider||r?.obs||'';}
+function ronda33TratativaCoord(r){return r?.tratativa_coord||r?.resposta_coord||r?.tratativa_supervisao||r?.tratativa||r?.acao||'';}
 async function renderFerr33(){
   const gid=getGid(), data=S._r33Data||hoje(), turno=S._r33Turno||S.turno||'dia', podeVer=ronda33PodeVerificar();
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
@@ -10573,7 +10575,7 @@ async function renderFerr33(){
     return `<section style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px">
       <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"><b>Verificação ${rodada}ª Rodada</b><span style="color:var(--text3);font-size:12px">${linhas.length} itens</span></div>
       <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:1320px;font-size:12px"><thead><tr style="background:var(--surface2);color:var(--text3);text-transform:uppercase;letter-spacing:.12em;font-size:10px"><th style="padding:9px;text-align:left">Setor</th><th style="padding:9px;text-align:left">Item</th><th style="padding:9px">Status</th><th style="padding:9px;text-align:left">Registro do líder</th><th style="padding:9px;text-align:left">Tratativa coord./sup.</th><th style="padding:9px">Preenchido por</th><th style="padding:9px">Validado por</th><th style="padding:9px">Ação</th></tr></thead><tbody>
-        ${linhas.map(({setor,it})=>{const r=respostas[it[0]]||{};const trat=r.tratativa||r.acao||'';const podeEditar=ronda33PodeEditarSetor(setor);return `<tr style="border-top:1px solid var(--border2)"><td style="padding:9px;color:var(--blue);font-weight:900">${setor.nome}</td><td style="padding:9px;color:var(--text)">${it[1]}</td><td style="padding:9px;text-align:center">${ronda33Badge(r.status)}</td><td style="padding:9px;color:var(--text2)">${prevEsc(r.obs||'--')}</td><td style="padding:9px;color:${r.status==='nok'?'var(--amber)':'var(--text3)'}">${prevEsc(trat||(r.status==='nok'?'Pendente de tratativa':'--'))}</td><td style="padding:9px;text-align:center;color:var(--text3)">${prevEsc(r.por||'--')}</td><td style="padding:9px;text-align:center;color:${r.verificado?'var(--green)':'var(--text3)'};font-weight:${r.verificado?'800':'600'}">${r.verificado?'✓ '+prevEsc(r.verificado_por||'Validado'):'--'}</td><td style="padding:9px;text-align:center"><div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap"><button onclick="editarItemRonda33Site(${rodada},'${it[0]}')" class="btn-sm" style="font-size:10px;border-color:var(--blue);color:var(--blue);opacity:${podeEditar?1:.7}">Editar líder</button>${podeVer?`<button onclick="salvarVerificacao33(${rodada},'${it[0]}',${r.verificado?'false':'true'})" class="btn-sm" style="font-size:10px">${r.verificado?'Remover':'Tratar/validar'}</button>`:''}</div></td></tr>`}).join('')}
+        ${linhas.map(({setor,it})=>{const r=respostas[it[0]]||{};const trat=ronda33TratativaCoord(r);const lider=ronda33RegistroLider(r);const podeEditar=ronda33PodeEditarSetor(setor);return `<tr style="border-top:1px solid var(--border2)"><td style="padding:9px;color:var(--blue);font-weight:900">${setor.nome}</td><td style="padding:9px;color:var(--text)">${it[1]}</td><td style="padding:9px;text-align:center">${ronda33Badge(r.status)}</td><td style="padding:9px;color:var(--text2)">${prevEsc(lider||'--')}</td><td style="padding:9px;color:${r.status==='nok'?'var(--amber)':'var(--text3)'}">${prevEsc(trat||(r.status==='nok'?'Pendente de tratativa':'--'))}${r.tratativa_por?`<div style="font-size:10px;color:var(--text4);margin-top:3px">por ${prevEsc(r.tratativa_por)}</div>`:''}</td><td style="padding:9px;text-align:center;color:var(--text3)">${prevEsc(r.por||'--')}</td><td style="padding:9px;text-align:center;color:${r.verificado?'var(--green)':'var(--text3)'};font-weight:${r.verificado?'800':'600'}">${r.verificado?'✓ '+prevEsc(r.verificado_por||'Validado'):'--'}</td><td style="padding:9px;text-align:center"><div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap"><button onclick="editarItemRonda33Site(${rodada},'${it[0]}')" class="btn-sm" style="font-size:10px;border-color:var(--blue);color:var(--blue);opacity:${podeEditar?1:.7}">Editar líder</button>${podeVer?`<button onclick="salvarVerificacao33(${rodada},'${it[0]}',${r.verificado?'false':'true'})" class="btn-sm" style="font-size:10px">${r.verificado?'Remover':'Tratar/validar'}</button>`:''}</div></td></tr>`}).join('')}
       </tbody></table></div>
     </section>`;
   };
@@ -10599,15 +10601,9 @@ async function editarItemRonda33Site(rodada,itemId){
   const anterior=dados.respostas[itemId]||{};
   const status=(prompt(`Status do item:\n${ref.it[1]}\n\nDigite: ok, nok ou na`,anterior.status||'')||'').trim().toLowerCase();
   if(!['ok','nok','na',''].includes(status)){toast('Status inválido. Use ok, nok ou na','err');return;}
-  const obs=prompt('Observação / evidência:',anterior.obs||'');
+  const obs=prompt('Registro do líder / evidência:',ronda33RegistroLider(anterior)||'');
   if(obs===null)return;
-  let tratativa=anterior.tratativa||anterior.acao||'';
-  if(status==='nok'){
-    const t=prompt('Tratativa do NOK:',tratativa||obs||'');
-    if(t===null)return;
-    tratativa=t.trim();
-  }
-  dados.respostas[itemId]={...anterior,status,obs:obs.trim(),tratativa,por:S.perfil?.nome||anterior.por||'',cargo:S.perfil?.cargo||anterior.cargo||'',em:new Date().toISOString()};
+  dados.respostas[itemId]={...anterior,status,obs:obs.trim(),registro_lider:obs.trim(),por:S.perfil?.nome||anterior.por||'',cargo:S.perfil?.cargo||anterior.cargo||'',em:new Date().toISOString()};
   const payload={garagem_id:gid,data,turno,rodada,dados,status:'em_andamento',preenchido_por:S.perfil?.nome||null,preenchido_em:new Date().toISOString()};
   const res=rec.id?await sb.from('checklist_33').update(payload).eq('id',rec.id):await sb.from('checklist_33').insert(payload);
   if(res.error){toast('Erro: '+res.error.message,'err');return;}
@@ -10632,8 +10628,8 @@ async function gerarRelatorio33(){
           <td style="${B}font-weight:700">${prevEsc(setor.nome)}</td>
           <td style="${B}">${prevEsc(it[1])}</td>
           <td style="${B}text-align:center;background:${statusCor[r.status]||'#fff'};font-weight:900">${statusTxt[r.status]||'--'}</td>
-          <td style="${B}">${prevEsc(r.obs||'--')}</td>
-          <td style="${B};${r.status==='nok'?'background:#FEF3C7;font-weight:700':''}">${prevEsc(r.tratativa||r.acao||(r.status==='nok'?'Pendente de tratativa':'--'))}</td>
+          <td style="${B}">${prevEsc(ronda33RegistroLider(r)||'--')}</td>
+          <td style="${B};${r.status==='nok'?'background:#FEF3C7;font-weight:700':''}">${prevEsc(ronda33TratativaCoord(r)||(r.status==='nok'?'Pendente de tratativa':'--'))}</td>
           <td style="${B}text-align:center">${prevEsc(r.por||'--')}</td>
           <td style="${B}text-align:center;font-weight:900">${r.verificado?prevEsc(r.verificado_por||'OK'):'--'}</td>
         </tr>`).join('')}</tbody>
@@ -10677,21 +10673,25 @@ ${barraPrint('👣 3.3 · Ronda Operacional · '+(garagem?.nome||''),'JTP_33_Ron
     <td style="${B}text-align:center"><span class="campo-label">NOK</span><br><b>${nok}</b></td>
     <td style="${B}text-align:center"><span class="campo-label">Validados</span><br><b>${validados}</b></td>
   </tr>
-  <tr>${gembaResumo(1)}${gembaResumo(2)}<td style="${B}text-align:center" colspan="2"><span class="campo-label">NOK com tratativa</span><br><b>${tratativasNok.filter(x=>x.r.tratativa||x.r.acao).length}/${tratativasNok.length}</b></td></tr>
+  <tr>${gembaResumo(1)}${gembaResumo(2)}<td style="${B}text-align:center" colspan="2"><span class="campo-label">NOK com tratativa</span><br><b>${tratativasNok.filter(x=>ronda33TratativaCoord(x.r)).length}/${tratativasNok.length}</b></td></tr>
 </table>
 ${rodadaTabela(1)}
 ${rodadaTabela(2)}
 <div class="sec-header">Tratativas dos NOK</div>
 <table><thead><tr><th style="${B}width:130px">Setor</th><th style="${B}">Item</th><th style="${B}">Registro do líder</th><th style="${B}">Tratativa coord./sup.</th><th style="${B}width:110px">Validado por</th></tr></thead><tbody>
-${tratativasNok.length?tratativasNok.map(x=>`<tr><td style="${B}font-weight:700">${prevEsc(x.setor)}</td><td style="${B}">${prevEsc(x.item)}</td><td style="${B}">${prevEsc(x.r.obs||'--')}</td><td style="${B};background:${x.r.tratativa||x.r.acao?'#DCFCE7':'#FEE2E2'}">${prevEsc(x.r.tratativa||x.r.acao||'Pendente de tratativa')}</td><td style="${B}text-align:center">${prevEsc(x.r.verificado_por||'--')}</td></tr>`).join(''):`<tr><td style="${B}text-align:center" colspan="5">Sem itens NOK registrados.</td></tr>`}
+${tratativasNok.length?tratativasNok.map(x=>`<tr><td style="${B}font-weight:700">${prevEsc(x.setor)}</td><td style="${B}">${prevEsc(x.item)}</td><td style="${B}">${prevEsc(ronda33RegistroLider(x.r)||'--')}</td><td style="${B};background:${ronda33TratativaCoord(x.r)?'#DCFCE7':'#FEE2E2'}">${prevEsc(ronda33TratativaCoord(x.r)||'Pendente de tratativa')}</td><td style="${B}text-align:center">${prevEsc(x.r.verificado_por||'--')}</td></tr>`).join(''):`<tr><td style="${B}text-align:center" colspan="5">Sem itens NOK registrados.</td></tr>`}
 </tbody></table>
 <div class="sec-header">Importação Gemba 1 e Gemba 2 - Complementos</div>
 <table><thead><tr><th style="${B}">Bloco</th><th style="${B}">Conteúdo importado</th><th style="${B}">Preenchido por</th></tr></thead><tbody>${complementoHtml||`<tr><td style="${B}text-align:center" colspan="3">Sem complementos importados do Gemba 1 / Gemba 2.</td></tr>`}</tbody></table>
-<div style="height:50px"></div>
-<table style="border:none;margin-top:18px"><tr>
-  <td style="border:none;text-align:center;border-top:1px solid #000;width:45%">Supervisor / Coordenador</td>
-  <td style="border:none;width:10%"></td>
-  <td style="border:none;text-align:center;border-top:1px solid #000;width:45%">Operação / Garagem</td>
+<div class="sec-header">Assinaturas</div>
+<table style="border:none;margin-top:70px"><tr>
+  <td style="border:none;text-align:center;border-top:1px solid #000;width:23%">Líder PCM / Oficina</td>
+  <td style="border:none;width:2%"></td>
+  <td style="border:none;text-align:center;border-top:1px solid #000;width:23%">Almoxarifado / Suprimentos</td>
+  <td style="border:none;width:2%"></td>
+  <td style="border:none;text-align:center;border-top:1px solid #000;width:23%">Pátio / Operação</td>
+  <td style="border:none;width:2%"></td>
+  <td style="border:none;text-align:center;border-top:1px solid #000;width:25%">Coordenador / Supervisor</td>
 </tr></table>
 </body></html>`;
   abrirRelatorioHTMLPCM(html,`JTP_33_RondaOperacional_${data.replace(/-/g,'')}_${turno}.pdf`);
@@ -10704,14 +10704,15 @@ async function salvarVerificacao33(rodada,itemId,valor){
   const dados=rec.dados||{respostas:{},resumos:{}};
   dados.respostas=dados.respostas||{};
   const anterior=dados.respostas[itemId]||{};
-  let tratativa=anterior.tratativa||anterior.acao||'';
-  if(valor&&anterior.status==='nok'){
-    const txt=prompt('Tratativa realizada para este NOK:',tratativa||anterior.obs||'');
+  let tratativa=ronda33TratativaCoord(anterior);
+  if(valor){
+    const pergunta=anterior.status==='nok'?'Resposta / tratativa do coordenador para este NOK:':'Observação de validação do coordenador/supervisor:';
+    const txt=prompt(pergunta,tratativa||'');
     if(txt===null)return;
     tratativa=txt.trim();
-    if(!tratativa){toast('NOK precisa de tratativa para validar','err');return;}
+    if(anterior.status==='nok'&&!tratativa){toast('NOK precisa da resposta/tratativa do coordenador para validar','err');return;}
   }
-  dados.respostas[itemId]={...anterior,verificado:valor,verificado_por:valor?(S.perfil?.nome||null):null,verificado_cargo:valor?(S.perfil?.cargo||null):null,verificado_em:valor?new Date().toISOString():null,tratativa:valor?tratativa:anterior.tratativa};
+  dados.respostas[itemId]={...anterior,verificado:valor,verificado_por:valor?(S.perfil?.nome||null):null,verificado_cargo:valor?(S.perfil?.cargo||null):null,verificado_em:valor?new Date().toISOString():null,tratativa_coord:valor?tratativa:anterior.tratativa_coord,tratativa_por:valor?(S.perfil?.nome||null):anterior.tratativa_por,tratativa_em:valor?new Date().toISOString():anterior.tratativa_em};
   const payload={garagem_id:gid,data,turno,rodada,dados,status:valor?'validado':'em_andamento',verificado_por:S.perfil?.nome||null,verificado_em:new Date().toISOString()};
   const res=rec.id?await sb.from('checklist_33').update(payload).eq('id',rec.id):await sb.from('checklist_33').insert(payload);
   if(res.error){toast('Erro: '+res.error.message,'err');return;}
