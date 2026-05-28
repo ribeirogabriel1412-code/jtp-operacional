@@ -1474,6 +1474,7 @@ async function renderAlmoxarifado(){
               <input id="almox-busca-${rid}" value="${safe(r.cod_sap?`${r.cod_sap} - ${r.peca||''}`:'')}" placeholder="Pesquisar código SAP ou descrição..." oninput="almoxValetInlineBuscar(this,'${rid}')" style="width:100%;background:var(--surface2);border:1px solid var(--blue);border-radius:7px;color:var(--text);padding:7px 9px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
               <div id="${almoxValetInlineDropId(rid)}" style="display:none;position:absolute;z-index:40;left:0;right:0;top:34px;max-height:210px;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:0 14px 30px #0008"></div>
             </div>
+            ${r.cod_sap?`<button onclick="limparSapValetAlmoxInline('${rid}','${r.id}')" style="border:1px solid var(--amber);background:#F59E0B12;color:var(--amber);border-radius:7px;padding:4px 8px;font-size:10px;font-weight:900;cursor:pointer;font-family:'DM Sans',sans-serif;margin:-2px 0 5px">Limpar SAP / deixar em branco</button>`:''}
             <input id="almox-peca-${rid}" value="${safe(r.peca||'')}" placeholder="Descrição da peça" style="width:100%;background:transparent;border:0;border-bottom:1px solid var(--border2);color:var(--text);padding:5px 2px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none">
             <div style="font-size:10px;color:var(--text3);margin-top:3px">Pedido oficina: <b style="color:var(--text2)">${safe(original||r.peca||'--')}</b></div>
             <div style="font-size:10px;color:var(--text3);margin-top:2px">${safe(limparPedidoOficinaValet(r.justificativa)||'Lista líder oficina')}</div>
@@ -6795,7 +6796,8 @@ async function almoxValetInlineBuscar(inputEl,id){
   const q=(inputEl.value||'').trim();
   const drop=document.getElementById(almoxValetInlineDropId(id));
   if(!drop)return;
-  if(q.length<2){drop.style.display='none';return;}
+  const limparHtml=`<button onclick="limparSapValetAlmoxInline(&quot;${id}&quot;)" style="width:100%;text-align:left;padding:8px 10px;border:0;border-bottom:1px solid var(--border2);background:#F59E0B12;color:var(--amber);cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:900">Limpar SAP e manter pedido original da oficina</button>`;
+  if(q.length<2){drop.innerHTML=limparHtml;drop.style.display='block';return;}
   if(_almoxValetInlineTimer)clearTimeout(_almoxValetInlineTimer);
   _almoxValetInlineTimer=setTimeout(async()=>{
     const gid=getGid();
@@ -6804,14 +6806,14 @@ async function almoxValetInlineBuscar(inputEl,id){
       .eq('garagem_id',gid)
       .or('cod_sap.ilike.%'+q+'%,descricao.ilike.%'+q+'%')
       .limit(10);
-    if(error){drop.innerHTML=`<div style="padding:8px 10px;font-size:11px;color:var(--red)">${prevEsc(error.message)}</div>`;drop.style.display='block';return;}
+    if(error){drop.innerHTML=limparHtml+`<div style="padding:8px 10px;font-size:11px;color:var(--red)">${prevEsc(error.message)}</div>`;drop.style.display='block';return;}
     const itens=data||[];
-    if(!itens.length){drop.innerHTML='<div style="padding:8px 10px;font-size:11px;color:var(--text3)">Nenhum item encontrado na base SAP</div>';drop.style.display='block';return;}
+    if(!itens.length){drop.innerHTML=limparHtml+'<div style="padding:8px 10px;font-size:11px;color:var(--text3)">Nenhum item encontrado na base SAP</div>';drop.style.display='block';return;}
     itens.forEach(x=>{
       const cod=String(x.cod_sap||'');
       window._almoxValetInlineMap[cod]={cod,desc:x.descricao||'',saldo:null,valor:parseFloat(x.preco_unit||0)||0,unidade:x.unidade||'UN'};
     });
-    drop.innerHTML=itens.map(x=>{
+    drop.innerHTML=limparHtml+itens.map(x=>{
       const cod=String(x.cod_sap||'').replace(/"/g,'&quot;');
       const val=parseFloat(x.preco_unit||0)||0;
       return `<button onclick="almoxValetInlineSelecionar(&quot;${id}&quot;,&quot;${cod}&quot;)" style="width:100%;text-align:left;padding:8px 10px;border:0;border-bottom:1px solid var(--border2);background:var(--surface);color:var(--text);cursor:pointer;font-family:'DM Sans',sans-serif">
@@ -6836,6 +6838,38 @@ function almoxValetInlineSelecionar(id,cod){
   if(codigo)codigo.value=it.cod;
   if(valor)valor.value=(it.valor||0).toFixed(2);
   if(drop)drop.style.display='none';
+}
+
+async function limparSapValetAlmoxInline(rowId,id){
+  const busca=document.getElementById('almox-busca-'+rowId);
+  const pecaEl=document.getElementById('almox-peca-'+rowId);
+  const codigo=document.getElementById('almox-cod-'+rowId);
+  const valor=document.getElementById('almox-valor-'+rowId);
+  const original=document.getElementById('almox-original-'+rowId)?.value?.trim()||pecaEl?.value?.trim()||'';
+  const drop=document.getElementById(almoxValetInlineDropId(rowId));
+  if(busca)busca.value='';
+  if(codigo)codigo.value='';
+  if(valor)valor.value='';
+  if(pecaEl&&original)pecaEl.value=original;
+  if(drop)drop.style.display='none';
+  if(!id){
+    toast('SAP limpo. Salve a linha para gravar.');
+    return;
+  }
+  const atual=await sb.from('requisicoes_compra').select('*').eq('id',id).single();
+  if(atual.error){toast('Erro: '+atual.error.message,'err');return;}
+  const base=String(atual.data?.justificativa||'').replace(/\s*[|·]\s*Separado por:\s*[^|·\n]*/ig,'').trim();
+  const payload={
+    cod_sap:null,
+    peca:original||atual.data?.peca||'',
+    valor_estimado:null,
+    status:atual.data?.status==='separado'?'solicitado_pcm':atual.data?.status,
+    justificativa:montarJustValetComOriginal(base,original)
+  };
+  const{error}=await sb.from('requisicoes_compra').update(payload).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('SAP removido. Pedido original mantido.');
+  renderAlmoxarifado();
 }
 
 async function salvarValetAlmoxInline(rowId,id){
