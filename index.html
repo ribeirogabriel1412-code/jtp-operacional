@@ -10540,8 +10540,8 @@ const RONDA33_RESUMOS=[
   {id:'suprimentos',nome:'Suprimentos',cargos:['almoxarifado','lider_almoxarifado','lider_suprimentos'],campos:['Kits preventivos separados (D-1)']},
   {id:'sol_pendentes',nome:'Solicitações Pendentes',cargos:['almoxarifado','lider_almoxarifado','lider_suprimentos'],grid:['Prefixo','Solicitações','Status']},
 ];
-function ronda33PodeValidar(){return S.perfil?.is_admin||['supervisor','coordenador'].includes(S.perfil?.cargo);}
-function ronda33PodeEditarSetor(setor){const c=S.perfil?.cargo;return ronda33PodeValidar()||(setor.cargos||[]).includes(c);}
+function ronda33PodeValidar(){return S.perfil?.is_admin||['supervisor','coordenador','gerente_garagem'].includes(S.perfil?.cargo)||['executa','valida'].includes(papelFerr('ferr-33'));}
+function ronda33PodeEditarSetor(setor){const c=S.perfil?.cargo;return ronda33PodeValidar()||['executa','valida'].includes(papelFerr('ferr-33'))||(setor.cargos||[]).includes(c);}
 function ronda33PodeVerificar(){return ronda33PodeValidar();}
 function ronda33PodeVerTudo(){
   const c=S.perfil?.cargo;
@@ -10573,7 +10573,7 @@ async function renderFerr33(){
     return `<section style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px">
       <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"><b>Verificação ${rodada}ª Rodada</b><span style="color:var(--text3);font-size:12px">${linhas.length} itens</span></div>
       <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:1180px;font-size:12px"><thead><tr style="background:var(--surface2);color:var(--text3);text-transform:uppercase;letter-spacing:.12em;font-size:10px"><th style="padding:9px;text-align:left">Setor</th><th style="padding:9px;text-align:left">Item</th><th style="padding:9px">Status</th><th style="padding:9px;text-align:left">Observação</th><th style="padding:9px;text-align:left">Tratativa NOK</th><th style="padding:9px">Preenchido por</th><th style="padding:9px">Coord./Sup.</th></tr></thead><tbody>
-        ${linhas.map(({setor,it})=>{const r=respostas[it[0]]||{};const trat=r.tratativa||r.acao||'';const podeEditar=ronda33PodeEditarSetor(setor);return `<tr style="border-top:1px solid var(--border2)"><td style="padding:9px;color:var(--blue);font-weight:900">${setor.nome}</td><td style="padding:9px;color:var(--text)">${it[1]}</td><td style="padding:9px;text-align:center">${ronda33Badge(r.status)}</td><td style="padding:9px;color:var(--text2)">${prevEsc(r.obs||'--')}</td><td style="padding:9px;color:${r.status==='nok'?'var(--amber)':'var(--text3)'}">${prevEsc(trat||(r.status==='nok'?'Pendente de tratativa':'--'))}</td><td style="padding:9px;text-align:center;color:var(--text3)">${prevEsc(r.por||'--')}</td><td style="padding:9px;text-align:center"><div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap">${podeEditar?`<button onclick="editarItemRonda33Site(${rodada},'${it[0]}')" class="btn-sm" style="font-size:10px;border-color:var(--blue);color:var(--blue)">Editar</button>`:''}${podeVer?`<button onclick="salvarVerificacao33(${rodada},'${it[0]}',${r.verificado?'false':'true'})" class="btn-sm" style="font-size:10px">${r.verificado?'✓ '+prevEsc(r.verificado_por||'Validado'):'Validar'}</button>`:(r.verificado?`<span style="color:var(--green);font-size:11px;font-weight:800">✓ ${prevEsc(r.verificado_por||'Validado')}</span>`:'--')}</div></td></tr>`}).join('')}
+        ${linhas.map(({setor,it})=>{const r=respostas[it[0]]||{};const trat=r.tratativa||r.acao||'';const podeEditar=ronda33PodeEditarSetor(setor);return `<tr style="border-top:1px solid var(--border2)"><td style="padding:9px;color:var(--blue);font-weight:900">${setor.nome}</td><td style="padding:9px;color:var(--text)">${it[1]}</td><td style="padding:9px;text-align:center">${ronda33Badge(r.status)}</td><td style="padding:9px;color:var(--text2)">${prevEsc(r.obs||'--')}</td><td style="padding:9px;color:${r.status==='nok'?'var(--amber)':'var(--text3)'}">${prevEsc(trat||(r.status==='nok'?'Pendente de tratativa':'--'))}</td><td style="padding:9px;text-align:center;color:var(--text3)">${prevEsc(r.por||'--')}</td><td style="padding:9px;text-align:center"><div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap"><button onclick="editarItemRonda33Site(${rodada},'${it[0]}')" class="btn-sm" style="font-size:10px;border-color:var(--blue);color:var(--blue);opacity:${podeEditar?1:.7}">Editar</button>${podeVer?`<button onclick="salvarVerificacao33(${rodada},'${it[0]}',${r.verificado?'false':'true'})" class="btn-sm" style="font-size:10px">${r.verificado?'✓ '+prevEsc(r.verificado_por||'Validado'):'Validar'}</button>`:(r.verificado?`<span style="color:var(--green);font-size:11px;font-weight:800">✓ ${prevEsc(r.verificado_por||'Validado')}</span>`:'')}</div></td></tr>`}).join('')}
       </tbody></table></div>
     </section>`;
   };
@@ -10589,7 +10589,7 @@ function ronda33BuscaItemSite(itemId){
 async function editarItemRonda33Site(rodada,itemId){
   const ref=ronda33BuscaItemSite(itemId);
   if(!ref){toast('Item não encontrado','err');return;}
-  if(!ronda33PodeEditarSetor(ref.setor)){toast('Sem permissão para editar este setor','err');return;}
+  if(!ronda33PodeEditarSetor(ref.setor)&&!podeVisualizar('ferr-33')){toast('Sem permissão para editar este setor','err');return;}
   const gid=getGid(), data=S._r33Data||hoje(), turno=S._r33Turno||S.turno||'dia';
   const atual=await sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno).eq('rodada',rodada).maybeSingle();
   if(atual.error){toast('Erro: '+atual.error.message,'err');return;}
