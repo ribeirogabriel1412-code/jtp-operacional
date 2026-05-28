@@ -290,6 +290,7 @@ tr:hover td{background:#0F172A80}
         <button class="sub-btn" onclick="navToSub('ferr-prev')">🔩 Painel Preventivas</button>
         <button class="sub-btn" onclick="navToSub('ferr-22')">🔧 Painel do Manutentor</button>
         <button class="sub-btn" onclick="navToSub('ferr-211')">🔴 2.11 Carros Indisponíveis</button>
+        <button class="sub-btn" onclick="navToSub('ferr-218')">🆘 2.18 SOS Recolha</button>
         <button class="sub-btn" onclick="navToSub('ferr-212')">📊 2.12 Indicadores Técnicos</button>
         <button class="sub-btn" onclick="navToSub('ferr-lav')">🧼 3.2 Checklist Lavagem</button>
         <button class="sub-btn" onclick="navToSub('ferr-33')">👣 3.3 Ronda Operacional</button>
@@ -759,6 +760,11 @@ const FERRAMENTAS_DEF=[
     valida:   ['lider_pcm'],
     visualiza:['gerente_garagem','diretoria','operacoes_seguras'],
   },
+  {id:'ferr-218', icon:'🆘', nome:'2.18 SOS Recolha Anormal',
+    executa:  ['assistente_pcm','lider_pcm'],
+    valida:   ['lider_pcm','coordenador','supervisor'],
+    visualiza:['gerente_garagem','diretoria','lider_operacional','lider_patio','lider_oficina'],
+  },
   {id:'ferr-lav', icon:'🧼', nome:'3.2 Checklist Lavagem',
     executa:  ['lavador'],
     valida:   ['lider_patio'],
@@ -983,7 +989,7 @@ function navToSub(sub){
   S.subtela=sub;
   document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes(sub))b.classList.add('active')});
-  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios};
+  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-218':renderFerr218,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios};
   if(map[sub]) map[sub]();
 }
 
@@ -10539,8 +10545,8 @@ async function renderFerr33(){
     const linhas=setoresVisiveis.flatMap(setor=>setor.itens.filter(i=>i[2]===rodada).map(it=>({setor,it})));
     return `<section style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px">
       <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"><b>Verificação ${rodada}ª Rodada</b><span style="color:var(--text3);font-size:12px">${linhas.length} itens</span></div>
-      <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:980px;font-size:12px"><thead><tr style="background:var(--surface2);color:var(--text3);text-transform:uppercase;letter-spacing:.12em;font-size:10px"><th style="padding:9px;text-align:left">Setor</th><th style="padding:9px;text-align:left">Item</th><th style="padding:9px">Status</th><th style="padding:9px;text-align:left">Observação</th><th style="padding:9px">Preenchido por</th><th style="padding:9px">Coord.</th></tr></thead><tbody>
-        ${linhas.map(({setor,it})=>{const r=respostas[it[0]]||{};return `<tr style="border-top:1px solid var(--border2)"><td style="padding:9px;color:var(--blue);font-weight:900">${setor.nome}</td><td style="padding:9px;color:var(--text)">${it[1]}</td><td style="padding:9px;text-align:center">${ronda33Badge(r.status)}</td><td style="padding:9px;color:var(--text2)">${prevEsc(r.obs||'--')}</td><td style="padding:9px;text-align:center;color:var(--text3)">${prevEsc(r.por||'--')}</td><td style="padding:9px;text-align:center">${podeVer?`<button onclick="salvarVerificacao33(${rodada},'${it[0]}',${r.verificado?'false':'true'})" class="btn-sm" style="font-size:10px">${r.verificado?'✓ Validado':'Validar'}</button>`:(r.verificado?ronda33Badge('ok'):'--')}</td></tr>`}).join('')}
+      <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:1180px;font-size:12px"><thead><tr style="background:var(--surface2);color:var(--text3);text-transform:uppercase;letter-spacing:.12em;font-size:10px"><th style="padding:9px;text-align:left">Setor</th><th style="padding:9px;text-align:left">Item</th><th style="padding:9px">Status</th><th style="padding:9px;text-align:left">Observação</th><th style="padding:9px;text-align:left">Tratativa NOK</th><th style="padding:9px">Preenchido por</th><th style="padding:9px">Coord./Sup.</th></tr></thead><tbody>
+        ${linhas.map(({setor,it})=>{const r=respostas[it[0]]||{};const trat=r.tratativa||r.acao||'';return `<tr style="border-top:1px solid var(--border2)"><td style="padding:9px;color:var(--blue);font-weight:900">${setor.nome}</td><td style="padding:9px;color:var(--text)">${it[1]}</td><td style="padding:9px;text-align:center">${ronda33Badge(r.status)}</td><td style="padding:9px;color:var(--text2)">${prevEsc(r.obs||'--')}</td><td style="padding:9px;color:${r.status==='nok'?'var(--amber)':'var(--text3)'}">${prevEsc(trat||(r.status==='nok'?'Pendente de tratativa':'--'))}</td><td style="padding:9px;text-align:center;color:var(--text3)">${prevEsc(r.por||'--')}</td><td style="padding:9px;text-align:center">${podeVer?`<button onclick="salvarVerificacao33(${rodada},'${it[0]}',${r.verificado?'false':'true'})" class="btn-sm" style="font-size:10px">${r.verificado?'✓ '+prevEsc(r.verificado_por||'Validado'):'Validar'}</button>`:(r.verificado?`<span style="color:var(--green);font-size:11px;font-weight:800">✓ ${prevEsc(r.verificado_por||'Validado')}</span>`:'--')}</td></tr>`}).join('')}
       </tbody></table></div>
     </section>`;
   };
@@ -10558,16 +10564,17 @@ async function gerarRelatorio33(){
     const rec=porRodada[rodada]||{dados:{respostas:{},resumos:{}}};
     const respostas=rec.dados?.respostas||{};
     const linhas=RONDA33_SETORES.flatMap(setor=>setor.itens.filter(i=>i[2]===rodada).map(it=>({setor,it,r:respostas[it[0]]||{}})));
-    return `<div class="sec-header">Verificação ${rodada}ª Rodada</div>
+    return `<div class="sec-header">GEMBA ${rodada} - Verificação ${rodada}ª Rodada</div>
       <table>
-        <thead><tr><th style="${B}width:130px">Setor</th><th style="${B}">Item</th><th style="${B}width:55px">Status</th><th style="${B}">Observação</th><th style="${B}width:110px">Preenchido por</th><th style="${B}width:75px">Validação</th></tr></thead>
+        <thead><tr><th style="${B}width:130px">Setor</th><th style="${B}">Item</th><th style="${B}width:55px">Status</th><th style="${B}">Observação</th><th style="${B}">Tratativa NOK</th><th style="${B}width:110px">Preenchido por</th><th style="${B}width:100px">Validação</th></tr></thead>
         <tbody>${linhas.map(({setor,it,r})=>`<tr>
           <td style="${B}font-weight:700">${prevEsc(setor.nome)}</td>
           <td style="${B}">${prevEsc(it[1])}</td>
           <td style="${B}text-align:center;background:${statusCor[r.status]||'#fff'};font-weight:900">${statusTxt[r.status]||'--'}</td>
           <td style="${B}">${prevEsc(r.obs||'--')}</td>
+          <td style="${B};${r.status==='nok'?'background:#FEF3C7;font-weight:700':''}">${prevEsc(r.tratativa||r.acao||(r.status==='nok'?'Pendente de tratativa':'--'))}</td>
           <td style="${B}text-align:center">${prevEsc(r.por||'--')}</td>
-          <td style="${B}text-align:center;font-weight:900">${r.verificado?'OK':'--'}</td>
+          <td style="${B}text-align:center;font-weight:900">${r.verificado?prevEsc(r.verificado_por||'OK'):'--'}</td>
         </tr>`).join('')}</tbody>
       </table>`;
   };
@@ -10576,6 +10583,19 @@ async function gerarRelatorio33(){
   const preenchidos=todos.filter(x=>resp[x.i[0]]?.status).length;
   const nok=todos.filter(x=>resp[x.i[0]]?.status==='nok').length;
   const validados=todos.filter(x=>resp[x.i[0]]?.verificado).length;
+  const tratativasNok=todos.map(x=>({setor:x.s.nome,item:x.i[1],r:resp[x.i[0]]||{}})).filter(x=>x.r.status==='nok');
+  const resumos=Object.assign({},porRodada[1]?.dados?.resumos||{},porRodada[2]?.dados?.resumos||{});
+  const gembaResumo=rodada=>{
+    const rec=porRodada[rodada]||{dados:{respostas:{},resumos:{}}};
+    const respostas=rec.dados?.respostas||{};
+    const linhas=RONDA33_SETORES.flatMap(setor=>setor.itens.filter(i=>i[2]===rodada).map(it=>({setor,it,r:respostas[it[0]]||{}})));
+    const ok=linhas.filter(x=>x.r.status==='ok').length, nk=linhas.filter(x=>x.r.status==='nok').length, pend=linhas.filter(x=>!x.r.status).length, val=linhas.filter(x=>x.r.verificado).length;
+    return `<td style="${B}text-align:center"><span class="campo-label">Gemba ${rodada}</span><br><b>${ok} OK · ${nk} NOK · ${pend} pend. · ${val} val.</b></td>`;
+  };
+  const complementoHtml=Object.entries(resumos||{}).filter(([_,v])=>v?.texto).map(([id,v])=>{
+    const cfg=RONDA33_RESUMOS.find(x=>x.id===id);
+    return `<tr><td style="${B}font-weight:700;width:180px">${prevEsc(cfg?.nome||id)}</td><td style="${B};white-space:pre-line">${prevEsc(v.texto||'')}</td><td style="${B}width:120px;text-align:center">${prevEsc(v.por||'--')}</td></tr>`;
+  }).join('');
   const gerado=new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'});
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${estiloRelJTP()}</style></head><body>
 ${barraPrint('👣 3.3 · Ronda Operacional · '+(garagem?.nome||''),'JTP_33_RondaOperacional')}
@@ -10596,9 +10616,16 @@ ${barraPrint('👣 3.3 · Ronda Operacional · '+(garagem?.nome||''),'JTP_33_Ron
     <td style="${B}text-align:center"><span class="campo-label">NOK</span><br><b>${nok}</b></td>
     <td style="${B}text-align:center"><span class="campo-label">Validados</span><br><b>${validados}</b></td>
   </tr>
+  <tr>${gembaResumo(1)}${gembaResumo(2)}<td style="${B}text-align:center" colspan="2"><span class="campo-label">NOK com tratativa</span><br><b>${tratativasNok.filter(x=>x.r.tratativa||x.r.acao).length}/${tratativasNok.length}</b></td></tr>
 </table>
 ${rodadaTabela(1)}
 ${rodadaTabela(2)}
+<div class="sec-header">Tratativas dos NOK</div>
+<table><thead><tr><th style="${B}width:130px">Setor</th><th style="${B}">Item</th><th style="${B}">Observação</th><th style="${B}">Tratativa</th><th style="${B}width:110px">Validado por</th></tr></thead><tbody>
+${tratativasNok.length?tratativasNok.map(x=>`<tr><td style="${B}font-weight:700">${prevEsc(x.setor)}</td><td style="${B}">${prevEsc(x.item)}</td><td style="${B}">${prevEsc(x.r.obs||'--')}</td><td style="${B};background:${x.r.tratativa||x.r.acao?'#DCFCE7':'#FEE2E2'}">${prevEsc(x.r.tratativa||x.r.acao||'Pendente de tratativa')}</td><td style="${B}text-align:center">${prevEsc(x.r.verificado_por||'--')}</td></tr>`).join(''):`<tr><td style="${B}text-align:center" colspan="5">Sem itens NOK registrados.</td></tr>`}
+</tbody></table>
+<div class="sec-header">Importação Gemba 1 e Gemba 2 - Complementos</div>
+<table><thead><tr><th style="${B}">Bloco</th><th style="${B}">Conteúdo importado</th><th style="${B}">Preenchido por</th></tr></thead><tbody>${complementoHtml||`<tr><td style="${B}text-align:center" colspan="3">Sem complementos importados do Gemba 1 / Gemba 2.</td></tr>`}</tbody></table>
 <div style="height:50px"></div>
 <table style="border:none;margin-top:18px"><tr>
   <td style="border:none;text-align:center;border-top:1px solid #000;width:45%">Supervisor / Coordenador</td>
@@ -10615,7 +10642,15 @@ async function salvarVerificacao33(rodada,itemId,valor){
   const rec=atual.data||{dados:{respostas:{},resumos:{}}};
   const dados=rec.dados||{respostas:{},resumos:{}};
   dados.respostas=dados.respostas||{};
-  dados.respostas[itemId]={...(dados.respostas[itemId]||{}),verificado:valor,verificado_por:S.perfil?.nome||null,verificado_em:new Date().toISOString()};
+  const anterior=dados.respostas[itemId]||{};
+  let tratativa=anterior.tratativa||anterior.acao||'';
+  if(valor&&anterior.status==='nok'){
+    const txt=prompt('Tratativa realizada para este NOK:',tratativa||anterior.obs||'');
+    if(txt===null)return;
+    tratativa=txt.trim();
+    if(!tratativa){toast('NOK precisa de tratativa para validar','err');return;}
+  }
+  dados.respostas[itemId]={...anterior,verificado:valor,verificado_por:valor?(S.perfil?.nome||null):null,verificado_cargo:valor?(S.perfil?.cargo||null):null,verificado_em:valor?new Date().toISOString():null,tratativa:valor?tratativa:anterior.tratativa};
   const payload={garagem_id:gid,data,turno,rodada,dados,status:valor?'validado':'em_andamento',verificado_por:S.perfil?.nome||null,verificado_em:new Date().toISOString()};
   const res=rec.id?await sb.from('checklist_33').update(payload).eq('id',rec.id):await sb.from('checklist_33').insert(payload);
   if(res.error){toast('Erro: '+res.error.message,'err');return;}
@@ -12550,6 +12585,142 @@ function renderFerrCtrl(){
   setMain(`${secTitle('✅','Controle Soltura / Oficina',back)}<div class="empty"><div style="font-size:40px">✅</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Em breve</div></div><div class="info-blue info-banner">🔗 Integração com painel de soltura em breve</div>`);
 }
 
+// 2.18 - SOS / Recolha Anormal
+function sos218V(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function sos218Money(v){return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+function sos218Num(v){return parseFloat(String(v||'').replace(/\./g,'').replace(',','.'))||0}
+function sos218PecaRows(prefix='sos218-peca',rows=6){
+  return Array.from({length:rows},(_,i)=>`<tr>
+    <td><input id="${prefix}-cod-${i}" class="inp" placeholder="Código"></td>
+    <td><input id="${prefix}-desc-${i}" class="inp" placeholder="Descrição da peça"></td>
+    <td><input id="${prefix}-qtd-${i}" class="inp" type="number" min="0" step="1" placeholder="Qtd"></td>
+    <td><input id="${prefix}-un-${i}" class="inp" placeholder="Un"></td>
+    <td><input id="${prefix}-orig-${i}" class="inp" placeholder="Origem"></td>
+    <td><input id="${prefix}-valor-${i}" class="inp" placeholder="Valor"></td>
+    <td><input id="${prefix}-obs-${i}" class="inp" placeholder="Obs"></td>
+  </tr>`).join('');
+}
+function sos218AcaoRows(prefix='sos218-acao',rows=4){
+  return Array.from({length:rows},(_,i)=>`<tr>
+    <td><input id="${prefix}-txt-${i}" class="inp" placeholder="Ação para evitar reincidência"></td>
+    <td><input id="${prefix}-resp-${i}" class="inp" placeholder="Responsável"></td>
+    <td><input id="${prefix}-prazo-${i}" class="inp" type="date"></td>
+  </tr>`).join('');
+}
+function coletarSOS218Site(){
+  const pecas=Array.from({length:6},(_,i)=>({
+    codigo:document.getElementById(`sos218-peca-cod-${i}`)?.value?.trim()||'',
+    descricao:document.getElementById(`sos218-peca-desc-${i}`)?.value?.trim()||'',
+    qtd:Number(document.getElementById(`sos218-peca-qtd-${i}`)?.value||0)||0,
+    un:document.getElementById(`sos218-peca-un-${i}`)?.value?.trim()||'',
+    origem:document.getElementById(`sos218-peca-orig-${i}`)?.value?.trim()||'',
+    valor:sos218Num(document.getElementById(`sos218-peca-valor-${i}`)?.value),
+    obs:document.getElementById(`sos218-peca-obs-${i}`)?.value?.trim()||''
+  })).filter(p=>p.codigo||p.descricao||p.qtd||p.valor||p.obs);
+  const plano_acao=Array.from({length:4},(_,i)=>({
+    acao:document.getElementById(`sos218-acao-txt-${i}`)?.value?.trim()||'',
+    responsavel:document.getElementById(`sos218-acao-resp-${i}`)?.value?.trim()||'',
+    prazo:document.getElementById(`sos218-acao-prazo-${i}`)?.value||''
+  })).filter(a=>a.acao||a.responsavel||a.prazo);
+  return {
+    garagem_id:getGid(),data:document.getElementById('sos218-data')?.value||hoje(),
+    turno:document.getElementById('sos218-turno')?.value||S.turno||'dia',
+    prefixo:document.getElementById('sos218-prefixo')?.value?.trim()||'',
+    km:document.getElementById('sos218-km')?.value?.trim()||'',
+    linha:document.getElementById('sos218-linha')?.value?.trim()||'',
+    motorista:document.getElementById('sos218-motorista')?.value?.trim()||'',
+    data_ocorrencia:document.getElementById('sos218-ocorrencia')?.value||hoje(),
+    problema:document.getElementById('sos218-problema')?.value?.trim()||'',
+    diagnostico:document.getElementById('sos218-diagnostico')?.value?.trim()||'',
+    causa_raiz:document.getElementById('sos218-causa')?.value?.trim()||'',
+    acao_imediata:document.getElementById('sos218-acao-imediata')?.value?.trim()||'',
+    pecas,plano_acao,preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null,status:'enviado'
+  };
+}
+async function renderFerr218(){
+  const gid=getGid(), data=S._sos218Data||hoje();
+  let registros=[], aviso='';
+  try{
+    const{data:rows,error}=await sb.from('relatorio_sos_218').select('*').eq('garagem_id',gid).eq('data',data).order('criado_em',{ascending:false});
+    if(error) throw error;
+    registros=rows||[];
+  }catch(e){ aviso=`<div class="card" style="border-color:var(--red);color:var(--red);margin-bottom:12px">Tabela relatorio_sos_218 ainda não disponível. Rode o SQL criado para liberar gravação no banco.</div>`; }
+  S._sos218Registros=registros;
+  setMain(`
+    ${secTitle('🆘','2.18 SOS - Recolha Anormal',`<button class="btn" onclick="navToSub('rel-todos')">← Relatórios</button>`)}
+    ${aviso}
+    <div class="card">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+        <label>Data do relatório<input id="sos218-data" class="inp" type="date" value="${data}" onchange="S._sos218Data=this.value;renderFerr218()"></label>
+        <label>Turno<select id="sos218-turno" class="inp"><option value="dia">Dia</option><option value="noite">Noite</option></select></label>
+        <label>Data ocorrência<input id="sos218-ocorrencia" class="inp" type="date" value="${data}"></label>
+        <label>Prefixo<input id="sos218-prefixo" class="inp" placeholder="02.000"></label>
+        <label>KM<input id="sos218-km" class="inp" placeholder="KM"></label>
+        <label>Linha / itinerário<input id="sos218-linha" class="inp" placeholder="Linha"></label>
+        <label style="grid-column:span 2">Motorista<input id="sos218-motorista" class="inp" placeholder="Nome / matrícula"></label>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:14px">
+        <label>Problema relatado<textarea id="sos218-problema" class="inp" rows="3"></textarea></label>
+        <label>Diagnóstico técnico<textarea id="sos218-diagnostico" class="inp" rows="3"></textarea></label>
+        <label>Causa raiz<textarea id="sos218-causa" class="inp" rows="3"></textarea></label>
+        <label>Ação imediata<textarea id="sos218-acao-imediata" class="inp" rows="3"></textarea></label>
+      </div>
+    </div>
+    ${secTitle('🔩','Peças utilizadas no atendimento')}
+    <div class="card" style="overflow:auto"><table class="tbl"><thead><tr><th>Cód.</th><th>Descrição</th><th>Qtd</th><th>Un</th><th>Origem</th><th>Valor</th><th>Obs</th></tr></thead><tbody>${sos218PecaRows()}</tbody></table></div>
+    ${secTitle('✅','Plano de ação para evitar reincidência')}
+    <div class="card" style="overflow:auto"><table class="tbl"><thead><tr><th>Ação</th><th>Responsável</th><th>Prazo</th></tr></thead><tbody>${sos218AcaoRows()}</tbody></table></div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin:16px 0 26px">
+      <button class="btn green" onclick="salvarSOS218Site()">Salvar e exportar PDF</button>
+    </div>
+    ${secTitle('📂','Registros do dia')}
+    <div class="grid">
+      ${registros.length?registros.map((r,i)=>`<div class="card"><div style="font-size:20px;color:var(--blue);font-weight:900">${sos218V(r.prefixo)}</div><div class="muted">${formatData(r.data_ocorrencia||r.data)} · ${sos218V(r.turno||'')}</div><div style="margin-top:8px">${sos218V(r.problema||'Sem descrição')}</div><button class="btn" style="margin-top:12px" onclick="gerarPDFSOS218(S._sos218Registros[${i}])">Exportar PDF</button></div>`).join(''):`<div class="empty">Nenhum SOS registrado nesta data.</div>`}
+    </div>`);
+}
+async function salvarSOS218Site(){
+  const d=coletarSOS218Site();
+  if(!d.prefixo||!d.problema){toast('Informe prefixo e problema relatado','err');return}
+  const{error}=await sb.from('relatorio_sos_218').insert(d);
+  if(error){toast('Erro ao salvar 2.18: '+error.message,'err');return}
+  try{await sb.from('relatorios_gerados').insert({garagem_id:d.garagem_id,tipo:'2.18',numero:`2.18-${d.data}-${d.prefixo}`,data_evento:d.data,turno:d.turno,status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){}
+  toast('2.18 salvo');
+  gerarPDFSOS218(d);
+  renderFerr218();
+}
+function gerarPDFSOS218(d){
+  const g=S.garagens?.find(x=>x.id===(d.garagem_id||getGid()))?.nome||'Garagem Porto Velho';
+  const pecas=[...(d.pecas||[])]; while(pecas.length<9) pecas.push({});
+  const acoes=[...(d.plano_acao||[])]; while(acoes.length<4) acoes.push({});
+  const total=(d.pecas||[]).reduce((s,p)=>s+(Number(p.valor||0)*Number(p.qtd||1)),0);
+  const agora=new Date();
+  const html=`<!doctype html><html><head><meta charset="utf-8"><title>2.18 SOS</title><style>${estiloRelJTP()}.center{text-align:center}.right{text-align:right}.assin{display:grid;grid-template-columns:1fr 1fr;gap:80px;margin-top:44px}.linha{border-top:1px solid #000;text-align:center;padding-top:4px}</style></head><body>
+${barraPrint('2.18 SOS - Recolha Anormal','JTP_218_SOS.pdf')}
+<div class="cabecalho"><strong>GRUPO JTP | OPERAÇÃO GARAGEM | Relatório de S.O.S - Recolha Anormal | 2.18</strong></div>
+<table><tr><td><strong>Código:</strong> 2.18</td><td><strong>Responsável:</strong> Assistente PCM</td><td><strong>Periodicidade:</strong> Por Ocorrência</td></tr>
+<tr><td colspan="2"><strong>Processo:</strong> Manutenção Corretiva - Recolha</td><td><strong>Turno:</strong> ${sos218V(d.turno||'')}</td></tr>
+<tr><td><strong>Data:</strong> ${formatData(d.data)}</td><td><strong>Garagem:</strong> ${sos218V(g)}</td><td><strong>Gerado:</strong> ${agora.toLocaleString('pt-BR')}</td></tr>
+<tr><td colspan="3">Registro de recolhas anormais (SOS): veículos que quebraram na rua. Documenta evento, diagnóstico, peças e plano de ação.</td></tr>
+<tr><td colspan="2"><strong>Preenchido por:</strong> ${sos218V(d.preenchido_por_nome||S.perfil?.nome||'')}</td><td><strong>Assinatura:</strong></td></tr></table>
+<div class="sec-header">■ IDENTIFICAÇÃO DO EVENTO</div>
+<table><tr><td><strong>Prefixo do Veículo</strong><br>${sos218V(d.prefixo)}</td><td><strong>Data da Ocorrência</strong><br>${formatData(d.data_ocorrencia)}</td></tr>
+<tr><td><strong>KM</strong><br>${sos218V(d.km)}</td><td><strong>Linha / Itinerário</strong><br>${sos218V(d.linha)}</td></tr>
+<tr><td colspan="2"><strong>Motorista (Nome / Matrícula)</strong><br>${sos218V(d.motorista)}</td></tr></table>
+<div class="sec-header">■ DIAGNÓSTICO E CAUSA RAIZ</div>
+<table><tr><td><strong>Problema Relatado pelo Motorista</strong><br>${sos218V(d.problema)}</td></tr>
+<tr><td><strong>Diagnóstico Técnico do Mecânico / Socorrista</strong><br>${sos218V(d.diagnostico)}</td></tr>
+<tr><td><strong>O Que Poderia Ter Evitado Este SOS? (Causa Raiz)</strong><br>${sos218V(d.causa_raiz)}</td></tr>
+<tr><td><strong>Ação Imediata Tomada no Local</strong><br>${sos218V(d.acao_imediata)}</td></tr></table>
+<div class="sec-header">■ PEÇAS UTILIZADAS NO ATENDIMENTO</div>
+<table><thead><tr><th>Cód.</th><th>Descrição da Peça</th><th>Qtd</th><th>Un</th><th>Origem</th><th>Valor (R$)</th><th>Obs</th></tr></thead><tbody>${pecas.map(p=>`<tr><td>${sos218V(p.codigo)}</td><td>${sos218V(p.descricao)}</td><td class="center">${p.qtd||''}</td><td>${sos218V(p.un)}</td><td>${sos218V(p.origem)}</td><td class="right">${p.valor?sos218Money(p.valor):''}</td><td>${sos218V(p.obs)}</td></tr>`).join('')}</tbody></table>
+<div class="sec-header">■ PLANO DE AÇÃO PARA EVITAR REINCIDÊNCIA</div>
+<table><thead><tr><th>Ação</th><th>Responsável</th><th>Prazo</th></tr></thead><tbody>${acoes.map(a=>`<tr><td>${sos218V(a.acao)}</td><td>${sos218V(a.responsavel)}</td><td>${a.prazo?formatData(a.prazo):''}</td></tr>`).join('')}</tbody></table>
+<table style="margin-top:8px"><tr><td><strong>Valor total peças:</strong> ${sos218Money(total)}</td><td><strong>Horário de Emissão:</strong> ${agora.toLocaleTimeString('pt-BR')}</td></tr></table>
+<div class="assin"><div class="linha">Assistente PCM</div><div class="linha">Líder PCM / Coordenação</div></div>
+</body></html>`;
+  abrirRelatorioHTMLPCM(html,`JTP_218_SOS_${String(d.data||hoje()).replace(/-/g,'')}_${String(d.prefixo||'').replace(/\D/g,'')}.pdf`);
+}
+
 // RELATÓRIOS
 function renderRelatorios(){
   const cargo=S.perfil?.cargo||'';
@@ -12619,7 +12790,7 @@ function renderRelatorios(){
     {cod:'2.14',icon:'🔍', nome:'Análise de Desvio – 5 Porquês',   resp:'Líderes',      freq:'Diário',       cor:'#6B7280', desc:'Causa raiz de desvios operacionais',        ativo:false},
     {cod:'2.16',icon:'⛽', nome:'Fechamento de Abastecimento',      resp:'Assist. PCM',  freq:'Diário/Turno', cor:'#6B7280', desc:'Consumo de diesel e Arla por veículo',      ativo:false},
     {cod:'2.17',icon:'🛢️', nome:'Utilização de Lubrificantes',      resp:'Assist. PCM',  freq:'Diário/Turno', cor:'#6B7280', desc:'Consumo e histórico de lubrificantes',      ativo:false},
-    {cod:'2.18',icon:'🆘', nome:'SOS – Recolha Anormal',            resp:'Assist. PCM',  freq:'Por ocorrência',cor:'#6B7280',desc:'Registro de recolhas fora do padrão',       ativo:false},
+    {cod:'2.18',icon:'🆘', nome:'SOS – Recolha Anormal',            resp:'Assist. PCM',  freq:'Por ocorrência',cor:'#EF4444',desc:'Registro de recolhas fora do padrão',       ativo:true, permissao:isPCM, gerar:`navToSub('ferr-218')`},
     {cod:'2.21',icon:'🔩', nome:'RJNP – Justif. Necessidade Peças', resp:'Assist. PCM',  freq:'Diário/Turno', cor:'#6B7280', desc:'Justificativa de requisição de peças',      ativo:false},
   ];
 
