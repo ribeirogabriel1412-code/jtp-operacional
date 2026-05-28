@@ -10546,11 +10546,45 @@ async function renderFerr33(){
     return `<section style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px">
       <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"><b>Verificação ${rodada}ª Rodada</b><span style="color:var(--text3);font-size:12px">${linhas.length} itens</span></div>
       <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:1180px;font-size:12px"><thead><tr style="background:var(--surface2);color:var(--text3);text-transform:uppercase;letter-spacing:.12em;font-size:10px"><th style="padding:9px;text-align:left">Setor</th><th style="padding:9px;text-align:left">Item</th><th style="padding:9px">Status</th><th style="padding:9px;text-align:left">Observação</th><th style="padding:9px;text-align:left">Tratativa NOK</th><th style="padding:9px">Preenchido por</th><th style="padding:9px">Coord./Sup.</th></tr></thead><tbody>
-        ${linhas.map(({setor,it})=>{const r=respostas[it[0]]||{};const trat=r.tratativa||r.acao||'';return `<tr style="border-top:1px solid var(--border2)"><td style="padding:9px;color:var(--blue);font-weight:900">${setor.nome}</td><td style="padding:9px;color:var(--text)">${it[1]}</td><td style="padding:9px;text-align:center">${ronda33Badge(r.status)}</td><td style="padding:9px;color:var(--text2)">${prevEsc(r.obs||'--')}</td><td style="padding:9px;color:${r.status==='nok'?'var(--amber)':'var(--text3)'}">${prevEsc(trat||(r.status==='nok'?'Pendente de tratativa':'--'))}</td><td style="padding:9px;text-align:center;color:var(--text3)">${prevEsc(r.por||'--')}</td><td style="padding:9px;text-align:center">${podeVer?`<button onclick="salvarVerificacao33(${rodada},'${it[0]}',${r.verificado?'false':'true'})" class="btn-sm" style="font-size:10px">${r.verificado?'✓ '+prevEsc(r.verificado_por||'Validado'):'Validar'}</button>`:(r.verificado?`<span style="color:var(--green);font-size:11px;font-weight:800">✓ ${prevEsc(r.verificado_por||'Validado')}</span>`:'--')}</td></tr>`}).join('')}
+        ${linhas.map(({setor,it})=>{const r=respostas[it[0]]||{};const trat=r.tratativa||r.acao||'';const podeEditar=ronda33PodeEditarSetor(setor);return `<tr style="border-top:1px solid var(--border2)"><td style="padding:9px;color:var(--blue);font-weight:900">${setor.nome}</td><td style="padding:9px;color:var(--text)">${it[1]}</td><td style="padding:9px;text-align:center">${ronda33Badge(r.status)}</td><td style="padding:9px;color:var(--text2)">${prevEsc(r.obs||'--')}</td><td style="padding:9px;color:${r.status==='nok'?'var(--amber)':'var(--text3)'}">${prevEsc(trat||(r.status==='nok'?'Pendente de tratativa':'--'))}</td><td style="padding:9px;text-align:center;color:var(--text3)">${prevEsc(r.por||'--')}</td><td style="padding:9px;text-align:center"><div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap">${podeEditar?`<button onclick="editarItemRonda33Site(${rodada},'${it[0]}')" class="btn-sm" style="font-size:10px;border-color:var(--blue);color:var(--blue)">Editar</button>`:''}${podeVer?`<button onclick="salvarVerificacao33(${rodada},'${it[0]}',${r.verificado?'false':'true'})" class="btn-sm" style="font-size:10px">${r.verificado?'✓ '+prevEsc(r.verificado_por||'Validado'):'Validar'}</button>`:(r.verificado?`<span style="color:var(--green);font-size:11px;font-weight:800">✓ ${prevEsc(r.verificado_por||'Validado')}</span>`:'--')}</div></td></tr>`}).join('')}
       </tbody></table></div>
     </section>`;
   };
   setMain(`${secTitle('👣','3.3 Ronda Operacional',back)}${top}${rodadaHtml(1)}${rodadaHtml(2)}`);
+}
+function ronda33BuscaItemSite(itemId){
+  for(const setor of RONDA33_SETORES){
+    const it=setor.itens.find(x=>x[0]===itemId);
+    if(it)return{setor,it};
+  }
+  return null;
+}
+async function editarItemRonda33Site(rodada,itemId){
+  const ref=ronda33BuscaItemSite(itemId);
+  if(!ref){toast('Item não encontrado','err');return;}
+  if(!ronda33PodeEditarSetor(ref.setor)){toast('Sem permissão para editar este setor','err');return;}
+  const gid=getGid(), data=S._r33Data||hoje(), turno=S._r33Turno||S.turno||'dia';
+  const atual=await sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno).eq('rodada',rodada).maybeSingle();
+  if(atual.error){toast('Erro: '+atual.error.message,'err');return;}
+  const rec=atual.data||{dados:{respostas:{},resumos:{}}};
+  const dados=rec.dados||{respostas:{},resumos:{}};
+  dados.respostas=dados.respostas||{};
+  const anterior=dados.respostas[itemId]||{};
+  const status=(prompt(`Status do item:\n${ref.it[1]}\n\nDigite: ok, nok ou na`,anterior.status||'')||'').trim().toLowerCase();
+  if(!['ok','nok','na',''].includes(status)){toast('Status inválido. Use ok, nok ou na','err');return;}
+  const obs=prompt('Observação / evidência:',anterior.obs||'');
+  if(obs===null)return;
+  let tratativa=anterior.tratativa||anterior.acao||'';
+  if(status==='nok'){
+    const t=prompt('Tratativa do NOK:',tratativa||obs||'');
+    if(t===null)return;
+    tratativa=t.trim();
+  }
+  dados.respostas[itemId]={...anterior,status,obs:obs.trim(),tratativa,por:S.perfil?.nome||anterior.por||'',cargo:S.perfil?.cargo||anterior.cargo||'',em:new Date().toISOString()};
+  const payload={garagem_id:gid,data,turno,rodada,dados,status:'em_andamento',preenchido_por:S.perfil?.nome||null,preenchido_em:new Date().toISOString()};
+  const res=rec.id?await sb.from('checklist_33').update(payload).eq('id',rec.id):await sb.from('checklist_33').insert(payload);
+  if(res.error){toast('Erro: '+res.error.message,'err');return;}
+  toast('Item atualizado');renderFerr33();
 }
 async function gerarRelatorio33(){
   const gid=getGid(), garagem=S.garagens?.find(g=>g.id===gid), data=S._r33Data||hoje(), turno=S._r33Turno||S.turno||'dia';
