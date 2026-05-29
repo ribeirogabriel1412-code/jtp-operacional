@@ -137,7 +137,47 @@ if(typeof supabase === 'undefined'){
 const {createClient}=supabase;
 const sb=createClient('https://jboclubugfxmurvhcxgr.supabase.co','sb_publishable_hasmgR_BbXcJC6Xko6DzaA_N7kl7rNT');
 const S={user:null,perfil:null,garagens:[],tela:'home',turno:'dia'};
-function hoje(){return new Date().toISOString().split('T')[0]}
+const TZ_OPERACIONAL_PADRAO='America/Manaus';
+function opNormTxt(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();}
+function opTimezone(gid){
+  const gidRef=gid||(typeof getGid==='function'?getGid():null);
+  const g=(S.garagens||[]).find(x=>x.id===gidRef);
+  const txt=opNormTxt(`${g?.nome||''} ${g?.cidade||''} ${g?.sigla||''}`);
+  return txt.includes('braganca')?'America/Sao_Paulo':TZ_OPERACIONAL_PADRAO;
+}
+function opParts(date=new Date(),tz=opTimezone()){
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).formatToParts(date);
+  const o={};parts.forEach(p=>{if(p.type!=='literal')o[p.type]=p.value;});
+  if(o.hour==='24')o.hour='00';
+  return {y:+o.year,m:+o.month,d:+o.day,H:+o.hour,M:+o.minute,S:+o.second};
+}
+function opISODate(date=new Date(),tz=opTimezone()){const p=opParts(date,tz);return `${p.y}-${String(p.m).padStart(2,'0')}-${String(p.d).padStart(2,'0')}`;}
+function opAddDays(iso,days){const [y,m,d]=String(iso).split('-').map(Number);const dt=new Date(Date.UTC(y,m-1,d+Number(days||0),12));return dt.toISOString().slice(0,10);}
+function opDateTimeISO(data,hora,tz=opTimezone()){
+  const [y,m,d]=String(data).split('-').map(Number),[H,M]=String(hora||'00:00').split(':').map(Number);
+  let utc=Date.UTC(y,m-1,d,H||0,M||0,0);
+  for(let i=0;i<3;i++){
+    const p=opParts(new Date(utc),tz);
+    const desejado=Date.UTC(y,m-1,d,H||0,M||0,0);
+    const atual=Date.UTC(p.y,p.m-1,p.d,p.H,p.M,0);
+    utc+=desejado-atual;
+  }
+  return new Date(utc).toISOString();
+}
+function turnoOperacionalAtual(tz=opTimezone()){const h=opParts(new Date(),tz).H;return (h>=20||h<5)?'noite':'dia';}
+function dataOperacionalAtual(turno=turnoOperacionalAtual(),tz=opTimezone()){
+  const data=opISODate(new Date(),tz),h=opParts(new Date(),tz).H;
+  return turno==='noite'&&h<5?opAddDays(data,-1):data;
+}
+function janelaOperacional(turno=turnoOperacionalAtual(),dataRef=dataOperacionalAtual(turno),tz=opTimezone()){
+  const defs={dia:{ini:'08:00',fim:'18:00',label:'Dia 08:00-18:00'},noite:{ini:'20:00',fim:'04:20',label:'Noite 20:00-04:20'},dia_completo:{ini:'08:00',fim:'08:00',label:'Dia completo 08:00-08:00',diaAnterior:true}};
+  const d=defs[turno]||defs.dia;
+  const dataIni=d.diaAnterior?opAddDays(dataRef,-1):dataRef;
+  const dataFim=(d.fim<=d.ini)?opAddDays(dataIni,1):dataIni;
+  const ini=opDateTimeISO(dataIni,d.ini,tz),fim=opDateTimeISO(dataFim,d.fim,tz);
+  return {turno,dataRef,dataIni,dataFim,horaIni:d.ini,horaFim:d.fim,ini,fim,dtIni:new Date(ini),dtFim:new Date(fim),label:d.label};
+}
+function hoje(){return opISODate()}
 function getGid(){return S.perfil?.garagem_id||S.garagens?.[0]?.id}
 function fluxoCdMobileHabilitado(gid=getGid()){
   const g=S.garagens?.find(x=>x.id===gid);
@@ -185,6 +225,8 @@ async function init(){
     sb.from('garagens').select('*').order('nome'),
   ]);
   S.perfil=p;S.garagens=g||[];
+  S.turno=turnoOperacionalAtual(opTimezone(p?.garagem_id));
+  if(typeof _r33Turno!=='undefined'){_r33Turno=S.turno;_r33Data=dataOperacionalAtual(_r33Turno,opTimezone(p?.garagem_id));}
   const gar=S.garagens.find(x=>x.id===p?.garagem_id);
   document.getElementById('tbn').textContent=p?.nome?.split(' ')[0]||'—';
   document.getElementById('tbc').textContent=CARGOS[p?.cargo]||p?.cargo||'—';
@@ -1302,13 +1344,9 @@ async function confirmarFechamentoAbastecimento(){
 
 // ── OFICINA (Líder Oficina / PCM) ─────────────────────────
 function janelaTurnoOficina(){
-  var ref=new Date();
-  var y=ref.getFullYear(),m=ref.getMonth(),d=ref.getDate();
-  var noite=S.turno==='noite';
-  var ini=noite?new Date(y,m,d,17,0,0):new Date(y,m,d,5,0,0);
-  var fim=noite?new Date(y,m,d+1,5,0,0):new Date(y,m,d,17,0,0);
-  if(noite&&ref.getHours()<5){ini=new Date(y,m,d-1,17,0,0);fim=new Date(y,m,d,5,0,0);}
-  return {ini:ini,fim:fim,label:noite?'Noite 17:00-05:00':'Dia 05:00-17:00'};
+  var turno=S.turno==='noite'?'noite':'dia';
+  var jan=janelaOperacional(turno,dataOperacionalAtual(turno));
+  return {ini:jan.dtIni,fim:jan.dtFim,label:jan.label};
 }
 
 async function telaOficina(){
@@ -2435,7 +2473,7 @@ const R33_RESUMOS=[
   {id:'suprimentos',nome:'Suprimentos',cargos:['almoxarifado','lider_almoxarifado','lider_suprimentos']},
   {id:'sol_pendentes',nome:'Solicitações Pendentes',cargos:['almoxarifado','lider_almoxarifado','lider_suprimentos']}
 ];
-let _r33Data=hoje(),_r33Turno='dia',_r33Cache={};
+let _r33Turno=turnoOperacionalAtual(),_r33Data=dataOperacionalAtual(_r33Turno),_r33Cache={};
 function r33Coord(){return S.perfil?.is_admin||['supervisor','coordenador'].includes(cargo())}
 function r33PodeSetor(s){return r33Coord()||(s.cargos||[]).includes(cargo())}
 function r33PodeResumo(s){return r33Coord()||(s.cargos||[]).includes(cargo())}
@@ -2770,27 +2808,18 @@ let _rcData=hoje(), _rcEscalaData='', _rcEscalaLista=[];
 // O operador escolhe só o DIA — faixa 19:00 → dia+1 07:20 calculada automaticamente
 
 function _diaRefDefault(){
-  const agora=new Date();
-  const h=agora.getHours();
-  if(h<17){
-    const ontem=new Date(agora); ontem.setDate(ontem.getDate()-1);
-    return ontem.toISOString().slice(0,10);
-  }
-  return agora.toISOString().slice(0,10);
+  const h=opParts(new Date(),opTimezone()).H;
+  return h<17?opAddDays(hoje(),-1):hoje();
 }
 
 if(!window._diaRef) window._diaRef=_diaRefDefault();
 
-function _faixaIniISO(){ return window._diaRef+'T19:00:00'; }
+function _faixaIniISO(){ return opDateTimeISO(window._diaRef,'19:00'); }
 function _faixaFimISO(){
-  const d=new Date(window._diaRef+'T12:00:00');
-  d.setDate(d.getDate()+1);
-  return d.toISOString().slice(0,10)+'T07:20:00';
+  return opDateTimeISO(opAddDays(window._diaRef,1),'07:20');
 }
 function _diaSoltura(){
-  const d=new Date(window._diaRef+'T12:00:00');
-  d.setDate(d.getDate()+1);
-  return d.toISOString().slice(0,10);
+  return opAddDays(window._diaRef,1);
 }
 function _diaRefLabel(){
   return new Date(window._diaRef+'T12:00:00').toLocaleDateString('pt-BR',{
@@ -2818,7 +2847,7 @@ function _mergePorPrefixo(...listas){
 if(!window._faixa) window._faixa={
   get dIni(){ return window._diaRef; },
   get hIni(){ return '19:00'; },
-  get dFim(){ const d=new Date(window._diaRef+'T12:00:00');d.setDate(d.getDate()+1);return d.toISOString().slice(0,10); },
+  get dFim(){ return opAddDays(window._diaRef,1); },
   get hFim(){ return '07:20'; },
   turno:'noite'
 };
@@ -2875,8 +2904,7 @@ function confirmarDiaRef(){
   if(!dRef){ toast('Selecione o dia','err'); return; }
   window._diaRef=dRef;
   // Atualizar compatibilidade com _faixa
-  const dNext=new Date(dRef+'T12:00:00');dNext.setDate(dNext.getDate()+1);
-  window._faixa={dIni:dRef,hIni:'19:00',dFim:dNext.toISOString().slice(0,10),hFim:'07:20',turno:'noite'};
+  window._faixa={dIni:dRef,hIni:'19:00',dFim:opAddDays(dRef,1),hFim:'07:20',turno:'noite'};
   closeSheet(true);
   toast('✅ Dia de referência: '+_diaRefLabel());
   if(window._faixaCallback) window._faixaCallback();
