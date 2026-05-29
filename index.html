@@ -10583,7 +10583,13 @@ function ronda33PodeVerTudo(){
 }
 function ronda33Badge(st){const m={ok:['OK','var(--green)','#00C48C20'],nok:['NOK','var(--red)','#EF444420'],na:['N/A','var(--text3)','var(--surface2)']};const x=m[st]||['--','var(--text4)','var(--surface2)'];return `<span style="padding:3px 8px;border-radius:7px;font-size:10px;font-weight:900;color:${x[1]};background:${x[2]}">${x[0]}</span>`;}
 function ronda33RegistroLider(r){return r?.registro_lider||r?.obs_lider||r?.obs||'';}
-function ronda33TratativaCoord(r){return r?.tratativa_coord||r?.resposta_coord||r?.tratativa_supervisao||r?.tratativa||r?.acao||'';}
+function ronda33TratativaCoord(r){
+  const direto=r?.tratativa_coord||r?.resposta_coord||r?.tratativa_supervisao||r?.tratativa_nok||r?.tratativa||r?.acao||r?.obs_coord||r?.observacao_coord||'';
+  if(direto)return direto;
+  const bruto=String(r?.obs||r?.registro_lider||r?.obs_lider||'');
+  const m=bruto.match(/(?:Tratativa coord\.?\/?sup\.?|Tratativa|Resposta coord\.?):\s*([^|·\n]+)/i);
+  return m?.[1]?.trim()||'';
+}
 async function renderFerr33(){
   const gid=getGid(), data=S._r33Data||hoje(), turno=S._r33Turno||S.turno||'dia', podeVer=ronda33PodeVerificar();
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
@@ -10596,7 +10602,7 @@ async function renderFerr33(){
   }
   const porRodada={};(rows||[]).forEach(r=>porRodada[r.rodada]=r);
   const top=`<div style="display:grid;grid-template-columns:190px 160px 1fr auto;gap:10px;align-items:end;margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px">
-    <div><label class="campo-label">Data</label><input class="fi" type="date" value="${data}" onchange="S._r33Data=this.value;renderFerr33()"></div>
+    <div><label class="campo-label">Data</label><div style="display:flex;gap:6px;align-items:center"><input id="r33-data-input" class="fi" type="date" value="${data}" onchange="S._r33Data=this.value;renderFerr33()" style="flex:1;min-width:0"><button type="button" title="Abrir calendário" onclick="document.getElementById('r33-data-input')?.showPicker?.();document.getElementById('r33-data-input')?.focus()" style="width:42px;height:42px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;font-size:16px">📅</button></div></div>
     <div><label class="campo-label">Turno</label><select class="fi" onchange="S._r33Turno=this.value;renderFerr33()"><option value="dia"${turno==='dia'?' selected':''}>Dia</option><option value="noite"${turno==='noite'?' selected':''}>Noite</option></select></div>
     <div style="color:var(--text3);font-size:12px;padding-bottom:10px">Cada líder preenche seu tema. Supervisor e coordenador visualizam tudo, preenchem se necessário e validam o turno.</div>
     <button class="btn-add" onclick="gerarRelatorio33()" style="height:44px;white-space:nowrap;background:var(--blue);border-color:var(--blue);color:#fff">📄 Exportar PDF</button>
@@ -10746,7 +10752,22 @@ async function salvarVerificacao33(rodada,itemId,valor){
     tratativa=txt.trim();
     if(anterior.status==='nok'&&!tratativa){toast('NOK precisa da resposta/tratativa do coordenador para validar','err');return;}
   }
-  dados.respostas[itemId]={...anterior,verificado:valor,verificado_por:valor?(S.perfil?.nome||null):null,verificado_cargo:valor?(S.perfil?.cargo||null):null,verificado_em:valor?new Date().toISOString():null,tratativa_coord:valor?tratativa:anterior.tratativa_coord,tratativa_por:valor?(S.perfil?.nome||null):anterior.tratativa_por,tratativa_em:valor?new Date().toISOString():anterior.tratativa_em};
+  const quemTratou=valor?(S.perfil?.nome||null):anterior.tratativa_por;
+  const quandoTratou=valor?new Date().toISOString():anterior.tratativa_em;
+  dados.respostas[itemId]={
+    ...anterior,
+    verificado:valor,
+    verificado_por:valor?(S.perfil?.nome||null):null,
+    verificado_cargo:valor?(S.perfil?.cargo||null):null,
+    verificado_em:valor?new Date().toISOString():null,
+    tratativa_coord:valor?tratativa:anterior.tratativa_coord,
+    resposta_coord:valor?tratativa:anterior.resposta_coord,
+    tratativa_supervisao:valor?tratativa:anterior.tratativa_supervisao,
+    tratativa_nok:valor?tratativa:anterior.tratativa_nok,
+    obs_coord:valor?tratativa:anterior.obs_coord,
+    tratativa_por:quemTratou,
+    tratativa_em:quandoTratou
+  };
   const payload={garagem_id:gid,data,turno,rodada,dados,status:valor?'validado':'em_andamento',verificado_por:S.perfil?.nome||null,verificado_em:new Date().toISOString()};
   const res=rec.id?await sb.from('checklist_33').update(payload).eq('id',rec.id):await sb.from('checklist_33').insert(payload);
   if(res.error){toast('Erro: '+res.error.message,'err');return;}
