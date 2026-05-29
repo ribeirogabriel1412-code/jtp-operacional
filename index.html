@@ -10629,17 +10629,43 @@ function ronda33TratativaCoord(r){
   const m=bruto.match(/(?:Tratativa coord\.?\/?sup\.?|Tratativa|Resposta coord\.?):\s*([^|·\n]+)/i);
   return m?.[1]?.trim()||'';
 }
+function ronda33DataPadrao(){const t=S._r33Turno||S.turno||turnoOperacionalAtual();return dataOperacionalAtual(t==='noite'?'noite':'dia');}
+async function ronda33AtalhosData(gid,data,turno){
+  const candidatos=[
+    {data,turno,label:'selecionado'},
+    {data,turno:'noite',label:'madrugada deste dia'},
+    {data:opAddDays(data,-1),turno:'noite',label:'noite anterior / madrugada'},
+    {data:opAddDays(data,1),turno:'dia',label:'dia seguinte'}
+  ];
+  const seen=new Set(),unicos=candidatos.filter(c=>{const k=c.data+'_'+c.turno;if(seen.has(k))return false;seen.add(k);return true;});
+  const res=await Promise.all(unicos.map(async c=>{
+    try{
+      const r=await sb.from('checklist_33').select('rodada,dados,created_at').eq('garagem_id',gid).eq('data',c.data).eq('turno',c.turno);
+      const preenchidos=(r.data||[]).reduce((s,row)=>s+Object.values(row.dados?.respostas||{}).filter(x=>x?.status).length,0);
+      return {...c,count:(r.data||[]).length,preenchidos,erro:r.error};
+    }catch(e){return {...c,count:0,preenchidos:0,erro:e};}
+  }));
+  return res.filter(x=>x.count||x.preenchidos);
+}
 async function renderFerr33(){
-  const gid=getGid(), data=S._r33Data||hoje(), turno=S._r33Turno||S.turno||'dia', podeVer=ronda33PodeVerificar();
+  const gid=getGid(), data=S._r33Data||ronda33DataPadrao(), turno=S._r33Turno||S.turno||turnoOperacionalAtual(), podeVer=ronda33PodeVerificar();
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
   setMain(`<div class="loading"><div class="spinner"></div> Carregando 3.3...</div>`);
-  const {data:rows,error}=await sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno);
+  const [{data:rows,error},atalhos]=await Promise.all([
+    sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno),
+    ronda33AtalhosData(gid,data,turno)
+  ]);
   if(error){
     setMain(`${secTitle('👣','3.3 Ronda Operacional',back)}
       <div class="info-blue info-banner" style="border-color:#EF444455;color:var(--red)">Tabela checklist_33 ainda não existe ou o banco recusou a consulta. Rode o arquivo SQL criado em Downloads/checklist_33.sql no Supabase.</div>`);
     return;
   }
   const porRodada={};(rows||[]).forEach(r=>porRodada[r.rodada]=r);
+  const atalhoHtml=atalhos.filter(a=>!(a.data===data&&a.turno===turno)).map(a=>{
+    const ativo=a.data===data&&a.turno===turno;
+    return `<button onclick="S._r33Data='${a.data}';S._r33Turno='${a.turno}';renderFerr33()" style="border:1px solid ${ativo?'var(--blue)':'var(--border)'};background:${ativo?'#2563EB22':'var(--surface2)'};color:${ativo?'var(--blue)':'var(--text2)'};border-radius:9px;padding:8px 10px;text-align:left;font-family:inherit;cursor:pointer"><b style="font-size:11px">${a.turno==='noite'?'🌙':'☀️'} ${formatData(a.data)} · ${a.turno}</b><div style="font-size:10px;color:var(--text3);margin-top:2px">${a.label} · ${a.preenchidos} preench.</div></button>`;
+  }).join('');
+  const avisoData=atalhoHtml?`<div style="background:#F59E0B12;border:1px solid #F59E0B44;border-radius:12px;padding:10px 12px;margin-bottom:14px"><div style="font-size:12px;color:var(--amber);font-weight:900;margin-bottom:8px">⚠️ Existem preenchimentos em outra referência de madrugada</div><div style="display:flex;gap:8px;flex-wrap:wrap">${atalhoHtml}</div><div style="font-size:11px;color:var(--text3);margin-top:8px">Use estes atalhos para abrir e exportar o relatório certo, sem misturar dia e turno.</div></div>`:'';
   const top=`<div style="display:grid;grid-template-columns:190px 160px 1fr auto;gap:10px;align-items:end;margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px">
     <div><label class="campo-label">Data</label><div style="display:flex;gap:6px;align-items:center"><input id="r33-data-input" class="fi" type="date" value="${data}" onchange="S._r33Data=this.value;renderFerr33()" style="flex:1;min-width:0"><button type="button" title="Abrir calendário" onclick="document.getElementById('r33-data-input')?.showPicker?.();document.getElementById('r33-data-input')?.focus()" style="width:42px;height:42px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;font-size:16px">📅</button></div></div>
     <div><label class="campo-label">Turno</label><select class="fi" onchange="S._r33Turno=this.value;renderFerr33()"><option value="dia"${turno==='dia'?' selected':''}>Dia</option><option value="noite"${turno==='noite'?' selected':''}>Noite</option></select></div>
@@ -10658,7 +10684,7 @@ async function renderFerr33(){
       </tbody></table></div>
     </section>`;
   };
-  setMain(`${secTitle('👣','3.3 Ronda Operacional',back)}${top}${rodadaHtml(1)}${rodadaHtml(2)}`);
+  setMain(`${secTitle('👣','3.3 Ronda Operacional',back)}${top}${avisoData}${rodadaHtml(1)}${rodadaHtml(2)}`);
 }
 function ronda33BuscaItemSite(itemId){
   for(const setor of RONDA33_SETORES){
@@ -10671,7 +10697,7 @@ async function editarItemRonda33Site(rodada,itemId){
   const ref=ronda33BuscaItemSite(itemId);
   if(!ref){toast('Item não encontrado','err');return;}
   if(!ronda33PodeEditarSetor(ref.setor)&&!podeVisualizar('ferr-33')){toast('Sem permissão para editar este setor','err');return;}
-  const gid=getGid(), data=S._r33Data||hoje(), turno=S._r33Turno||S.turno||'dia';
+  const gid=getGid(), data=S._r33Data||ronda33DataPadrao(), turno=S._r33Turno||S.turno||turnoOperacionalAtual();
   const atual=await sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno).eq('rodada',rodada).maybeSingle();
   if(atual.error){toast('Erro: '+atual.error.message,'err');return;}
   const rec=atual.data||{dados:{respostas:{},resumos:{}}};
@@ -10689,7 +10715,7 @@ async function editarItemRonda33Site(rodada,itemId){
   toast('Item atualizado');renderFerr33();
 }
 async function gerarRelatorio33(){
-  const gid=getGid(), garagem=S.garagens?.find(g=>g.id===gid), data=S._r33Data||hoje(), turno=S._r33Turno||S.turno||'dia';
+  const gid=getGid(), garagem=S.garagens?.find(g=>g.id===gid), data=S._r33Data||ronda33DataPadrao(), turno=S._r33Turno||S.turno||turnoOperacionalAtual();
   const {data:rows,error}=await sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno);
   if(error){toast('Erro ao gerar PDF: '+error.message,'err');return;}
   const porRodada={};(rows||[]).forEach(r=>porRodada[r.rodada]=r);
@@ -10776,7 +10802,7 @@ ${tratativasNok.length?tratativasNok.map(x=>`<tr><td style="${B}font-weight:700"
   abrirRelatorioHTMLPCM(html,`JTP_33_RondaOperacional_${data.replace(/-/g,'')}_${turno}.pdf`);
 }
 async function salvarVerificacao33(rodada,itemId,valor){
-  const gid=getGid(), data=S._r33Data||hoje(), turno=S._r33Turno||S.turno||'dia';
+  const gid=getGid(), data=S._r33Data||ronda33DataPadrao(), turno=S._r33Turno||S.turno||turnoOperacionalAtual();
   const atual=await sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno).eq('rodada',rodada).maybeSingle();
   if(atual.error){toast('Erro: '+atual.error.message,'err');return;}
   const rec=atual.data||{dados:{respostas:{},resumos:{}}};
