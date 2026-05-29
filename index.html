@@ -862,8 +862,48 @@ function temAcessoFerr(ferrId){return podeVisualizar(ferrId);}
 const ST_CFG={disponivel:{l:'Disponível',cls:'b-disp'},em_linha:{l:'Em Linha',cls:'b-linha'},manutencao:{l:'Manutenção',cls:'b-manut'},aguardando_peca:{l:'Ag. Peça',cls:'b-agpeca'},sinistro:{l:'Sinistro',cls:'b-sinistro'}};
 
 // HELPERS
-function hoje(){return new Date().toISOString().split('T')[0]}
-function hojeF(){return new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'})}
+const TZ_OPERACIONAL_PADRAO='America/Manaus';
+function opNormTxt(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();}
+function opTimezone(gid){
+  const gidRef=gid||(typeof getGid==='function'?getGid():null);
+  const g=(S.garagens||[]).find(x=>x.id===gidRef);
+  const txt=opNormTxt(`${g?.nome||''} ${g?.cidade||''} ${g?.sigla||''}`);
+  return txt.includes('braganca')?'America/Sao_Paulo':TZ_OPERACIONAL_PADRAO;
+}
+function opParts(date=new Date(),tz=opTimezone()){
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).formatToParts(date);
+  const o={};parts.forEach(p=>{if(p.type!=='literal')o[p.type]=p.value;});
+  if(o.hour==='24')o.hour='00';
+  return {y:+o.year,m:+o.month,d:+o.day,H:+o.hour,M:+o.minute,S:+o.second};
+}
+function opISODate(date=new Date(),tz=opTimezone()){const p=opParts(date,tz);return `${p.y}-${String(p.m).padStart(2,'0')}-${String(p.d).padStart(2,'0')}`;}
+function opAddDays(iso,days){const [y,m,d]=String(iso).split('-').map(Number);const dt=new Date(Date.UTC(y,m-1,d+Number(days||0),12));return dt.toISOString().slice(0,10);}
+function opDateTimeISO(data,hora,tz=opTimezone()){
+  const [y,m,d]=String(data).split('-').map(Number),[H,M]=String(hora||'00:00').split(':').map(Number);
+  let utc=Date.UTC(y,m-1,d,H||0,M||0,0);
+  for(let i=0;i<3;i++){
+    const p=opParts(new Date(utc),tz);
+    const desejado=Date.UTC(y,m-1,d,H||0,M||0,0);
+    const atual=Date.UTC(p.y,p.m-1,p.d,p.H,p.M,0);
+    utc+=desejado-atual;
+  }
+  return new Date(utc).toISOString();
+}
+function turnoOperacionalAtual(tz=opTimezone()){const h=opParts(new Date(),tz).H;return (h>=20||h<5)?'noite':'dia';}
+function dataOperacionalAtual(turno=turnoOperacionalAtual(),tz=opTimezone()){
+  const data=opISODate(new Date(),tz),h=opParts(new Date(),tz).H;
+  return turno==='noite'&&h<5?opAddDays(data,-1):data;
+}
+function janelaOperacional(turno=turnoOperacionalAtual(),dataRef=dataOperacionalAtual(turno),tz=opTimezone()){
+  const defs={dia:{ini:'08:00',fim:'18:00',label:'Dia 08:00-18:00'},noite:{ini:'20:00',fim:'04:20',label:'Noite 20:00-04:20'},dia_completo:{ini:'08:00',fim:'08:00',label:'Dia completo 08:00-08:00',diaAnterior:true}};
+  const d=defs[turno]||defs.dia;
+  const dataIni=d.diaAnterior?opAddDays(dataRef,-1):dataRef;
+  const dataFim=(d.fim<=d.ini)?opAddDays(dataIni,1):dataIni;
+  const ini=opDateTimeISO(dataIni,d.ini,tz),fim=opDateTimeISO(dataFim,d.fim,tz);
+  return {turno,dataRef,dataIni,dataFim,horaIni:d.ini,horaFim:d.fim,ini,fim,dtIni:new Date(ini),dtFim:new Date(fim),label:d.label};
+}
+function hoje(){return opISODate()}
+function hojeF(){return new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',timeZone:opTimezone()})}
 function fmt(n){return Number(n||0).toLocaleString('pt-BR')}
 function badge(s){const c=ST_CFG[s]||{l:s,cls:''};return`<span class="badge ${c.cls}">${c.l}</span>`}
 function toast(msg,type='ok'){const el=document.createElement('div');el.className=`toast ${type}`;el.innerHTML=`<span>${type==='ok'?'✅':'❌'}</span> ${msg}`;document.body.appendChild(el);setTimeout(()=>el.remove(),3500)}
@@ -936,6 +976,7 @@ async function doLogin(){
 
   // Define garagem ativa — diretoria começa na primeira, demais na sua
   S.gidAtivo=isDiretoria?(S.garagens[0]?.id):(perfil.garagem_id||S.garagens[0]?.id);
+  S.turno=turnoOperacionalAtual(opTimezone(S.gidAtivo));
 
   // Topbar — seletor para diretoria/supervisão, texto fixo para demais
   const tbWrap=document.getElementById('tb-loc-wrap');
@@ -2479,8 +2520,7 @@ function atualizarSubmenuFerramentas(){
 
 // ── HELPERS 2.10 ────────────────────────────────────────────
 function amanha(){
-  const d=new Date(); d.setDate(d.getDate()+1);
-  return d.toISOString().split('T')[0];
+  return opAddDays(hoje(),1);
 }
 function formatData(iso){
   if(!iso) return '—';
@@ -4708,6 +4748,7 @@ function fluxoCdHabilitado(gid=getGid()){
 // Define garagem ativa e recarrega a tela atual
 function setGidAtivo(gid){
   S.gidAtivo=gid;
+  S.turno=turnoOperacionalAtual(opTimezone(gid));
   // Atualiza badge da topbar
   const garagem=S.garagens?.find(g=>g.id===gid);
   const badge=document.getElementById('tb-loc');
@@ -5787,10 +5828,8 @@ async function abrirFechamentoPCM(){
 }
 
 function setTurnoRapido(tipo){
-  const agora=new Date();
-  const hoje2=agora.toISOString().split('T')[0];
-  const ontem=new Date(agora);ontem.setDate(ontem.getDate()-1);
-  const ontemStr=ontem.toISOString().split('T')[0];
+  const hoje2=hoje();
+  const ontemStr=opAddDays(hoje2,-1);
   const mapas={
     dia:{ini:`${hoje2}T07:00`,fim:`${hoje2}T17:00`},
     noite:{ini:`${ontemStr}T21:00`,fim:`${hoje2}T05:20`},
@@ -8976,7 +9015,7 @@ function pcmSaveLocal(key,obj){try{localStorage.setItem(key,JSON.stringify(Objec
 function pcmIsMissingColumn(err){return !!(err&&(err.code==='PGRST204'||/column|schema cache|Could not find/i.test(err.message||'')));}
 function pcmIsMissingTable(err){return !!(err&&(err.code==='42P01'||err.code==='PGRST205'||err.status===404||/does not exist|not found|Could not find the table|schema cache/i.test(err.message||'')));}
 function pcmMoeda(v){return 'R$ '+parseFloat(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});}
-function pcmPeriodoTurno(dataRef,horaIni,horaFim){var dtIni=new Date(dataRef+'T'+horaIni);var dtFim=new Date(dataRef+'T'+horaFim);if(dtFim<=dtIni)dtFim.setDate(dtFim.getDate()+1);return{dtIni:dtIni,dtFim:dtFim,ini:dtIni.toISOString(),fim:dtFim.toISOString()};}
+function pcmPeriodoTurno(dataRef,horaIni,horaFim){var dataFim=horaFim<=horaIni?opAddDays(dataRef,1):dataRef;var ini=opDateTimeISO(dataRef,horaIni);var fim=opDateTimeISO(dataFim,horaFim);return{dtIni:new Date(ini),dtFim:new Date(fim),ini:ini,fim:fim};}
 async function pcmUpsertOrcamento(gid,data,turno,base,extra){var key=pcmFluxoKey(gid,data,turno);pcmSaveLocal(key,extra||{});var payload=Object.assign({},base||{},extra||{});var exist=null;try{var q=await sb.from('pcm_orcamento').select('id').eq('garagem_id',gid).eq('data',data).eq('turno',turno).limit(1);exist=q.data&&q.data[0];}catch(e){}var res=exist&&exist.id?await sb.from('pcm_orcamento').update(payload).eq('id',exist.id):await sb.from('pcm_orcamento').insert(Object.assign({garagem_id:gid,data:data,turno:turno},payload));if(res.error&&pcmIsMissingColumn(res.error)){var fallback=Object.assign({},base||{});res=exist&&exist.id?await sb.from('pcm_orcamento').update(fallback).eq('id',exist.id):await sb.from('pcm_orcamento').insert(Object.assign({garagem_id:gid,data:data,turno:turno},fallback));}return res;}
 async function abrirCustoPrevistoPCM(gid,data){var turno=S.turno||'dia';var previsto=parseFloat(document.getElementById('custo-previsto-dia')?.value||0)||0;if(!previsto){toast('Informe o custo previsto de abertura','err');return;}var agora=new Date().toISOString();var res=await pcmUpsertOrcamento(gid,data,turno,{valor_disponivel:previsto,atualizado_em:agora,atualizado_por:S.perfil?.nome},{valor_previsto:previsto,status_fluxo:'previsto',aberto_em:agora,aberto_por:S.perfil?.nome});if(res.error){toast('Erro ao abrir custo: '+res.error.message,'err');return;}toast('Custo previsto aberto. Oficialize o real as 11:00.');renderFerrPCM('painel');}
 async function oficializarCustoPCM(gid,data){if(!(S.perfil?.cargo==='lider_pcm'||S.perfil?.is_admin)){toast('Somente Lider PCM oficializa o custo real','err');return;}var turno=S.turno||'dia';var previsto=parseFloat(document.getElementById('custo-previsto-dia')?.value||0)||0;var real=parseFloat(document.getElementById('custo-real-dia')?.value||0)||previsto;if(!real){toast('Informe o custo real para oficializar','err');return;}var agora=new Date().toISOString();var res=await pcmUpsertOrcamento(gid,data,turno,{valor_disponivel:real,atualizado_em:agora,atualizado_por:S.perfil?.nome},{valor_previsto:previsto||real,valor_real:real,status_fluxo:'oficializado',oficializado_em:agora,oficializado_por:S.perfil?.nome});if(res.error){toast('Erro ao oficializar: '+res.error.message,'err');return;}try{await sb.from('pcm_conferencias').insert({garagem_id:gid,data:data,turno:turno,disponivel:real,gasto_real:0,gasto_previsto:previsto||real,saldo:real,pct_utilizado:0,conferido_por:S.perfil?.nome||'Lider PCM',conferido_em:agora});}catch(e){}toast('Custo real oficializado.');renderFerrPCM('painel');}
@@ -9000,8 +9039,8 @@ function pcmFluxoLiderDef(fluxo,dataRef){
 }
 async function renderFechLiderPCM(gid,back,tabs,embedded){
   if(!embedded) setMain(back+tabs+'<div class="loading"><div class="spinner"></div></div>');
-  var dataRef=S._fechLiderData||hoje();
-  var fluxo=S._fechLiderFluxo||'manha';
+  var fluxo=S._fechLiderFluxo||(S.turno==='noite'?'noite':'manha');
+  var dataRef=S._fechLiderData||dataOperacionalAtual(fluxo==='noite'?'noite':'dia');
   var def=pcmFluxoLiderDef(fluxo,dataRef);
   var local=pcmReadLocal(pcmFechLiderKey(gid,dataRef,fluxo));
   var [ra,rf]=await Promise.all([
