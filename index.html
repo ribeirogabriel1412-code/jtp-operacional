@@ -9748,6 +9748,17 @@ function prevParseDataKm(v){
   const d=new Date(s);
   return isNaN(d)?null:d;
 }
+function prevToDecimal(v){
+  if(typeof v==='number')return Number.isFinite(v)?v:0;
+  let s=String(v??'').trim();
+  if(!s)return 0;
+  s=s.replace(/[^\d,.-]/g,'');
+  const hasComma=s.includes(','), hasDot=s.includes('.');
+  if(hasComma&&hasDot)s=s.replace(/\./g,'').replace(',','.');
+  else if(hasComma)s=s.replace(',','.');
+  const n=parseFloat(s);
+  return Number.isFinite(n)?n:0;
+}
 function prevEscolherCampo(obj,nomes){
   const keys=Object.keys(obj||{});
   const norm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
@@ -9759,23 +9770,48 @@ function prevEscolherCampo(obj,nomes){
   return '';
 }
 function prevCalcularMediasKm(rows){
-  const porPrefixo={};
+  const porPrefixo={}, diasUnicos=new Set();
+  const add=(prefixoRaw,dataRaw,kmRaw,empresaRaw='')=>{
+    const empresa=String(empresaRaw||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    if(empresaRaw && !/porto\s*velh|porto\s*velho|pvh/.test(empresa))return;
+    const prefixo=prevPrefixoKey(prefixoRaw);
+    const data=prevParseDataKm(dataRaw);
+    const km=prevToDecimal(kmRaw);
+    if(!prefixo||!data||!km)return;
+    const dia=prevIsoDia(data);
+    diasUnicos.add(dia);
+    if(!porPrefixo[prefixo])porPrefixo[prefixo]={totalKm:0,dias:new Set(),leituras:0};
+    porPrefixo[prefixo].totalKm+=km;
+    porPrefixo[prefixo].dias.add(dia);
+    porPrefixo[prefixo].leituras++;
+  };
   (rows||[]).forEach(row=>{
-    const prefixo=prevPrefixoKey(prevEscolherCampo(row,['prefixo','carro','veiculo','veículo','frota','codigo','código']));
-    const km=prevToNumber(prevEscolherCampo(row,['km','km atual','hodometro','odometro','quilometragem']));
-    const data=prevParseDataKm(prevEscolherCampo(row,['data','dt','dia','data leitura','data km','created_at']));
-    if(!prefixo||!km||!data)return;
-    if(!porPrefixo[prefixo])porPrefixo[prefixo]=[];
-    porPrefixo[prefixo].push({km,data});
+    if(Array.isArray(row)){
+      // CTA Plus: A=data, C=empresa, F=prefixo, O=distância percorrida.
+      add(row[5],row[0],row[14],row[2]);
+      return;
+    }
+    add(
+      prevEscolherCampo(row,['prefixo','carro','veiculo','veículo','frota','codigo','código']),
+      prevEscolherCampo(row,['data','dt','dia','data leitura','data km','created_at']),
+      prevEscolherCampo(row,['distancia','distância','distancia percorrida','distância percorrida','km percorrido','km rodado','km']),
+      prevEscolherCampo(row,['empresa','unidade','garagem'])
+    );
   });
+  const diasPeriodo=Math.max(1,diasUnicos.size);
   const saida={};
-  Object.entries(porPrefixo).forEach(([prefixo,itens])=>{
-    itens.sort((a,b)=>a.data-b.data);
-    const primeiro=itens[0], ultimo=itens[itens.length-1];
-    const dias=Math.max(1,(ultimo.data-primeiro.data)/86400000);
-    const kmRodado=Math.max(0,ultimo.km-primeiro.km);
-    const mediaSem=dias>0?kmRodado/(dias/7):0;
-    saida[prefixo]={prefixo,leituras:itens.length,kmInicial:primeiro.km,kmFinal:ultimo.km,dataInicial:prevIsoDia(primeiro.data),dataFinal:prevIsoDia(ultimo.data),mediaSemana:Math.round(mediaSem)};
+  Object.entries(porPrefixo).forEach(([prefixo,info])=>{
+    const mediaDia=info.totalKm/diasPeriodo;
+    saida[prefixo]={
+      prefixo,
+      leituras:info.leituras,
+      diasPeriodo,
+      diasComMovimento:info.dias.size,
+      kmTotal:Math.round(info.totalKm),
+      mediaDia:Math.round(mediaDia),
+      mediaSemana:Math.round(mediaDia*7),
+      origem:'CTA Plus Porto Velho'
+    };
   });
   return saida;
 }
@@ -9798,19 +9834,18 @@ async function processarPrevKmBase(input){
     let rows=[];
     if(file.name.toLowerCase().endsWith('.csv')){
       const txt=await file.text();
-      const linhas=txt.split(/\r?\n/).filter(Boolean).map(l=>l.split(/[;\t,]/).map(x=>x.trim()));
-      const head=linhas.shift()||[];
-      rows=linhas.map(cols=>Object.fromEntries(head.map((h,i)=>[h,cols[i]||''])));
+      rows=txt.split(/\r?\n/).filter(Boolean).map(l=>l.split(/[;\t,]/).map(x=>x.trim()));
     }else{
       const buf=await file.arrayBuffer();
       const wb=XLSX.read(new Uint8Array(buf),{type:'array',raw:true});
       const ws=wb.Sheets[wb.SheetNames[0]];
-      rows=XLSX.utils.sheet_to_json(ws,{defval:'',raw:true});
+      rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true});
     }
     const medias=prevCalcularMediasKm(rows);
     _prevKmMedias=medias;
     prevSalvarKmMediasLocal();
-    toast(`Base KM carregada: ${Object.keys(medias).length} carro(s) com média semanal`);
+    const dias=Object.values(medias)[0]?.diasPeriodo||0;
+    toast(`Base KM carregada: ${Object.keys(medias).length} carro(s) • ${dias} dia(s) únicos`);
     renderFerrPrev();
   }catch(e){
     console.error('[PREV KM BASE]',e);
