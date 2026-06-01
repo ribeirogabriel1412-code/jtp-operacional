@@ -9771,31 +9771,37 @@ function prevEscolherCampo(obj,nomes){
 }
 function prevCalcularMediasKm(rows){
   const porPrefixo={}, diasUnicos=new Set();
-  const add=(prefixoRaw,dataRaw,kmRaw,empresaRaw='')=>{
+  const add=(prefixoRaw,dataRaw,kmRaw,empresaRaw='',odometroRaw='')=>{
     const empresa=String(empresaRaw||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
     if(empresaRaw && !/porto\s*velh|porto\s*velho|pvh/.test(empresa))return;
     const prefixo=prevPrefixoKey(prefixoRaw);
     const data=prevParseDataKm(dataRaw);
     const km=prevToDecimal(kmRaw);
+    const odometro=prevToDecimal(odometroRaw);
     if(!prefixo||!data||!km)return;
     const dia=prevIsoDia(data);
     diasUnicos.add(dia);
-    if(!porPrefixo[prefixo])porPrefixo[prefixo]={totalKm:0,dias:new Set(),leituras:0};
+    if(!porPrefixo[prefixo])porPrefixo[prefixo]={totalKm:0,dias:new Set(),leituras:0,ultimoOdometro:0,ultimaData:''};
     porPrefixo[prefixo].totalKm+=km;
     porPrefixo[prefixo].dias.add(dia);
     porPrefixo[prefixo].leituras++;
+    if(odometro && (!porPrefixo[prefixo].ultimaData || dia>=porPrefixo[prefixo].ultimaData)){
+      porPrefixo[prefixo].ultimoOdometro=Math.round(odometro);
+      porPrefixo[prefixo].ultimaData=dia;
+    }
   };
   (rows||[]).forEach(row=>{
     if(Array.isArray(row)){
-      // CTA Plus: A=data, C=empresa, F=prefixo, O=distância percorrida.
-      add(row[5],row[0],row[14],row[2]);
+      // CTA Plus: A=data, C=empresa, F=prefixo, N=odômetro, O=distância percorrida.
+      add(row[5],row[0],row[14],row[2],row[13]);
       return;
     }
     add(
       prevEscolherCampo(row,['prefixo','carro','veiculo','veículo','frota','codigo','código']),
       prevEscolherCampo(row,['data','dt','dia','data leitura','data km','created_at']),
       prevEscolherCampo(row,['distancia','distância','distancia percorrida','distância percorrida','km percorrido','km rodado','km']),
-      prevEscolherCampo(row,['empresa','unidade','garagem'])
+      prevEscolherCampo(row,['empresa','unidade','garagem']),
+      prevEscolherCampo(row,['odometro','odômetro','hodometro','hodômetro'])
     );
   });
   const diasPeriodo=Math.max(1,diasUnicos.size);
@@ -9808,6 +9814,8 @@ function prevCalcularMediasKm(rows){
       diasPeriodo,
       diasComMovimento:info.dias.size,
       kmTotal:Math.round(info.totalKm),
+      ultimoOdometro:info.ultimoOdometro||0,
+      ultimaData:info.ultimaData||'',
       mediaDia:Math.round(mediaDia),
       mediaSemana:Math.round(mediaDia*7),
       origem:'CTA Plus Porto Velho'
@@ -10086,7 +10094,7 @@ function prevMontarEscala(p){
       return {slotKey:key,tipoSlot:tipo,item,validado:!!_prevValidados[key],origem:'manual'};
     }
     if(autoItem && manualPrefixes.has(autoItem.prefixo)) return {slotKey:key,tipoSlot:tipo,item:null,validado:false,origem:'vazio'};
-    return {slotKey:key,tipoSlot:tipo,item:autoItem||null,validado:!!_prevValidados[key],origem:autoItem?'auto':'vazio'};
+    return {slotKey:key,tipoSlot:tipo,item:null,validado:false,origem:'vazio'};
   };
   return dias.map((d,i)=>({
     ...d,
@@ -10283,6 +10291,7 @@ function prevFiltrarModalSlot(q){
 }
 
 function prevSelecionarSlot(key,tipo,prefixo){
+  prevLimparLeveQuandoPesada(tipo,prefixo);
   _prevEscalaAlteracoes[key]={tipo,prefixo};
   delete _prevValidados[key];
   const modal=document.getElementById('modal-prev-slot');
@@ -10297,9 +10306,26 @@ function prevTipoPorPlano(r){
   return 'outro';
 }
 function prevSelKey(tipo,prefixo){return `${tipo}:${prevPrefixoKey(prefixo)}`;}
+function prevLimparLeveQuandoPesada(tipo,prefixo){
+  if(tipo!=='pesada'||!prefixo)return;
+  const pk=prevPrefixoKey(prefixo);
+  delete _prevPlanoSel[prevSelKey('leve',prefixo)];
+  Object.entries(_prevEscalaAlteracoes).forEach(([key,val])=>{
+    const slotTipo=key.split(':')[0];
+    const valTipo=prevSlotValueTipo(val)||slotTipo;
+    const valPrefixo=prevPrefixoKey(prevSlotValuePrefixo(val));
+    if(valTipo==='leve'&&valPrefixo===pk){
+      _prevEscalaAlteracoes[key]=null;
+      delete _prevValidados[key];
+    }
+  });
+}
 function prevTogglePlanoSel(tipo,prefixo,checked){
   const key=prevSelKey(tipo,prefixo);
-  if(checked)_prevPlanoSel[key]={tipo,prefixo};
+  if(checked){
+    prevLimparLeveQuandoPesada(tipo,prefixo);
+    _prevPlanoSel[key]={tipo,prefixo};
+  }
   else delete _prevPlanoSel[key];
   const el=document.getElementById(`prev-sel-count-${tipo}`);
   if(el)el.textContent=Object.values(_prevPlanoSel).filter(x=>x.tipo===tipo).length;
@@ -10327,6 +10353,7 @@ function prevEnviarSelecaoParaEscala(tipo){
   const slots=prevSlotsTipo(tipo);
   slots.forEach(k=>{_prevEscalaAlteracoes[k]=null;delete _prevValidados[k];});
   selecionados.slice(0,limite).forEach((prefixo,i)=>{
+    prevLimparLeveQuandoPesada(tipo,prefixo);
     const c=prevCandidatoPorPrefixo(p,prefixo,tipo);
     if(slots[i]&&c)_prevEscalaAlteracoes[slots[i]]={tipo,prefixo:c.prefixo};
   });
@@ -10674,6 +10701,7 @@ function prevHtmlGrupo(g){
       <td style="padding:10px 8px;color:var(--blue);font-weight:900;white-space:nowrap">${prevEsc(r.prefixo)}</td>
       <td style="padding:10px 8px;color:var(--text2);font-weight:800">${prevEsc(r.planoNum)}</td>
       <td style="padding:10px 8px;color:var(--text2)">${prevEsc(r.planoNome)}</td>
+      ${tipoGrupo==='garantia'?`<td style="padding:10px 8px;text-align:right;color:var(--purple);font-weight:900;white-space:nowrap">${prevFmtKm(prevIntervaloGarantia(r))}</td><td style="padding:10px 8px;text-align:right;color:var(--text2);white-space:nowrap">${prevMediaKm(r.prefixo)?.ultimoOdometro?prevFmtKm(prevMediaKm(r.prefixo).ultimoOdometro):'--'}</td>`:''}
       <td style="padding:10px 8px;text-align:right;color:var(--text2);white-space:nowrap">${prevFmtKm(r.kmAtual)}</td>
       <td style="padding:10px 8px;text-align:right;color:var(--text2);white-space:nowrap">${prevFmtKm(r.proximaExecucao)}</td>
       <td style="padding:10px 8px;text-align:right;color:${(r.excessoKm||0)>0?'var(--red)':'var(--green)'};font-weight:900;white-space:nowrap">${prevFmtKm(r.excessoKm)}</td>
@@ -10687,7 +10715,7 @@ function prevHtmlGrupo(g){
       <div><div style="font-size:11px;color:var(--text3);font-weight:900;letter-spacing:2px;text-transform:uppercase">Plano ${prevEsc(g.planoNum)}</div><div style="font-size:15px;color:var(--text);font-weight:900;margin-top:3px">${prevEsc(g.planoNome)}</div></div>
       <div style="text-align:right"><div style="font-size:12px;color:var(--text3)">${g.itens.length} carro(s)</div><div style="font-size:13px;color:var(--red);font-weight:900">Maior: ${prevFmtKm(g.maior)}</div>${acaoGrupo}</div>
     </div>
-    <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:1120px"><thead><tr style="background:rgba(2,6,23,.45);color:var(--text3);font-size:10px;letter-spacing:2px;text-transform:uppercase;text-align:left">${selecionaveis?'<th style="padding:10px 8px;text-align:center">Sel.</th>':''}<th style="padding:10px 8px">Prefixo</th><th style="padding:10px 8px">Plano</th><th style="padding:10px 8px">Serviço</th><th style="padding:10px 8px;text-align:right">Km atual</th><th style="padding:10px 8px;text-align:right">Próxima execução</th><th style="padding:10px 8px;text-align:right">Excesso km</th><th style="padding:10px 8px;text-align:right">Média KM</th><th style="padding:10px 8px;text-align:right">Projeção</th><th style="padding:10px 8px;text-align:right">Dias MAN</th><th style="padding:10px 8px;text-align:center">Pendente</th>${selecionaveis?'<th style="padding:10px 8px;text-align:right">Ação</th>':''}</tr></thead><tbody>${rows}</tbody></table></div>
+    <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:${tipoGrupo==='garantia'?'1280':'1120'}px"><thead><tr style="background:rgba(2,6,23,.45);color:var(--text3);font-size:10px;letter-spacing:2px;text-transform:uppercase;text-align:left">${selecionaveis?'<th style="padding:10px 8px;text-align:center">Sel.</th>':''}<th style="padding:10px 8px">Prefixo</th><th style="padding:10px 8px">Plano</th><th style="padding:10px 8px">Serviço</th>${tipoGrupo==='garantia'?'<th style="padding:10px 8px;text-align:right">Régua</th><th style="padding:10px 8px;text-align:right">Odômetro base</th>':''}<th style="padding:10px 8px;text-align:right">Km atual</th><th style="padding:10px 8px;text-align:right">Próxima execução</th><th style="padding:10px 8px;text-align:right">Excesso km</th><th style="padding:10px 8px;text-align:right">Média KM</th><th style="padding:10px 8px;text-align:right">Projeção</th><th style="padding:10px 8px;text-align:right">Dias MAN</th><th style="padding:10px 8px;text-align:center">Pendente</th>${selecionaveis?'<th style="padding:10px 8px;text-align:right">Ação</th>':''}</tr></thead><tbody>${rows}</tbody></table></div>
   </section>`;
 }
 
