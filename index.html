@@ -9831,6 +9831,15 @@ async function processarPrevKmBase(input){
   const file=input?.files?.[0]||input;
   if(!file)return;
   try{
+    toast('Carregando leitor de Excel...');
+    await new Promise((res,rej)=>{
+      if(window.XLSX){res();return;}
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload=res;
+      s.onerror=()=>rej(new Error('Biblioteca XLSX não carregou'));
+      document.head.appendChild(s);
+    });
     let rows=[];
     if(file.name.toLowerCase().endsWith('.csv')){
       const txt=await file.text();
