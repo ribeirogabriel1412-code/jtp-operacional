@@ -9426,7 +9426,7 @@ async function salvarCustoRapido(ocId, gid, data){
 // ══════════════════════════════════════════════════════════════
 // PAINEL PREVENTIVAS — IMPORTAÇÃO MAN V1
 // ══════════════════════════════════════════════════════════════
-let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='propostas', _prevImportId=null, _prevBuscaPrefixo='', _prevEscalaAlteracoes={}, _prevValidados={}, _prevHistFiltro='', _prevPlanoSel={}, _prevKmMedias={};
+let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='planos', _prevImportId=null, _prevBuscaPrefixo='', _prevEscalaAlteracoes={}, _prevValidados={}, _prevHistFiltro='', _prevPlanoSel={}, _prevKmMedias={};
 
 const PREV_CAP={garantiaDia:1,garantiaSemana:5,pesadaDia:2,pesadaSemana:10,leveDia:6,leveSemana:30};
 const PREV_OUTROS_LIMITE_KM=1000;
@@ -9849,12 +9849,13 @@ function prevResumoServicos(c,tipoPreferido=''){
 
 function renderFerrPrev(){
   prevCarregarKmMediasLocal();
+  if(_prevGrupoAtivo==='propostas') _prevGrupoAtivo='planos';
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
   const total=_prevDados.length;
   const resumo=prevResumoPropostas();
   const importado=_prevImportadoEm?new Date(_prevImportadoEm).toLocaleString('pt-BR'):'Nenhum PDF importado';
   const qtdMedias=Object.keys(_prevKmMedias||{}).length;
-  setMain(`${secTitle('📋','Preventivas — propostas e escala',back)}\r\n    <div class="prev-toolbar">
+  setMain(`${secTitle('📋','Preventivas — lista por plano',back)}\r\n    <div class="prev-toolbar">
       <div>
         <div style="font-size:14px;font-weight:800;color:var(--text)">Importação MAN e escala por seleção PCM</div>
         <div style="color:var(--text3);font-size:12px;margin-top:4px">Garantia: 1/dia • Pesada: 10/semana, 2 por manhã • Leve: 30/semana, 6 por dia • Base KM: ${qtdMedias} carro(s)</div>
@@ -9866,7 +9867,7 @@ function renderFerrPrev(){
         <label class="btn primary" style="cursor:pointer;margin:0">📄 Importar PDF
           <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="processarPrevPDF(this.files[0]);this.value=''">
         </label>
-        ${total?`<button class="btn primary" onclick="prevConsolidarEscala()">✓ Consolidar preventivas</button><button class="btn" onclick="_prevDados=[];_prevGrupoAtivo='propostas';_prevBuscaPrefixo='';_prevEscalaAlteracoes={};_prevValidados={};renderFerrPrev()">Limpar lista</button>`:''}
+        ${total?`<button class="btn primary" onclick="prevConsolidarEscala()">✓ Consolidar preventivas</button><button class="btn" onclick="_prevDados=[];_prevGrupoAtivo='planos';_prevBuscaPrefixo='';_prevEscalaAlteracoes={};_prevValidados={};_prevPlanoSel={};renderFerrPrev()">Limpar lista</button>`:''}
       </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:10px;margin-bottom:12px">
@@ -9879,8 +9880,7 @@ function renderFerrPrev(){
     ${total?prevHtmlMetricasDetalhadas(resumo):''}
     <div class="prev-toolbar">
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <button class="btn ${_prevGrupoAtivo!=='planos'?'primary':''}" onclick="_prevGrupoAtivo='propostas';prevRenderGrupos()">📆 Propostas e escala</button>
-        <button class="btn ${_prevGrupoAtivo==='planos'?'primary':''}" onclick="_prevGrupoAtivo='planos';prevRenderGrupos()">📑 Lista por plano</button>
+        <button class="btn primary" onclick="_prevGrupoAtivo='planos';prevRenderGrupos()">📑 Lista por plano</button>
         <button class="btn ${_prevGrupoAtivo==='historico'?'primary':''}" onclick="_prevGrupoAtivo='historico';prevRenderGrupos()">🗂️ Históricos</button>
       </div>
       <div style="font-size:12px;color:var(--text3)">Última importação: <b style="color:var(--text2)">${prevEsc(importado)}</b></div>
@@ -9941,7 +9941,7 @@ function prevHtmlVazio(){
 }
 
 function prevHtmlConteudoAtual(){
-  return _prevGrupoAtivo==='historico'?prevHtmlHistoricos():_prevGrupoAtivo==='planos'?prevHtmlGrupos():prevHtmlPropostasEscala();
+  return _prevGrupoAtivo==='historico'?prevHtmlHistoricos():prevHtmlGrupos();
 }
 
 function prevGerarPropostas(){
@@ -10052,14 +10052,7 @@ function prevMontarEscala(p){
   }));
 }
 function prevHtmlPropostasEscala(){
-  const p=prevGerarPropostas();
-  const escala=prevMontarEscala(p);
-  const ultimas=prevUltimasProgramacoes();
-  const garantiaRadar=p.garantias.filter(g=>g.prioridade>=-3000).slice(0,20);
-  if(!p.pesadas.length&&!p.leves.length&&!garantiaRadar.length&&!p.outros.length){
-    return `<div style="padding:28px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhuma proposta encontrada para a pesquisa atual.</div>`;
-  }
-  return `${prevHtmlEscalaSemanal(escala,ultimas)}${prevHtmlValetamentoProposto(p)}${prevHtmlOutrosPlanos(p,escala)}${prevHtmlFilasProposta(p)}${prevHtmlGarantias(garantiaRadar)}`;
+  return prevHtmlGrupos();
 }
 
 function prevBadgeTipo(tipo){
@@ -10294,7 +10287,7 @@ function prevEnviarSelecaoParaEscala(tipo){
     if(slots[i]&&c)_prevEscalaAlteracoes[slots[i]]={tipo,prefixo:c.prefixo};
   });
   prevLimparSelecaoPlano(tipo);
-  _prevGrupoAtivo='propostas';
+  _prevGrupoAtivo='planos';
   prevRenderGrupos();
   toast(`${Math.min(selecionados.length,limite)} carro(s) enviados para a escala de ${tipo}`);
 }
@@ -10606,11 +10599,18 @@ function prevHtmlGrupos(){
     if(!grupos.has(key)) grupos.set(key,{planoNum:r.planoNum,planoNome:r.planoNome,itens:[]});
     grupos.get(key).itens.push(r);
   });
+  const ordemTipo={pesada:0,leve:1,garantia:2,outro:3};
   return [...grupos.values()].map(g=>{
     g.itens.sort(prevOrdenarPreventiva);
     g.maior=Math.max(...g.itens.map(r=>r.excessoKm||0));
+    g.tipoGrupo=prevTipoPorPlano(g.itens[0]||{});
     return g;
-  }).sort((a,b)=>prevOrdenarPreventiva(a.itens[0],b.itens[0]) || String(a.planoNum).localeCompare(String(b.planoNum))).map(prevHtmlGrupo).join('');
+  }).sort((a,b)=>{
+    const ta=ordemTipo[a.tipoGrupo]??9, tb=ordemTipo[b.tipoGrupo]??9;
+    if(ta!==tb)return ta-tb;
+    if((a.maior||0)!==(b.maior||0))return (b.maior||0)-(a.maior||0);
+    return String(a.planoNum).localeCompare(String(b.planoNum));
+  }).map(prevHtmlGrupo).join('');
 }
 
 function prevHtmlGrupo(g){
@@ -10662,10 +10662,11 @@ async function processarPrevPDF(file){
     if(!dados.length){ toast('Não encontrei linhas válidas de preventivas nesse PDF.','err'); return; }
     _prevDados=dados.sort(prevOrdenarPreventiva);
     _prevImportadoEm=new Date().toISOString();
-    _prevGrupoAtivo='propostas';
+    _prevGrupoAtivo='planos';
     _prevBuscaPrefixo='';
     _prevEscalaAlteracoes={};
     _prevValidados={};
+    _prevPlanoSel={};
     renderFerrPrev();
     const r=prevResumoPropostas();
     prevRegistrarImportacao(file,dados,r);
@@ -10736,7 +10737,7 @@ function renderPrevProgramadas(){ renderFerrPrev(); }
 function renderAutoEscala(){ renderFerrPrev(); }
 function abrirModalProgramarPrev(){ renderFerrPrev(); }
 function carregarImportacao(){ renderFerrPrev(); }
-function excluirImportacao(){ _prevDados=[];_prevImportadoEm='';_prevBuscaPrefixo='';_prevGrupoAtivo='propostas';_prevEscalaAlteracoes={};_prevValidados={};renderFerrPrev(); }
+function excluirImportacao(){ _prevDados=[];_prevImportadoEm='';_prevBuscaPrefixo='';_prevGrupoAtivo='planos';_prevEscalaAlteracoes={};_prevValidados={};_prevPlanoSel={};renderFerrPrev(); }
 function verHistoricoImportacoes(){ _prevGrupoAtivo='historico'; renderFerrPrev(); }
 
 const RONDA33_SETORES=[
