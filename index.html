@@ -10998,7 +10998,7 @@ function ronda33PodeConfigurar(){
   const p=S.perfil||{};
   const cargo=String(p.cargo||p.role||'').toLowerCase();
   const nome=String(p.nome||p.name||'').toLowerCase();
-  return !!(p.is_admin||p.admin||p.isAdmin) || ['admin','diretoria','gerente_garagem','coordenador','supervisor'].includes(cargo) || nome.includes('admin');
+  return !!(p.is_admin||p.admin||p.isAdmin) || ['admin','diretoria'].includes(cargo) || nome.includes('admin');
 }
 function ronda33FlattenConfig(){
   return ronda33Setores().flatMap(s=>(s.itens||[]).map(it=>({id:it[0],texto:it[1],rodada:Number(it[2])||1,setorId:s.id,setorNome:s.nome})));
@@ -11125,11 +11125,13 @@ async function renderFerr33(){
     return `<button onclick="S._r33Data='${a.data}';S._r33Turno='${a.turno}';renderFerr33()" style="border:1px solid ${ativo?'var(--blue)':'var(--border)'};background:${ativo?'#2563EB22':'var(--surface2)'};color:${ativo?'var(--blue)':'var(--text2)'};border-radius:9px;padding:8px 10px;text-align:left;font-family:inherit;cursor:pointer"><b style="font-size:11px">${a.turno==='noite'?'🌙':'☀️'} ${formatData(a.data)} · ${a.turno}</b><div style="font-size:10px;color:var(--text3);margin-top:2px">${a.label} · ${a.preenchidos} preench.</div></button>`;
   }).join('');
   const avisoData=atalhoHtml?`<div style="background:#F59E0B12;border:1px solid #F59E0B44;border-radius:12px;padding:10px 12px;margin-bottom:14px"><div style="font-size:12px;color:var(--amber);font-weight:900;margin-bottom:8px">⚠️ Existem preenchimentos em outra referência de madrugada</div><div style="display:flex;gap:8px;flex-wrap:wrap">${atalhoHtml}</div><div style="font-size:11px;color:var(--text3);margin-top:8px">Use estes atalhos para abrir e exportar o relatório certo, sem misturar dia e turno.</div></div>`:'';
-  const top=`<div style="display:grid;grid-template-columns:190px 160px 1fr auto auto;gap:10px;align-items:end;margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px">
+  const podeConfigurar33=ronda33PodeConfigurar();
+  const btnConfig33=podeConfigurar33?`<button class="btn-add" onclick="abrirConfigRonda33()" style="height:44px;white-space:nowrap;background:var(--surface2);border-color:var(--border);color:var(--text)">⚙️ Configurar checklist</button>`:'';
+  const top=`<div style="display:grid;grid-template-columns:190px 160px 1fr ${podeConfigurar33?'auto ':''}auto;gap:10px;align-items:end;margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px">
     <div><label class="campo-label">Data</label><div style="display:flex;gap:6px;align-items:center"><input id="r33-data-input" class="fi" type="date" value="${data}" onchange="S._r33Data=this.value;renderFerr33()" style="flex:1;min-width:0"><button type="button" title="Abrir calendário" onclick="document.getElementById('r33-data-input')?.showPicker?.();document.getElementById('r33-data-input')?.focus()" style="width:42px;height:42px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;font-size:16px">📅</button></div></div>
     <div><label class="campo-label">Turno</label><select class="fi" onchange="S._r33Turno=this.value;renderFerr33()"><option value="dia"${turno==='dia'?' selected':''}>Dia</option><option value="noite"${turno==='noite'?' selected':''}>Noite</option></select></div>
     <div style="color:var(--text3);font-size:12px;padding-bottom:10px">Cada líder preenche seu tema. Supervisor e coordenador visualizam tudo, preenchem se necessário e validam o turno.</div>
-    <button class="btn-add" onclick="abrirConfigRonda33()" style="height:44px;white-space:nowrap;background:var(--surface2);border-color:var(--border);color:var(--text)">⚙️ Configurar checklist</button>
+    ${btnConfig33}
     <button class="btn-add" onclick="gerarRelatorio33()" style="height:44px;white-space:nowrap;background:var(--blue);border-color:var(--blue);color:#fff">📄 Exportar PDF</button>
   </div>`;
   const rodadaHtml=rodada=>{
