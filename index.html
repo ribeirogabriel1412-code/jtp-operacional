@@ -13443,8 +13443,8 @@ async function renderFerr21(aba='fechar'){
   }).join('');
   setMain(`${back}
     ${secTitle('📋','2.1 - Fechamento de Turno Garagem',`<button class="btn-add" onclick="gerarRelatorio21Setorial('${data}','${turno}')" style="background:var(--blue);border-color:var(--blue);color:#fff">📄 Exportar PDF</button>`)}
-    <div style="display:grid;grid-template-columns:170px 150px 1fr auto;gap:10px;align-items:end;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:14px">
-      <div><label class="campo-label">Data</label><input class="fi" type="date" value="${data}" onchange="S._fech21Data=this.value;renderFerr21()"></div>
+    <div style="display:grid;grid-template-columns:210px 150px 1fr auto;gap:10px;align-items:end;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:14px">
+      <div><label class="campo-label">Data</label><div style="display:flex;gap:8px;align-items:center"><input id="fech21-data-input" class="fi" type="date" value="${data}" onchange="S._fech21Data=this.value;renderFerr21()" style="margin-bottom:0"><button title="Abrir calendário" onclick="const el=document.getElementById('fech21-data-input'); if(el?.showPicker)el.showPicker(); else el?.focus();" style="width:38px;height:38px;border-radius:9px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:16px;cursor:pointer">📅</button></div></div>
       <div><label class="campo-label">Turno</label><select class="fi" onchange="S._fech21Turno=this.value;renderFerr21()"><option value="dia"${turno==='dia'?' selected':''}>Dia</option><option value="noite"${turno==='noite'?' selected':''}>Noite</option></select></div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${kpi('Blocos',resumo.blocos,undefined,'',false,0)}${kpi('Preenchidos',resumo.preenchidos,undefined,'',false,0)}${kpi('Pendentes',resumo.pendentes,0,'',resumo.pendentes>0,0)}</div>
       <button class="btn-add" onclick="salvarFech21Novo()" style="height:44px;background:var(--green);border-color:var(--green);color:#06131f">💾 Salvar</button>
