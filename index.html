@@ -13355,7 +13355,7 @@ const FECH21_NOVO_BLOCOS=[
 ];
 function fech21NovoKey(data,turno,gid){return `jtp_fech21_novo:${gid||getGid()}:${data||hoje()}:${turno||turnoOperacionalAtual()}`;}
 function fech21NovoCargo(){return String(S.perfil?.cargo||'').toLowerCase();}
-function fech21NovoEhCoordenacao(c){return ['coordenador','gerente_operacional'].includes(c);}
+function fech21NovoEhCoordenacao(c){return ['coordenador','gerente_operacional','gerente_garagem'].includes(c);}
 function fech21NovoPodeBloco(b){
   const c=fech21NovoCargo();
   if(S.perfil?.is_admin||isAdmin?.())return true;
@@ -13368,6 +13368,7 @@ function fech21NovoPodeBloco(b){
 function fech21NovoPodeEditar(b){
   const c=fech21NovoCargo();
   if(S.perfil?.is_admin||isAdmin?.())return true;
+  if(['gerente_garagem','coordenador','gerente_operacional'].includes(c))return true;
   if(b.resp==='ambos')return c==='supervisor'||fech21NovoEhCoordenacao(c);
   if(b.resp==='supervisor')return c==='supervisor';
   if(b.resp==='coordenador')return fech21NovoEhCoordenacao(c);
@@ -13423,7 +13424,10 @@ function fech21NovoColetar(data,turno,base){
       state.blocos[b.id]={rows:document.getElementById(`fech21novo-${b.id}`)?.value||'',por:S.perfil?.nome||'',em:new Date().toISOString()};
       return;
     }
-    const rows=(b.rows||[]).map((linha,r)=>linha.map((_,c)=>document.getElementById(`fech21novo-${b.id}-${r}-${c}`)?.value||''));
+    const rows=(b.rows||[]).map((linha,r)=>linha.map((_,c)=>{
+      const itemFixo=String(b.cols?.[c]||'').toLowerCase().includes('item de verificação');
+      return itemFixo ? linha[c] : (document.getElementById(`fech21novo-${b.id}-${r}-${c}`)?.value||'');
+    }));
     state.blocos[b.id]={rows,por:S.perfil?.nome||'',em:new Date().toISOString()};
   });
   return state;
@@ -13455,7 +13459,10 @@ async function renderFerr21(aba='fechar'){
     </section>`;
     const rows=(salvo.rows&&Array.isArray(salvo.rows)?salvo.rows:b.rows).map((linha,r)=>`<tr>${b.cols.map((col,c)=>{
       const itemFixo=String(col||'').toLowerCase().includes('item de verificação');
-      return `<td style="padding:7px;border-top:1px solid var(--border2)">${fech21NovoCel(`fech21novo-${b.id}`,r,c,linha[c],!pode||itemFixo)}</td>`;
+      const cel=itemFixo
+        ? `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:8px 9px;font-size:12px;font-weight:700;min-height:18px">${prevEsc(linha[c]||'')}</div>`
+        : fech21NovoCel(`fech21novo-${b.id}`,r,c,linha[c],!pode);
+      return `<td style="padding:7px;border-top:1px solid var(--border2)">${cel}</td>`;
     }).join('')}</tr>`).join('');
     return `<section style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${pode?'var(--blue)':'var(--border)'};border-radius:12px;overflow:hidden;margin-bottom:12px">
       <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border)"><b>${b.titulo}</b><span style="margin-left:auto;color:var(--text3);font-size:11px">${salvo.por?`Preenchido por ${prevEsc(salvo.por)}`:'Pendente'}</span></div>
