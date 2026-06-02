@@ -13338,6 +13338,150 @@ ${barraPrint('📋 2.1 · Fechamento de Turno Garagem · '+(garagem?.nome||''),'
   abrirRelatorioHTMLPCM(html,`JTP_21_FechamentoGaragem_${data.replace(/-/g,'')}_${turno}.pdf`);
 }
 
+// 2.1 - Fechamento de turno garagem por blocos do modelo atualizado
+const FECH21_NOVO_BLOCOS=[
+  {id:'operacao',titulo:'Operação - OCIBMAR',resp:'supervisor',cols:['Item de Verificação','Realizado','Meta','Prefixo','Observações / Tratativa'],rows:[
+    ['Soltura de Frota','','','',''],['Recolhas Anormais (RA)','','','',''],['Recolhas Operacionais (RO)','','','',''],['Lavagens Completas','','','',''],['Lavagens Simples','','','',''],['Lavagens Escovão','','','',''],['Sinistros','','','',''],['Partidas Perdidas','','','','']
+  ]},
+  {id:'absenteismo',titulo:'Absenteísmo - OCIBMAR',resp:'supervisor',cols:['Matrícula','Motivo','Matrícula reserva','Tratativas'],rows:Array.from({length:8},()=>['','','',''])},
+  {id:'man_indisp',titulo:'Manutenção - Veículos Indisponíveis - OCIBMAR / ALCIDES',resp:'ambos',cols:['Prefixo','Solicitações','Custo (2.6)','Tratativas'],rows:Array.from({length:6},()=>['','','',''])},
+  {id:'man_andamento',titulo:'Manutenção - Em Andamento - OCIBMAR / ALCIDES',resp:'ambos',cols:['Prefixo','Mecânico','Principal pendência'],rows:Array.from({length:8},()=>['','',''])},
+  {id:'suprimentos',titulo:'Suprimentos',resp:'ambos',cols:['Item de Verificação','Realizado','Meta','Status','Observações'],rows:[['Kits preventivos separados (D-1)','','','','']]},
+  {id:'obs',titulo:'Observações Gerais',resp:'ambos',tipo:'texto',rows:''},
+];
+function fech21NovoKey(data,turno,gid){return `jtp_fech21_novo:${gid||getGid()}:${data||hoje()}:${turno||turnoOperacionalAtual()}`;}
+function fech21NovoCargo(){return String(S.perfil?.cargo||'').toLowerCase();}
+function fech21NovoPodeBloco(b){
+  const c=fech21NovoCargo();
+  if(S.perfil?.is_admin||isAdmin?.())return true;
+  if(['diretoria','gerente_garagem'].includes(c))return true;
+  if(b.resp==='ambos')return ['supervisor','coordenador'].includes(c);
+  if(b.resp==='supervisor')return c==='supervisor';
+  if(b.resp==='coordenador')return c==='coordenador';
+  return false;
+}
+function fech21NovoPodeEditar(b){
+  const c=fech21NovoCargo();
+  if(S.perfil?.is_admin||isAdmin?.())return true;
+  if(b.resp==='ambos')return ['supervisor','coordenador'].includes(c);
+  if(b.resp==='supervisor')return c==='supervisor';
+  if(b.resp==='coordenador')return c==='coordenador';
+  return false;
+}
+function fech21NovoEstadoVazio(data,turno){
+  const blocos={};
+  FECH21_NOVO_BLOCOS.forEach(b=>{blocos[b.id]={rows:JSON.parse(JSON.stringify(b.rows)),por:null,em:null};});
+  return {versao:'novo_21_v1',data,turno,blocos,status:'em_andamento',preenchidoPor:null,atualizadoEm:null};
+}
+function fech21NovoParseRow(r){
+  try{
+    const txt=String(r?.bastao_obs||'');
+    if(!txt.includes('"versao":"novo_21_v1"'))return null;
+    return JSON.parse(txt);
+  }catch(e){return null;}
+}
+async function fech21NovoBuscar(gid,data,turno){
+  try{
+    const {data:rows}=await sb.from('fechamento_turno_garagem').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno).order('created_at',{ascending:false}).limit(12);
+    const parsed=(rows||[]).map(fech21NovoParseRow).find(Boolean);
+    if(parsed)return parsed;
+  }catch(e){}
+  try{return JSON.parse(localStorage.getItem(fech21NovoKey(data,turno,gid))||'null')||null;}catch(e){return null;}
+}
+function fech21NovoCel(id,r,c,val,disabled){
+  return `<input id="${id}-${r}-${c}" value="${prevEsc(val||'')}" ${disabled?'disabled':''} style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:8px 9px;font-size:12px;${disabled?'opacity:.55;cursor:not-allowed':''}">`;
+}
+function fech21NovoColetar(data,turno,base){
+  const state=base||fech21NovoEstadoVazio(data,turno);
+  state.data=data; state.turno=turno; state.atualizadoEm=new Date().toISOString(); state.preenchidoPor=S.perfil?.nome||'';
+  FECH21_NOVO_BLOCOS.forEach(b=>{
+    if(!fech21NovoPodeEditar(b))return;
+    if(b.tipo==='texto'){
+      state.blocos[b.id]={rows:document.getElementById(`fech21novo-${b.id}`)?.value||'',por:S.perfil?.nome||'',em:new Date().toISOString()};
+      return;
+    }
+    const rows=(b.rows||[]).map((linha,r)=>linha.map((_,c)=>document.getElementById(`fech21novo-${b.id}-${r}-${c}`)?.value||''));
+    state.blocos[b.id]={rows,por:S.perfil?.nome||'',em:new Date().toISOString()};
+  });
+  return state;
+}
+function fech21NovoResumo(state){
+  let blocos=0, preenchidos=0;
+  FECH21_NOVO_BLOCOS.forEach(b=>{
+    const v=state.blocos?.[b.id];
+    if(!fech21NovoPodeBloco(b))return;
+    blocos++;
+    const ok=b.tipo==='texto'?String(v?.rows||'').trim():((v?.rows||[]).flat().some(x=>String(x||'').trim()));
+    if(ok)preenchidos++;
+  });
+  return {blocos,preenchidos,pendentes:Math.max(0,blocos-preenchidos)};
+}
+async function renderFerr21(aba='fechar'){
+  const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  const gid=getGid(), garagem=S.garagens?.find(g=>g.id===gid);
+  const data=S._fech21Data||hoje(), turno=S._fech21Turno||S.turno||turnoOperacionalAtual();
+  setMain(`<div class="loading"><div class="spinner"></div> Carregando 2.1...</div>`);
+  const banco=await fech21NovoBuscar(gid,data,turno);
+  const state=banco||fech21NovoEstadoVazio(data,turno);
+  const resumo=fech21NovoResumo(state);
+  const blocos=FECH21_NOVO_BLOCOS.filter(fech21NovoPodeBloco).map(b=>{
+    const pode=fech21NovoPodeEditar(b), salvo=state.blocos?.[b.id]||{};
+    if(b.tipo==='texto')return `<section style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><b>${b.titulo}</b><span style="margin-left:auto;color:var(--text3);font-size:11px">${salvo.por?`Preenchido por ${prevEsc(salvo.por)}`:'Pendente'}</span></div>
+      <textarea id="fech21novo-${b.id}" rows="4" ${pode?'':'disabled'} placeholder="Observações gerais do fechamento" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-family:inherit;resize:vertical">${prevEsc(salvo.rows||'')}</textarea>
+    </section>`;
+    const rows=(salvo.rows&&Array.isArray(salvo.rows)?salvo.rows:b.rows).map((linha,r)=>`<tr>${b.cols.map((col,c)=>`<td style="padding:7px;border-top:1px solid var(--border2)">${fech21NovoCel(`fech21novo-${b.id}`,r,c,linha[c],!pode)}</td>`).join('')}</tr>`).join('');
+    return `<section style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${pode?'var(--blue)':'var(--border)'};border-radius:12px;overflow:hidden;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border)"><b>${b.titulo}</b><span style="margin-left:auto;color:var(--text3);font-size:11px">${salvo.por?`Preenchido por ${prevEsc(salvo.por)}`:'Pendente'}</span></div>
+      <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:820px"><thead><tr style="background:var(--surface2);color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.08em">${b.cols.map(c=>`<th style="padding:9px;text-align:left">${c}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
+    </section>`;
+  }).join('');
+  setMain(`${back}
+    ${secTitle('📋','2.1 - Fechamento de Turno Garagem',`<button class="btn-add" onclick="gerarRelatorio21Setorial('${data}','${turno}')" style="background:var(--blue);border-color:var(--blue);color:#fff">📄 Exportar PDF</button>`)}
+    <div style="display:grid;grid-template-columns:170px 150px 1fr auto;gap:10px;align-items:end;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:14px">
+      <div><label class="campo-label">Data</label><input class="fi" type="date" value="${data}" onchange="S._fech21Data=this.value;renderFerr21()"></div>
+      <div><label class="campo-label">Turno</label><select class="fi" onchange="S._fech21Turno=this.value;renderFerr21()"><option value="dia"${turno==='dia'?' selected':''}>Dia</option><option value="noite"${turno==='noite'?' selected':''}>Noite</option></select></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${kpi('Blocos',resumo.blocos,undefined,'',false,0)}${kpi('Preenchidos',resumo.preenchidos,undefined,'',false,0)}${kpi('Pendentes',resumo.pendentes,0,'',resumo.pendentes>0,0)}</div>
+      <button class="btn-add" onclick="salvarFech21Novo()" style="height:44px;background:var(--green);border-color:var(--green);color:#06131f">💾 Salvar</button>
+    </div>
+    <div style="color:var(--text3);font-size:12px;margin:-4px 0 12px">Supervisor preenche os blocos OCIBMAR. Coordenador preenche os blocos ALCIDES. Blocos OCIBMAR / ALCIDES ficam disponíveis para os dois.</div>
+    ${blocos||'<div class="empty">Sem bloco disponível para este cargo.</div>'}`);
+  S._fech21NovoState=state;
+}
+async function salvarFech21Novo(){
+  const gid=getGid(), data=S._fech21Data||hoje(), turno=S._fech21Turno||S.turno||turnoOperacionalAtual();
+  const state=fech21NovoColetar(data,turno,S._fech21NovoState||fech21NovoEstadoVazio(data,turno));
+  localStorage.setItem(fech21NovoKey(data,turno,gid),JSON.stringify(state));
+  const numero=`2.1-${data}-${turno}`;
+  const payload={garagem_id:gid,numero,turno,data,responsavel_id:S.perfil?.id,responsavel_nome:S.perfil?.nome||'',status_geral:'em_andamento',bastao_obs:JSON.stringify(state),enviado_wpp:false,enviado_em:new Date().toISOString()};
+  let {error}=await sb.from('fechamento_turno_garagem').insert(payload);
+  if(error?.message?.includes('responsavel_id')||error?.message?.includes('foreign key')) error=(await sb.from('fechamento_turno_garagem').insert({...payload,responsavel_id:undefined})).error;
+  toast(error?'2.1 salvo localmente: '+error.message:'2.1 salvo no banco');
+  renderFerr21();
+}
+async function gerarRelatorio21Setorial(data=S._fech21Data||hoje(),turno=S._fech21Turno||S.turno||turnoOperacionalAtual()){
+  const gid=getGid(), garagem=S.garagens?.find(g=>g.id===gid);
+  let state=await fech21NovoBuscar(gid,data,turno);
+  if(!state)state=fech21NovoColetar(data,turno,S._fech21NovoState||fech21NovoEstadoVazio(data,turno));
+  localStorage.setItem(fech21NovoKey(data,turno,gid),JSON.stringify(state));
+  try{await sb.from('relatorios_gerados').insert({garagem_id:gid,tipo:'2.1',numero:`2.1-${data}-${turno}`,data_evento:data,turno,status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){}
+  const B='border:1px solid #333;';
+  const blocoHtml=FECH21_NOVO_BLOCOS.map(b=>{
+    const v=state.blocos?.[b.id]||{};
+    if(b.tipo==='texto')return `<div class="sec-header">${prevEsc(b.titulo)}</div><table><tr><td style="${B};height:42px;white-space:pre-wrap">${prevEsc(v.rows||'--')}</td><td style="${B};width:160px">${prevEsc(v.por||'--')}</td></tr></table>`;
+    const rows=(v.rows&&Array.isArray(v.rows)?v.rows:b.rows).map(l=>`<tr>${b.cols.map((_,i)=>`<td style="${B}">${prevEsc(l[i]||'--')}</td>`).join('')}</tr>`).join('');
+    return `<div class="sec-header">${prevEsc(b.titulo)}</div><table><thead><tr>${b.cols.map(c=>`<th style="${B}">${prevEsc(c)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table><table style="margin-bottom:8px"><tr><td style="${B}"><b>Preenchido por:</b> ${prevEsc(v.por||'--')}</td></tr></table>`;
+  }).join('');
+  const html=`<!doctype html><html><head><meta charset="utf-8"><title>2.1 Fechamento Garagem</title><style>${estiloRelJTP()}.assin{display:grid;grid-template-columns:1fr 1fr;gap:90px;margin-top:60px}.linha{border-top:1px solid #000;text-align:center;padding-top:4px}</style></head><body>
+${barraPrint('📋 2.1 · Fechamento de Turno Garagem · '+(garagem?.nome||''),'JTP_21_FechamentoGaragem')}
+<div class="cabecalho"><strong>GRUPO JTP | OPERAÇÃO GARAGEM | 2.1 FECHAMENTO DE TURNO GARAGEM | ${prevEsc(garagem?.nome||'')}</strong></div>
+<table style="margin-bottom:8px"><tr><td style="${B}"><b>Data/turno:</b> ${formatData(data)} · ${turno==='dia'?'Dia':'Noite'}</td><td style="${B}"><b>Responsável:</b> ${prevEsc(state.preenchidoPor||S.perfil?.nome||'--')}</td><td style="${B}"><b>Gerado:</b> ${new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'})}</td></tr></table>
+${blocoHtml}
+<div class="assin"><div class="linha">Supervisor</div><div class="linha">Coordenador</div></div>
+</body></html>`;
+  abrirRelatorioHTMLPCM(html,`JTP_21_FechamentoGaragem_${data.replace(/-/g,'')}_${turno}.pdf`);
+}
+
 // ══════════════════════════════════════════════════════════════
 // 2.6 — PREVISIBILIDADE DE INVESTIMENTO
 // Lista OS abertas com custo previsto e custo real por veículo.
