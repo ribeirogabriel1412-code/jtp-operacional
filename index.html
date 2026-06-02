@@ -7376,6 +7376,7 @@ async function renderFerrPCM(aba='painel'){
     <button class="filtro-btn${aba==='ronda33'?' active':''}" onclick="renderFerrPCM('ronda33')">👣 3.3 Ronda Operacional</button>
     <button class="filtro-btn${aba==='mov_pneu'?' active':''}" onclick="renderFerrPCM('mov_pneu')">⚙️ Pneus</button>
     <button class="filtro-btn${aba==='req_compra'?' active':''}" onclick="renderFerrPCM('req_compra')">📦 Valetamento</button>
+    <button class="filtro-btn${aba==='ind212'?' active':''}" onclick="renderFerrPCM('ind212')">📊 2.12 / 2.14 Indicadores</button>
     <button class="filtro-btn${aba==='consolidado'?' active':''}" onclick="renderFerrPCM('consolidado')">📋 2.6 - Custo</button>
     <button class="filtro-btn${aba==='fech24'?' active':''}" onclick="renderFerrPCM('fech24')">📋 2.4 Fechamento</button>
     <button class="filtro-btn${aba==='conf_orc'?' active':''}" onclick="renderFerrPCM('conf_orc')">📊 Conferência</button>
@@ -7387,6 +7388,9 @@ async function renderFerrPCM(aba='painel'){
 
   if(aba==='ronda33'){
     return await renderFerr33();
+  }
+  if(aba==='ind212'){
+    return await renderFerr212(back,tabs);
   }
 
   // ── ABA 3.7 SUPERVISÃO ──────────────────────────────────────────────────
@@ -11718,6 +11722,168 @@ async function enviar212WhatsApp(){
     });
     toast('📱 Indicadores enviados para o grupo!');
   }catch(e){toast('Erro WhatsApp: '+e.message,'err');}
+}
+
+const INDICADORES_212=[
+  {id:'cpk',nome:'CPK - Custo por KM (R$/km)',meta:'Conforme orçamento',tipo:'menor'},
+  {id:'mkbf',nome:'MKBF - KM entre Falhas',meta:'Meta definida por frota',tipo:'maior'},
+  {id:'prev_geral',nome:'Cumprimento Preventiva Geral',meta:'100%',tipo:'maior',metaNum:100},
+  {id:'prev_pesada',nome:'Cumprimento Preventiva Pesada',meta:'100%',tipo:'maior',metaNum:100},
+  {id:'prev_leve',nome:'Cumprimento Preventiva Leve',meta:'100%',tipo:'maior',metaNum:100},
+  {id:'indisp',nome:'Indisponibilidade de Frota',meta:'0',tipo:'menor',metaNum:0},
+  {id:'pneu_sucata',nome:'Pneus sucateados',meta:'Meta definida por frota',tipo:'menor'},
+  {id:'os_dia',nome:'OS Abertas / Fechadas no Dia',meta:'Qtd abertas / fechadas',tipo:'texto'},
+  {id:'rod_pneu',nome:'Rodagem pneus km',meta:'Meta definida por frota',tipo:'maior'},
+];
+function ind212Key(data,turno,gid){return `jtp_ind212_v1:${gid||getGid()}:${data||hoje()}:${turno||turnoOperacionalAtual()}`;}
+function ind212Numero(v){
+  const s=String(v??'').replace(/\./g,'').replace(',','.').match(/-?\d+(\.\d+)?/);
+  return s?Number(s[0]):null;
+}
+function ind212Calc(item,row){
+  const valor=ind212Numero(row.m1||row.s1||row.d1);
+  let meta=ind212Numero(row.meta);
+  if(meta===null&&item.metaNum!==undefined)meta=item.metaNum;
+  if(item.tipo==='texto'||valor===null||meta===null)return {status:row.statusManual||'',label:row.statusManual?row.statusManual.toUpperCase():'--',cor:'var(--text3)'};
+  const ok=item.tipo==='menor'?valor<=meta:valor>=meta;
+  return {status:ok?'ok':'nok',label:ok?'OK':'NOK',cor:ok?'var(--green)':'var(--red)'};
+}
+function ind212GetState(data,turno,gid){
+  const base={data,turno,itens:{},criadoPor:S.perfil?.nome||null,atualizadoEm:null};
+  try{return {...base,...(JSON.parse(localStorage.getItem(ind212Key(data,turno,gid))||'null')||{})};}catch(e){return base;}
+}
+function ind212SetState(data,turno,gid,state){
+  localStorage.setItem(ind212Key(data,turno,gid),JSON.stringify(state));
+}
+async function buscarInd212Banco(gid,data,turno){
+  try{
+    const res=await sb.from('indicadores_tecnicos').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno).order('created_at',{ascending:false}).limit(1).maybeSingle();
+    if(res.data?.dados)return res.data;
+  }catch(e){}
+  return null;
+}
+async function salvarInd212Banco(gid,state,status='em_andamento'){
+  const payload={garagem_id:gid,data:state.data,turno:state.turno,dados:state,status,criado_por:S.perfil?.nome||null,created_at:new Date().toISOString()};
+  try{
+    const atual=await sb.from('indicadores_tecnicos').select('id').eq('garagem_id',gid).eq('data',state.data).eq('turno',state.turno).order('created_at',{ascending:false}).limit(1).maybeSingle();
+    const res=atual.data?.id?await sb.from('indicadores_tecnicos').update(payload).eq('id',atual.data.id):await sb.from('indicadores_tecnicos').insert(payload);
+    return !res.error;
+  }catch(e){return false;}
+}
+function ind212ColetarTela(){
+  const state={data:document.getElementById('ind212-data')?.value||hoje(),turno:document.getElementById('ind212-turno')?.value||turnoOperacionalAtual(),itens:{},criadoPor:S.perfil?.nome||null,atualizadoEm:new Date().toISOString()};
+  INDICADORES_212.forEach(it=>{
+    const row={};
+    ['d1','s1','m1','meta','acao','causa','statusManual'].forEach(c=>row[c]=document.getElementById(`ind212-${it.id}-${c}`)?.value||'');
+    state.itens[it.id]=row;
+  });
+  return state;
+}
+function ind212Input(id,val,ph='',extra=''){
+  return `<input id="${id}" value="${prevEsc(val||'')}" placeholder="${ph}" ${extra} style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:8px 9px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">`;
+}
+async function renderFerr212(backArg='',tabsArg=''){
+  const back=backArg||`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  S._ind212DentroPCM=!!tabsArg;
+  const gid=getGid();
+  const data=S._ind212Data||hoje();
+  const turno=S._ind212Turno||S.turno||turnoOperacionalAtual();
+  setMain(`<div class="loading"><div class="spinner"></div> Carregando 2.12...</div>`);
+  const banco=await buscarInd212Banco(gid,data,turno);
+  const state=banco?.dados||ind212GetState(data,turno,gid);
+  const rows=INDICADORES_212.map(it=>{
+    const r=state.itens?.[it.id]||{meta:it.meta};
+    if(!r.meta)r.meta=it.meta;
+    const calc=ind212Calc(it,r);
+    const precisa=calc.status==='nok';
+    return `<tr style="border-top:1px solid var(--border2)">
+      <td style="padding:9px 10px;color:var(--text);font-weight:800">${it.nome}</td>
+      <td style="padding:7px">${ind212Input(`ind212-${it.id}-d1`,r.d1,'D-1')}</td>
+      <td style="padding:7px">${ind212Input(`ind212-${it.id}-s1`,r.s1,'S-1')}</td>
+      <td style="padding:7px">${ind212Input(`ind212-${it.id}-m1`,r.m1,'M-1')}</td>
+      <td style="padding:7px">${ind212Input(`ind212-${it.id}-meta`,r.meta,it.meta)}</td>
+      <td style="padding:7px;text-align:center">
+        <span style="display:inline-block;min-width:48px;padding:5px 9px;border-radius:8px;background:${calc.status==='ok'?'#00C48C20':calc.status==='nok'?'#EF444420':'var(--surface2)'};color:${calc.cor};font-size:11px;font-weight:900">${calc.label}</span>
+        ${it.tipo==='texto'?`<select id="ind212-${it.id}-statusManual" style="margin-top:5px;width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:5px;font-size:11px"><option value="">Auto/manual</option><option value="ok"${r.statusManual==='ok'?' selected':''}>OK</option><option value="nok"${r.statusManual==='nok'?' selected':''}>NOK</option></select>`:`<input id="ind212-${it.id}-statusManual" type="hidden" value="${prevEsc(r.statusManual||'')}">`}
+      </td>
+      <td style="padding:7px">${ind212Input(`ind212-${it.id}-acao`,r.acao,precisa?'Obrigatório para NOK':'Plano de ação / obs')}</td>
+      <td style="padding:7px">${ind212Input(`ind212-${it.id}-causa`,r.causa,precisa?'Causa do desvio 2.14':'Análise 2.14')}</td>
+    </tr>`;
+  }).join('');
+  const resumo=INDICADORES_212.reduce((acc,it)=>{
+    const c=ind212Calc(it,state.itens?.[it.id]||{});
+    if(c.status==='ok')acc.ok++;
+    else if(c.status==='nok')acc.nok++;
+    else acc.pend++;
+    return acc;
+  },{ok:0,nok:0,pend:0});
+  const rerender212=tabsArg?`renderFerrPCM('ind212')`:'renderFerr212()';
+  setMain(`${back}${tabsArg||''}
+    ${secTitle('📊','2.12 / 2.14 - Indicadores Técnicos',`<button class="btn-add" onclick="gerarRelatorio212()" style="background:var(--blue);border-color:var(--blue);color:#fff">📄 Exportar PDF</button>`)}
+    <div style="display:grid;grid-template-columns:170px 150px 1fr auto;gap:10px;align-items:end;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:14px">
+      <div><label class="campo-label">Data</label><input id="ind212-data" class="fi" type="date" value="${data}" onchange="S._ind212Data=this.value;${rerender212}"></div>
+      <div><label class="campo-label">Turno</label><select id="ind212-turno" class="fi" onchange="S._ind212Turno=this.value;${rerender212}"><option value="dia"${turno==='dia'?' selected':''}>Dia</option><option value="noite"${turno==='noite'?' selected':''}>Noite</option></select></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${kpi('OK',resumo.ok,undefined,'',false,0)}${kpi('NOK',resumo.nok,0,'',true,0)}${kpi('Pendentes',resumo.pend,0,'',true,0)}</div>
+      <button class="btn-add" onclick="salvarIndicadores212()" style="height:44px;background:var(--green);border-color:var(--green);color:#06131f">💾 Salvar</button>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+      <div style="background:#1f6fae;color:#fff;font-weight:900;padding:9px 12px;font-size:15px">■ MANUTENÇÃO</div>
+      <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:1180px">
+        <thead><tr style="background:var(--surface2);color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.1em">
+          <th style="padding:9px;text-align:left;width:260px">Indicador</th><th style="padding:9px;width:95px">D-1</th><th style="padding:9px;width:95px">S-1</th><th style="padding:9px;width:95px">M-1</th><th style="padding:9px;width:210px;text-align:left">Meta</th><th style="padding:9px;width:105px">Status</th><th style="padding:9px;width:240px;text-align:left">Plano de Ação / Obs</th><th style="padding:9px;width:260px;text-align:left">2.14 - Causa do Desvio</th>
+        </tr></thead><tbody>${rows}</tbody>
+      </table></div>
+    </div>`);
+}
+async function salvarIndicadores212(){
+  const gid=getGid();
+  const state=ind212ColetarTela();
+  INDICADORES_212.forEach(it=>{
+    const r=state.itens[it.id]||{};
+    const c=ind212Calc(it,r);
+    r.status=c.status;
+    r.statusLabel=c.label;
+  });
+  ind212SetState(state.data,state.turno,gid,state);
+  const ok=await salvarInd212Banco(gid,state,'em_andamento');
+  toast(ok?'Indicadores 2.12 salvos no banco':'Indicadores salvos localmente');
+  if(S._ind212DentroPCM)renderFerrPCM('ind212');else renderFerr212();
+}
+async function gerarRelatorio212(){
+  const gid=getGid(), garagem=S.garagens?.find(g=>g.id===gid);
+  const state=ind212ColetarTela();
+  INDICADORES_212.forEach(it=>{
+    const r=state.itens[it.id]||{};
+    const c=ind212Calc(it,r);
+    r.status=c.status;
+    r.statusLabel=c.label;
+  });
+  ind212SetState(state.data,state.turno,gid,state);
+  await salvarInd212Banco(gid,state,'fechado');
+  try{
+    const comum={garagem_id:gid,data_evento:state.data,turno:state.turno,status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null};
+    await sb.from('relatorios_gerados').insert({...comum,tipo:'2.12',numero:`2.12-${state.data}-${state.turno}`});
+    await sb.from('relatorios_gerados').insert({...comum,tipo:'2.14',numero:`2.14-${state.data}-${state.turno}`});
+  }catch(e){}
+  const B='border:1px solid #333;';
+  const linhas=INDICADORES_212.map(it=>{
+    const r=state.itens[it.id]||{};
+    const nok=r.status==='nok';
+    return `<tr><td style="${B}font-weight:700">${prevEsc(it.nome)}</td><td style="${B}text-align:center">${prevEsc(r.d1||'--')}</td><td style="${B}text-align:center">${prevEsc(r.s1||'--')}</td><td style="${B}text-align:center">${prevEsc(r.m1||'--')}</td><td style="${B}">${prevEsc(r.meta||it.meta)}</td><td style="${B}text-align:center;background:${r.status==='ok'?'#DCFCE7':nok?'#FEE2E2':'#fff'};font-weight:900">${prevEsc(r.statusLabel||'--')}</td><td style="${B}">${prevEsc(r.acao||'--')}</td><td style="${B};${nok?'background:#FEF3C7':''}">${prevEsc(r.causa||(nok?'Pendente de análise 2.14':'--'))}</td></tr>`;
+  }).join('');
+  const noks=INDICADORES_212.filter(it=>(state.itens[it.id]||{}).status==='nok');
+  const gerado=new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'});
+  const html=`<!doctype html><html><head><meta charset="utf-8"><title>2.12 Indicadores</title><style>${estiloRelJTP()}.center{text-align:center}.assin{display:grid;grid-template-columns:1fr 1fr;gap:90px;margin-top:60px}.linha{border-top:1px solid #000;text-align:center;padding-top:4px}</style></head><body>
+${barraPrint('📊 2.12 / 2.14 · Indicadores Técnicos · '+(garagem?.nome||''),'JTP_212_214_Indicadores')}
+<div class="cabecalho"><strong>GRUPO JTP | RELATÓRIO 2.12 INDICADORES TÉCNICOS / 2.14 ANÁLISE DE DESVIO | ${prevEsc(garagem?.nome||'')}</strong></div>
+<table style="margin-bottom:8px"><tr><td style="${B}"><b>Data/turno:</b> ${formatData(state.data)} · ${state.turno}</td><td style="${B}"><b>Responsável:</b> ${prevEsc(S.perfil?.nome||'--')}</td><td style="${B}"><b>Gerado:</b> ${gerado}</td></tr></table>
+<div class="sec-header">Manutenção - Indicadores 2.12</div>
+<table><thead><tr><th style="${B}">Indicador</th><th style="${B}width:55px">D-1</th><th style="${B}width:55px">S-1</th><th style="${B}width:55px">M-1</th><th style="${B}width:170px">Meta</th><th style="${B}width:60px">Status</th><th style="${B}width:220px">Plano de Ação / Obs</th><th style="${B}width:240px">2.14 - Causa do Desvio</th></tr></thead><tbody>${linhas}</tbody></table>
+<div class="sec-header">Resumo 2.14 - Fenômenos do Desvio</div>
+<table><thead><tr><th style="${B}">Indicador NOK</th><th style="${B}">Causa analisada</th><th style="${B}">Plano / tratativa</th></tr></thead><tbody>${noks.length?noks.map(it=>{const r=state.itens[it.id]||{};return `<tr><td style="${B}font-weight:700">${prevEsc(it.nome)}</td><td style="${B};background:${r.causa?'#DCFCE7':'#FEE2E2'}">${prevEsc(r.causa||'Pendente de análise')}</td><td style="${B}">${prevEsc(r.acao||'--')}</td></tr>`}).join(''):`<tr><td style="${B}text-align:center" colspan="3">Nenhum indicador NOK no período.</td></tr>`}</tbody></table>
+<div class="assin"><div class="linha">Líder PCM</div><div class="linha">Coordenador / Supervisor</div></div>
+</body></html>`;
+  abrirRelatorioHTMLPCM(html,`JTP_212_214_Indicadores_${state.data.replace(/-/g,'')}_${state.turno}.pdf`);
 }
 
 async function renderFerrLav(aba='painel'){
