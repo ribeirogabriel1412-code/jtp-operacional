@@ -7321,7 +7321,7 @@ async function renderFerrPCM(aba='painel'){
 
   const tabs=`<div class="filtros">
     <button class="filtro-btn${aba==='painel'?' active':''}" onclick="renderFerrPCM('painel')">📊 Painel</button>
-    <button class="filtro-btn${aba==='ck37'?' active':''}" onclick="renderFerrPCM('ck37')">✅ 3.7 Supervisão</button>
+    <button class="filtro-btn${aba==='ronda33'?' active':''}" onclick="renderFerrPCM('ronda33')">👣 3.3 Ronda Operacional</button>
     <button class="filtro-btn${aba==='mov_pneu'?' active':''}" onclick="renderFerrPCM('mov_pneu')">⚙️ Pneus</button>
     <button class="filtro-btn${aba==='req_compra'?' active':''}" onclick="renderFerrPCM('req_compra')">📦 Valetamento</button>
     <button class="filtro-btn${aba==='consolidado'?' active':''}" onclick="renderFerrPCM('consolidado')">📋 2.6 - Custo</button>
@@ -7332,6 +7332,10 @@ async function renderFerrPCM(aba='painel'){
   </div>`;
 
   setMain(`<div class="loading"><div class="spinner"></div></div>`);
+
+  if(aba==='ronda33'){
+    return await renderFerr33();
+  }
 
   // ── ABA 3.7 SUPERVISÃO ──────────────────────────────────────────────────
   if(aba==='ck37'){
@@ -7580,7 +7584,7 @@ async function renderFerrPCM(aba='painel'){
   // ── ABA REQUISIÇÃO DE COMPRA ─────────────────────────────────────────────
   if(aba==='req_compra'){
     const dataValet=await resolverDataValetComDados(gid,S._valetData||proximoSabadoISO(),!!S._valetData);
-    const [reqRes,osRes]=await Promise.all([
+    const [reqRes,osRes,datasValetRes]=await Promise.all([
       sb.from('requisicoes_compra')
         .select('*').eq('garagem_id',gid).eq('data',dataValet)
         .order('criado_em',{ascending:false}),
@@ -7588,9 +7592,15 @@ async function renderFerrPCM(aba='painel'){
         .select('id,numero,prefixo,tipo,status,prioridade,pecas_necessarias,hora_entrada,custo_previsto')
         .eq('garagem_id',gid).neq('status','liberado')
         .not('pecas_necessarias','is',null)
-        .order('hora_entrada',{ascending:false}).limit(30)
+        .order('hora_entrada',{ascending:false}).limit(30),
+      sb.from('requisicoes_compra')
+        .select('data').eq('garagem_id',gid)
+        .neq('status','cancelado')
+        .not('data','is',null)
+        .order('data',{ascending:false}).limit(60)
     ]);
     const reqs=(reqRes.data||[]).filter(r=>(r.status||'')!=='cancelado'&&r.cod_sap!=='__PROG_PREV__'&&!String(r.peca||'').includes('Programação preventiva'));
+    const datasValet=datasValetRes.data||[];
     const osPecas=(osRes.data||[]).filter(o=>(o.pecas_necessarias||'').trim());
     const valetMetrica=lerValetamentoMetrica(dataValet);
     const carrosValet=(valetMetrica?.itens||[]);
@@ -7605,6 +7615,11 @@ async function renderFerrPCM(aba='painel'){
     const rowId=r=>String(r.id||'').replace(/[^a-zA-Z0-9_-]/g,'');
     const valetPorCarro={};
     reqs.forEach(r=>{const k=r.prefixo||'Sem prefixo';if(!valetPorCarro[k])valetPorCarro[k]=[];valetPorCarro[k].push(r);});
+    const cestos=Object.entries(valetPorCarro);
+    const cestosDisponiveis=cestos.filter(([,itens])=>itens.length&&itens.every(i=>['separado','comprado'].includes(i.status||''))).length;
+    const seletorSemana=renderSeletorSemanaValet(dataValet,datasValet.map(r=>r.data),`renderFerrPCM('req_compra')`);
+    const preventivasSemana=renderAlmoxPreventivasProgramadas(dataValet,valetPorCarro);
+    const relatorioCestos=renderAlmoxRelatorioCestosDia(dataValet);
     const acaoValet=r=>r.status==='lista_oficina'
       ?`<button onclick="salvarValetInline('${rowId(r)}','${arg(r.prefixo)}')" style="padding:5px 9px;border-radius:7px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">Enviar almox</button><button onclick="excluirReqCompraSite('${r.id}')" style="padding:5px 8px;border-radius:7px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;margin-left:4px">Excluir</button>`
       :['solicitado_pcm','pendente'].includes(r.status||'')
@@ -7641,7 +7656,7 @@ async function renderFerrPCM(aba='painel'){
     }).join('');
 
     setMain(`${back}${tabs}
-      ${secTitle('📦','Valetamento de Sábado',`<input type="date" value="${dataValet}" onchange="S._valetData=this.value;renderFerrPCM('req_compra')" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 10px;font-family:'DM Mono',monospace">`)}
+      ${secTitle('📦','Valetamento PCM - Kits preventivos',seletorSemana)}
       <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:16px">
         <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--amber);border-radius:10px;padding:14px">
           <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:2px">Carros 11-20</div>
@@ -7664,6 +7679,14 @@ async function renderFerrPCM(aba='painel'){
           <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:800;color:var(--green);margin-top:8px">R$ ${totalVal.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
         </div>
       </div>
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px">
+        ${kpi('Itens solicitados',reqs.length,undefined,'',false,0)}
+        ${kpi('Separados',separados,undefined,'',false,0)}
+        ${kpi('Pedido compra',compras,0,'',true,0)}
+        ${kpi('Cestos disponíveis',cestosDisponiveis,undefined,'',false,0)}
+      </div>
+      ${relatorioCestos}
+      ${preventivasSemana}
       <div style="display:grid;grid-template-columns:minmax(360px,420px) minmax(360px,1fr);gap:16px;align-items:start">
         <!-- Formulário -->
         <div>
