@@ -11752,6 +11752,19 @@ function ind212Calc(item,row){
   const ok=item.tipo==='menor'?valor<=meta:valor>=meta;
   return {status:ok?'ok':'nok',label:ok?'OK':'NOK',cor:ok?'var(--green)':'var(--red)'};
 }
+function ind212DesvioPerc(item,row){
+  const campo=item.base||'m1';
+  const valor=ind212Numero(row[campo]);
+  const meta=ind212Numero(row.meta);
+  if(valor===null||meta===null)return '--';
+  if(meta===0){
+    if(valor===0)return '0%';
+    return item.tipo==='menor'&&valor>0?'Acima da meta':'--';
+  }
+  const dif=item.tipo==='menor'?valor-meta:meta-valor;
+  if(dif<=0)return '0%';
+  return `${((dif/Math.abs(meta))*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}%`;
+}
 function ind212GetState(data,turno,gid){
   const base={data,turno,itens:{},criadoPor:S.perfil?.nome||null,atualizadoEm:null};
   try{return {...base,...(JSON.parse(localStorage.getItem(ind212Key(data,turno,gid))||'null')||{})};}catch(e){return base;}
@@ -11855,8 +11868,8 @@ async function renderFerr212(backArg='',tabsArg=''){
         <span id="ind212-${it.id}-status" style="${ind212StatusStyle(calc)}">${calc.label}</span>
         ${it.tipo==='texto'?`<select id="ind212-${it.id}-statusManual" onchange="atualizarStatusIndicador212('${it.id}')" style="margin-top:5px;width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:5px;font-size:11px"><option value="">Auto/manual</option><option value="ok"${r.statusManual==='ok'?' selected':''}>OK</option><option value="nok"${r.statusManual==='nok'?' selected':''}>NOK</option></select>`:`<input id="ind212-${it.id}-statusManual" type="hidden" value="${prevEsc(r.statusManual||'')}">`}
       </td>
-      <td style="padding:7px">${ind212Input(`ind212-${it.id}-acao`,r.acao,precisa?'Obrigatório para NOK':'Plano de ação / obs')}</td>
       <td style="padding:7px">${ind212Input(`ind212-${it.id}-causa`,r.causa,precisa?'Causa do desvio 2.14':'Análise 2.14')}</td>
+      <td style="padding:7px">${ind212Input(`ind212-${it.id}-acao`,r.acao,precisa?'Obrigatório para NOK':'Plano de ação / obs')}</td>
     </tr>`;
   }).join('');
   const resumo=INDICADORES_212.reduce((acc,it)=>{
@@ -11879,7 +11892,7 @@ async function renderFerr212(backArg='',tabsArg=''){
       <div style="background:#1f6fae;color:#fff;font-weight:900;padding:9px 12px;font-size:15px">■ MANUTENÇÃO</div>
       <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:1180px">
         <thead><tr style="background:var(--surface2);color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.1em">
-          <th style="padding:9px;text-align:left;width:260px">Indicador</th><th style="padding:9px;width:95px">D-1</th><th style="padding:9px;width:95px">S-1</th><th style="padding:9px;width:95px">M-1</th><th style="padding:9px;width:210px;text-align:left">Meta</th><th style="padding:9px;width:105px">Status</th><th style="padding:9px;width:240px;text-align:left">Plano de Ação / Obs</th><th style="padding:9px;width:260px;text-align:left">2.14 - Causa do Desvio</th>
+          <th style="padding:9px;text-align:left;width:260px">Indicador</th><th style="padding:9px;width:95px">D-1</th><th style="padding:9px;width:95px">S-1</th><th style="padding:9px;width:95px">M-1</th><th style="padding:9px;width:210px;text-align:left">Meta</th><th style="padding:9px;width:105px">Status</th><th style="padding:9px;width:260px;text-align:left">2.14 - Causa do Desvio</th><th style="padding:9px;width:240px;text-align:left">Plano de Ação / Obs</th>
         </tr></thead><tbody>${rows}</tbody>
       </table></div>
     </div>`);
@@ -11919,7 +11932,7 @@ async function gerarRelatorio212(){
     const r=state.itens[it.id]||{};
     const nok=r.status==='nok';
     const soD1=it.base==='d1';
-    return `<tr><td style="${B}font-weight:700">${prevEsc(it.nome)}</td><td style="${B}text-align:center">${prevEsc(r.d1||'--')}</td><td style="${B}text-align:center">${soD1?'--':prevEsc(r.s1||'--')}</td><td style="${B}text-align:center">${soD1?'--':prevEsc(r.m1||'--')}</td><td style="${B}">${prevEsc(r.meta||it.meta||'--')}</td><td style="${B}text-align:center;background:${r.status==='ok'?'#DCFCE7':nok?'#FEE2E2':'#fff'};font-weight:900">${prevEsc(r.statusLabel||'--')}</td></tr>`;
+    return `<tr><td style="${B}font-weight:700">${prevEsc(it.nome)}</td><td style="${B}text-align:center">${prevEsc(r.d1||'--')}</td><td style="${B}text-align:center">${soD1?'--':prevEsc(r.s1||'--')}</td><td style="${B}text-align:center">${soD1?'--':prevEsc(r.m1||'--')}</td><td style="${B}">${prevEsc(r.meta||it.meta||'--')}</td><td style="${B}text-align:center;background:${r.status==='ok'?'#DCFCE7':nok?'#FEE2E2':'#fff'};font-weight:900">${prevEsc(r.statusLabel||'--')}</td><td style="${B}text-align:center;background:${nok?'#FEF3C7':'#fff'};font-weight:900">${prevEsc(ind212DesvioPerc(it,r))}</td></tr>`;
   }).join('');
   const noks=INDICADORES_212.filter(it=>(state.itens[it.id]||{}).status==='nok');
   const gerado=new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'});
@@ -11928,9 +11941,9 @@ ${barraPrint('📊 2.12 / 2.14 · Indicadores Técnicos · '+(garagem?.nome||'')
 <div class="cabecalho"><strong>GRUPO JTP | RELATÓRIO 2.12 INDICADORES TÉCNICOS / 2.14 ANÁLISE DE DESVIO | ${prevEsc(garagem?.nome||'')}</strong></div>
 <table style="margin-bottom:8px"><tr><td style="${B}"><b>Data/turno:</b> ${formatData(state.data)} · ${state.turno}</td><td style="${B}"><b>Responsável:</b> ${prevEsc(S.perfil?.nome||'--')}</td><td style="${B}"><b>Gerado:</b> ${gerado}</td></tr></table>
 <div class="sec-header">Manutenção - Indicadores 2.12</div>
-<table><thead><tr><th style="${B}">Indicador</th><th style="${B}width:60px">D-1</th><th style="${B}width:60px">S-1</th><th style="${B}width:60px">M-1</th><th style="${B}width:180px">Meta</th><th style="${B}width:70px">Status</th></tr></thead><tbody>${linhas}</tbody></table>
+<table><thead><tr><th style="${B}">Indicador</th><th style="${B}width:60px">D-1</th><th style="${B}width:60px">S-1</th><th style="${B}width:60px">M-1</th><th style="${B}width:180px">Meta</th><th style="${B}width:70px">Status</th><th style="${B}width:80px">% Desvio</th></tr></thead><tbody>${linhas}</tbody></table>
 ${noks.length?`<div class="sec-header">2.14 - Fenômenos do Desvio</div>
-<table><thead><tr><th style="${B}">Indicador fora do esperado</th><th style="${B}">Causa analisada</th><th style="${B}">Plano / tratativa</th></tr></thead><tbody>${noks.map(it=>{const r=state.itens[it.id]||{};return `<tr><td style="${B}font-weight:700;background:#FEE2E2">${prevEsc(it.nome)}</td><td style="${B};background:${r.causa?'#DCFCE7':'#FEF3C7'}">${prevEsc(r.causa||'Pendente de análise')}</td><td style="${B}">${prevEsc(r.acao||'--')}</td></tr>`}).join('')}</tbody></table>`:''}
+<table><thead><tr><th style="${B}">Indicador fora do esperado</th><th style="${B}width:80px">% Desvio</th><th style="${B}">Causa analisada</th><th style="${B}">Plano / tratativa</th></tr></thead><tbody>${noks.map(it=>{const r=state.itens[it.id]||{};return `<tr><td style="${B}font-weight:700;background:#FEE2E2">${prevEsc(it.nome)}</td><td style="${B}text-align:center;background:#FEF3C7;font-weight:900">${prevEsc(ind212DesvioPerc(it,r))}</td><td style="${B};background:${r.causa?'#DCFCE7':'#FEF3C7'}">${prevEsc(r.causa||'Pendente de análise')}</td><td style="${B}">${prevEsc(r.acao||'--')}</td></tr>`}).join('')}</tbody></table>`:''}
 <div class="assin"><div class="linha">Líder PCM</div><div class="linha">Coordenador / Supervisor</div></div>
 </body></html>`;
   abrirRelatorioHTMLPCM(html,`JTP_212_214_Indicadores_${state.data.replace(/-/g,'')}_${state.turno}.pdf`);
