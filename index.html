@@ -11730,7 +11730,7 @@ const INDICADORES_212=[
   {id:'prev_geral',nome:'Cumprimento Preventiva Geral',meta:'',tipo:'maior'},
   {id:'prev_pesada',nome:'Cumprimento Preventiva Pesada',meta:'',tipo:'maior'},
   {id:'prev_leve',nome:'Cumprimento Preventiva Leve',meta:'',tipo:'maior'},
-  {id:'indisp',nome:'Indisponibilidade de Frota',meta:'',tipo:'menor'},
+  {id:'indisp',nome:'Indisponibilidade de Frota',meta:'',tipo:'menor',base:'d1'},
   {id:'pneu_sucata',nome:'Pneus sucateados',meta:'',tipo:'menor'},
   {id:'rod_pneu',nome:'Rodagem pneus km',meta:'',tipo:'maior'},
 ];
@@ -11745,7 +11745,8 @@ function ind212Numero(v){
   return Number.isFinite(n)?n:null;
 }
 function ind212Calc(item,row){
-  const valor=ind212Numero(row.m1);
+  const campo=item.base||'m1';
+  const valor=ind212Numero(row[campo]);
   const meta=ind212Numero(row.meta);
   if(item.tipo==='texto'||valor===null||meta===null)return {status:row.statusManual||'',label:row.statusManual?row.statusManual.toUpperCase():'--',cor:'var(--text3)'};
   const ok=item.tipo==='menor'?valor<=meta:valor>=meta;
@@ -11824,7 +11825,8 @@ function atualizarResumoIndicadores212(){
   });
 }
 function ind212Input(id,val,ph='',extra=''){
-  return `<input id="${id}" value="${prevEsc(val||'')}" placeholder="${ph}" ${extra} style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:8px 9px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">`;
+  const travado=String(extra||'').includes('disabled');
+  return `<input id="${id}" value="${prevEsc(val||'')}" placeholder="${ph}" ${extra} style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:8px 9px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box;${travado?'opacity:.45;cursor:not-allowed':''}">`;
 }
 async function renderFerr212(backArg='',tabsArg=''){
   const back=backArg||`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
@@ -11840,11 +11842,14 @@ async function renderFerr212(backArg='',tabsArg=''){
     const calc=ind212Calc(it,r);
     const precisa=calc.status==='nok';
     const oncalc=`oninput="atualizarStatusIndicador212('${it.id}')"`;
+    const soD1=it.base==='d1';
+    const disabledS1=soD1?'disabled title="Este indicador usa apenas D-1"':'';
+    const disabledM1=soD1?'disabled title="Este indicador usa apenas D-1"':'';
     return `<tr style="border-top:1px solid var(--border2)">
       <td style="padding:9px 10px;color:var(--text);font-weight:800">${it.nome}</td>
       <td style="padding:7px">${ind212Input(`ind212-${it.id}-d1`,r.d1,'D-1',oncalc)}</td>
-      <td style="padding:7px">${ind212Input(`ind212-${it.id}-s1`,r.s1,'S-1',oncalc)}</td>
-      <td style="padding:7px">${ind212Input(`ind212-${it.id}-m1`,r.m1,'M-1 acumulado',oncalc)}</td>
+      <td style="padding:7px">${ind212Input(`ind212-${it.id}-s1`,soD1?'':r.s1,soD1?'Não usado':'S-1',`${oncalc} ${disabledS1}`)}</td>
+      <td style="padding:7px">${ind212Input(`ind212-${it.id}-m1`,soD1?'':r.m1,soD1?'Não usado':'M-1 acumulado',`${oncalc} ${disabledM1}`)}</td>
       <td style="padding:7px">${ind212Input(`ind212-${it.id}-meta`,r.meta,'Meta',oncalc)}</td>
       <td style="padding:7px;text-align:center">
         <span id="ind212-${it.id}-status" style="${ind212StatusStyle(calc)}">${calc.label}</span>
@@ -11913,7 +11918,8 @@ async function gerarRelatorio212(){
   const linhas=INDICADORES_212.map(it=>{
     const r=state.itens[it.id]||{};
     const nok=r.status==='nok';
-    return `<tr><td style="${B}font-weight:700">${prevEsc(it.nome)}</td><td style="${B}text-align:center">${prevEsc(r.d1||'--')}</td><td style="${B}text-align:center">${prevEsc(r.s1||'--')}</td><td style="${B}text-align:center">${prevEsc(r.m1||'--')}</td><td style="${B}">${prevEsc(r.meta||it.meta||'--')}</td><td style="${B}text-align:center;background:${r.status==='ok'?'#DCFCE7':nok?'#FEE2E2':'#fff'};font-weight:900">${prevEsc(r.statusLabel||'--')}</td></tr>`;
+    const soD1=it.base==='d1';
+    return `<tr><td style="${B}font-weight:700">${prevEsc(it.nome)}</td><td style="${B}text-align:center">${prevEsc(r.d1||'--')}</td><td style="${B}text-align:center">${soD1?'--':prevEsc(r.s1||'--')}</td><td style="${B}text-align:center">${soD1?'--':prevEsc(r.m1||'--')}</td><td style="${B}">${prevEsc(r.meta||it.meta||'--')}</td><td style="${B}text-align:center;background:${r.status==='ok'?'#DCFCE7':nok?'#FEE2E2':'#fff'};font-weight:900">${prevEsc(r.statusLabel||'--')}</td></tr>`;
   }).join('');
   const noks=INDICADORES_212.filter(it=>(state.itens[it.id]||{}).status==='nok');
   const gerado=new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'});
