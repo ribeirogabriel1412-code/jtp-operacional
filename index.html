@@ -699,7 +699,7 @@ function isEscalante(){return ['lider_operacional','gerente_garagem','diretoria'
 // Valida saída 2.10 e lavagem — usa permissão da ferramenta
 function isLiderPatio(){return podeValidar('ferr-210')||podeExecutar('ferr-210');}
 // Supervisão geral
-function isSupervisao(){return ['diretoria','gerente_garagem','coordenador','supervisor','lider_operacional','lider_pcm','assistente_pcm'].includes(cargo())||isAdmin()}
+function isSupervisao(){return ['diretoria','gerente_garagem','gerente_operacional','coordenador','supervisor','lider_operacional','lider_pcm','assistente_pcm'].includes(cargo())||isAdmin()}
 // Lavador vê programação e faz checklist
 function isLavadorOuPatio(){return ['lavador','lider_patio','gerente_garagem','diretoria'].includes(cargo())||isAdmin()}
 
@@ -844,6 +844,7 @@ function setPermsFerr(perms){localStorage.setItem('jtp_perms_ferr3',JSON.stringi
 // Retorna o papel do cargo na ferramenta: 'executa' | 'valida' | 'visualiza' | null
 function papelFerr(ferrId, cargoOverride){
   const c=cargoOverride||S.perfil?.cargo;
+  if(ferrId==='ferr-21'&&['supervisor','coordenador','gerente_operacional'].includes(c)) return 'executa';
   if(S.perfil?.is_admin&&!cargoOverride) return 'executa'; // admin tem tudo
   const perms=getPermsFerr();
   const ferr=FERRAMENTAS_DEF.find(f=>f.id===ferrId);
