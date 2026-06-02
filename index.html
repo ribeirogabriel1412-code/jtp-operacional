@@ -889,13 +889,13 @@ function opDateTimeISO(data,hora,tz=opTimezone()){
   }
   return new Date(utc).toISOString();
 }
-function turnoOperacionalAtual(tz=opTimezone()){const h=opParts(new Date(),tz).H;return (h>=20||h<5)?'noite':'dia';}
+function turnoOperacionalAtual(tz=opTimezone()){const p=opParts(new Date(),tz),min=p.H*60+p.M;return (min>=20*60||min<=7*60+20)?'noite':'dia';}
 function dataOperacionalAtual(turno=turnoOperacionalAtual(),tz=opTimezone()){
-  const data=opISODate(new Date(),tz),h=opParts(new Date(),tz).H;
-  return turno==='noite'&&h<5?opAddDays(data,-1):data;
+  const data=opISODate(new Date(),tz),p=opParts(new Date(),tz),min=p.H*60+p.M;
+  return turno==='noite'&&min<=7*60+20?opAddDays(data,-1):data;
 }
 function janelaOperacional(turno=turnoOperacionalAtual(),dataRef=dataOperacionalAtual(turno),tz=opTimezone()){
-  const defs={dia:{ini:'08:00',fim:'18:00',label:'Dia 08:00-18:00'},noite:{ini:'20:00',fim:'04:20',label:'Noite 20:00-04:20'},dia_completo:{ini:'08:00',fim:'08:00',label:'Dia completo 08:00-08:00',diaAnterior:true}};
+  const defs={dia:{ini:'08:00',fim:'18:00',label:'Dia 08:00-18:00'},noite:{ini:'20:00',fim:'07:20',label:'Noite 20:00-07:20'},dia_completo:{ini:'08:00',fim:'08:00',label:'Dia completo 08:00-08:00',diaAnterior:true}};
   const d=defs[turno]||defs.dia;
   const dataIni=d.diaAnterior?opAddDays(dataRef,-1):dataRef;
   const dataFim=(d.fim<=d.ini)?opAddDays(dataIni,1):dataIni;
@@ -1741,11 +1741,35 @@ const SUPERVISAO_ROTINA=[
 function supDueDate(data,hora){
   return new Date(`${data}T${hora}:00-04:00`);
 }
+function supJanelaAuditoria(data,turno,gid=getGid()){
+  const tz=opTimezone(gid);
+  if(turno==='noite'){
+    const fim=opAddDays(data,1);
+    return {data,turno,ini:opDateTimeISO(data,'20:00',tz),fim:opDateTimeISO(fim,'07:20',tz),dtIni:new Date(opDateTimeISO(data,'20:00',tz)),dtFim:new Date(opDateTimeISO(fim,'07:20',tz)),label:'Noite 20:00-07:20'};
+  }
+  return {data,turno:'dia',ini:opDateTimeISO(data,'08:00',tz),fim:opDateTimeISO(data,'18:00',tz),dtIni:new Date(opDateTimeISO(data,'08:00',tz)),dtFim:new Date(opDateTimeISO(data,'18:00',tz)),label:'Dia 08:00-18:00'};
+}
+function supDueDateAuditoria(data,hora,turno,gid=getGid()){
+  const tz=opTimezone(gid);
+  const janela=supJanelaAuditoria(data,turno,gid);
+  const dataPrazo=turno==='noite'&&String(hora)<='07:20'?opAddDays(data,1):data;
+  const iso=opDateTimeISO(dataPrazo,hora,tz);
+  const dt=new Date(iso);
+  if(dt<janela.dtIni)return janela.dtIni;
+  if(dt>janela.dtFim)return janela.dtFim;
+  return dt;
+}
+function supAtividadeDoTurno(a,turno){
+  const h=String(a.hora||'');
+  if(turno==='noite')return h>='20:00'||h<='07:20';
+  return h>='08:00'&&h<='18:00';
+}
 function supRowTime(row){
   return row?.fechado_em||row?.enviado_em||row?.created_at||row?.criado_em||row?.registrado_em||row?.updated_at||null;
 }
 function supFindRotinaEnvio(a,ctx){
-  const rel=(ctx.relatorios||[]).find(r=>String(r.tipo||'').includes('SUP:'+a.id)||String(r.numero||'').includes(a.id)||String(r.tipo||r.numero||'').includes(a.tipo));
+  const turnoRef=ctx.turno||'dia';
+  const rel=(ctx.relatorios||[]).find(r=>(!r.turno||r.turno===turnoRef)&&(String(r.tipo||'').includes('SUP:'+a.id)||String(r.numero||'').includes(a.id)||String(r.tipo||r.numero||'').includes(a.tipo)));
   if(rel)return{row:rel,quando:supRowTime(rel),fonte:'Relatório enviado'};
   if(a.tipo==='3.3'){
     const row=(ctx.ck33||[]).filter(r=>Number(r.rodada)===Number(a.rodada)).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
@@ -1778,9 +1802,10 @@ function supFindRotinaEnvio(a,ctx){
   return null;
 }
 function renderSupervisaoRotina(data,ctx){
+  const janela=ctx.janela||supJanelaAuditoria(data,ctx.turno||'dia',ctx.gid);
   const agora=new Date();
-  const rows=SUPERVISAO_ROTINA.map(a=>{
-    const due=supDueDate(data,a.hora);
+  const rows=SUPERVISAO_ROTINA.filter(a=>supAtividadeDoTurno(a,ctx.turno||'dia')).map(a=>{
+    const due=supDueDateAuditoria(data,a.hora,ctx.turno||'dia',ctx.gid);
     const found=supFindRotinaEnvio(a,ctx);
     const quando=found?.quando?new Date(found.quando):null;
     const enviado=!!quando;
@@ -1811,11 +1836,11 @@ function renderSupervisaoRotina(data,ctx){
       <td style="padding:9px 10px;color:var(--text3);font-size:11px">${r.cargo}</td>
       <td style="padding:9px 10px"><span style="display:inline-block;border:1px solid ${c.bd};background:${c.bg};color:${c.c};border-radius:999px;padding:4px 8px;font-size:9px;font-weight:900">${c.txt}</span></td>
       <td style="padding:9px 10px;color:${r.status==='miss'||r.status==='late'?'var(--amber)':'var(--text3)'};font-size:11px">${dif}</td>
-      <td style="padding:9px 10px;text-align:right">${r.enviado?'--':`<button onclick="registrarEnvioSupervisaoRotina('${r.id}','${data}','${ctx.gid}')" style="padding:5px 8px;border-radius:7px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:10px;font-weight:900;cursor:pointer">Registrar envio</button>`}</td>
+      <td style="padding:9px 10px;text-align:right">${r.enviado?`<button onclick="abrirRelatorioSupervisaoRotina('${r.id}','${data}','${ctx.gid}','${ctx.turno||'dia'}')" style="padding:5px 8px;border-radius:7px;border:1px solid var(--green);background:#00C48C14;color:var(--green);font-size:10px;font-weight:900;cursor:pointer">Abrir PDF</button>`:`<button onclick="registrarEnvioSupervisaoRotina('${r.id}','${data}','${ctx.gid}','${ctx.turno||'dia'}')" style="padding:5px 8px;border-radius:7px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:10px;font-weight:900;cursor:pointer">Registrar envio</button>`}</td>
     </tr>`;
   }).join('');
   return`
-    ${secTitle('🕒','Quadro de atividades e envios',`${feitos}/${rows.length} enviados · ${noPrazo} no prazo`)}
+    ${secTitle('🕒','Quadro de atividades e envios',`${feitos}/${rows.length} enviados · ${noPrazo} no prazo · ${janela.label}`)}
     <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px">
       ${kpi('Enviados',feitos,rows.length,'',false,0)}
       ${kpi('No prazo',noPrazo,undefined,'',false,0)}
@@ -1845,14 +1870,49 @@ function renderSupervisaoRotina(data,ctx){
   `;
 }
 
-async function registrarEnvioSupervisaoRotina(id,data,gid){
+async function abrirRelatorioSupervisaoRotina(id,data,gid,turno='dia'){
   const item=SUPERVISAO_ROTINA.find(x=>x.id===id);
   if(!item){toast('Atividade não encontrada','err');return;}
+  const gidAnt=S.gidAtivo;
+  S.gidAtivo=gid||getGid();
+  try{
+    if(item.tipo==='3.3'){
+      S._r33Data=data;
+      S._r33Turno=turno;
+      await gerarRelatorio33();
+      return;
+    }
+    if(item.tipo==='3.4'){
+      await gerarRelatorio34(data,turno,gid||getGid());
+      return;
+    }
+    if(item.tipo==='2.1'){
+      await gerarRelatorio21Setorial(data,turno);
+      return;
+    }
+    if(item.tipo==='2.4'){
+      toast('Abra o 2.4 pelo módulo de Fechamento PCM para exportar o PDF deste turno.','warn');
+      return;
+    }
+    if(item.tipo==='2.18'){
+      toast('Abra o 2.18 SOS Recolha para selecionar a ocorrência e exportar o PDF.','warn');
+      return;
+    }
+    toast('Este documento ainda não tem PDF automático conectado nesta linha.','warn');
+  }finally{
+    S.gidAtivo=gidAnt;
+  }
+}
+
+async function registrarEnvioSupervisaoRotina(id,data,gid,turno=null){
+  const item=SUPERVISAO_ROTINA.find(x=>x.id===id);
+  if(!item){toast('Atividade não encontrada','err');return;}
+  const turnoRef=turno||S._supTurno||S.turno||turnoOperacionalAtual(opTimezone(gid||getGid()));
   const payload={
-    numero:`SUP-${id}-${data}`,
+    numero:`SUP-${id}-${data}-${turnoRef}`,
     tipo:`SUP:${id}`,
     data_evento:data,
-    turno:S.turno||'dia',
+    turno:turnoRef,
     garagem_id:gid||getGid(),
     status:'fechado',
     fechado_em:new Date().toISOString(),
@@ -1876,8 +1936,12 @@ async function renderSupervisao(gidFiltro=null){
   const isDiret=['diretoria','operacoes_seguras'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
   const gid=gidFiltro||(isDiret?(S.garagens[0]?.id):S.perfil?.garagem_id)||(S.garagens[0]?.id);
   const garagem=S.garagens.find(g=>g.id===gid);
-  const data=hoje();
-  const turno=S.turno||'dia';
+  const tz=opTimezone(gid);
+  const turno=S._supTurno||S.turno||turnoOperacionalAtual(tz);
+  const data=S._supData||dataOperacionalAtual(turno,tz);
+  S._supData=data;
+  S._supTurno=turno;
+  const janela=supJanelaAuditoria(data,turno,gid);
   const agora=new Date();
   const dataValet=typeof resolverDataValetComDados==='function'
     ?await resolverDataValetComDados(gid,typeof proximoSabadoISO==='function'?proximoSabadoISO():data,false)
@@ -1913,7 +1977,7 @@ async function renderSupervisao(gidFiltro=null){
     sb.from('frota').select('*').eq('garagem_id',gid),
     sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado'),
     sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).eq('status','liberado')
-      .gte('hora_liberacao',new Date(agora.getFullYear(),agora.getMonth(),agora.getDate()).toISOString()),
+      .gte('hora_liberacao',janela.ini).lte('hora_liberacao',janela.fim),
     sb.from('soltura_2_10').select('*').eq('garagem_id',gid).eq('data',data),
     sb.from('checklist_lavagem').select('*').eq('garagem_id',gid).eq('data',data),
     sb.from('fechamento_turno_pcm').select('*').eq('garagem_id',gid).eq('data',data).order('created_at',{ascending:false}),
@@ -1921,7 +1985,7 @@ async function renderSupervisao(gidFiltro=null){
     sb.from('relatorios_gerados').select('*').eq('garagem_id',gid).eq('data_evento',data).order('created_at',{ascending:false}),
     sb.from('checklist_38').select('*').eq('garagem_id',gid).eq('data',data).order('created_at',{ascending:false}),
     sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).eq('data',dataValet).neq('status','cancelado').order('criado_em',{ascending:true}),
-    sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).order('created_at',{ascending:false}),
+    sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno).order('created_at',{ascending:false}),
     sb.from('checklist_equipamentos').select('*').eq('garagem_id',gid).eq('data',data).order('criado_em',{ascending:false}),
     sb.from('previsibilidade_26').select('*').eq('garagem_id',gid).eq('data',data),
   ]);
@@ -2030,16 +2094,30 @@ async function renderSupervisao(gidFiltro=null){
       <td style="padding:8px 12px;font-size:11px;color:var(--text3)">${o.mecanico||'—'}</td>
     </tr>`;
   }).join('');
-  const rotinaHtml=renderSupervisaoRotina(data,{gid,relatorios:rels,ck33,ck34,libs38,fechGaragem,fechPCM,prev26,valetamentos:valetLista});
+  const rotinaHtml=renderSupervisaoRotina(data,{gid,turno,janela,relatorios:rels,ck33,ck34,libs38,fechGaragem,fechPCM,prev26,valetamentos:valetLista});
+  const janelaTxt=`${janela.dtIni.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:tz})} até ${janela.dtFim.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:tz})}`;
 
   setMain(`
     <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
       <div>
         <div style="font-size:20px;font-weight:800">📊 Supervisão</div>
-        <div style="color:var(--text3);font-size:12px;margin-top:4px">${garagem?.nome||'—'} · ${new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',timeZone:'America/Manaus'})} · Turno ${turno==='dia'?'☀️ Dia':'🌙 Noite'}</div>
+        <div style="color:var(--text3);font-size:12px;margin-top:4px">${garagem?.nome||'—'} · ${formatData(data)} · Turno ${turno==='dia'?'☀️ Dia':'🌙 Noite'} · ${janelaTxt}</div>
         ${seletorGaragem}
       </div>
-      <button onclick="renderSupervisao('${gid}')" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:8px 14px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">🔄 Atualizar</button>
+      <div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap">
+        <div>
+          <label style="display:block;color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Data auditoria</label>
+          <input class="fi" type="date" value="${data}" onchange="S._supData=this.value;renderSupervisao('${gid}')" style="width:150px">
+        </div>
+        <div>
+          <label style="display:block;color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Turno</label>
+          <select class="fi" onchange="S._supTurno=this.value;renderSupervisao('${gid}')" style="width:120px">
+            <option value="dia" ${turno==='dia'?'selected':''}>Dia</option>
+            <option value="noite" ${turno==='noite'?'selected':''}>Noite</option>
+          </select>
+        </div>
+        <button onclick="renderSupervisao('${gid}')" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:8px 14px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;height:38px">🔄 Atualizar</button>
+      </div>
     </div>
 
     ${rotinaHtml}
@@ -14338,18 +14416,19 @@ ${barraPrint('📋 2.4 · Fechamento de Turno PCM · '+garagem?.nome,'JTP_24_Fec
 }
 
 // ── 3.4 — Checklist de Equipamentos ───────────────────────────────────────
-async function gerarRelatorio34(){
-  const gid=getGid();
+async function gerarRelatorio34(dataArg=null,turnoArg=null,gidArg=null){
+  const gid=gidArg||getGid();
   const agora=new Date();
   const dtFmt=agora.toLocaleDateString('pt-BR',{timeZone:'America/Manaus'});
   const hrFmt=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'});
   const garagem=S.garagens?.find(g=>g.id===gid);
   const resp=S.perfil?.nome||'—';
-  const turno=S.turno||'dia';
+  const turno=turnoArg||S.turno||'dia';
+  const dataRef=dataArg||agora.toISOString().slice(0,10);
 
   // Buscar checklist de equipamentos do dia (se já preenchido)
   const{data:ckEquip}=await sb.from('checklist_equipamentos').select('*')
-    .eq('garagem_id',gid).eq('data',agora.toISOString().slice(0,10))
+    .eq('garagem_id',gid).eq('data',dataRef)
     .eq('turno',turno).maybeSingle().catch(()=>({data:null}));
 
   // Itens padrão da oficina
@@ -14417,7 +14496,7 @@ ${barraPrint('📋 3.4 · Checklist de Equipamentos · '+garagem?.nome,'JTP_34_C
   <tr>
     <td style="border:1px solid #333;"><span class="campo-label">Processo</span><br><span class="campo-val">3.4</span></td>
     <td style="border:1px solid #333;"><span class="campo-label">Turno</span><br><span class="campo-val">${turno==='dia'?'Dia':'Noite'}</span></td>
-    <td style="border:1px solid #333;"><span class="campo-label">Data</span><br><span class="campo-val">${dtFmt}</span></td>
+    <td style="border:1px solid #333;"><span class="campo-label">Data</span><br><span class="campo-val">${formatData(dataRef)}</span></td>
   </tr>
   <tr>
     <td style="border:1px solid #333;" colspan="2"><span style="font-size:8px">Checklist de verificação da funcionalidade dos equipamentos de apoio à operação. Equipamento inoperante = processo parado.</span></td>
@@ -14473,7 +14552,7 @@ ${barraPrint('📋 3.4 · Checklist de Equipamentos · '+garagem?.nome,'JTP_34_C
 <div style="margin-top:4px;font-size:8px;color:#888;text-align:right">Gerado automaticamente · ${dtFmt} · JTP Transportes</div>
 </body></html>`;
 
-  abrirRelatorioHTMLPCM(html, `JTP_34_ChecklistEquip_${agora.toISOString().slice(0,10).replace(/-/g,"")}.pdf`);
+  abrirRelatorioHTMLPCM(html, `JTP_34_ChecklistEquip_${dataRef.replace(/-/g,"")}_${turno}.pdf`);
 }
 
 // ── Helper: abrir relatório HTML como PDF ─────────────────────────────────
