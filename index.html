@@ -11725,24 +11725,28 @@ async function enviar212WhatsApp(){
 }
 
 const INDICADORES_212=[
-  {id:'cpk',nome:'CPK - Custo por KM (R$/km)',meta:'Conforme orçamento',tipo:'menor'},
-  {id:'mkbf',nome:'MKBF - KM entre Falhas',meta:'Meta definida por frota',tipo:'maior'},
-  {id:'prev_geral',nome:'Cumprimento Preventiva Geral',meta:'100%',tipo:'maior',metaNum:100},
-  {id:'prev_pesada',nome:'Cumprimento Preventiva Pesada',meta:'100%',tipo:'maior',metaNum:100},
-  {id:'prev_leve',nome:'Cumprimento Preventiva Leve',meta:'100%',tipo:'maior',metaNum:100},
-  {id:'indisp',nome:'Indisponibilidade de Frota',meta:'0',tipo:'menor',metaNum:0},
-  {id:'pneu_sucata',nome:'Pneus sucateados',meta:'Meta definida por frota',tipo:'menor'},
-  {id:'rod_pneu',nome:'Rodagem pneus km',meta:'Meta definida por frota',tipo:'maior'},
+  {id:'cpk',nome:'CPK - Custo por KM (R$/km)',meta:'',tipo:'menor'},
+  {id:'mkbf',nome:'MKBF - KM entre Falhas',meta:'',tipo:'maior'},
+  {id:'prev_geral',nome:'Cumprimento Preventiva Geral',meta:'',tipo:'maior'},
+  {id:'prev_pesada',nome:'Cumprimento Preventiva Pesada',meta:'',tipo:'maior'},
+  {id:'prev_leve',nome:'Cumprimento Preventiva Leve',meta:'',tipo:'maior'},
+  {id:'indisp',nome:'Indisponibilidade de Frota',meta:'',tipo:'menor'},
+  {id:'pneu_sucata',nome:'Pneus sucateados',meta:'',tipo:'menor'},
+  {id:'rod_pneu',nome:'Rodagem pneus km',meta:'',tipo:'maior'},
 ];
 function ind212Key(data,turno,gid){return `jtp_ind212_v1:${gid||getGid()}:${data||hoje()}:${turno||turnoOperacionalAtual()}`;}
 function ind212Numero(v){
-  const s=String(v??'').replace(/\./g,'').replace(',','.').match(/-?\d+(\.\d+)?/);
-  return s?Number(s[0]):null;
+  let s=String(v??'').trim();
+  if(!s)return null;
+  s=s.replace(/[^\d,.\-]/g,'');
+  if(!s||s==='-'||s===','||s==='.')return null;
+  if(s.includes(','))s=s.replace(/\./g,'').replace(',','.');
+  const n=Number(s);
+  return Number.isFinite(n)?n:null;
 }
 function ind212Calc(item,row){
-  const valor=ind212Numero(row.m1||row.s1||row.d1);
-  let meta=ind212Numero(row.meta);
-  if(meta===null&&item.metaNum!==undefined)meta=item.metaNum;
+  const valor=ind212Numero(row.m1);
+  const meta=ind212Numero(row.meta);
   if(item.tipo==='texto'||valor===null||meta===null)return {status:row.statusManual||'',label:row.statusManual?row.statusManual.toUpperCase():'--',cor:'var(--text3)'};
   const ok=item.tipo==='menor'?valor<=meta:valor>=meta;
   return {status:ok?'ok':'nok',label:ok?'OK':'NOK',cor:ok?'var(--green)':'var(--red)'};
@@ -11778,6 +11782,47 @@ function ind212ColetarTela(){
   });
   return state;
 }
+function ind212StatusStyle(calc){
+  const bg=calc.status==='ok'?'#00C48C20':calc.status==='nok'?'#EF444420':'var(--surface2)';
+  return `display:inline-block;min-width:48px;padding:5px 9px;border-radius:8px;background:${bg};color:${calc.cor};font-size:11px;font-weight:900`;
+}
+function ind212ResumoBox(id,label,val,meta=0){
+  const nok=(id==='nok'||id==='pend')&&Number(val)>Number(meta||0);
+  const ok=id==='nok'&&Number(val)<=Number(meta||0);
+  return `<div class="kpi ${nok?'nok':ok?'ok':''}" style="min-height:58px">
+    <div class="kpi-label">${label}</div>
+    <div id="ind212-resumo-${id}" class="kpi-value ${id==='nok'?'green':id==='pend'?'red':''}">${val}</div>
+    ${id==='nok'?`<div class="kpi-meta">${ok?'✓ OK':'X NOK'} – Meta: ${meta}</div>`:id==='pend'?`<div class="kpi-meta">X NOK – Meta: ${meta}</div>`:''}
+  </div>`;
+}
+function atualizarStatusIndicador212(id){
+  const item=INDICADORES_212.find(x=>x.id===id);
+  if(!item)return;
+  const row={};
+  ['d1','s1','m1','meta','acao','causa','statusManual'].forEach(c=>row[c]=document.getElementById(`ind212-${id}-${c}`)?.value||'');
+  const calc=ind212Calc(item,row);
+  const el=document.getElementById(`ind212-${id}-status`);
+  if(el){
+    el.textContent=calc.label;
+    el.setAttribute('style',ind212StatusStyle(calc));
+  }
+  atualizarResumoIndicadores212();
+}
+function atualizarResumoIndicadores212(){
+  const resumo={ok:0,nok:0,pend:0};
+  INDICADORES_212.forEach(it=>{
+    const row={};
+    ['d1','s1','m1','meta','acao','causa','statusManual'].forEach(c=>row[c]=document.getElementById(`ind212-${it.id}-${c}`)?.value||'');
+    const c=ind212Calc(it,row);
+    if(c.status==='ok')resumo.ok++;
+    else if(c.status==='nok')resumo.nok++;
+    else resumo.pend++;
+  });
+  Object.entries(resumo).forEach(([k,v])=>{
+    const el=document.getElementById(`ind212-resumo-${k}`);
+    if(el)el.textContent=v;
+  });
+}
 function ind212Input(id,val,ph='',extra=''){
   return `<input id="${id}" value="${prevEsc(val||'')}" placeholder="${ph}" ${extra} style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:8px 9px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">`;
 }
@@ -11791,19 +11836,19 @@ async function renderFerr212(backArg='',tabsArg=''){
   const banco=await buscarInd212Banco(gid,data,turno);
   const state=banco?.dados||ind212GetState(data,turno,gid);
   const rows=INDICADORES_212.map(it=>{
-    const r=state.itens?.[it.id]||{meta:it.meta};
-    if(!r.meta)r.meta=it.meta;
+    const r={meta:'',...(state.itens?.[it.id]||{})};
     const calc=ind212Calc(it,r);
     const precisa=calc.status==='nok';
+    const oncalc=`oninput="atualizarStatusIndicador212('${it.id}')"`;
     return `<tr style="border-top:1px solid var(--border2)">
       <td style="padding:9px 10px;color:var(--text);font-weight:800">${it.nome}</td>
-      <td style="padding:7px">${ind212Input(`ind212-${it.id}-d1`,r.d1,'D-1')}</td>
-      <td style="padding:7px">${ind212Input(`ind212-${it.id}-s1`,r.s1,'S-1')}</td>
-      <td style="padding:7px">${ind212Input(`ind212-${it.id}-m1`,r.m1,'M-1')}</td>
-      <td style="padding:7px">${ind212Input(`ind212-${it.id}-meta`,r.meta,it.meta)}</td>
+      <td style="padding:7px">${ind212Input(`ind212-${it.id}-d1`,r.d1,'D-1',oncalc)}</td>
+      <td style="padding:7px">${ind212Input(`ind212-${it.id}-s1`,r.s1,'S-1',oncalc)}</td>
+      <td style="padding:7px">${ind212Input(`ind212-${it.id}-m1`,r.m1,'M-1 acumulado',oncalc)}</td>
+      <td style="padding:7px">${ind212Input(`ind212-${it.id}-meta`,r.meta,'Meta',oncalc)}</td>
       <td style="padding:7px;text-align:center">
-        <span style="display:inline-block;min-width:48px;padding:5px 9px;border-radius:8px;background:${calc.status==='ok'?'#00C48C20':calc.status==='nok'?'#EF444420':'var(--surface2)'};color:${calc.cor};font-size:11px;font-weight:900">${calc.label}</span>
-        ${it.tipo==='texto'?`<select id="ind212-${it.id}-statusManual" style="margin-top:5px;width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:5px;font-size:11px"><option value="">Auto/manual</option><option value="ok"${r.statusManual==='ok'?' selected':''}>OK</option><option value="nok"${r.statusManual==='nok'?' selected':''}>NOK</option></select>`:`<input id="ind212-${it.id}-statusManual" type="hidden" value="${prevEsc(r.statusManual||'')}">`}
+        <span id="ind212-${it.id}-status" style="${ind212StatusStyle(calc)}">${calc.label}</span>
+        ${it.tipo==='texto'?`<select id="ind212-${it.id}-statusManual" onchange="atualizarStatusIndicador212('${it.id}')" style="margin-top:5px;width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:5px;font-size:11px"><option value="">Auto/manual</option><option value="ok"${r.statusManual==='ok'?' selected':''}>OK</option><option value="nok"${r.statusManual==='nok'?' selected':''}>NOK</option></select>`:`<input id="ind212-${it.id}-statusManual" type="hidden" value="${prevEsc(r.statusManual||'')}">`}
       </td>
       <td style="padding:7px">${ind212Input(`ind212-${it.id}-acao`,r.acao,precisa?'Obrigatório para NOK':'Plano de ação / obs')}</td>
       <td style="padding:7px">${ind212Input(`ind212-${it.id}-causa`,r.causa,precisa?'Causa do desvio 2.14':'Análise 2.14')}</td>
@@ -11822,7 +11867,7 @@ async function renderFerr212(backArg='',tabsArg=''){
     <div style="display:grid;grid-template-columns:170px 150px 1fr auto;gap:10px;align-items:end;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:14px">
       <div><label class="campo-label">Data</label><input id="ind212-data" class="fi" type="date" value="${data}" onchange="S._ind212Data=this.value;${rerender212}"></div>
       <div><label class="campo-label">Turno</label><select id="ind212-turno" class="fi" onchange="S._ind212Turno=this.value;${rerender212}"><option value="dia"${turno==='dia'?' selected':''}>Dia</option><option value="noite"${turno==='noite'?' selected':''}>Noite</option></select></div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${kpi('OK',resumo.ok,undefined,'',false,0)}${kpi('NOK',resumo.nok,0,'',true,0)}${kpi('Pendentes',resumo.pend,0,'',true,0)}</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${ind212ResumoBox('ok','OK',resumo.ok)}${ind212ResumoBox('nok','NOK',resumo.nok,0)}${ind212ResumoBox('pend','Pendentes',resumo.pend,0)}</div>
       <button class="btn-add" onclick="salvarIndicadores212()" style="height:44px;background:var(--green);border-color:var(--green);color:#06131f">💾 Salvar</button>
     </div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
