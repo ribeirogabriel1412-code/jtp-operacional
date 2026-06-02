@@ -13453,7 +13453,10 @@ async function renderFerr21(aba='fechar'){
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><b>${b.titulo}</b><span style="margin-left:auto;color:var(--text3);font-size:11px">${salvo.por?`Preenchido por ${prevEsc(salvo.por)}`:'Pendente'}</span></div>
       <textarea id="fech21novo-${b.id}" rows="4" ${pode?'':'disabled'} placeholder="Observações gerais do fechamento" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-family:inherit;resize:vertical">${prevEsc(salvo.rows||'')}</textarea>
     </section>`;
-    const rows=(salvo.rows&&Array.isArray(salvo.rows)?salvo.rows:b.rows).map((linha,r)=>`<tr>${b.cols.map((col,c)=>`<td style="padding:7px;border-top:1px solid var(--border2)">${fech21NovoCel(`fech21novo-${b.id}`,r,c,linha[c],!pode)}</td>`).join('')}</tr>`).join('');
+    const rows=(salvo.rows&&Array.isArray(salvo.rows)?salvo.rows:b.rows).map((linha,r)=>`<tr>${b.cols.map((col,c)=>{
+      const itemFixo=String(col||'').toLowerCase().includes('item de verificação');
+      return `<td style="padding:7px;border-top:1px solid var(--border2)">${fech21NovoCel(`fech21novo-${b.id}`,r,c,linha[c],!pode||itemFixo)}</td>`;
+    }).join('')}</tr>`).join('');
     return `<section style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${pode?'var(--blue)':'var(--border)'};border-radius:12px;overflow:hidden;margin-bottom:12px">
       <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border)"><b>${b.titulo}</b><span style="margin-left:auto;color:var(--text3);font-size:11px">${salvo.por?`Preenchido por ${prevEsc(salvo.por)}`:'Pendente'}</span></div>
       <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:820px"><thead><tr style="background:var(--surface2);color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.08em">${b.cols.map(c=>`<th style="padding:9px;text-align:left">${c}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
