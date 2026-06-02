@@ -10863,6 +10863,98 @@ const RONDA33_RESUMOS=[
   {id:'suprimentos',nome:'Suprimentos',cargos:['almoxarifado','lider_almoxarifado','lider_suprimentos'],campos:['Kits preventivos separados (D-1)']},
   {id:'sol_pendentes',nome:'Solicitações Pendentes',cargos:['almoxarifado','lider_almoxarifado','lider_suprimentos'],grid:['Prefixo','Solicitações','Status']},
 ];
+const RONDA33_CFG_KEY='jtp_ronda33_config_v1';
+function ronda33CloneSetores(src=RONDA33_SETORES){
+  return (src||[]).map(s=>({id:s.id,nome:s.nome,cargos:[...(s.cargos||[])],itens:(s.itens||[]).map(i=>[i[0],i[1],Number(i[2])||1])}));
+}
+function ronda33ConfigKey(){
+  let gid='geral';
+  try{gid=getGid()||'geral';}catch(e){}
+  return `${RONDA33_CFG_KEY}:${gid}`;
+}
+function ronda33Setores(){
+  try{
+    const cfg=JSON.parse(localStorage.getItem(ronda33ConfigKey())||'null');
+    if(Array.isArray(cfg)&&cfg.length)return ronda33CloneSetores(cfg);
+  }catch(e){}
+  return ronda33CloneSetores(RONDA33_SETORES);
+}
+function ronda33SalvarSetores(setores){
+  localStorage.setItem(ronda33ConfigKey(),JSON.stringify(ronda33CloneSetores(setores)));
+}
+function ronda33PodeConfigurar(){return !!S.perfil?.is_admin||['diretoria','gerente_garagem'].includes(S.perfil?.cargo);}
+function ronda33FlattenConfig(){
+  return ronda33Setores().flatMap(s=>(s.itens||[]).map(it=>({id:it[0],texto:it[1],rodada:Number(it[2])||1,setorId:s.id,setorNome:s.nome})));
+}
+function abrirConfigRonda33(){
+  if(!ronda33PodeConfigurar()){toast('Apenas admin pode editar a estrutura do 3.3','err');return;}
+  let modal=document.getElementById('modal-r33-config');
+  if(!modal){
+    modal=document.createElement('div');
+    modal.id='modal-r33-config';
+    modal.className='modal-ov';
+    modal.onclick=e=>{if(e.target===modal)modal.style.display='none'};
+    document.body.appendChild(modal);
+  }
+  const setores=ronda33Setores();
+  const opts=setores.map(s=>`<option value="${prevEsc(s.id)}">${prevEsc(s.nome)}</option>`).join('');
+  const rows=ronda33FlattenConfig().map((it,idx)=>`<tr data-r33-row="${idx}" style="border-top:1px solid var(--border)">
+    <td style="padding:8px"><select class="fi r33-cfg-setor" style="height:38px">${setores.map(s=>`<option value="${prevEsc(s.id)}"${s.id===it.setorId?' selected':''}>${prevEsc(s.nome)}</option>`).join('')}</select></td>
+    <td style="padding:8px"><select class="fi r33-cfg-rodada" style="height:38px"><option value="1"${it.rodada===1?' selected':''}>1ª rodada</option><option value="2"${it.rodada===2?' selected':''}>2ª rodada</option></select></td>
+    <td style="padding:8px"><input class="fi r33-cfg-texto" value="${prevEsc(it.texto)}" style="height:38px"></td>
+    <td style="padding:8px;text-align:center"><button class="btn-sm" onclick="this.closest('tr').remove()" style="color:var(--red);border-color:#EF444455">Excluir</button><input type="hidden" class="r33-cfg-id" value="${prevEsc(it.id)}"></td>
+  </tr>`).join('');
+  modal.innerHTML=`<div class="modal" style="max-width:1080px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden">
+    <div class="modal-title"><span>Configurar checklist 3.3</span><button class="btn-x" onclick="document.getElementById('modal-r33-config').style.display='none'">✕</button></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <button class="btn primary" onclick="salvarConfigRonda33()">Salvar configuração</button>
+      <button class="btn" onclick="adicionarLinhaConfigRonda33()">+ Adicionar item</button>
+      <button class="btn" onclick="restaurarConfigRonda33()" style="color:var(--amber);border-color:#F59E0B55">Restaurar padrão</button>
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Edite o texto da pergunta, escolha o setor responsável e se ela pertence à 1ª ou 2ª rodada. Isso altera a tela e o PDF do 3.3 neste acesso/admin.</div>
+    <div style="overflow:auto;border:1px solid var(--border);border-radius:10px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:920px">
+        <thead><tr style="background:var(--surface2);color:var(--text3);text-transform:uppercase;letter-spacing:.12em;font-size:10px"><th style="padding:9px;text-align:left;width:220px">Setor</th><th style="padding:9px;text-align:left;width:130px">Rodada</th><th style="padding:9px;text-align:left">Pergunta</th><th style="padding:9px;width:90px">Ação</th></tr></thead>
+        <tbody id="r33-cfg-body">${rows}</tbody>
+      </table>
+    </div>
+    <template id="r33-cfg-template"><tr style="border-top:1px solid var(--border)">
+      <td style="padding:8px"><select class="fi r33-cfg-setor" style="height:38px">${opts}</select></td>
+      <td style="padding:8px"><select class="fi r33-cfg-rodada" style="height:38px"><option value="1">1ª rodada</option><option value="2">2ª rodada</option></select></td>
+      <td style="padding:8px"><input class="fi r33-cfg-texto" value="" placeholder="Digite a pergunta..." style="height:38px"></td>
+      <td style="padding:8px;text-align:center"><button class="btn-sm" onclick="this.closest('tr').remove()" style="color:var(--red);border-color:#EF444455">Excluir</button><input type="hidden" class="r33-cfg-id" value=""></td>
+    </tr></template>
+  </div>`;
+  modal.style.display='flex';
+}
+function adicionarLinhaConfigRonda33(){
+  const body=document.getElementById('r33-cfg-body'), tpl=document.getElementById('r33-cfg-template');
+  if(body&&tpl)body.appendChild(tpl.content.cloneNode(true));
+}
+function salvarConfigRonda33(){
+  const base=ronda33Setores().map(s=>({...s,itens:[]}));
+  const byId=Object.fromEntries(base.map(s=>[s.id,s]));
+  document.querySelectorAll('#r33-cfg-body tr').forEach((tr,idx)=>{
+    const setorId=tr.querySelector('.r33-cfg-setor')?.value;
+    const texto=tr.querySelector('.r33-cfg-texto')?.value?.trim();
+    const rodada=parseInt(tr.querySelector('.r33-cfg-rodada')?.value||'1',10)||1;
+    let id=tr.querySelector('.r33-cfg-id')?.value?.trim();
+    if(!texto||!byId[setorId])return;
+    if(!id)id=`r${rodada}_${setorId}_${Date.now()}_${idx}`;
+    byId[setorId].itens.push([id,texto,rodada]);
+  });
+  ronda33SalvarSetores(base);
+  document.getElementById('modal-r33-config').style.display='none';
+  toast('Configuração do 3.3 salva');
+  renderFerr33();
+}
+function restaurarConfigRonda33(){
+  if(!confirm('Restaurar as perguntas padrão do 3.3?'))return;
+  localStorage.removeItem(ronda33ConfigKey());
+  toast('Configuração padrão restaurada');
+  abrirConfigRonda33();
+  renderFerr33();
+}
 function ronda33PodeValidar(){return S.perfil?.is_admin||['supervisor','coordenador','gerente_garagem'].includes(S.perfil?.cargo)||['executa','valida'].includes(papelFerr('ferr-33'));}
 function ronda33PodeEditarSetor(setor){const c=S.perfil?.cargo;return ronda33PodeValidar()||['executa','valida'].includes(papelFerr('ferr-33'))||(setor.cargos||[]).includes(c);}
 function ronda33PodeVerificar(){return ronda33PodeValidar();}
@@ -10916,16 +11008,18 @@ async function renderFerr33(){
     return `<button onclick="S._r33Data='${a.data}';S._r33Turno='${a.turno}';renderFerr33()" style="border:1px solid ${ativo?'var(--blue)':'var(--border)'};background:${ativo?'#2563EB22':'var(--surface2)'};color:${ativo?'var(--blue)':'var(--text2)'};border-radius:9px;padding:8px 10px;text-align:left;font-family:inherit;cursor:pointer"><b style="font-size:11px">${a.turno==='noite'?'🌙':'☀️'} ${formatData(a.data)} · ${a.turno}</b><div style="font-size:10px;color:var(--text3);margin-top:2px">${a.label} · ${a.preenchidos} preench.</div></button>`;
   }).join('');
   const avisoData=atalhoHtml?`<div style="background:#F59E0B12;border:1px solid #F59E0B44;border-radius:12px;padding:10px 12px;margin-bottom:14px"><div style="font-size:12px;color:var(--amber);font-weight:900;margin-bottom:8px">⚠️ Existem preenchimentos em outra referência de madrugada</div><div style="display:flex;gap:8px;flex-wrap:wrap">${atalhoHtml}</div><div style="font-size:11px;color:var(--text3);margin-top:8px">Use estes atalhos para abrir e exportar o relatório certo, sem misturar dia e turno.</div></div>`:'';
-  const top=`<div style="display:grid;grid-template-columns:190px 160px 1fr auto;gap:10px;align-items:end;margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px">
+  const top=`<div style="display:grid;grid-template-columns:190px 160px 1fr auto auto;gap:10px;align-items:end;margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px">
     <div><label class="campo-label">Data</label><div style="display:flex;gap:6px;align-items:center"><input id="r33-data-input" class="fi" type="date" value="${data}" onchange="S._r33Data=this.value;renderFerr33()" style="flex:1;min-width:0"><button type="button" title="Abrir calendário" onclick="document.getElementById('r33-data-input')?.showPicker?.();document.getElementById('r33-data-input')?.focus()" style="width:42px;height:42px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;font-size:16px">📅</button></div></div>
     <div><label class="campo-label">Turno</label><select class="fi" onchange="S._r33Turno=this.value;renderFerr33()"><option value="dia"${turno==='dia'?' selected':''}>Dia</option><option value="noite"${turno==='noite'?' selected':''}>Noite</option></select></div>
     <div style="color:var(--text3);font-size:12px;padding-bottom:10px">Cada líder preenche seu tema. Supervisor e coordenador visualizam tudo, preenchem se necessário e validam o turno.</div>
+    ${ronda33PodeConfigurar()?`<button class="btn-add" onclick="abrirConfigRonda33()" style="height:44px;white-space:nowrap;background:var(--surface2);border-color:var(--border);color:var(--text)">⚙️ Configurar checklist</button>`:''}
     <button class="btn-add" onclick="gerarRelatorio33()" style="height:44px;white-space:nowrap;background:var(--blue);border-color:var(--blue);color:#fff">📄 Exportar PDF</button>
   </div>`;
   const rodadaHtml=rodada=>{
     const rec=porRodada[rodada]||{dados:{respostas:{},resumos:{}}};
     const dados=rec.dados||{}, respostas=dados.respostas||{}, resumos=dados.resumos||{};
-    const setoresVisiveis=ronda33PodeVerTudo()?RONDA33_SETORES:RONDA33_SETORES.filter(ronda33PodeEditarSetor);
+    const setoresBase=ronda33Setores();
+    const setoresVisiveis=ronda33PodeVerTudo()?setoresBase:setoresBase.filter(ronda33PodeEditarSetor);
     const linhas=setoresVisiveis.flatMap(setor=>setor.itens.filter(i=>i[2]===rodada).map(it=>({setor,it})));
     return `<section style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px">
       <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"><b>Verificação ${rodada}ª Rodada</b><span style="color:var(--text3);font-size:12px">${linhas.length} itens</span></div>
@@ -10937,7 +11031,7 @@ async function renderFerr33(){
   setMain(`${secTitle('👣','3.3 Ronda Operacional',back)}${top}${avisoData}${rodadaHtml(1)}${rodadaHtml(2)}`);
 }
 function ronda33BuscaItemSite(itemId){
-  for(const setor of RONDA33_SETORES){
+  for(const setor of ronda33Setores()){
     const it=setor.itens.find(x=>x[0]===itemId);
     if(it)return{setor,it};
   }
@@ -10975,7 +11069,7 @@ async function gerarRelatorio33(){
   const rodadaTabela=rodada=>{
     const rec=porRodada[rodada]||{dados:{respostas:{},resumos:{}}};
     const respostas=rec.dados?.respostas||{};
-    const linhas=RONDA33_SETORES.flatMap(setor=>setor.itens.filter(i=>i[2]===rodada).map(it=>({setor,it,r:respostas[it[0]]||{}})));
+    const linhas=ronda33Setores().flatMap(setor=>setor.itens.filter(i=>i[2]===rodada).map(it=>({setor,it,r:respostas[it[0]]||{}})));
     return `<div class="sec-header">GEMBA ${rodada} - Verificação ${rodada}ª Rodada</div>
       <table>
         <thead><tr><th style="${B}width:120px">Setor</th><th style="${B}">Item</th><th style="${B}width:50px">Status</th><th style="${B}">Registro do líder</th><th style="${B}">Tratativa coord./sup.</th><th style="${B}width:100px">Preenchido por</th><th style="${B}width:100px">Validado por</th></tr></thead>
@@ -10990,7 +11084,7 @@ async function gerarRelatorio33(){
         </tr>`).join('')}</tbody>
       </table>`;
   };
-  const todos=RONDA33_SETORES.flatMap(s=>s.itens.map(i=>({s,i})));
+  const todos=ronda33Setores().flatMap(s=>s.itens.map(i=>({s,i})));
   const resp=Object.assign({},porRodada[1]?.dados?.respostas||{},porRodada[2]?.dados?.respostas||{});
   const preenchidos=todos.filter(x=>resp[x.i[0]]?.status).length;
   const nok=todos.filter(x=>resp[x.i[0]]?.status==='nok').length;
@@ -11000,7 +11094,7 @@ async function gerarRelatorio33(){
   const gembaResumo=rodada=>{
     const rec=porRodada[rodada]||{dados:{respostas:{},resumos:{}}};
     const respostas=rec.dados?.respostas||{};
-    const linhas=RONDA33_SETORES.flatMap(setor=>setor.itens.filter(i=>i[2]===rodada).map(it=>({setor,it,r:respostas[it[0]]||{}})));
+    const linhas=ronda33Setores().flatMap(setor=>setor.itens.filter(i=>i[2]===rodada).map(it=>({setor,it,r:respostas[it[0]]||{}})));
     const ok=linhas.filter(x=>x.r.status==='ok').length, nk=linhas.filter(x=>x.r.status==='nok').length, pend=linhas.filter(x=>!x.r.status).length, val=linhas.filter(x=>x.r.verificado).length;
     return `<td style="${B}text-align:center"><span class="campo-label">Gemba ${rodada}</span><br><b>${ok} OK · ${nk} NOK · ${pend} pend. · ${val} val.</b></td>`;
   };
