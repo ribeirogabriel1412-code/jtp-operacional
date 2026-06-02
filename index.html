@@ -13345,7 +13345,7 @@ ${barraPrint('📋 2.1 · Fechamento de Turno Garagem · '+(garagem?.nome||''),'
 // 2.1 - Fechamento de turno garagem por blocos do modelo atualizado
 const FECH21_NOVO_BLOCOS=[
   {id:'operacao',titulo:'Operação',resp:'supervisor',cols:['Item de Verificação','Realizado','Meta','Prefixo','Observações / Tratativa'],rows:[
-    ['Soltura de Frota','','','',''],['Recolhas Anormais (RA)','','','',''],['Recolhas Operacionais (RO)','','','',''],['Lavagens Completas','','','',''],['Lavagens Simples','','','',''],['Lavagens Escovão','','','',''],['Sinistros','','','',''],['Partidas Perdidas','','','','']
+    ['Soltura de Frota','','100%','',''],['Recolhas Anormais (RA)','','0','',''],['Recolhas Operacionais (RO)','','0','',''],['Lavagens','','','',''],['Escovão + varrer + retirar os lixo','','','',''],['Sinistros','','','',''],['Partidas Perdidas','','','','']
   ]},
   {id:'absenteismo',titulo:'Absenteísmo',resp:'supervisor',cols:['Matrícula','Motivo','Matrícula reserva','Tratativas'],rows:Array.from({length:8},()=>['','','',''])},
   {id:'man_indisp',titulo:'Manutenção - Veículos Indisponíveis',resp:'ambos',cols:['Prefixo','Solicitações','Custo (2.6)','Tratativas'],rows:Array.from({length:6},()=>['','','',''])},
@@ -13378,11 +13378,29 @@ function fech21NovoEstadoVazio(data,turno){
   FECH21_NOVO_BLOCOS.forEach(b=>{blocos[b.id]={rows:JSON.parse(JSON.stringify(b.rows)),por:null,em:null};});
   return {versao:'novo_21_v1',data,turno,blocos,status:'em_andamento',preenchidoPor:null,atualizadoEm:null};
 }
+function fech21NovoNormalizar(state){
+  if(!state?.blocos?.operacao)return state;
+  const base=(FECH21_NOVO_BLOCOS.find(b=>b.id==='operacao')?.rows||[]);
+  const antigos=Array.isArray(state.blocos.operacao.rows)?state.blocos.operacao.rows:[];
+  const porNome={};
+  antigos.forEach(r=>{
+    const item=String(r?.[0]||'').trim();
+    if(!item)return;
+    const chave=item==='Lavagens Simples'?'Lavagens':item==='Lavagens Escovão'?'Escovão + varrer + retirar os lixo':item;
+    if(item==='Lavagens Completas')return;
+    porNome[chave]=r;
+  });
+  state.blocos.operacao.rows=base.map(def=>{
+    const salvo=porNome[def[0]];
+    return salvo?[def[0],salvo[1]||'',def[2]||salvo[2]||'',salvo[3]||'',salvo[4]||'']:def;
+  });
+  return state;
+}
 function fech21NovoParseRow(r){
   try{
     const txt=String(r?.bastao_obs||'');
     if(!txt.includes('"versao":"novo_21_v1"'))return null;
-    return JSON.parse(txt);
+    return fech21NovoNormalizar(JSON.parse(txt));
   }catch(e){return null;}
 }
 async function fech21NovoBuscar(gid,data,turno){
@@ -13391,7 +13409,7 @@ async function fech21NovoBuscar(gid,data,turno){
     const parsed=(rows||[]).map(fech21NovoParseRow).find(Boolean);
     if(parsed)return parsed;
   }catch(e){}
-  try{return JSON.parse(localStorage.getItem(fech21NovoKey(data,turno,gid))||'null')||null;}catch(e){return null;}
+  try{return fech21NovoNormalizar(JSON.parse(localStorage.getItem(fech21NovoKey(data,turno,gid))||'null'))||null;}catch(e){return null;}
 }
 function fech21NovoCel(id,r,c,val,disabled){
   return `<input id="${id}-${r}-${c}" value="${prevEsc(val||'')}" ${disabled?'disabled':''} style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:8px 9px;font-size:12px;${disabled?'opacity:.55;cursor:not-allowed':''}">`;
