@@ -1707,35 +1707,33 @@ async function concluirCompraValetPrefixo(grupoId){
 }
 
 const SUPERVISAO_ROTINA=[
-  {id:'r33_0030',doc:'3.3 - Ronda operacional rodada 1',ferr:'APP',hora:'00:30',resp:'Ocibmar',cargo:'Supervisor',tipo:'3.3',rodada:1},
-  {id:'r33_0330',doc:'3.3 - Ronda operacional rodada 2',ferr:'APP',hora:'03:30',resp:'Ocibmar',cargo:'Supervisor',tipo:'3.3',rodada:2},
-  {id:'r34_0350',doc:'3.4 - Funcionalidade de ativos',ferr:'APP',hora:'03:50',resp:'Natan',cargo:'Assist. PCM',tipo:'3.4'},
-  {id:'r21_0420',doc:'2.1 - Fechamento de turno',ferr:'SITE',hora:'04:20',resp:'Ocibmar',cargo:'Supervisor',tipo:'2.1'},
-  {id:'r26_0420',doc:'2.6 - Custo (Fechamento)',ferr:'SITE',hora:'04:20',resp:'Natan',cargo:'Líder PCM',tipo:'2.6'},
-  {id:'r22f_0420',doc:'2.2 - Priorização de veículos (Fechamento)',ferr:'WHATSAPP',hora:'04:20',resp:'Natan',cargo:'Líder PCM',tipo:'2.2'},
-  {id:'r24_0420',doc:'2.4 - Fechamento PCM',ferr:'SITE',hora:'04:20',resp:'Natan',cargo:'Assist. PCM',tipo:'2.4'},
-  {id:'r32_0420',doc:'3.2 - Checklist de acompanhamento da manutenção',ferr:'-',hora:'04:20',resp:'Gutemberg',cargo:'Líder de oficina',tipo:'3.2'},
-  {id:'r38_0420',doc:'3.8 - Checklist de soltura',ferr:'APP',hora:'04:20',resp:'Gutemberg',cargo:'Líder de oficina',tipo:'3.8'},
-  {id:'r23_0620',doc:'2.3 - Fechamento Almox',ferr:'-',hora:'06:20',resp:'Daniel',cargo:'Almoxarife',tipo:'2.3'},
-  {id:'r218_0730',doc:'2.18 - SOS',ferr:'-',hora:'07:30',resp:'Gabriel',cargo:'Assist. PCM',tipo:'2.18'},
-  {id:'r22_0900',doc:'2.2 - Priorização de veículos',ferr:'WHATSAPP',hora:'09:00',resp:'Alcides / Geremias / Leonan',cargo:'Coordenador / Líder PCM / Líder Almox',tipo:'2.2'},
-  {id:'r33_1030',doc:'3.3 - Ronda operacional rodada 1',ferr:'APP',hora:'10:30',resp:'Alcides / Geremias / Leonan',cargo:'Coordenador / Líder PCM / Líder Almox',tipo:'3.3',rodada:1},
-  {id:'r22_1200',doc:'2.2 - Priorização de veículos',ferr:'WHATSAPP',hora:'12:00',resp:'Geremias',cargo:'Coordenador / Líder PCM',tipo:'2.2'},
-  {id:'r34_1320',doc:'3.4 - Funcionalidade de ativos',ferr:'APP',hora:'13:20',resp:'Gabriel',cargo:'Assist. PCM',tipo:'3.4'},
-  {id:'r24_1320',doc:'2.4 - Fechamento PCM',ferr:'SITE',hora:'13:20',resp:'Gabriel',cargo:'Assist. PCM',tipo:'2.4'},
-  {id:'r23_1420',doc:'2.3 - Fechamento Almox',ferr:'--',hora:'14:20',resp:'Henrique',cargo:'Almoxarife',tipo:'2.3'},
-  {id:'r32_1620',doc:'3.2 - Checklist de acompanhamento da manutenção',ferr:'--',hora:'16:20',resp:'Saulo',cargo:'Líder de oficina',tipo:'3.2'},
-  {id:'r38_1620',doc:'3.8 - Checklist de soltura',ferr:'APP',hora:'16:20',resp:'Saulo',cargo:'Líder de oficina',tipo:'3.8'},
-  {id:'r219_1630',doc:'2.19 - Controle de solicitação de compra',ferr:'--',hora:'16:30',resp:'Leonan',cargo:'Líder Almox',tipo:'2.19'},
-  {id:'r33_1700',doc:'3.3 - Ronda operacional rodada 2',ferr:'APP',hora:'17:00',resp:'Alcides / Geremias / Leonan',cargo:'Coordenador / Líder PCM / Líder Almox',tipo:'3.3',rodada:2},
-  {id:'r22f_1700',doc:'2.2 - Priorização de veículos (Fechamento)',ferr:'WHATSAPP',hora:'17:00',resp:'Geremias',cargo:'Líder PCM',tipo:'2.2'},
-  {id:'r21_1800',doc:'2.1 - Fechamento de turno',ferr:'SITE',hora:'18:00',resp:'Alcides',cargo:'Coordenador',tipo:'2.1'},
-  {id:'r26_1800',doc:'2.6 - Custo (Fechamento)',ferr:'SITE',hora:'18:00',resp:'Geremias',cargo:'Líder PCM',tipo:'2.6'},
-  {id:'r34_2120',doc:'3.4 - Funcionalidade de ativos',ferr:'APP',hora:'21:20',resp:'Wadalla',cargo:'Assist. PCM',tipo:'3.4'},
-  {id:'r24_2120',doc:'2.4 - Fechamento PCM',ferr:'SITE',hora:'21:20',resp:'Wadalla',cargo:'Assist. PCM',tipo:'2.4'},
-  {id:'r22_2130',doc:'2.2 - Priorização de veículos',ferr:'WHATSAPP',hora:'21:30',resp:'Ocibmar / Natan',cargo:'Supervisor / Líder PCM',tipo:'2.2'},
-  {id:'r23_2320',doc:'2.3 - Fechamento Almox',ferr:'--',hora:'23:20',resp:'João',cargo:'Almoxarife',tipo:'2.3'},
-  {id:'r22_2345',doc:'2.2 - Priorização de veículos',ferr:'WHATSAPP',hora:'23:45',resp:'Ocibmar / Natan',cargo:'Supervisor / Líder PCM',tipo:'2.2'},
+  {id:'r26_aprov_0030',doc:'2.6 - Custo - Aprovação',ferr:'SITE',hora:'00:30',resp:'Ocibmar',cargo:'Supervisor',tipo:'2.6'},
+  {id:'r33_completo_0300',doc:'3.3 - Ronda operacional completo',ferr:'APP',hora:'03:00',resp:'Ocibmar',cargo:'Supervisor',tipo:'3.3'},
+  {id:'r26_aprov_0420',doc:'2.6 - Custo - Aprovação',ferr:'SITE',hora:'04:20',resp:'Ocibmar',cargo:'Supervisor',tipo:'2.6'},
+  {id:'r26_turno_0420',doc:'2.6 - Custo do turno',ferr:'SITE',hora:'04:20',resp:'Natan',cargo:'Líder PCM',tipo:'2.6'},
+  {id:'r24_0420',doc:'2.4 - Assistente PCM',ferr:'SITE',hora:'04:20',resp:'Natan',cargo:'Líder PCM',tipo:'2.4'},
+  {id:'r34_0420',doc:'3.4 - Relatório de ativos',ferr:'SITE',hora:'04:20',resp:'Natan',cargo:'Líder PCM',tipo:'3.4'},
+  {id:'r21_0720',doc:'2.1 - Fechamento de turno',ferr:'SITE',hora:'07:20',resp:'Ocibmar',cargo:'Supervisor',tipo:'2.1'},
+  {id:'r210_0720',doc:'2.10 - Relatório de soltura',ferr:'APP',hora:'07:20',resp:'Nilton',cargo:'Líder de Pátio',tipo:'2.10'},
+  {id:'abast_recolha_0720',doc:'Abastecimento e Recolha',ferr:'APP',hora:'07:20',resp:'Nilton',cargo:'Líder de Pátio',tipo:'abastecimento'},
+  {id:'r22_pesadas_0800',doc:'2.2 - Priorização Preventivas Pesadas',ferr:'WHATSAPP',hora:'08:00',resp:'Gabriel',cargo:'Assistente PCM',tipo:'2.2'},
+  {id:'r212_1000',doc:'2.12 - Indicadores técnicos',ferr:'SITE',hora:'10:00',resp:'Geremias',cargo:'Líder PCM',tipo:'2.12'},
+  {id:'r214_1000',doc:'2.14 - Análise de desvio',ferr:'SITE',hora:'10:00',resp:'Geremias',cargo:'Líder PCM',tipo:'2.14'},
+  {id:'r41_desvios_1200',doc:'4.1 - 5W2H - E-mails com desvios e indicadores técnicos',ferr:'EMAIL',hora:'12:00',resp:'Alcides',cargo:'Coordenador Operação',tipo:'4.1'},
+  {id:'r33_parcial_1200',doc:'3.3 - Ronda operacional parcial',ferr:'APP',hora:'12:00',resp:'Alcides',cargo:'Coordenador Operação',tipo:'3.3',rodada:1},
+  {id:'r24_1245',doc:'2.4 - Assistente PCM',ferr:'SITE',hora:'12:45',resp:'Gabriel',cargo:'Assistente PCM',tipo:'2.4'},
+  {id:'r34_1245',doc:'3.4 - Relatório de ativos',ferr:'SITE',hora:'12:45',resp:'Gabriel',cargo:'Assistente PCM',tipo:'3.4'},
+  {id:'r22_1300',doc:'2.2 - Priorização',ferr:'WHATSAPP',hora:'13:00',resp:'Wadalla',cargo:'Assistente PCM',tipo:'2.2'},
+  {id:'r41_fup_1400',doc:'4.1 - FUP - cobrança de Operações Seguras',ferr:'EMAIL',hora:'14:00',resp:'Alcides',cargo:'Coordenador Operação',tipo:'4.1'},
+  {id:'r33_coord_1800',doc:'3.3 - Ronda operacional',ferr:'APP',hora:'18:00',resp:'Alcides',cargo:'Coordenador Operação',tipo:'3.3',rodada:2},
+  {id:'r21_1800',doc:'2.1 - Fechamento de turno',ferr:'SITE',hora:'18:00',resp:'Alcides',cargo:'Coordenador Operação',tipo:'2.1'},
+  {id:'r33_lpcm_1800',doc:'3.3 - Ronda operacional',ferr:'APP',hora:'18:00',resp:'Geremias',cargo:'Líder PCM',tipo:'3.3',rodada:2},
+  {id:'r26_turno_1800',doc:'2.6 - Custo do turno',ferr:'SITE',hora:'18:00',resp:'Geremias',cargo:'Líder PCM',tipo:'2.6'},
+  {id:'r22_leves_2000',doc:'2.2 - Priorização Preventivas Leves',ferr:'WHATSAPP',hora:'20:00',resp:'Natan',cargo:'Líder PCM',tipo:'2.2'},
+  {id:'r24_2000',doc:'2.4 - Assistente PCM',ferr:'SITE',hora:'20:00',resp:'Wadalla',cargo:'Assistente PCM',tipo:'2.4'},
+  {id:'r34_2000',doc:'3.4 - Relatório de ativos',ferr:'SITE',hora:'20:00',resp:'Wadalla',cargo:'Assistente PCM',tipo:'3.4'},
+  {id:'r22_corretivas_2300',doc:'2.2 - Priorização Corretivas',ferr:'WHATSAPP',hora:'23:00',resp:'Natan',cargo:'Líder PCM',tipo:'2.2'},
+  {id:'r218_sos_demanda',doc:'2.18 - Relatório de S.O.S',ferr:'WHATSAPP',hora:'--',resp:'Gabriel / Wadalla',cargo:'Assistente PCM',tipo:'2.18',sobDemanda:true},
 ];
 
 function supDueDate(data,hora){
@@ -1760,6 +1758,7 @@ function supDueDateAuditoria(data,hora,turno,gid=getGid()){
   return dt;
 }
 function supAtividadeDoTurno(a,turno){
+  if(a.sobDemanda)return true;
   const h=String(a.hora||'');
   if(turno==='noite')return h>='20:00'||h<='07:20';
   return h>='08:00'&&h<='18:00';
@@ -1772,7 +1771,8 @@ function supFindRotinaEnvio(a,ctx){
   const rel=(ctx.relatorios||[]).find(r=>(!r.turno||r.turno===turnoRef)&&(String(r.tipo||'').includes('SUP:'+a.id)||String(r.numero||'').includes(a.id)||String(r.tipo||r.numero||'').includes(a.tipo)));
   if(rel)return{row:rel,quando:supRowTime(rel),fonte:'Relatório enviado'};
   if(a.tipo==='3.3'){
-    const row=(ctx.ck33||[]).filter(r=>Number(r.rodada)===Number(a.rodada)).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
+    const base=(ctx.ck33||[]).filter(r=>!a.rodada||Number(r.rodada)===Number(a.rodada));
+    const row=base.sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
     if(row)return{row,quando:supRowTime(row),fonte:'Checklist 3.3'};
   }
   if(a.tipo==='3.4'){
@@ -1799,18 +1799,22 @@ function supFindRotinaEnvio(a,ctx){
     const row=(ctx.valetamentos||[]).filter(r=>['pedido_compra','comprado'].includes(r.status||'')).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
     if(row)return{row,quando:supRowTime(row),fonte:'Solicitação compra'};
   }
+  if(a.tipo==='abastecimento'){
+    const row=[...(ctx.abastecimento||[]),...(ctx.fechAbastecimento||[])].sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
+    if(row)return{row,quando:supRowTime(row),fonte:'Abastecimento/Recolha'};
+  }
   return null;
 }
 function renderSupervisaoRotina(data,ctx){
   const janela=ctx.janela||supJanelaAuditoria(data,ctx.turno||'dia',ctx.gid);
   const agora=new Date();
   const rows=SUPERVISAO_ROTINA.filter(a=>supAtividadeDoTurno(a,ctx.turno||'dia')).map(a=>{
-    const due=supDueDateAuditoria(data,a.hora,ctx.turno||'dia',ctx.gid);
+    const due=a.sobDemanda?janela.dtFim:supDueDateAuditoria(data,a.hora,ctx.turno||'dia',ctx.gid);
     const found=supFindRotinaEnvio(a,ctx);
     const quando=found?.quando?new Date(found.quando):null;
     const enviado=!!quando;
     const atraso=enviado?Math.round((quando-due)/60000):Math.round((agora-due)/60000);
-    const status=enviado?(atraso<=0?'ok':'late'):(agora>due?'miss':'wait');
+    const status=enviado?(a.sobDemanda?'ok':(atraso<=0?'ok':'late')):(a.sobDemanda?'wait':(agora>due?'miss':'wait'));
     return{...a,due,found,quando,enviado,atraso,status};
   });
   const feitos=rows.filter(r=>r.enviado).length;
@@ -1826,11 +1830,11 @@ function renderSupervisaoRotina(data,ctx){
   const linha=rows.map(r=>{
     const c=cfg[r.status];
     const horaReal=r.quando?r.quando.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'--';
-    const dif=r.enviado?(r.atraso<=0?'No prazo':`+${r.atraso} min`):(r.status==='miss'?`Atrasado ${r.atraso} min`:'Aguardando');
+    const dif=r.sobDemanda?(r.enviado?'Registrado':'Sob demanda'):(r.enviado?(r.atraso<=0?'No prazo':`+${r.atraso} min`):(r.status==='miss'?`Atrasado ${r.atraso} min`:'Aguardando'));
     return`<tr style="border-bottom:1px solid var(--border2);background:${r.status==='miss'?'#EF444408':'transparent'}">
       <td style="padding:9px 10px;font-weight:800;color:var(--text)">${r.doc}</td>
       <td style="padding:9px 10px;color:var(--text2);font-size:11px">${r.ferr}</td>
-      <td style="padding:9px 10px;font-family:'DM Mono',monospace;color:var(--text);font-weight:900">${r.hora}</td>
+      <td style="padding:9px 10px;font-family:'DM Mono',monospace;color:var(--text);font-weight:900">${r.sobDemanda?'Sob demanda':r.hora}</td>
       <td style="padding:9px 10px;font-family:'DM Mono',monospace;color:${r.enviado?'var(--green)':'var(--text3)'};font-weight:900">${horaReal}</td>
       <td style="padding:9px 10px;color:var(--text2);font-size:11px">${r.resp}</td>
       <td style="padding:9px 10px;color:var(--text3);font-size:11px">${r.cargo}</td>
@@ -1973,6 +1977,8 @@ async function renderSupervisao(gidFiltro=null){
     {data:ck33},
     {data:ck34},
     {data:prev26},
+    {data:abastecimento},
+    {data:fechAbastecimento},
   ]=await Promise.all([
     sb.from('frota').select('*').eq('garagem_id',gid),
     sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado'),
@@ -1988,6 +1994,8 @@ async function renderSupervisao(gidFiltro=null){
     sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno).order('created_at',{ascending:false}),
     sb.from('checklist_equipamentos').select('*').eq('garagem_id',gid).eq('data',data).order('criado_em',{ascending:false}),
     sb.from('previsibilidade_26').select('*').eq('garagem_id',gid).eq('data',data),
+    sb.from('abastecimento_checklist').select('*').eq('garagem_id',gid).eq('data',data).order('created_at',{ascending:false}),
+    sb.from('fechamento_abastecimento').select('*').eq('garagem_id',gid).eq('data',data).order('created_at',{ascending:false}),
   ]);
 
   // ── KPIs FROTA ────────────────────────────────────────────
@@ -2094,7 +2102,7 @@ async function renderSupervisao(gidFiltro=null){
       <td style="padding:8px 12px;font-size:11px;color:var(--text3)">${o.mecanico||'—'}</td>
     </tr>`;
   }).join('');
-  const rotinaHtml=renderSupervisaoRotina(data,{gid,turno,janela,relatorios:rels,ck33,ck34,libs38,fechGaragem,fechPCM,prev26,valetamentos:valetLista});
+  const rotinaHtml=renderSupervisaoRotina(data,{gid,turno,janela,relatorios:rels,ck33,ck34,libs38,fechGaragem,fechPCM,prev26,valetamentos:valetLista,abastecimento,fechAbastecimento});
   const janelaTxt=`${janela.dtIni.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:tz})} até ${janela.dtFim.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:tz})}`;
 
   setMain(`
