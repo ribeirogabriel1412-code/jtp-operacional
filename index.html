@@ -11780,7 +11780,7 @@ async function buscarInd212Banco(gid,data,turno){
   return null;
 }
 async function salvarInd212Banco(gid,state,status='em_andamento'){
-  const payload={garagem_id:gid,data:state.data,turno:state.turno,dados:state,status,criado_por:S.perfil?.nome||null,created_at:new Date().toISOString()};
+  const payload={garagem_id:gid,data:state.data,turno:state.turno,dados:state,status,criado_por:S.perfil?.nome||null,atualizado_em:new Date().toISOString()};
   try{
     const atual=await sb.from('indicadores_tecnicos').select('id').eq('garagem_id',gid).eq('data',state.data).eq('turno',state.turno).order('created_at',{ascending:false}).limit(1).maybeSingle();
     const res=atual.data?.id?await sb.from('indicadores_tecnicos').update(payload).eq('id',atual.data.id):await sb.from('indicadores_tecnicos').insert(payload);
