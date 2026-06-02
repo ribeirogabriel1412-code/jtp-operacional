@@ -13340,32 +13340,33 @@ ${barraPrint('📋 2.1 · Fechamento de Turno Garagem · '+(garagem?.nome||''),'
 
 // 2.1 - Fechamento de turno garagem por blocos do modelo atualizado
 const FECH21_NOVO_BLOCOS=[
-  {id:'operacao',titulo:'Operação - OCIBMAR',resp:'supervisor',cols:['Item de Verificação','Realizado','Meta','Prefixo','Observações / Tratativa'],rows:[
+  {id:'operacao',titulo:'Operação',resp:'supervisor',cols:['Item de Verificação','Realizado','Meta','Prefixo','Observações / Tratativa'],rows:[
     ['Soltura de Frota','','','',''],['Recolhas Anormais (RA)','','','',''],['Recolhas Operacionais (RO)','','','',''],['Lavagens Completas','','','',''],['Lavagens Simples','','','',''],['Lavagens Escovão','','','',''],['Sinistros','','','',''],['Partidas Perdidas','','','','']
   ]},
-  {id:'absenteismo',titulo:'Absenteísmo - OCIBMAR',resp:'supervisor',cols:['Matrícula','Motivo','Matrícula reserva','Tratativas'],rows:Array.from({length:8},()=>['','','',''])},
-  {id:'man_indisp',titulo:'Manutenção - Veículos Indisponíveis - OCIBMAR / ALCIDES',resp:'ambos',cols:['Prefixo','Solicitações','Custo (2.6)','Tratativas'],rows:Array.from({length:6},()=>['','','',''])},
-  {id:'man_andamento',titulo:'Manutenção - Em Andamento - OCIBMAR / ALCIDES',resp:'ambos',cols:['Prefixo','Mecânico','Principal pendência'],rows:Array.from({length:8},()=>['','',''])},
+  {id:'absenteismo',titulo:'Absenteísmo',resp:'supervisor',cols:['Matrícula','Motivo','Matrícula reserva','Tratativas'],rows:Array.from({length:8},()=>['','','',''])},
+  {id:'man_indisp',titulo:'Manutenção - Veículos Indisponíveis',resp:'ambos',cols:['Prefixo','Solicitações','Custo (2.6)','Tratativas'],rows:Array.from({length:6},()=>['','','',''])},
+  {id:'man_andamento',titulo:'Manutenção - Em Andamento',resp:'ambos',cols:['Prefixo','Mecânico','Principal pendência'],rows:Array.from({length:8},()=>['','',''])},
   {id:'suprimentos',titulo:'Suprimentos',resp:'ambos',cols:['Item de Verificação','Realizado','Meta','Status','Observações'],rows:[['Kits preventivos separados (D-1)','','','','']]},
   {id:'obs',titulo:'Observações Gerais',resp:'ambos',tipo:'texto',rows:''},
 ];
 function fech21NovoKey(data,turno,gid){return `jtp_fech21_novo:${gid||getGid()}:${data||hoje()}:${turno||turnoOperacionalAtual()}`;}
 function fech21NovoCargo(){return String(S.perfil?.cargo||'').toLowerCase();}
+function fech21NovoEhCoordenacao(c){return ['coordenador','gerente_operacional'].includes(c);}
 function fech21NovoPodeBloco(b){
   const c=fech21NovoCargo();
   if(S.perfil?.is_admin||isAdmin?.())return true;
   if(['diretoria','gerente_garagem'].includes(c))return true;
-  if(b.resp==='ambos')return ['supervisor','coordenador'].includes(c);
+  if(b.resp==='ambos')return c==='supervisor'||fech21NovoEhCoordenacao(c);
   if(b.resp==='supervisor')return c==='supervisor';
-  if(b.resp==='coordenador')return c==='coordenador';
+  if(b.resp==='coordenador')return fech21NovoEhCoordenacao(c);
   return false;
 }
 function fech21NovoPodeEditar(b){
   const c=fech21NovoCargo();
   if(S.perfil?.is_admin||isAdmin?.())return true;
-  if(b.resp==='ambos')return ['supervisor','coordenador'].includes(c);
+  if(b.resp==='ambos')return c==='supervisor'||fech21NovoEhCoordenacao(c);
   if(b.resp==='supervisor')return c==='supervisor';
-  if(b.resp==='coordenador')return c==='coordenador';
+  if(b.resp==='coordenador')return fech21NovoEhCoordenacao(c);
   return false;
 }
 function fech21NovoEstadoVazio(data,turno){
@@ -13444,7 +13445,7 @@ async function renderFerr21(aba='fechar'){
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${kpi('Blocos',resumo.blocos,undefined,'',false,0)}${kpi('Preenchidos',resumo.preenchidos,undefined,'',false,0)}${kpi('Pendentes',resumo.pendentes,0,'',resumo.pendentes>0,0)}</div>
       <button class="btn-add" onclick="salvarFech21Novo()" style="height:44px;background:var(--green);border-color:var(--green);color:#06131f">💾 Salvar</button>
     </div>
-    <div style="color:var(--text3);font-size:12px;margin:-4px 0 12px">Supervisor preenche os blocos OCIBMAR. Coordenador preenche os blocos ALCIDES. Blocos OCIBMAR / ALCIDES ficam disponíveis para os dois.</div>
+    <div style="color:var(--text3);font-size:12px;margin:-4px 0 12px">Supervisor preenche os blocos de supervisão. Coordenador/gerente operacional preenche os blocos da coordenação. Blocos compartilhados ficam disponíveis para os dois.</div>
     ${blocos||'<div class="empty">Sem bloco disponível para este cargo.</div>'}`);
   S._fech21NovoState=state;
 }
