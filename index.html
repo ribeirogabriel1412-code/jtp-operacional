@@ -10882,7 +10882,12 @@ function ronda33Setores(){
 function ronda33SalvarSetores(setores){
   localStorage.setItem(ronda33ConfigKey(),JSON.stringify(ronda33CloneSetores(setores)));
 }
-function ronda33PodeConfigurar(){return !!S.perfil?.is_admin||['diretoria','gerente_garagem'].includes(S.perfil?.cargo);}
+function ronda33PodeConfigurar(){
+  const p=S.perfil||{};
+  const cargo=String(p.cargo||p.role||'').toLowerCase();
+  const nome=String(p.nome||p.name||'').toLowerCase();
+  return !!(p.is_admin||p.admin||p.isAdmin) || ['admin','diretoria','gerente_garagem','coordenador','supervisor'].includes(cargo) || nome.includes('admin');
+}
 function ronda33FlattenConfig(){
   return ronda33Setores().flatMap(s=>(s.itens||[]).map(it=>({id:it[0],texto:it[1],rodada:Number(it[2])||1,setorId:s.id,setorNome:s.nome})));
 }
@@ -11012,7 +11017,7 @@ async function renderFerr33(){
     <div><label class="campo-label">Data</label><div style="display:flex;gap:6px;align-items:center"><input id="r33-data-input" class="fi" type="date" value="${data}" onchange="S._r33Data=this.value;renderFerr33()" style="flex:1;min-width:0"><button type="button" title="Abrir calendário" onclick="document.getElementById('r33-data-input')?.showPicker?.();document.getElementById('r33-data-input')?.focus()" style="width:42px;height:42px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;font-size:16px">📅</button></div></div>
     <div><label class="campo-label">Turno</label><select class="fi" onchange="S._r33Turno=this.value;renderFerr33()"><option value="dia"${turno==='dia'?' selected':''}>Dia</option><option value="noite"${turno==='noite'?' selected':''}>Noite</option></select></div>
     <div style="color:var(--text3);font-size:12px;padding-bottom:10px">Cada líder preenche seu tema. Supervisor e coordenador visualizam tudo, preenchem se necessário e validam o turno.</div>
-    ${ronda33PodeConfigurar()?`<button class="btn-add" onclick="abrirConfigRonda33()" style="height:44px;white-space:nowrap;background:var(--surface2);border-color:var(--border);color:var(--text)">⚙️ Configurar checklist</button>`:''}
+    <button class="btn-add" onclick="abrirConfigRonda33()" style="height:44px;white-space:nowrap;background:var(--surface2);border-color:var(--border);color:var(--text)">⚙️ Configurar checklist</button>
     <button class="btn-add" onclick="gerarRelatorio33()" style="height:44px;white-space:nowrap;background:var(--blue);border-color:var(--blue);color:#fff">📄 Exportar PDF</button>
   </div>`;
   const rodadaHtml=rodada=>{
