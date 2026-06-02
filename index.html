@@ -723,7 +723,7 @@ async function carregarReservasDisponiveis(){
   sel.innerHTML=`<option value="">Selecione o reserva...</option>`+
     disponiveis.map(v=>`<option value="${v.prefixo}">${v.prefixo} — ${v.modelo||'—'} (${v.status==='disponivel'?'✅ Disponível':'🔧 '+v.status})</option>`).join('');
 }
-const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',coordenador:'Coordenador',supervisor:'Supervisor',lider_pcm:'Líder PCM',assistente_pcm:'Assistente PCM',almoxarifado:'Almoxarifado',lider_almoxarifado:'Líder Almoxarifado',lider_operacional:'Líder Operacional',lider_suprimentos:'Líder de Suprimentos',operacoes_seguras:'Operações Seguras',lider_oficina:'Líder de Oficina',lider_patio:'Líder de Pátio',lavador:'Lavador',manobrista:'Manobrista',frentista:'Frentista',plantao:'Plantão'};
+const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',gerente_operacional:'Gerente Operacional',coordenador:'Coordenador',supervisor:'Supervisor',lider_pcm:'Líder PCM',assistente_pcm:'Assistente PCM',almoxarifado:'Almoxarifado',lider_almoxarifado:'Líder Almoxarifado',lider_operacional:'Líder Operacional',lider_suprimentos:'Líder de Suprimentos',operacoes_seguras:'Operações Seguras',lider_oficina:'Líder de Oficina',lider_patio:'Líder de Pátio',lavador:'Lavador',manobrista:'Manobrista',frentista:'Frentista',plantao:'Plantão'};
 
 // ── FERRAMENTAS E PERMISSÕES ──────────────────────────────
 // ── SISTEMA DE PERMISSÕES 3 NÍVEIS: executa / valida / visualiza ──────────
@@ -751,8 +751,8 @@ const FERRAMENTAS_DEF=[
     visualiza:['gerente_garagem','diretoria','assistente_pcm'],
   },
   {id:'ferr-21',  icon:'📋', nome:'2.1 Fechamento Garagem',
-    executa:  ['lider_operacional','lider_patio','lider_pcm','lider_oficina','almoxarifado','lider_almoxarifado','lider_suprimentos'],
-    valida:   ['supervisor','coordenador','gerente_garagem'],
+    executa:  ['supervisor','coordenador','gerente_operacional','lider_operacional','lider_patio','lider_pcm','lider_oficina','almoxarifado','lider_almoxarifado','lider_suprimentos'],
+    valida:   ['gerente_garagem'],
     visualiza:['diretoria','operacoes_seguras'],
   },
   {id:'ferr-26',  icon:'💰', nome:'2.6 Previsibilidade',
@@ -826,8 +826,11 @@ function getPermsFerr(){
             mudou=true;
           }
         });
-        if(['ferr-33','ferr-21'].includes(f.id)){
-          salvo[f.id]={executa:[...(f.executa||[])],valida:[...(f.valida||[])],visualiza:[...(f.visualiza||[])]};
+        if(f.id==='ferr-21'){
+          ['supervisor','coordenador','gerente_operacional'].forEach(c=>{
+            PAPEIS.forEach(p=>{salvo[f.id][p]=(salvo[f.id][p]||[]).filter(x=>x!==c);});
+            salvo[f.id].executa=[...new Set([...(salvo[f.id].executa||[]),c])];
+          });
           mudou=true;
         }
       }
@@ -2314,7 +2317,7 @@ async function renderAdmin(){
   setMain(`
     ${secTitle('⚙️',`Gestão de Usuários — ${(users||[]).length} cadastrados`,`<button class="btn-add" onclick="abrirModalUser()">+ Novo Usuário</button>`)}
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px">
-      ${['diretoria','gerente_garagem','coordenador','supervisor','lider_pcm','assistente_pcm','almoxarifado','lider_operacional','lider_patio','lider_suprimentos','operacoes_seguras','lider_oficina'].map(c=>{
+      ${['diretoria','gerente_garagem','gerente_operacional','coordenador','supervisor','lider_pcm','assistente_pcm','almoxarifado','lider_operacional','lider_patio','lider_suprimentos','operacoes_seguras','lider_oficina'].map(c=>{
         const cnt=(users||[]).filter(u=>u.cargo===c).length;
         return`<div style="text-align:center"><div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:700;color:var(--text)">${cnt}</div><div style="color:var(--text3);font-size:10px;margin-top:2px">${CARGOS[c]}</div></div>`
       }).join('')}
