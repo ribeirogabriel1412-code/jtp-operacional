@@ -4881,6 +4881,13 @@ async function notificarWhatsApp(ocorrencia_id, status_novo){
   }
 }
 
+async function jtpRegistrarEnvio(tipo,data,turno){
+  const gid=getGid();
+  try{await sb.from('relatorios_gerados').insert({garagem_id:gid,tipo,numero:`${tipo}-${data}-${turno}`,data_evento:data,turno,status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){console.warn(`[relatorios_gerados ${tipo}] erro:`,e?.message);}
+}
+async function jtpEnviarWpp(mensagem){
+  try{await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+getAuthKey(),'apikey':getAuthKey()},body:JSON.stringify({tipo:'notificacao_ferr',garagem_id:getGid(),usuario_nome:S.perfil?.nome||'Sistema',mensagem_custom:mensagem})});}catch(e){console.warn('[wpp] erro:',e?.message);}
+}
 async function salvarOcorrencia22(){
   const gid=getGid();
   const prefixo=document.getElementById('m22-prefixo')?.value?.trim().toUpperCase();
@@ -9257,7 +9264,9 @@ async function salvarFechLiderPCM(gid,data,fluxo){
   var res={error:null};
   try{res=await sb.from('fechamento_lider_pcm').upsert(base,{onConflict:'garagem_id,data,fluxo'});}catch(e){res={error:e};}
   if(res.error&&!pcmIsMissingTable(res.error)){toast('Salvo localmente, banco recusou: '+res.error.message,'err');renderFerrPCM('consolidado');return;}
-  try{await sb.from('relatorios_gerados').insert({garagem_id:gid,tipo:'2.6',numero:`2.6-${data}-${fluxo}`,data_evento:data,turno:fluxo,status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){console.warn('[relatorios_gerados 2.6] erro:',e?.message);}
+  const garNome26=S.garagens?.find(g=>g.id===gid)?.nome||'JTP';
+  await jtpRegistrarEnvio('2.6',data,fluxo);
+  await jtpEnviarWpp(`💰 *2.6 – Fechamento do Líder PCM*\n📍 ${garNome26} | ${fluxo==='dia'?'☀️ Dia':'🌙 Noite'} | ${formatData(data)}\n👤 ${S.perfil?.nome||'—'}`);
   toast(res.error?'✅ Fechamento do líder salvo localmente':'✅ Fechamento do líder salvo');
   renderFerrPCM('consolidado');
 }
@@ -9449,10 +9458,11 @@ async function fecharTurno24(gid,data,turno){
   var res={error:null};
   try{res=await sb.from('fechamento_24').upsert(Object.assign({},base,extra),{onConflict:'garagem_id,data,turno'});}catch(e){res={error:e};}
   if(res.error&&pcmIsMissingColumn(res.error)){try{res=await sb.from('fechamento_24').upsert(base,{onConflict:'garagem_id,data,turno'});}catch(e){res={error:e};}}
-  const regRel24=async()=>{try{await sb.from('relatorios_gerados').insert({garagem_id:gid,tipo:'2.4',numero:`2.4-${data}-${turno}`,data_evento:data,turno,status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){console.warn('[relatorios_gerados 2.4] erro:',e?.message);}};
-  if(res.error&&pcmIsMissingTable(res.error)){await regRel24();toast('✅ Turno fechado localmente.');renderFerrPCM('fech24');return;}
+  const garNome=S.garagens?.find(g=>g.id===gid)?.nome||'JTP';
+  const reg24=async()=>{await jtpRegistrarEnvio('2.4',data,turno);await jtpEnviarWpp(`📋 *2.4 – Fechamento PCM*\n📍 ${garNome} | ${turno==='dia'?'☀️ Dia':'🌙 Noite'} | ${formatData(data)}\n👤 ${S.perfil?.nome||'—'}`);};
+  if(res.error&&pcmIsMissingTable(res.error)){await reg24();toast('✅ Turno fechado localmente.');renderFerrPCM('fech24');return;}
   if(res.error){toast('Fechado localmente, mas o banco recusou: '+res.error.message,'err');renderFerrPCM('fech24');return;}
-  await regRel24();
+  await reg24();
   toast('✅ Turno fechado!');
   renderFerrPCM('fech24');
 }
@@ -11332,6 +11342,8 @@ ${tratativasNok.length?tratativasNok.map(x=>`<tr><td style="${B}font-weight:700"
   <td style="border:none;text-align:center;border-top:1px solid #000;width:25%">Coordenador / Supervisor</td>
 </tr></table>
 </body></html>`;
+  await jtpRegistrarEnvio('3.3',data,turno);
+  await jtpEnviarWpp(`👣 *3.3 – Ronda Operacional*\n📍 ${garagem?.nome||'JTP'} | ${turno==='dia'?'☀️ Dia':'🌙 Noite'} | ${formatData(data)}\n✅ OK: ${preenchidos-nok} · ❌ NOK: ${nok} · ✔️ Validados: ${validados}\n👤 ${S.perfil?.nome||'—'}`);
   abrirRelatorioHTMLPCM(html,`JTP_33_RondaOperacional_${data.replace(/-/g,'')}_${turno}.pdf`);
 }
 async function salvarVerificacao33(rodada,itemId,valor){
@@ -13690,7 +13702,6 @@ async function salvar26(){
 
   const{error}=await sb.from('previsibilidade_26').insert(registros);
   if(error){toast('Erro: '+error.message,'err');return;}
-  try{await sb.from('relatorios_gerados').insert({garagem_id:gid,tipo:'2.6',numero:`2.6-${data}`,data_evento:data,turno:S.turno||turnoOperacionalAtual(),status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){console.warn('[relatorios_gerados 2.6] erro ao registrar:',e?.message);}
   toast(`✅ ${registros.length} registro(s) salvos!`);
 }
 
@@ -14186,6 +14197,10 @@ async function pdfFerr210(){
       <td>${r.manobrista?.split(' ')[0]||'—'}</td>
     </tr>`;
   }).join('');
+
+  const turno210=S.turno||turnoOperacionalAtual();
+  await jtpRegistrarEnvio('2.10',data,turno210);
+  await jtpEnviarWpp(`🚌 *2.10 – Soltura de Frota*\n📍 ${garagem?.nome||'JTP'} | ${formatData(data)}\n📊 ${pct}% saída — ${saiu} saíram · ${nao} não saíram · ${pend} pendentes\n👤 ${S.perfil?.nome||'—'}`);
 
   abrirJanelaPDF(`
     <div class="header">
