@@ -251,7 +251,7 @@ async function init(){
 async function doLogout(){await sb.auth.signOut();location.reload()}
 
 // NAVBAR
-const TELA_INICIO={lavador:'lavagem',lider_patio:'patio',lider_oficina:'oficina',lider_pcm:'oficina',assistente_pcm:'oficina',almoxarifado:'valet_almox',lider_almoxarifado:'valet_almox',lider_suprimentos:'valet_almox',coordenador:'ronda33',supervisor:'ronda33',lider_operacional:'ronda33',manobrista:'patio_man',frentista:'abastecimento',plantao:'recolha'};
+const TELA_INICIO={lavador:'lavagem',lider_patio:'patio',lider_oficina:'oficina',lider_pcm:'oficina',assistente_pcm:'oficina',almoxarifado:'valet_almox',lider_almoxarifado:'valet_almox',lider_suprimentos:'valet_almox',coordenador:'fech21',supervisor:'fech21',lider_operacional:'ronda33',manobrista:'patio_man',frentista:'abastecimento',plantao:'recolha',gerente_garagem:'fech21',gerente_operacional:'fech21'};
 const NAV={
   lavador:[{id:'lavagem',ic:'🚿',lb:'Lavagem'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_patio:[{id:'patio',ic:'✅',lb:'Validar'},{id:'patio_man',ic:'🚗',lb:'Zona'},{id:'soltura',ic:'🚌',lb:'Soltura'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'abastecimento',ic:'⛽',lb:'Abastec.'},{id:'lav_pesada',ic:'🚿',lb:'Lavagem'},{id:'home',ic:'🏠',lb:'Início'}],
@@ -263,6 +263,8 @@ const NAV={
   lider_almoxarifado:[{id:'valet_almox',ic:'📦',lb:'Kits'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_suprimentos:[{id:'valet_almox',ic:'📦',lb:'Kits'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'home',ic:'🏠',lb:'Início'}],
   coordenador:[{id:'fech21',ic:'📋',lb:'2.1'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'home',ic:'🏠',lb:'Início'}],
+  gerente_garagem:[{id:'fech21',ic:'📋',lb:'2.1'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'home',ic:'🏠',lb:'Início'}],
+  gerente_operacional:[{id:'fech21',ic:'📋',lb:'2.1'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'home',ic:'🏠',lb:'Início'}],
   supervisor:[{id:'fech21',ic:'📋',lb:'2.1'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'soltura',ic:'🚌',lb:'Soltura'},{id:'abastecimento',ic:'⛽',lb:'Abast.'},{id:'recolha',ic:'🔑',lb:'Recolha'},{id:'home',ic:'🏠',lb:'Início'}],
   manobrista:[{id:'patio_man',ic:'🚗',lb:'Pátio'},{id:'home',ic:'🏠',lb:'Início'}],
   frentista:[{id:'abastecimento',ic:'⛽',lb:'Abastecer'},{id:'home',ic:'🏠',lb:'Início'}],
