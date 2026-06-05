@@ -1781,9 +1781,17 @@ function supRowTime(row){
 function supFindRotinaEnvio(a,ctx){
   const turnoRef=ctx.turno||'dia';
   if(a.tipo==='3.3'){
-    const base=(ctx.ck33||[]).filter(r=>!a.rodada||Number(r.rodada)===Number(a.rodada));
+    const rodadaNum=a.rodada?Number(a.rodada):null;
+    const base=(ctx.ck33||[]).filter(r=>!rodadaNum||Number(r.rodada)===rodadaNum);
     const row=base.sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
-    if(row)return{row,quando:supRowTime(row),fonte:'Checklist 3.3'};
+    if(!row)return null;
+    const sc=row.dados?.setores_concluidos;
+    if(!sc)return{row,quando:supRowTime(row),fonte:'Checklist 3.3',parcial:false};
+    const setores33=['pcm','almox','operacao'];
+    const feitos=setores33.filter(s=>sc[s]?.ok);
+    if(feitos.length===0)return null;
+    const todos=feitos.length===setores33.length;
+    return{row,quando:todos?supRowTime(row):feitos.map(s=>sc[s]?.em).filter(Boolean).sort().pop()||null,fonte:'Checklist 3.3',parcial:!todos,setoresConcluidos:sc};
   }
   if(a.tipo==='3.4'){
     const row=(ctx.ck34||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
@@ -1853,11 +1861,21 @@ function renderSupervisaoRotina(data,ctx){
     late:{txt:'ENVIADO ATRASADO',c:'var(--amber)',bg:'#F59E0B14',bd:'#F59E0B45'},
     wait:{txt:'AGUARDANDO',c:'var(--blue)',bg:'#2563EB14',bd:'#2563EB45'},
     miss:{txt:'NÃO ENVIADO',c:'var(--red)',bg:'#EF444414',bd:'#EF444445'},
+    parcial:{txt:'PARCIAL',c:'#F59E0B',bg:'#F59E0B14',bd:'#F59E0B45'},
   };
-  const linha=rows.map(r=>{
-    const c=cfg[r.status];
+  const rows2=rows.map(r=>{
+    if(r.found?.parcial){
+      const quando=r.found.quando?new Date(r.found.quando):null;
+      return{...r,quando,enviado:false,status:'parcial'};
+    }
+    return r;
+  });
+  const linha=rows2.map(r=>{
+    const c=cfg[r.status]||cfg.wait;
     const horaReal=r.quando?r.quando.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'--';
-    const dif=r.sobDemanda?(r.enviado?'Registrado':'Sob demanda'):(r.enviado?(r.atraso<=0?'No prazo':`+${r.atraso} min`):(r.status==='miss'?`Atrasado ${r.atraso} min`:'Aguardando'));
+    const dif=r.sobDemanda?(r.enviado?'Registrado':'Sob demanda'):(r.enviado?(r.atraso<=0?'No prazo':`+${r.atraso} min`):(r.status==='miss'?`Atrasado ${r.atraso} min`:r.status==='parcial'?'Parcial':'Aguardando'));
+    const sc=r.found?.setoresConcluidos;
+    const setorBadges=sc?[{id:'pcm',n:'PCM'},{id:'almox',n:'Almox'},{id:'operacao',n:'Pátio'}].map(s=>`<span style="font-size:8px;padding:1px 5px;border-radius:3px;margin-left:3px;background:${sc[s.id]?.ok?'#00C48C20':'#33333322'};color:${sc[s.id]?.ok?'var(--green)':'var(--text4)'};">${sc[s.id]?.ok?'✅':'⏳'} ${s.n}</span>`).join(''):'';
     return`<tr style="border-bottom:1px solid var(--border2);background:${r.status==='miss'?'#EF444408':'transparent'}">
       <td style="padding:9px 10px;font-weight:800;color:var(--text)">${r.doc}</td>
       <td style="padding:9px 10px;color:var(--text2);font-size:11px">${r.ferr}</td>
@@ -1865,9 +1883,9 @@ function renderSupervisaoRotina(data,ctx){
       <td style="padding:9px 10px;font-family:'DM Mono',monospace;color:${r.enviado?'var(--green)':'var(--text3)'};font-weight:900">${horaReal}</td>
       <td style="padding:9px 10px;color:var(--text2);font-size:11px">${r.resp}</td>
       <td style="padding:9px 10px;color:var(--text3);font-size:11px">${r.cargo}</td>
-      <td style="padding:9px 10px"><span style="display:inline-block;border:1px solid ${c.bd};background:${c.bg};color:${c.c};border-radius:999px;padding:4px 8px;font-size:9px;font-weight:900">${c.txt}</span></td>
+      <td style="padding:9px 10px"><span style="display:inline-block;border:1px solid ${c.bd};background:${c.bg};color:${c.c};border-radius:999px;padding:4px 8px;font-size:9px;font-weight:900">${c.txt}</span>${setorBadges}</td>
       <td style="padding:9px 10px;color:${r.status==='miss'||r.status==='late'?'var(--amber)':'var(--text3)'};font-size:11px">${dif}</td>
-      <td style="padding:9px 10px;text-align:right">${r.enviado?`<button onclick="abrirRelatorioSupervisaoRotina('${r.id}','${data}','${ctx.gid}','${ctx.turno||'dia'}')" style="padding:5px 8px;border-radius:7px;border:1px solid var(--green);background:#00C48C14;color:var(--green);font-size:10px;font-weight:900;cursor:pointer">Abrir PDF</button>`:`<button onclick="registrarEnvioSupervisaoRotina('${r.id}','${data}','${ctx.gid}','${ctx.turno||'dia'}')" style="padding:5px 8px;border-radius:7px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:10px;font-weight:900;cursor:pointer">Registrar envio</button>`}</td>
+      <td style="padding:9px 10px;text-align:right">${r.enviado?`<button onclick="abrirRelatorioSupervisaoRotina('${r.id}','${data}','${ctx.gid}','${ctx.turno||'dia'}')" style="padding:5px 8px;border-radius:7px;border:1px solid var(--green);background:#00C48C14;color:var(--green);font-size:10px;font-weight:900;cursor:pointer">Abrir PDF</button>`:r.status==='parcial'?`<span style="font-size:10px;color:var(--text4)">Aguardando setores</span>`:`<button onclick="registrarEnvioSupervisaoRotina('${r.id}','${data}','${ctx.gid}','${ctx.turno||'dia'}')" style="padding:5px 8px;border-radius:7px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:10px;font-weight:900;cursor:pointer">Registrar envio</button>`}</td>
     </tr>`;
   }).join('');
   return`
@@ -11260,13 +11278,28 @@ async function renderFerr33(){
   const rodadaHtml=rodada=>{
     const rec=porRodada[rodada]||{dados:{respostas:{},resumos:{}}};
     const dados=rec.dados||{}, respostas=dados.respostas||{}, resumos=dados.resumos||{};
+    const sc=dados.setores_concluidos||{};
     const setoresBase=ronda33Setores();
     const setoresVisiveis=ronda33PodeVerTudo()?setoresBase:setoresBase.filter(ronda33PodeEditarSetor);
-    const linhas=setoresVisiveis.flatMap(setor=>setor.itens.filter(i=>i[2]===rodada).map(it=>({setor,it})));
+    const totalItens=setoresVisiveis.reduce((n,s)=>n+s.itens.filter(i=>i[2]===rodada).length,0);
+    const tbody=setoresVisiveis.map(setor=>{
+      const itensDaRodada=setor.itens.filter(i=>i[2]===rodada);
+      if(!itensDaRodada.length)return '';
+      const submetido=sc[setor.id]?.ok===true;
+      const podeSubmeter=ronda33PodeEditarSetor(setor)&&!podeVer;
+      const linhasSetor=itensDaRodada.map(it=>{const r=respostas[it[0]]||{};const trat=ronda33TratativaCoord(r);const lider=ronda33RegistroLider(r);const podeEditar=ronda33PodeEditarSetor(setor);return `<tr style="border-top:1px solid var(--border2);opacity:${submetido?.85:1}"><td style="padding:9px;color:var(--blue);font-weight:900">${setor.nome}</td><td style="padding:9px;color:var(--text)">${it[1]}</td><td style="padding:9px;text-align:center">${ronda33Badge(r.status)}</td><td style="padding:9px;color:var(--text2)">${prevEsc(lider||'--')}</td><td style="padding:9px;color:${r.status==='nok'?'var(--amber)':'var(--text3)'}">${prevEsc(trat||(r.status==='nok'?'Pendente de tratativa':'--'))}${r.tratativa_por?`<div style="font-size:10px;color:var(--text4);margin-top:3px">por ${prevEsc(r.tratativa_por)}</div>`:''}</td><td style="padding:9px;text-align:center;color:var(--text3)">${prevEsc(r.por||'--')}</td><td style="padding:9px;text-align:center;color:${r.verificado?'var(--green)':'var(--text3)'};font-weight:${r.verificado?'800':'600'}">${r.verificado?'✓ '+prevEsc(r.verificado_por||'Validado'):'--'}</td><td style="padding:9px;text-align:center"><div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap"><button onclick="editarItemRonda33Site(${rodada},'${it[0]}')" class="btn-sm" style="font-size:10px;border-color:var(--blue);color:var(--blue);opacity:${podeEditar&&!submetido?1:.5}" ${submetido?'disabled':''}>Editar líder</button>${podeVer?`<button onclick="salvarVerificacao33(${rodada},'${it[0]}',${r.verificado?'false':'true'})" class="btn-sm" style="font-size:10px">${r.verificado?'Remover':'Tratar/validar'}</button>`:''}</div></td></tr>`;}).join('');
+      const horaSubmit=submetido&&sc[setor.id]?.em?new Date(sc[setor.id].em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'';
+      const submitRow=podeSubmeter
+        ?(submetido
+          ?`<tr style="border-top:2px solid #00C48C30;background:#00C48C08"><td colspan="8" style="padding:8px 12px;color:var(--green);font-size:11px;font-weight:700">✅ ${setor.nome} submetido por ${prevEsc(sc[setor.id]?.por||'–')} às ${horaSubmit}</td></tr>`
+          :`<tr style="border-top:2px solid #2563EB30;background:#2563EB06"><td colspan="8" style="padding:8px 12px"><button onclick="submeterSetor33('${setor.id}',${rodada},'${data}','${turno}','${gid}')" style="padding:6px 14px;border-radius:8px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:900;cursor:pointer">Submeter ${setor.nome} →</button><span style="margin-left:10px;font-size:11px;color:var(--text4)">Preencha todos os itens e clique para confirmar o envio do seu setor</span></td></tr>`)
+        :(submetido?`<tr style="border-top:1px solid #00C48C20;background:#00C48C06"><td colspan="8" style="padding:6px 12px;color:var(--green);font-size:10px">✅ ${setor.nome} submetido por ${prevEsc(sc[setor.id]?.por||'–')} às ${horaSubmit}</td></tr>`:'');
+      return linhasSetor+submitRow;
+    }).join('');
     return `<section style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px">
-      <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"><b>Verificação ${rodada}ª Rodada</b><span style="color:var(--text3);font-size:12px">${linhas.length} itens</span></div>
+      <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"><b>Verificação ${rodada}ª Rodada</b><span style="color:var(--text3);font-size:12px">${totalItens} itens</span></div>
       <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:1320px;font-size:12px"><thead><tr style="background:var(--surface2);color:var(--text3);text-transform:uppercase;letter-spacing:.12em;font-size:10px"><th style="padding:9px;text-align:left">Setor</th><th style="padding:9px;text-align:left">Item</th><th style="padding:9px">Status</th><th style="padding:9px;text-align:left">Registro do líder</th><th style="padding:9px;text-align:left">Tratativa coord./sup.</th><th style="padding:9px">Preenchido por</th><th style="padding:9px">Validado por</th><th style="padding:9px">Ação</th></tr></thead><tbody>
-        ${linhas.map(({setor,it})=>{const r=respostas[it[0]]||{};const trat=ronda33TratativaCoord(r);const lider=ronda33RegistroLider(r);const podeEditar=ronda33PodeEditarSetor(setor);return `<tr style="border-top:1px solid var(--border2)"><td style="padding:9px;color:var(--blue);font-weight:900">${setor.nome}</td><td style="padding:9px;color:var(--text)">${it[1]}</td><td style="padding:9px;text-align:center">${ronda33Badge(r.status)}</td><td style="padding:9px;color:var(--text2)">${prevEsc(lider||'--')}</td><td style="padding:9px;color:${r.status==='nok'?'var(--amber)':'var(--text3)'}">${prevEsc(trat||(r.status==='nok'?'Pendente de tratativa':'--'))}${r.tratativa_por?`<div style="font-size:10px;color:var(--text4);margin-top:3px">por ${prevEsc(r.tratativa_por)}</div>`:''}</td><td style="padding:9px;text-align:center;color:var(--text3)">${prevEsc(r.por||'--')}</td><td style="padding:9px;text-align:center;color:${r.verificado?'var(--green)':'var(--text3)'};font-weight:${r.verificado?'800':'600'}">${r.verificado?'✓ '+prevEsc(r.verificado_por||'Validado'):'--'}</td><td style="padding:9px;text-align:center"><div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap"><button onclick="editarItemRonda33Site(${rodada},'${it[0]}')" class="btn-sm" style="font-size:10px;border-color:var(--blue);color:var(--blue);opacity:${podeEditar?1:.7}">Editar líder</button>${podeVer?`<button onclick="salvarVerificacao33(${rodada},'${it[0]}',${r.verificado?'false':'true'})" class="btn-sm" style="font-size:10px">${r.verificado?'Remover':'Tratar/validar'}</button>`:''}</div></td></tr>`}).join('')}
+        ${tbody}
       </tbody></table></div>
     </section>`;
   };
@@ -11396,6 +11429,25 @@ async function salvarFechar33(){
   const garNome=S.garagens?.find(g=>g.id===gid)?.nome||'JTP';
   await jtpRegistrarEnvio('3.3',data,turno);
   toast('✅ 3.3 registrada na Supervisão!');
+}
+async function submeterSetor33(setor,rodada,data,turno,gid){
+  const setorDef=ronda33Setores().find(s=>s.id===setor);
+  if(!setorDef){toast('Setor inválido','err');return;}
+  const atual=await sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno).eq('rodada',rodada).maybeSingle();
+  if(atual.error){toast('Erro: '+atual.error.message,'err');return;}
+  const rec=atual.data||null;
+  if(!rec){toast('Preencha os itens antes de submeter','err');return;}
+  const dados=rec.dados||{respostas:{},resumos:{}};
+  const respostas=dados.respostas||{};
+  const itensDaRodada=setorDef.itens.filter(i=>i[2]===rodada);
+  const semResposta=itensDaRodada.filter(i=>!respostas[i[0]]?.status);
+  if(semResposta.length>0){toast(`Preencha todos os itens antes de submeter (${semResposta.length} pendente(s))`,'err');return;}
+  dados.setores_concluidos=dados.setores_concluidos||{};
+  dados.setores_concluidos[setor]={ok:true,por:S.perfil?.nome||null,em:new Date().toISOString()};
+  const res=await sb.from('checklist_33').update({dados,preenchido_em:new Date().toISOString()}).eq('id',rec.id);
+  if(res.error){toast('Erro: '+res.error.message,'err');return;}
+  toast(`✅ ${setorDef.nome} submetido!`);
+  renderFerr33();
 }
 async function salvarVerificacao33(rodada,itemId,valor){
   const gid=getGid(), data=S._r33Data||ronda33DataPadrao(), turno=S._r33Turno||S.turno||turnoOperacionalAtual();
