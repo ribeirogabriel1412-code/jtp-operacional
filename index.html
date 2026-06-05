@@ -3078,7 +3078,7 @@ async function renderFerr210(tab='painel', dataFiltro=null){
 
   // Verifica se existe relatório para essa data/turno
   const{data:relExist}=await sb.from('relatorios_gerados').select('*')
-    .eq('garagem_id',gid).eq('data_evento',dataConsulta).eq('turno',turnoFiltro).eq('tipo','2.10').single();
+    .eq('garagem_id',gid).eq('data_evento',dataConsulta).eq('turno',turnoFiltro).eq('tipo','2.10').maybeSingle();
   const numDoc=relExist?.numero||gerarNumeroDoc('2.10',dataConsulta,gid);
 
   if(!S.soltura210.length){
@@ -3265,7 +3265,7 @@ async function fecharRelatorio210(gid, dataEvento, numero){
   const pct=total>0?((saiu/total)*100):0;
 
   // Verifica se já existe
-  const{data:exist}=await sb.from('relatorios_gerados').select('id').eq('numero',numero).single();
+  const{data:exist}=await sb.from('relatorios_gerados').select('id').eq('numero',numero).maybeSingle();
 
   if(exist){
     // Atualiza
@@ -9395,12 +9395,14 @@ async function renderFech24(gid,back,tabs){
   S._fech24Rel={gid:gid,dataRef:dataRef,turno:turno,horaIni:horaIni,horaFim:horaFim,periodoLabel:periodoLabel,ocs:ocs,reqs:reqs,pneus:pneus,entrada:entrada,saida:saida,movimento:movimento,divergencia:divergencia,totalPrevAbertas:totalPrevAbertas,totalRealFechadas:totalRealFechadas,fech:fech};
   var presetBtn=function(label,t,hi,hf){var ativo=turno===t&&horaIni===hi&&horaFim===hf;return '<button onclick="S._fech24Turno=&quot;'+t+'&quot;;S._fech24HoraIni=&quot;'+hi+'&quot;;S._fech24HoraFim=&quot;'+hf+'&quot;;renderFerrPCM(&quot;fech24&quot;)" style="padding:8px 12px;border-radius:8px;border:1px solid '+(ativo?'var(--blue)':'var(--border)')+';background:'+(ativo?'#2563EB22':'var(--surface2)')+';color:'+(ativo?'var(--blue)':'var(--text2)')+';font-size:12px;font-weight:800;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">'+label+'</button>';};
   var headerFech='<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin:-4px 0 18px">'+
-    '<div style="display:grid;grid-template-columns:190px 1fr auto;gap:12px;align-items:end">'+
-      '<div><label class="campo-label">Data do checklist</label><input class="fi" type="date" value="'+dataRef+'" onchange="S._fech24Data=this.value;renderFerrPCM(&quot;fech24&quot;)"></div>'+
+    '<div style="display:grid;grid-template-columns:160px 1fr auto auto;gap:10px;align-items:end;margin-bottom:10px">'+
+      '<div><label class="campo-label">Data</label><input class="fi" type="date" value="'+dataRef+'" onchange="S._fech24Data=this.value;renderFerrPCM(&quot;fech24&quot;)"></div>'+
       '<div><label class="campo-label">Período do turno do assistente</label><div style="display:flex;gap:8px;flex-wrap:wrap">'+presetBtn('Dia 05:00-13:00','dia','05:00','13:00')+presetBtn('Tarde 13:00-21:00','dia','13:00','21:00')+presetBtn('Noite 21:00-05:00','noite','21:00','05:00')+presetBtn('Comercial 07:00-17:00','dia','07:00','17:00')+'</div></div>'+
-      '<div style="font-size:12px;color:var(--text3);padding-bottom:9px;min-width:190px">'+tLabel+'<br>'+periodoLabel+'</div>'+
+      '<button onclick="fecharTurno24(\''+gid+'\',\''+dataRef+'\',\''+turno+'\')" style="height:44px;padding:0 18px;border-radius:10px;border:1px solid var(--green);background:var(--green);color:#06131f;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:\'DM Sans\',sans-serif">💾 Salvar</button>'+
+      '<button onclick="gerarPDFfech24()" style="height:44px;padding:0 18px;border-radius:10px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:\'DM Sans\',sans-serif">📄 Exportar PDF</button>'+
     '</div>'+
-    '<details style="margin-top:10px"><summary style="font-size:11px;color:var(--text3);font-weight:800;cursor:pointer">Ajuste manual de horário</summary><div style="display:grid;grid-template-columns:130px 130px;gap:10px;margin-top:10px"><div><label class="campo-label">Hora inicial</label><input class="fi" type="time" value="'+horaIni+'" onchange="S._fech24HoraIni=this.value;renderFerrPCM(&quot;fech24&quot;)"></div><div><label class="campo-label">Hora final</label><input class="fi" type="time" value="'+horaFim+'" onchange="S._fech24HoraFim=this.value;renderFerrPCM(&quot;fech24&quot;)"></div></div></details>'+
+    '<div style="font-size:12px;color:var(--text3);margin-bottom:8px">'+tLabel+' · '+periodoLabel+'</div>'+
+    '<details><summary style="font-size:11px;color:var(--text3);font-weight:800;cursor:pointer">Ajuste manual de horário</summary><div style="display:grid;grid-template-columns:130px 130px;gap:10px;margin-top:10px"><div><label class="campo-label">Hora inicial</label><input class="fi" type="time" value="'+horaIni+'" onchange="S._fech24HoraIni=this.value;renderFerrPCM(&quot;fech24&quot;)"></div><div><label class="campo-label">Hora final</label><input class="fi" type="time" value="'+horaFim+'" onchange="S._fech24HoraFim=this.value;renderFerrPCM(&quot;fech24&quot;)"></div></div></details>'+
   '</div>';
   setMain(secTitle('📋','Fechamento de Turno PCM - 2.4',back)+tabs+
     headerFech+
