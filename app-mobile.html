@@ -3848,7 +3848,7 @@ async function confirmarFechamentoLavagem(){
   if(ids.length){
     const{error:e1}=await sb.from('checklist_lavagem')
       .update({status:'arquivado'}).in('id',ids);
-    if(!e1){ arquivado=true; console.log('[lav] arquivado por IDs:',ids.length); }
+    if(!e1){ arquivado=true; }
     else console.warn('[lav] update por ID falhou:',e1.message);
   }
 
@@ -3856,7 +3856,7 @@ async function confirmarFechamentoLavagem(){
   if(!arquivado){
     const{error:e2}=await sb.from('checklist_lavagem')
       .update({status:'arquivado'}).eq('garagem_id',gid).eq('data',dataRef);
-    if(!e2){ arquivado=true; console.log('[lav] arquivado por data'); }
+    if(!e2){ arquivado=true; }
     else console.warn('[lav] arquivado por data falhou:',e2.message);
   }
 
@@ -6063,8 +6063,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementB
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
-      .then(r => console.log('SW registrado:', r.scope))
-      .catch(e => console.log('SW erro:', e));
+      .catch(e => console.warn('SW erro:', e));
   });
 }
 
