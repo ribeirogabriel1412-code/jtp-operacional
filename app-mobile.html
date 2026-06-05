@@ -262,8 +262,8 @@ const NAV={
   almoxarifado:[{id:'valet_almox',ic:'📦',lb:'Kits'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_almoxarifado:[{id:'valet_almox',ic:'📦',lb:'Kits'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_suprimentos:[{id:'valet_almox',ic:'📦',lb:'Kits'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'home',ic:'🏠',lb:'Início'}],
-  coordenador:[{id:'ronda33',ic:'👣',lb:'3.3'},{id:'home',ic:'🏠',lb:'Início'}],
-  supervisor:[{id:'ronda33',ic:'👣',lb:'3.3'},{id:'soltura',ic:'🚌',lb:'Soltura'},{id:'abastecimento',ic:'⛽',lb:'Abast.'},{id:'recolha',ic:'🔑',lb:'Recolha'},{id:'home',ic:'🏠',lb:'Início'}],
+  coordenador:[{id:'fech21',ic:'📋',lb:'2.1'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'home',ic:'🏠',lb:'Início'}],
+  supervisor:[{id:'fech21',ic:'📋',lb:'2.1'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'soltura',ic:'🚌',lb:'Soltura'},{id:'abastecimento',ic:'⛽',lb:'Abast.'},{id:'recolha',ic:'🔑',lb:'Recolha'},{id:'home',ic:'🏠',lb:'Início'}],
   manobrista:[{id:'patio_man',ic:'🚗',lb:'Pátio'},{id:'home',ic:'🏠',lb:'Início'}],
   frentista:[{id:'abastecimento',ic:'⛽',lb:'Abastecer'},{id:'home',ic:'🏠',lb:'Início'}],
   plantao:[{id:'recolha',ic:'🔑',lb:'Recolha'},{id:'home',ic:'🏠',lb:'Início'}],
@@ -6073,7 +6073,118 @@ async function gerarPDFSOS218Mobile(d){
   await downloadPDF(html,`JTP_218_SOS_${String(d.data||hoje()).replace(/-/g,'')}_${String(d.prefixo||'').replace(/\D/g,'')}.pdf`);
 }
 
-const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,prev26:telaPrev26,valet_oficina:telaValetOficina,prev_oficina:telaPrevOficina,valet_almox:telaValetAlmox,ronda33:telaRonda33,patio_man:telaPatioMan,recolha:telaRecolha,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip,sos218:telaSOS218};
+// ─── 2.1 FECHAMENTO DE TURNO GARAGEM ──────────────────────────
+const MOB_F21_BLOCOS=[
+  {id:'operacao',titulo:'Operação',resp:'supervisor',cols:['Item de Verificação','Realizado','Meta','Prefixo','Observações / Tratativa'],rows:[['Soltura de Frota','','100%','',''],['Recolhas Anormais (RA)','','0','',''],['Recolhas Operacionais (RO)','','0','',''],['Lavagens','','','',''],['Escovão + varrer + retirar os lixo','','','',''],['Sinistros','','','',''],['Partidas Perdidas','','','']]},
+  {id:'absenteismo',titulo:'Absenteísmo',resp:'supervisor',cols:['Matrícula','Motivo','Matrícula reserva','Tratativas'],rows:Array.from({length:8},()=>['','','',''])},
+  {id:'man_indisp',titulo:'Manutenção — Indisponíveis',resp:'ambos',cols:['Prefixo','Solicitações','Custo (2.6)','Tratativas'],rows:Array.from({length:6},()=>['','','',''])},
+  {id:'man_andamento',titulo:'Manutenção — Em Andamento',resp:'ambos',cols:['Prefixo','Mecânico','Principal pendência'],rows:Array.from({length:8},()=>['','',''])},
+  {id:'suprimentos',titulo:'Suprimentos',resp:'ambos',cols:['Item de Verificação','Realizado','Meta','Status','Observações'],rows:[['Kits preventivos separados (D-1)','','','','']]},
+  {id:'obs',titulo:'Observações Gerais',resp:'ambos',tipo:'texto',rows:''},
+];
+let _f21Data=dataOperacionalAtual(turnoOperacionalAtual()),_f21Turno=turnoOperacionalAtual(),_f21State=null;
+function f21Key(d,t){return `jtp_fech21_novo:${getGid()}:${d}:${t}`;}
+function f21PodeBloco(b){
+  const c=cargo();
+  if(S.perfil?.is_admin)return true;
+  if(b.resp==='ambos')return['supervisor','coordenador','gerente_garagem','gerente_operacional'].includes(c);
+  if(b.resp==='supervisor')return['supervisor','coordenador','gerente_garagem','gerente_operacional'].includes(c);
+  if(b.resp==='coordenador')return['coordenador','gerente_garagem','gerente_operacional'].includes(c);
+  return false;
+}
+function f21EstadoVazio(d,t){
+  const blocos={};
+  MOB_F21_BLOCOS.forEach(b=>{blocos[b.id]={rows:JSON.parse(JSON.stringify(b.rows)),por:null,em:null};});
+  return{versao:'novo_21_v1',data:d,turno:t,blocos,status:'em_andamento',preenchidoPor:null,atualizadoEm:null};
+}
+async function f21Buscar(d,t){
+  try{
+    const{data:rows}=await sb.from('fechamento_turno_garagem').select('*').eq('garagem_id',getGid()).eq('data',d).eq('turno',t).order('created_at',{ascending:false}).limit(12);
+    const parsed=(rows||[]).map(r=>{try{const tx=String(r?.bastao_obs||'');if(!tx.includes('"versao":"novo_21_v1"'))return null;return JSON.parse(tx);}catch{return null;}}).find(Boolean);
+    if(parsed)return parsed;
+  }catch(e){}
+  try{return JSON.parse(localStorage.getItem(f21Key(d,t))||'null')||null;}catch{return null;}
+}
+function f21ProgBloco(b,state){
+  const bd=state?.blocos?.[b.id];if(!bd)return{f:0,t:1};
+  if(b.tipo==='texto')return{f:String(bd.rows||'').trim()?1:0,t:1};
+  const colF=(b.cols||[]).findIndex(c=>c.toLowerCase().includes('item de verificação'));
+  const rows=Array.isArray(bd.rows)?bd.rows:b.rows;
+  const f=rows.filter(r=>r.some((c,i)=>i!==colF&&String(c||'').trim())).length;
+  return{f,t:rows.length};
+}
+async function telaFech21(){
+  render('<div class="loading"><div class="sp"></div></div>');
+  _f21State=await f21Buscar(_f21Data,_f21Turno)||f21EstadoVazio(_f21Data,_f21Turno);
+  const blocos=MOB_F21_BLOCOS.filter(f21PodeBloco);
+  const tot=blocos.length,fil=blocos.filter(b=>f21ProgBloco(b,_f21State).f>0).length;
+  const cards=blocos.map(b=>{
+    const{f,t}=f21ProgBloco(b,_f21State);
+    const pct=t?Math.round(f/t*100):0;
+    const cor=pct===100?'var(--green)':pct>0?'var(--amber)':'var(--text3)';
+    const ic=pct===100?'✅':pct>0?'⏳':'○';
+    return`<button onclick="abrirBloco21('${b.id}')" style="width:100%;display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid ${pct===100?'#00C48C30':pct>0?'#F59E0B30':'var(--border)'};border-radius:12px;padding:14px;margin-bottom:10px;color:var(--text);font-family:inherit;text-align:left"><div><div style="font-weight:800;font-size:14px">${escHtml(b.titulo)}</div><div style="font-size:11px;color:var(--text3);margin-top:3px">${b.tipo==='texto'?(pct?'Preenchido':'Pendente'):`${f}/${t} itens preenchidos`}</div></div><span style="font-size:22px;color:${cor}">${ic}</span></button>`;
+  }).join('');
+  render(`<div style="padding:14px 14px 0"><div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:18px;font-weight:900">📋 Fechamento 2.1</div><div style="font-size:11px;color:var(--text3)">Fechamento de Turno Garagem</div></div><button onclick="telaFech21()" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;color:var(--text)">🔄</button></div></div>
+  <div style="display:grid;grid-template-columns:1fr 110px;gap:8px;padding:12px 14px"><input class="fi2" type="date" value="${_f21Data}" onchange="_f21Data=this.value;_f21State=null;telaFech21()"><select class="fi2" onchange="_f21Turno=this.value;_f21State=null;telaFech21()"><option value="dia"${_f21Turno==='dia'?' selected':''}>☀️ Dia</option><option value="noite"${_f21Turno==='noite'?' selected':''}>🌙 Noite</option></select></div>
+  <div style="padding:0 14px 12px"><div style="background:var(--border);border-radius:99px;height:6px;overflow:hidden"><div style="width:${tot?Math.round(fil/tot*100):0}%;height:100%;background:var(--green);border-radius:99px"></div></div><div style="font-size:10px;color:var(--text3);margin-top:4px">${fil}/${tot} blocos preenchidos</div></div>
+  <div style="padding:0 14px">${cards}</div>
+  <div style="padding:12px 14px 30px"><button onclick="enviarFech21()" style="width:100%;padding:15px;border-radius:12px;border:none;background:var(--green);color:#06131f;font-weight:900;font-family:inherit;font-size:15px">✅ Enviar 2.1</button></div>`);
+}
+function abrirBloco21(blocoId){
+  const b=MOB_F21_BLOCOS.find(x=>x.id===blocoId);if(!b)return;
+  const bd=_f21State?.blocos?.[blocoId]||{rows:JSON.parse(JSON.stringify(b.rows)),por:null,em:null};
+  const colF=(b.cols||[]).findIndex(c=>c.toLowerCase().includes('item de verificação'));
+  let corpo='';
+  if(b.tipo==='texto'){
+    corpo=`<textarea id="f21-obs" class="fi2" rows="9" placeholder="Observações gerais do turno...">${escHtml(String(bd.rows||''))}</textarea>`;
+  }else{
+    const rows=Array.isArray(bd.rows)?bd.rows:JSON.parse(JSON.stringify(b.rows));
+    corpo=rows.map((row,ri)=>`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px">
+      ${colF>=0?`<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px">${escHtml(row[colF])}</div>`:'<div style="font-size:10px;color:var(--text4);margin-bottom:4px">Linha '+(ri+1)+'</div>'}
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${b.cols.map((col,ci)=>{
+          if(ci===colF)return'';
+          const isArea=col.toLowerCase().includes('observ')||col.toLowerCase().includes('tratativ')||col.toLowerCase().includes('pendência')||col.toLowerCase().includes('solicitaç');
+          return`<div><label style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px">${escHtml(col)}</label>${isArea?`<textarea id="f21-${blocoId}-${ri}-${ci}" class="fi2" rows="2">${escHtml(String(row[ci]||''))}</textarea>`:`<input id="f21-${blocoId}-${ri}-${ci}" class="fi2" value="${escHtml(String(row[ci]||''))}">`}</div>`;
+        }).join('')}
+      </div>
+    </div>`).join('');
+  }
+  openSheet('📋 '+b.titulo,`<div style="display:flex;flex-direction:column;gap:10px">${corpo}<button onclick="salvarBloco21('${blocoId}')" style="padding:14px;border-radius:12px;border:none;background:var(--green);color:#06131f;font-weight:900;font-family:inherit;margin-top:4px">Salvar</button></div>`);
+}
+function salvarBloco21(blocoId){
+  const b=MOB_F21_BLOCOS.find(x=>x.id===blocoId);if(!b||!_f21State)return;
+  if(b.tipo==='texto'){
+    _f21State.blocos[blocoId]={rows:document.getElementById('f21-obs')?.value||'',por:S.perfil?.nome||'',em:new Date().toISOString()};
+  }else{
+    const colF=(b.cols||[]).findIndex(c=>c.toLowerCase().includes('item de verificação'));
+    const baseRows=Array.isArray(_f21State.blocos[blocoId]?.rows)?_f21State.blocos[blocoId].rows:JSON.parse(JSON.stringify(b.rows));
+    const rows=baseRows.map((row,ri)=>b.cols.map((col,ci)=>{
+      if(ci===colF)return row[ci];
+      return document.getElementById(`f21-${blocoId}-${ri}-${ci}`)?.value||'';
+    }));
+    _f21State.blocos[blocoId]={rows,por:S.perfil?.nome||'',em:new Date().toISOString()};
+  }
+  _f21State.atualizadoEm=new Date().toISOString();_f21State.preenchidoPor=S.perfil?.nome||'';
+  try{localStorage.setItem(f21Key(_f21Data,_f21Turno),JSON.stringify(_f21State));}catch(e){}
+  closeSheet(true);toast('Bloco salvo');telaFech21();
+}
+async function enviarFech21(){
+  if(!_f21State){toast('Carregue o formulário primeiro','err');return;}
+  const gid=getGid();
+  _f21State.atualizadoEm=new Date().toISOString();_f21State.preenchidoPor=S.perfil?.nome||'';_f21State.status='fechado';
+  const numero=`2.1-${_f21Data}-${_f21Turno}`;
+  const payload={garagem_id:gid,numero,turno:_f21Turno,data:_f21Data,responsavel_id:S.perfil?.id||null,responsavel_nome:S.perfil?.nome||'',status_geral:'em_andamento',bastao_obs:JSON.stringify(_f21State),enviado_wpp:false,enviado_em:new Date().toISOString()};
+  let{error}=await sb.from('fechamento_turno_garagem').insert(payload);
+  if(error?.message?.includes('responsavel_id')||error?.message?.includes('foreign key'))error=(await sb.from('fechamento_turno_garagem').insert({...payload,responsavel_id:undefined})).error;
+  if(error){toast('Erro: '+error.message,'err');return;}
+  try{await sb.from('relatorios_gerados').insert({garagem_id:gid,tipo:'2.1',numero,data_evento:_f21Data,turno:_f21Turno,status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){}
+  try{localStorage.removeItem(f21Key(_f21Data,_f21Turno));}catch(e){}
+  toast('✅ 2.1 enviado!');_f21State=null;telaFech21();
+}
+// ─────────────────────────────────────────────────────────────────
+const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,prev26:telaPrev26,valet_oficina:telaValetOficina,prev_oficina:telaPrevOficina,valet_almox:telaValetAlmox,ronda33:telaRonda33,patio_man:telaPatioMan,recolha:telaRecolha,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip,sos218:telaSOS218,fech21:telaFech21};
 
 // ── INIT ───────────────────────────────────────────────────
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login').style.display!=='none')doLogin()});
