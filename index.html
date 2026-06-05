@@ -1799,7 +1799,7 @@ function supFindRotinaEnvio(a,ctx){
     if(row)return{row,quando:supRowTime(row),fonte:'Fechamento 2.1'};
   }
   if(a.tipo==='2.4'){
-    const row=(ctx.fechPCM||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
+    const row=(ctx.fech24||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
     if(row)return{row,quando:supRowTime(row),fonte:'Fechamento 2.4'};
   }
   if(a.tipo==='2.6'){
@@ -1988,6 +1988,7 @@ async function renderSupervisao(gidFiltro=null){
     {data:ck33},
     {data:ck34},
     {data:prev26},
+    {data:fech24},
     {data:abastecimento},
     {data:fechAbastecimento},
   ]=await Promise.all([
@@ -2005,6 +2006,7 @@ async function renderSupervisao(gidFiltro=null){
     sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno).order('created_at',{ascending:false}),
     sb.from('checklist_equipamentos').select('*').eq('garagem_id',gid).eq('data',data).order('criado_em',{ascending:false}),
     sb.from('previsibilidade_26').select('*').eq('garagem_id',gid).eq('data',data),
+    sb.from('fechamento_24').select('*').eq('garagem_id',gid).eq('data',data).order('fechado_em',{ascending:false}),
     sb.from('abastecimento_checklist').select('*').eq('garagem_id',gid).eq('data',data).order('created_at',{ascending:false}),
     sb.from('fechamento_abastecimento').select('*').eq('garagem_id',gid).eq('data',data).order('created_at',{ascending:false}),
   ]);
@@ -2113,7 +2115,7 @@ async function renderSupervisao(gidFiltro=null){
       <td style="padding:8px 12px;font-size:11px;color:var(--text3)">${o.mecanico||'—'}</td>
     </tr>`;
   }).join('');
-  const rotinaHtml=renderSupervisaoRotina(data,{gid,turno,janela,relatorios:rels,ck33,ck34,libs38,fechGaragem,fechPCM,prev26,valetamentos:valetLista,abastecimento,fechAbastecimento});
+  const rotinaHtml=renderSupervisaoRotina(data,{gid,turno,janela,relatorios:rels,ck33,ck34,libs38,fechGaragem,fechPCM,prev26,fech24,valetamentos:valetLista,abastecimento,fechAbastecimento});
   const janelaTxt=`${janela.dtIni.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:tz})} até ${janela.dtFim.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:tz})}`;
 
   setMain(`
@@ -9595,7 +9597,7 @@ async function salvarCustoRapido(ocId, gid, data){
   if(exist){
     await sb.from('previsibilidade_26').update({custo_prev:prev,custo_real:real}).eq('id',exist.id);
   } else {
-    await sb.from('previsibilidade_26').insert({garagem_id:gid,ocorrencia_id:ocId,data,custo_prev:prev,custo_real:real,registrado_por:S.perfil?.nome});
+    await sb.from('previsibilidade_26').insert({garagem_id:gid,ocorrencia_id:ocId,data,custo_prev:prev,custo_real:real,registrado_por:S.perfil?.nome,registrado_em:new Date().toISOString()});
   }
   toast('💰 Custo salvo');
 }
@@ -13681,6 +13683,7 @@ async function salvar26(){
     custo_real:parseFloat(document.getElementById('real-'+id)?.value||0)||null,
     obs:document.getElementById('obs-26-'+id)?.value?.trim()||null,
     registrado_por:S.perfil?.nome,
+    registrado_em:new Date().toISOString(),
   })).filter(r=>r.custo_prev||r.custo_real||r.obs);
 
   if(!registros.length){toast('Nenhum valor preenchido para salvar.','err');return;}
