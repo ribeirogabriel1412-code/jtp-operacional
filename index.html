@@ -4875,8 +4875,7 @@ async function notificarWhatsApp(ocorrencia_id, status_novo){
         status_novo,
       }),
     });
-    const data=await resp.json();
-    console.log('WhatsApp notificado ✅',data);
+    await resp.json();
   }catch(err){
     console.warn('Erro ao notificar WhatsApp:',err.message);
   }
@@ -8715,9 +8714,10 @@ async function renderConfOrc(gid,back,tabs){
         '</div><div style="font-size:10px;color:var(--text3);margin-top:3px">'+p+'%</div></td>'+
     '</tr>';
   }).join('');
-  var btnConf=jaPassou?
-    '<button onclick="fazerConferenciaOrc()" style="padding:10px 20px;border-radius:9px;border:none;background:'+(saldo<0?'var(--red)':'var(--green)')+';color:#fff;font-size:13px;font-weight:700;cursor:pointer">'+(saldo<0?'🚨':'📊')+' Fazer Conferência'+(saldo<0?' URGENTE':'')+'</button>':
-    '<div style="font-size:12px;color:var(--text3);padding:9px 14px;border:1px solid var(--border);border-radius:9px">⏱ Próxima em '+tempoProx+'min <button onclick="fazerConferenciaOrc()" style="margin-left:8px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:11px;cursor:pointer">Forçar</button></div>';
+  var btnConf='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end">'+
+    (!jaPassou?'<span style="font-size:11px;color:var(--text3)">⏱ Conferência antecipada · próxima em '+tempoProx+'min</span>':'')+
+    '<button onclick="fazerConferenciaOrc()" style="padding:10px 20px;border-radius:9px;border:none;background:'+(saldo<0?'var(--red)':'var(--green)')+';color:#fff;font-size:13px;font-weight:700;cursor:pointer">'+(saldo<0?'🚨':'📊')+' Fazer Conferência'+(saldo<0?' URGENTE':'')+'</button>'+
+  '</div>';
   setMain(
     secTitle('📊','Conferência de Custo',back)+tabs+
     '<div style="background:var(--surface);border:1px solid '+(saldo<0?'var(--red)':'var(--border)')+';border-radius:14px;padding:16px;margin-bottom:16px">'+
