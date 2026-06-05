@@ -13497,7 +13497,7 @@ async function gerarRelatorio21Setorial(data=S._fech21Data||hoje(),turno=S._fech
   let state=await fech21NovoBuscar(gid,data,turno);
   if(!state)state=fech21NovoColetar(data,turno,S._fech21NovoState||fech21NovoEstadoVazio(data,turno));
   localStorage.setItem(fech21NovoKey(data,turno,gid),JSON.stringify(state));
-  try{await sb.from('relatorios_gerados').insert({garagem_id:gid,tipo:'2.1',numero:`2.1-${data}-${turno}`,data_evento:data,turno,status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){}
+  try{await sb.from('relatorios_gerados').insert({garagem_id:gid,tipo:'2.1',numero:`2.1-${data}-${turno}`,data_evento:data,turno,status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){console.warn('[relatorios_gerados 2.1] erro ao registrar:',e?.message);}
   const B='border:1px solid #333;';
   const blocoHtml=FECH21_NOVO_BLOCOS.map(b=>{
     const v=state.blocos?.[b.id]||{};
@@ -13793,7 +13793,7 @@ async function salvarSOS218Site(){
   if(!d.prefixo||!d.problema){toast('Informe prefixo e problema relatado','err');return}
   const{error}=await sb.from('relatorio_sos_218').insert(d);
   if(error){toast('Erro ao salvar 2.18: '+error.message,'err');return}
-  try{await sb.from('relatorios_gerados').insert({garagem_id:d.garagem_id,tipo:'2.18',numero:`2.18-${d.data}-${d.prefixo}`,data_evento:d.data,turno:d.turno,status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){}
+  try{await sb.from('relatorios_gerados').insert({garagem_id:d.garagem_id,tipo:'2.18',numero:`2.18-${d.data}-${d.prefixo}`,data_evento:d.data,turno:d.turno,status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){console.warn('[relatorios_gerados 2.18] erro ao registrar:',e?.message);}
   toast('2.18 salvo');
   gerarPDFSOS218(d);
   renderFerr218();
