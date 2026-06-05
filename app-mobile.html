@@ -6031,7 +6031,7 @@ async function salvarSOS218Mobile(){
   if(!d.prefixo||!d.problema){toast('Informe prefixo e problema','err');return}
   const r=await sb.from('relatorio_sos_218').insert(d);
   if(r.error){toast('Erro: '+r.error.message,'err');return}
-  try{await sb.from('relatorios_gerados').insert({garagem_id:d.garagem_id,tipo:'2.18',numero:`2.18-${d.data}-${d.prefixo}`,data_evento:d.data,turno:d.turno,status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){}
+  try{await sb.from('relatorios_gerados').insert({garagem_id:d.garagem_id,tipo:'2.18',numero:`2.18-${d.data}-${d.prefixo}`,data_evento:d.data,turno:d.turno,status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){console.warn('[relatorios_gerados 2.18 mobile] erro ao registrar:',e?.message);}
   await gerarPDFSOS218Mobile(d); toast('2.18 salvo'); telaSOS218();
 }
 async function gerarPDFSOS218Mobile(d){
