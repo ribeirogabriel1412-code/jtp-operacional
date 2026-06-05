@@ -3163,20 +3163,26 @@ async function renderFerr210(tab='painel', dataFiltro=null){
   setMain(`
     ${secTitle('📋','2.10 — Soltura de Frota',backBtn)}${tabs}
 
-    <!-- Seletor de data -->
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
-      <div style="display:flex;align-items:center;gap:8px">
-        <label style="color:var(--text3);font-size:12px;font-weight:600">Data:</label>
-        <input class="fi" type="date" id="data-painel-210" value="${dataConsulta}" style="margin-bottom:0;padding:7px 12px;width:auto">
-        <button class="btn-sm" onclick="renderFerr210('painel',document.getElementById('data-painel-210').value)">🔍 Buscar</button>
+    <!-- Header padrão -->
+    <div style="display:grid;grid-template-columns:190px 160px 1fr auto auto;gap:10px;align-items:end;margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px">
+      <div><label class="campo-label">Data</label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input class="fi" type="date" id="data-painel-210" value="${dataConsulta}" onchange="renderFerr210('painel',this.value)" style="flex:1;min-width:0">
+          <button type="button" onclick="document.getElementById('data-painel-210')?.showPicker?.()" style="width:42px;height:42px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;font-size:16px">📅</button>
+        </div>
       </div>
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 14px">
-        <span style="color:var(--text3);font-size:10px;letter-spacing:1px">Nº DOC</span>
-        <span style="color:var(--blue);font-family:'DM Mono',monospace;font-weight:700;font-size:13px;margin-left:8px">${numDoc}</span>
-        ${relExist?`<span class="badge b-ok" style="margin-left:8px;font-size:9px">Registrado</span>`:`<span class="badge b-breve" style="margin-left:8px;font-size:9px">Pendente</span>`}
+      <div><label class="campo-label">Turno</label>
+        <select class="fi" onchange="S.turno=this.value;renderFerr210('painel','${dataConsulta}')">
+          <option value="dia"${turnoFiltro==='dia'?' selected':''}>☀️ Dia</option>
+          <option value="noite"${turnoFiltro==='noite'?' selected':''}>🌙 Noite</option>
+        </select>
       </div>
-      ${isAmanha?`<span class="badge" style="color:var(--purple);background:#8B5CF618;border-color:#8B5CF640">📅 Escala de amanhã</span>`:''}
-      ${isHoje?`<span class="badge b-ativo">Hoje</span>`:''}
+      <div style="padding-bottom:10px">
+        <div style="font-size:13px;font-weight:700">${isAmanha?'📅 Escala de amanhã':isHoje?'🟢 Hoje':'📋 '+formatData(dataConsulta)}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:3px">Nº ${numDoc} · ${relExist?'<span style="color:var(--green)">✓ Registrado</span>':'<span style="color:var(--amber)">Pendente</span>'}</div>
+      </div>
+      <button onclick="fecharSoltura210()" class="btn-add" style="height:44px;white-space:nowrap;background:var(--green);border-color:var(--green);color:#06131f">💾 Salvar</button>
+      <button onclick="pdfFerr210()" class="btn-add" style="height:44px;white-space:nowrap;background:var(--blue);border-color:var(--blue);color:#fff">📄 Exportar PDF</button>
     </div>
 
     <!-- Progresso -->
@@ -11207,11 +11213,12 @@ async function renderFerr33(){
   const avisoData=atalhoHtml?`<div style="background:#F59E0B12;border:1px solid #F59E0B44;border-radius:12px;padding:10px 12px;margin-bottom:14px"><div style="font-size:12px;color:var(--amber);font-weight:900;margin-bottom:8px">⚠️ Existem preenchimentos em outra referência de madrugada</div><div style="display:flex;gap:8px;flex-wrap:wrap">${atalhoHtml}</div><div style="font-size:11px;color:var(--text3);margin-top:8px">Use estes atalhos para abrir e exportar o relatório certo, sem misturar dia e turno.</div></div>`:'';
   const podeConfigurar33=ronda33PodeConfigurar();
   const btnConfig33=podeConfigurar33?`<button class="btn-add" onclick="abrirConfigRonda33()" style="height:44px;white-space:nowrap;background:var(--surface2);border-color:var(--border);color:var(--text)">⚙️ Configurar checklist</button>`:'';
-  const top=`<div style="display:grid;grid-template-columns:190px 160px 1fr ${podeConfigurar33?'auto ':''}auto;gap:10px;align-items:end;margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px">
+  const top=`<div style="display:grid;grid-template-columns:190px 160px 1fr ${podeConfigurar33?'auto ':''}auto auto;gap:10px;align-items:end;margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px">
     <div><label class="campo-label">Data</label><div style="display:flex;gap:6px;align-items:center"><input id="r33-data-input" class="fi" type="date" value="${data}" onchange="S._r33Data=this.value;renderFerr33()" style="flex:1;min-width:0"><button type="button" title="Abrir calendário" onclick="document.getElementById('r33-data-input')?.showPicker?.();document.getElementById('r33-data-input')?.focus()" style="width:42px;height:42px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;font-size:16px">📅</button></div></div>
     <div><label class="campo-label">Turno</label><select class="fi" onchange="S._r33Turno=this.value;renderFerr33()"><option value="dia"${turno==='dia'?' selected':''}>Dia</option><option value="noite"${turno==='noite'?' selected':''}>Noite</option></select></div>
     <div style="color:var(--text3);font-size:12px;padding-bottom:10px">Cada líder preenche seu tema. Supervisor e coordenador visualizam tudo, preenchem se necessário e validam o turno.</div>
     ${btnConfig33}
+    <button class="btn-add" onclick="salvarFechar33()" style="height:44px;white-space:nowrap;background:var(--green);border-color:var(--green);color:#06131f">💾 Salvar</button>
     <button class="btn-add" onclick="gerarRelatorio33()" style="height:44px;white-space:nowrap;background:var(--blue);border-color:var(--blue);color:#fff">📄 Exportar PDF</button>
   </div>`;
   const rodadaHtml=rodada=>{
@@ -11345,6 +11352,14 @@ ${tratativasNok.length?tratativasNok.map(x=>`<tr><td style="${B}font-weight:700"
   await jtpRegistrarEnvio('3.3',data,turno);
   await jtpEnviarWpp(`👣 *3.3 – Ronda Operacional*\n📍 ${garagem?.nome||'JTP'} | ${turno==='dia'?'☀️ Dia':'🌙 Noite'} | ${formatData(data)}\n✅ OK: ${preenchidos-nok} · ❌ NOK: ${nok} · ✔️ Validados: ${validados}\n👤 ${S.perfil?.nome||'—'}`);
   abrirRelatorioHTMLPCM(html,`JTP_33_RondaOperacional_${data.replace(/-/g,'')}_${turno}.pdf`);
+}
+async function salvarFechar33(){
+  const data=S._r33Data||ronda33DataPadrao();
+  const turno=S._r33Turno||S.turno||turnoOperacionalAtual();
+  const gid=getGid();
+  const garNome=S.garagens?.find(g=>g.id===gid)?.nome||'JTP';
+  await jtpRegistrarEnvio('3.3',data,turno);
+  toast('✅ 3.3 registrada na Supervisão!');
 }
 async function salvarVerificacao33(rodada,itemId,valor){
   const gid=getGid(), data=S._r33Data||ronda33DataPadrao(), turno=S._r33Turno||S.turno||turnoOperacionalAtual();
@@ -11927,7 +11942,8 @@ async function salvarIndicadores212(){
   });
   ind212SetState(state.data,state.turno,gid,state);
   const ok=await salvarInd212Banco(gid,state,'em_andamento');
-  toast(ok?'Indicadores 2.12 salvos no banco':'Indicadores salvos localmente');
+  await jtpRegistrarEnvio('2.12',state.data,state.turno);
+  toast(ok?'✅ 2.12 salvos e registrado na Supervisão':'Indicadores salvos localmente');
   if(S._ind212DentroPCM)renderFerrPCM('ind212');else renderFerr212();
 }
 async function gerarRelatorio212(){
@@ -13504,7 +13520,8 @@ async function salvarFech21Novo(){
   const payload={garagem_id:gid,numero,turno,data,responsavel_id:S.perfil?.id,responsavel_nome:S.perfil?.nome||'',status_geral:'em_andamento',bastao_obs:JSON.stringify(state),enviado_wpp:false,enviado_em:new Date().toISOString()};
   let {error}=await sb.from('fechamento_turno_garagem').insert(payload);
   if(error?.message?.includes('responsavel_id')||error?.message?.includes('foreign key')) error=(await sb.from('fechamento_turno_garagem').insert({...payload,responsavel_id:undefined})).error;
-  toast(error?'2.1 salvo localmente: '+error.message:'2.1 salvo no banco');
+  if(!error) await jtpRegistrarEnvio('2.1',data,turno);
+  toast(error?'2.1 salvo localmente: '+error.message:'✅ 2.1 salvo e registrado na Supervisão!');
   renderFerr21();
 }
 async function gerarRelatorio21Setorial(data=S._fech21Data||hoje(),turno=S._fech21Turno||S.turno||turnoOperacionalAtual()){
@@ -13538,14 +13555,13 @@ ${blocoHtml}
 async function renderFerr26(){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
   const gid=getGid();
+  const data=S._ferr26Data||hoje();
+  const turno26=S._ferr26Turno||S.turno||turnoOperacionalAtual();
   setMain(`<div class="loading"><div class="spinner"></div></div>`);
 
   // Busca OS abertas + custo previsto salvo
   const{data:ocs}=await sb.from('ocorrencias_22').select('*')
     .eq('garagem_id',gid).neq('status','liberado').order('hora_entrada',{ascending:true});
-
-  // Busca custos salvos do dia (tabela previsibilidade_26)
-  const data=hoje();
   const{data:custosSalvos}=await sb.from('previsibilidade_26').select('*')
     .eq('garagem_id',gid).eq('data',data);
   const custoMap={};
@@ -13609,15 +13625,16 @@ async function renderFerr26(){
   window._ids26=(ocs||[]).map(o=>o.id);
   window._gid26=gid;
   window._data26=data;
+  window._turno26=turno26;
 
   setMain(`
     ${back}
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
-      <div>
-        <div style="font-size:18px;font-weight:800">💰 2.6 — Previsibilidade de Investimento</div>
-        <div style="color:var(--text3);font-size:12px;margin-top:2px">${new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'})} · ${(ocs||[]).length} veículo(s) em aberto</div>
-      </div>
-      <button onclick="salvar26()" class="btn-success">💾 Salvar</button>
+    <div style="display:grid;grid-template-columns:190px 160px 1fr auto auto;gap:10px;align-items:end;margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px">
+      <div><label class="campo-label">Data</label><input class="fi" type="date" value="${data}" onchange="S._ferr26Data=this.value;renderFerr26()"></div>
+      <div><label class="campo-label">Turno</label><select class="fi" onchange="S._ferr26Turno=this.value;renderFerr26()"><option value="dia"${turno26==='dia'?' selected':''}>☀️ Dia</option><option value="noite"${turno26==='noite'?' selected':''}>🌙 Noite</option></select></div>
+      <div style="padding-bottom:10px"><div style="font-size:15px;font-weight:800;color:var(--text)">💰 2.6 — Previsibilidade de Investimento</div><div style="color:var(--text3);font-size:12px;margin-top:2px">${(ocs||[]).length} veículo(s) em aberto</div></div>
+      <button onclick="salvar26()" class="btn-add" style="height:44px;white-space:nowrap;background:var(--green);border-color:var(--green);color:#06131f">💾 Salvar</button>
+      <button onclick="pdfFerr26()" class="btn-add" style="height:44px;white-space:nowrap;background:var(--blue);border-color:var(--blue);color:#fff">📄 Exportar PDF</button>
     </div>
 
     <!-- TOTAIS -->
@@ -13683,6 +13700,7 @@ async function salvar26(){
   const ids=window._ids26||[];
   const gid=window._gid26;
   const data=window._data26;
+  const turno=window._turno26||S.turno||turnoOperacionalAtual();
   if(!ids.length){toast('Nenhum veículo para salvar.','err');return;}
 
   // Delete existing e reinsere
@@ -13702,7 +13720,8 @@ async function salvar26(){
 
   const{error}=await sb.from('previsibilidade_26').insert(registros);
   if(error){toast('Erro: '+error.message,'err');return;}
-  toast(`✅ ${registros.length} registro(s) salvos!`);
+  await jtpRegistrarEnvio('2.6',data,turno);
+  toast(`✅ ${registros.length} registro(s) salvos e registrado na Supervisão!`);
 }
 
 function renderFerrCtrl(){
@@ -14170,6 +14189,12 @@ function abrirJanelaPDF(html, titulo){
 }
 
 // PDF 2.10 — Soltura de Frota
+async function fecharSoltura210(){
+  const data=S.data210||hoje();
+  const turno=S.turno||turnoOperacionalAtual();
+  await jtpRegistrarEnvio('2.10',data,turno);
+  toast('✅ 2.10 registrado na Supervisão!');
+}
 async function pdfFerr210(){
   const gid=getGid();
   const data=S.data210||hoje();
