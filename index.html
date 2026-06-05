@@ -1803,8 +1803,18 @@ function supFindRotinaEnvio(a,ctx){
     if(row)return{row,quando:supRowTime(row),fonte:'Fechamento 2.4'};
   }
   if(a.tipo==='2.6'){
+    const rowLider=(ctx.fechLiderPCM||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
+    if(rowLider)return{row:rowLider,quando:supRowTime(rowLider),fonte:'Fechamento Líder PCM'};
     const row=(ctx.prev26||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
     if(row)return{row,quando:supRowTime(row),fonte:'Custo 2.6'};
+  }
+  if(a.tipo==='2.10'){
+    const row=(ctx.soltura||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
+    if(row)return{row,quando:supRowTime(row),fonte:'Soltura 2.10'};
+  }
+  if(a.tipo==='2.12'||a.tipo==='2.14'){
+    const row=(ctx.ind212||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
+    if(row)return{row,quando:supRowTime(row),fonte:'Indicadores 2.12/2.14'};
   }
   if(a.tipo==='2.19'){
     const row=(ctx.valetamentos||[]).filter(r=>['pedido_compra','comprado'].includes(r.status||'')).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
@@ -1990,6 +2000,9 @@ async function renderSupervisao(gidFiltro=null){
     {data:prev26},
     {data:abastecimento},
     {data:fechAbastecimento},
+    {data:fech24Data},
+    {data:fechLiderPCMData},
+    {data:ind212Data},
   ]=await Promise.all([
     sb.from('frota').select('*').eq('garagem_id',gid),
     sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado'),
@@ -1997,16 +2010,19 @@ async function renderSupervisao(gidFiltro=null){
       .gte('hora_liberacao',janela.ini).lte('hora_liberacao',janela.fim),
     sb.from('soltura_2_10').select('*').eq('garagem_id',gid).eq('data',data),
     sb.from('checklist_lavagem').select('*').eq('garagem_id',gid).eq('data',data),
-    sb.from('fechamento_turno_pcm').select('*').eq('garagem_id',gid).eq('data',data).order('created_at',{ascending:false}),
-    sb.from('fechamento_turno_garagem').select('*').eq('garagem_id',gid).eq('data',data).order('created_at',{ascending:false}),
-    sb.from('relatorios_gerados').select('*').eq('garagem_id',gid).eq('data_evento',data).order('created_at',{ascending:false}),
-    sb.from('checklist_38').select('*').eq('garagem_id',gid).eq('data',data).order('created_at',{ascending:false}),
+    sb.from('fechamento_turno_pcm').select('*').eq('garagem_id',gid).eq('data',data),
+    sb.from('fechamento_turno_garagem').select('*').eq('garagem_id',gid).eq('data',data),
+    sb.from('relatorios_gerados').select('*').eq('garagem_id',gid).eq('data_evento',data),
+    sb.from('checklist_38').select('*').eq('garagem_id',gid).eq('data',data),
     sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).eq('data',dataValet).neq('status','cancelado').order('criado_em',{ascending:true}),
-    sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno).order('created_at',{ascending:false}),
+    sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno),
     sb.from('checklist_equipamentos').select('*').eq('garagem_id',gid).eq('data',data).order('criado_em',{ascending:false}),
     sb.from('previsibilidade_26').select('*').eq('garagem_id',gid).eq('data',data),
-    sb.from('abastecimento_checklist').select('*').eq('garagem_id',gid).eq('data',data).order('created_at',{ascending:false}),
-    sb.from('fechamento_abastecimento').select('*').eq('garagem_id',gid).eq('data',data).order('created_at',{ascending:false}),
+    sb.from('abastecimento_checklist').select('*').eq('garagem_id',gid).eq('data',data),
+    sb.from('fechamento_abastecimento').select('*').eq('garagem_id',gid).eq('data',data),
+    sb.from('fechamento_24').select('*').eq('garagem_id',gid).eq('data',data).order('fechado_em',{ascending:false}),
+    sb.from('fechamento_lider_pcm').select('*').eq('garagem_id',gid).eq('data',data).order('fechado_em',{ascending:false}),
+    sb.from('indicadores_tecnicos').select('*').eq('garagem_id',gid).eq('data',data).order('criado_em',{ascending:false}),
   ]);
 
   // ── KPIs FROTA ────────────────────────────────────────────
@@ -2113,7 +2129,7 @@ async function renderSupervisao(gidFiltro=null){
       <td style="padding:8px 12px;font-size:11px;color:var(--text3)">${o.mecanico||'—'}</td>
     </tr>`;
   }).join('');
-  const rotinaHtml=renderSupervisaoRotina(data,{gid,turno,janela,relatorios:rels,ck33,ck34,libs38,fechGaragem,fechPCM,prev26,valetamentos:valetLista,abastecimento,fechAbastecimento});
+  const rotinaHtml=renderSupervisaoRotina(data,{gid,turno,janela,relatorios:rels,ck33,ck34,libs38,fechGaragem,fechPCM,fech24:fech24Data||[],prev26,valetamentos:valetLista,abastecimento,fechAbastecimento,soltura:soltura||[],fechLiderPCM:fechLiderPCMData||[],ind212:ind212Data||[]});
   const janelaTxt=`${janela.dtIni.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:tz})} até ${janela.dtFim.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:tz})}`;
 
   setMain(`
@@ -9272,7 +9288,8 @@ async function salvarFechLiderPCM(gid,data,fluxo){
   try{res=await sb.from('fechamento_lider_pcm').upsert(base,{onConflict:'garagem_id,data,fluxo'});}catch(e){res={error:e};}
   if(res.error&&!pcmIsMissingTable(res.error)){toast('Salvo localmente, banco recusou: '+res.error.message,'err');renderFerrPCM('consolidado');return;}
   const garNome26=S.garagens?.find(g=>g.id===gid)?.nome||'JTP';
-  await jtpRegistrarEnvio('2.6',data,fluxo);
+  const turnoNorm26=fluxo==='noite'?'noite':'dia';
+  await jtpRegistrarEnvio('2.6',data,turnoNorm26);
   await jtpEnviarWpp(`💰 *2.6 – Fechamento do Líder PCM*\n📍 ${garNome26} | ${fluxo==='dia'?'☀️ Dia':'🌙 Noite'} | ${formatData(data)}\n👤 ${S.perfil?.nome||'—'}`);
   toast(res.error?'✅ Fechamento do líder salvo localmente':'✅ Fechamento do líder salvo');
   renderFerrPCM('consolidado');
