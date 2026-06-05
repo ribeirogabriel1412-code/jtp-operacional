@@ -1988,7 +1988,6 @@ async function renderSupervisao(gidFiltro=null){
     {data:ck33},
     {data:ck34},
     {data:prev26},
-    {data:fech24},
     {data:abastecimento},
     {data:fechAbastecimento},
   ]=await Promise.all([
@@ -2006,7 +2005,6 @@ async function renderSupervisao(gidFiltro=null){
     sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno).order('created_at',{ascending:false}),
     sb.from('checklist_equipamentos').select('*').eq('garagem_id',gid).eq('data',data).order('criado_em',{ascending:false}),
     sb.from('previsibilidade_26').select('*').eq('garagem_id',gid).eq('data',data),
-    sb.from('fechamento_24').select('*').eq('garagem_id',gid).eq('data',data).order('fechado_em',{ascending:false}),
     sb.from('abastecimento_checklist').select('*').eq('garagem_id',gid).eq('data',data).order('created_at',{ascending:false}),
     sb.from('fechamento_abastecimento').select('*').eq('garagem_id',gid).eq('data',data).order('created_at',{ascending:false}),
   ]);
@@ -2115,7 +2113,7 @@ async function renderSupervisao(gidFiltro=null){
       <td style="padding:8px 12px;font-size:11px;color:var(--text3)">${o.mecanico||'—'}</td>
     </tr>`;
   }).join('');
-  const rotinaHtml=renderSupervisaoRotina(data,{gid,turno,janela,relatorios:rels,ck33,ck34,libs38,fechGaragem,fechPCM,prev26,fech24,valetamentos:valetLista,abastecimento,fechAbastecimento});
+  const rotinaHtml=renderSupervisaoRotina(data,{gid,turno,janela,relatorios:rels,ck33,ck34,libs38,fechGaragem,fechPCM,prev26,valetamentos:valetLista,abastecimento,fechAbastecimento});
   const janelaTxt=`${janela.dtIni.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:tz})} até ${janela.dtFim.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:tz})}`;
 
   setMain(`
@@ -9452,6 +9450,7 @@ async function fecharTurno24(gid,data,turno){
   if(res.error&&pcmIsMissingColumn(res.error)){try{res=await sb.from('fechamento_24').upsert(base,{onConflict:'garagem_id,data,turno'});}catch(e){res={error:e};}}
   if(res.error&&pcmIsMissingTable(res.error)){toast('✅ Turno fechado localmente. A tabela fechamento_24 ainda não existe no banco.');renderFerrPCM('fech24');return;}
   if(res.error){toast('Fechado localmente, mas o banco recusou: '+res.error.message,'err');renderFerrPCM('fech24');return;}
+  try{await sb.from('relatorios_gerados').insert({garagem_id:gid,tipo:'2.4',numero:`2.4-${data}-${turno}`,data_evento:data,turno,status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){console.warn('[relatorios_gerados 2.4] erro ao registrar:',e?.message);}
   toast('✅ Turno fechado!');
   renderFerrPCM('fech24');
 }
@@ -9597,7 +9596,7 @@ async function salvarCustoRapido(ocId, gid, data){
   if(exist){
     await sb.from('previsibilidade_26').update({custo_prev:prev,custo_real:real}).eq('id',exist.id);
   } else {
-    await sb.from('previsibilidade_26').insert({garagem_id:gid,ocorrencia_id:ocId,data,custo_prev:prev,custo_real:real,registrado_por:S.perfil?.nome,registrado_em:new Date().toISOString()});
+    await sb.from('previsibilidade_26').insert({garagem_id:gid,ocorrencia_id:ocId,data,custo_prev:prev,custo_real:real,registrado_por:S.perfil?.nome});
   }
   toast('💰 Custo salvo');
 }
@@ -13683,13 +13682,13 @@ async function salvar26(){
     custo_real:parseFloat(document.getElementById('real-'+id)?.value||0)||null,
     obs:document.getElementById('obs-26-'+id)?.value?.trim()||null,
     registrado_por:S.perfil?.nome,
-    registrado_em:new Date().toISOString(),
   })).filter(r=>r.custo_prev||r.custo_real||r.obs);
 
   if(!registros.length){toast('Nenhum valor preenchido para salvar.','err');return;}
 
   const{error}=await sb.from('previsibilidade_26').insert(registros);
   if(error){toast('Erro: '+error.message,'err');return;}
+  try{await sb.from('relatorios_gerados').insert({garagem_id:gid,tipo:'2.6',numero:`2.6-${data}`,data_evento:data,turno:S.turno||turnoOperacionalAtual(),status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){console.warn('[relatorios_gerados 2.6] erro ao registrar:',e?.message);}
   toast(`✅ ${registros.length} registro(s) salvos!`);
 }
 
