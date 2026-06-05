@@ -9257,6 +9257,7 @@ async function salvarFechLiderPCM(gid,data,fluxo){
   var res={error:null};
   try{res=await sb.from('fechamento_lider_pcm').upsert(base,{onConflict:'garagem_id,data,fluxo'});}catch(e){res={error:e};}
   if(res.error&&!pcmIsMissingTable(res.error)){toast('Salvo localmente, banco recusou: '+res.error.message,'err');renderFerrPCM('consolidado');return;}
+  try{await sb.from('relatorios_gerados').insert({garagem_id:gid,tipo:'2.6',numero:`2.6-${data}-${fluxo}`,data_evento:data,turno:fluxo,status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){console.warn('[relatorios_gerados 2.6] erro:',e?.message);}
   toast(res.error?'✅ Fechamento do líder salvo localmente':'✅ Fechamento do líder salvo');
   renderFerrPCM('consolidado');
 }
@@ -9448,9 +9449,10 @@ async function fecharTurno24(gid,data,turno){
   var res={error:null};
   try{res=await sb.from('fechamento_24').upsert(Object.assign({},base,extra),{onConflict:'garagem_id,data,turno'});}catch(e){res={error:e};}
   if(res.error&&pcmIsMissingColumn(res.error)){try{res=await sb.from('fechamento_24').upsert(base,{onConflict:'garagem_id,data,turno'});}catch(e){res={error:e};}}
-  if(res.error&&pcmIsMissingTable(res.error)){toast('✅ Turno fechado localmente. A tabela fechamento_24 ainda não existe no banco.');renderFerrPCM('fech24');return;}
+  const regRel24=async()=>{try{await sb.from('relatorios_gerados').insert({garagem_id:gid,tipo:'2.4',numero:`2.4-${data}-${turno}`,data_evento:data,turno,status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){console.warn('[relatorios_gerados 2.4] erro:',e?.message);}};
+  if(res.error&&pcmIsMissingTable(res.error)){await regRel24();toast('✅ Turno fechado localmente.');renderFerrPCM('fech24');return;}
   if(res.error){toast('Fechado localmente, mas o banco recusou: '+res.error.message,'err');renderFerrPCM('fech24');return;}
-  try{await sb.from('relatorios_gerados').insert({garagem_id:gid,tipo:'2.4',numero:`2.4-${data}-${turno}`,data_evento:data,turno,status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){console.warn('[relatorios_gerados 2.4] erro ao registrar:',e?.message);}
+  await regRel24();
   toast('✅ Turno fechado!');
   renderFerrPCM('fech24');
 }
