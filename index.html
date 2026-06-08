@@ -7913,21 +7913,6 @@ async function renderFerrPCM(aba='painel'){
               ➕ Salvar e enviar ao almox
             </button>
           </div>
-          <div style="margin-top:16px">
-            ${secTitle('🔩','OS com Peças Faltantes')}
-            ${osPecas.length?osPecas.map(o=>`
-              <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${o.prioridade==='urgente'?'var(--red)':'var(--amber)'};border-radius:10px;padding:12px;margin-bottom:8px">
-                <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
-                  <div>
-                    <div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:800;color:var(--blue)">${safeText(o.prefixo||'—')} <span style="color:var(--text3);font-size:11px">${safeText(o.numero||'')}</span></div>
-                    <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;margin-top:2px">${safeText((o.tipo||'OS').replace('_',' '))} · ${safeText(o.status||'em aberto')}</div>
-                  </div>
-                  <button onclick="preencherReqCompraSite('${arg(o.prefixo)}','${arg(o.pecas_necessarias)}','${arg(o.numero)}')" style="padding:6px 10px;border-radius:8px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">Puxar</button>
-                </div>
-                <div style="font-size:12px;color:var(--text2);margin-top:10px;line-height:1.35">${safeText(o.pecas_necessarias)}</div>
-              </div>
-            `).join(''):'<div class="empty">Nenhuma OS aberta com peça faltante</div>'}
-          </div>
         </div>
         <!-- Lista -->
         <div>
