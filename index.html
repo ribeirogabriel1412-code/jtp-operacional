@@ -10229,13 +10229,15 @@ function prevMiniSemana(selSet,tipo,capDia){
   const p=prevGerarPropostas();
   const dias=prevDiasSemana();
   const veics=[...selSet].map(pref=>p.porPrefixo?.get(pref)).filter(Boolean).sort(prevOrdenarPreventiva);
-  if(!veics.length) return `<div style="font-size:11px;color:var(--text3);padding:8px">Nenhum selecionado</div>`;
+  const cor=tipo==='pesada'?'var(--orange)':tipo==='leve'?'var(--green)':'var(--purple)';
+  const borderCor=tipo==='pesada'?'rgba(249,115,22,.3)':tipo==='leve'?'rgba(0,196,140,.3)':'rgba(139,92,246,.3)';
   return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${dias.map((d,i)=>{
-    const slots=veics.slice(i*capDia,(i+1)*capDia);
-    const cor=tipo==='pesada'?'var(--orange)':tipo==='leve'?'var(--green)':'var(--purple)';
-    return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;min-width:90px">
-      <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:capitalize;margin-bottom:4px">${d.label.slice(0,3).toUpperCase()} ${d.data}</div>
-      ${slots.length?slots.map(c=>`<div style="font-size:11px;font-weight:900;color:${cor}">${prevEsc(c.prefixo)}</div>`).join(''):`<div style="font-size:10px;color:var(--text4)">—</div>`}
+    const filled=veics.slice(i*capDia,(i+1)*capDia);
+    const emptySlots=Math.max(0,capDia-filled.length);
+    return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;min-width:100px">
+      <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:capitalize;margin-bottom:5px">${d.label.slice(0,3).toUpperCase()} ${d.data}</div>
+      ${filled.map(c=>`<div style="font-size:11px;font-weight:900;color:${cor};margin-bottom:2px">${prevEsc(c.prefixo)}</div>`).join('')}
+      ${Array.from({length:emptySlots},()=>`<div style="font-size:10px;border:1px dashed ${borderCor};border-radius:4px;padding:2px 4px;color:var(--text4);text-align:center;margin-bottom:2px">vago</div>`).join('')}
     </div>`;
   }).join('')}</div>`;
 }
@@ -10270,28 +10272,43 @@ function prevHtmlAbaLista(tipo){
     selSet=_prevSelGar30; cap=PREV_CAP.garantiaDia;
     titulo='🔵 Garantia — 2º Intervalo'; desc=`${selSet.size} selecionadas`;
   }else{
-    // valetamento: backlog de pesadas não selecionadas para esta semana
-    lista=p.pesadas.filter(c=>!_prevSelPesada.has(c.prefixo));
-    titulo='📦 Valetamento — Próxima Semana';
-    desc=`${lista.length} carro(s) no backlog de pesadas`;
-    const linhas=lista.map((c,i)=>{
+    // Valetamento: backlog de pesadas não selecionadas para esta semana (com checkboxes)
+    const backlog=p.pesadas.filter(c=>!_prevSelPesada.has(c.prefixo));
+    if(!_prevProxSemanaCarros) _prevProxSemanaCarros=new Set(backlog.slice(0,PREV_CAP.pesadaSemana).map(c=>c.prefixo));
+    const selValet=_prevProxSemanaCarros;
+    const linhasV=backlog.map((c,i)=>{
       const km=c.prioridade||0;
       const kmCor=km>0?'var(--red)':km<=-1000?'var(--green)':'var(--amber)';
+      const sel=selValet.has(c.prefixo);
       const outros=(c.outrosRadar||[]).slice(0,3).map(r=>`<span style="font-size:9px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:1px 5px;color:var(--amber)">${prevEsc(r.planoNum)}</span>`).join(' ');
-      return`<tr style="border-top:1px solid var(--border)">
-        <td style="padding:8px 10px;font-size:11px;color:var(--text3);font-family:'DM Mono',monospace">#${i+PREV_CAP.pesadaSemana+1}</td>
+      return`<tr style="border-top:1px solid var(--border);background:${sel?'rgba(249,115,22,.06)':'transparent'}">
+        <td style="padding:8px 10px;text-align:center"><input type="checkbox" ${sel?'checked':''} onchange="prevToggleValetamento('${prevEsc(c.prefixo)}',this.checked)" style="width:16px;height:16px;cursor:pointer"></td>
+        <td style="padding:8px 10px;font-size:11px;color:var(--text3);font-family:'DM Mono',monospace">#${i+_prevSelPesada.size+1}</td>
         <td style="padding:8px 10px;font-weight:900;color:var(--blue);font-family:'DM Mono',monospace">${prevEsc(c.prefixo)}</td>
         <td style="padding:8px 10px;font-family:'DM Mono',monospace;font-weight:900;color:${kmCor}">${prevFmtKm(km)}</td>
         <td style="padding:8px 10px;color:var(--text3);font-size:11px">${prevEsc(prevResumoServicos(c,'pesada'))}</td>
         <td style="padding:8px 10px">${outros}</td>
       </tr>`;
     }).join('');
-    return`<div><div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px">${titulo} <span style="font-size:11px;color:var(--text3);font-weight:400">${desc}</span></div>
-      ${lista.length?`<div style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:560px">
+    const proxDias=prevDiasSemana().map(d=>{const dt=new Date(d.iso+'T12:00:00');dt.setDate(dt.getDate()+7);return dt.toISOString().split('T')[0];});
+    const semStr=proxDias[0]?`${new Date(proxDias[0]+'T12:00:00').toLocaleDateString('pt-BR')} a ${new Date(proxDias[4]+'T12:00:00').toLocaleDateString('pt-BR')}`:'';
+    return`<div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+        <div>
+          <span style="font-size:13px;font-weight:700;color:var(--text)">📦 Valetamento — Próxima Semana</span>
+          <span style="font-size:11px;color:var(--text3);margin-left:8px">${selValet.size} selecionados · ${backlog.length} no backlog · ${semStr}</span>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn" style="font-size:11px;padding:5px 10px" onclick="prevToggleValetamentoTodos(true)">✓ Selecionar todos</button>
+          <button class="btn" style="font-size:11px;padding:5px 10px" onclick="prevToggleValetamentoTodos(false)">✕ Limpar</button>
+          <button class="btn primary" style="font-size:11px;padding:5px 12px" onclick="prevGerarValetamentoProxSemana()" ${selValet.size?'':'disabled'}>✅ Gerar Valetamento (${selValet.size})</button>
+        </div>
+      </div>
+      ${backlog.length?`<div style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:580px">
         <thead><tr style="background:rgba(2,6,23,.6);color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:1px;text-align:left">
-          <th style="padding:8px 10px">#</th><th style="padding:8px 10px">Prefixo</th><th style="padding:8px 10px">KM Excedido</th><th style="padding:8px 10px">Serviços</th><th style="padding:8px 10px">Outros planos</th>
-        </tr></thead><tbody>${linhas}</tbody></table></div>`
-        :`<div style="padding:20px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Todos os veículos estão programados para esta semana.</div>`}
+          <th style="padding:8px 10px">✓</th><th style="padding:8px 10px">#</th><th style="padding:8px 10px">Prefixo</th><th style="padding:8px 10px">KM Excedido</th><th style="padding:8px 10px">Serviços</th><th style="padding:8px 10px">Outros planos</th>
+        </tr></thead><tbody>${linhasV}</tbody></table></div>`
+        :`<div style="padding:20px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">✅ Todos os veículos de pesada estão programados para esta semana.</div>`}
     </div>`;
   }
   // Lista com checkboxes para pesada/leve/garantias
@@ -10354,6 +10371,18 @@ function prevHtmlOutrosPlanosResumo(){
   </div>`:'';
   if(!secOutros&&!secNaoSel)return '';
   return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:12px">${secOutros}${secNaoSel}</div>`;
+}
+function prevToggleValetamento(prefixo,sel){
+  if(!_prevProxSemanaCarros)_prevProxSemanaCarros=new Set();
+  if(sel)_prevProxSemanaCarros.add(prefixo);else _prevProxSemanaCarros.delete(prefixo);
+  prevRenderAbaPrev();
+}
+function prevToggleValetamentoTodos(sel){
+  const p=prevGerarPropostas();
+  const backlog=p.pesadas.filter(c=>!_prevSelPesada.has(c.prefixo));
+  if(!_prevProxSemanaCarros)_prevProxSemanaCarros=new Set();
+  backlog.forEach(c=>{if(sel)_prevProxSemanaCarros.add(c.prefixo);else _prevProxSemanaCarros.delete(c.prefixo);});
+  prevRenderAbaPrev();
 }
 function prevRenderAbaPrev(){
   const el=document.getElementById('prev-aba-content');
