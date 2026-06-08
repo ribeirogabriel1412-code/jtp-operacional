@@ -9678,7 +9678,7 @@ async function salvarCustoRapido(ocId, gid, data){
 // ══════════════════════════════════════════════════════════════
 // PAINEL PREVENTIVAS — IMPORTAÇÃO MAN V1
 // ══════════════════════════════════════════════════════════════
-let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='planos', _prevImportId=null, _prevBuscaPrefixo='', _prevEscalaAlteracoes={}, _prevValidados={}, _prevHistFiltro='', _prevPlanoSel={}, _prevKmMedias={};
+let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='planos', _prevImportId=null, _prevBuscaPrefixo='', _prevEscalaAlteracoes={}, _prevValidados={}, _prevHistFiltro='', _prevPlanoSel={}, _prevKmMedias={}, _prevOutrosFiltro=14, _prevProxSemanaCarros=null;
 
 const PREV_CAP={garantiaDia:1,garantiaSemana:5,pesadaDia:2,pesadaSemana:10,leveDia:6,leveSemana:30};
 const PREV_OUTROS_LIMITE_KM=1000;
@@ -10184,7 +10184,8 @@ function renderFerrPrev(){
     ${total?prevHtmlMetricasDetalhadas(resumo):''}
     <div class="prev-toolbar">
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <button class="btn primary" onclick="_prevGrupoAtivo='planos';prevRenderGrupos()">📑 Lista por plano</button>
+        <button class="btn ${_prevGrupoAtivo==='planos'||_prevGrupoAtivo==='propostas'?'primary':''}" onclick="_prevGrupoAtivo='planos';prevRenderGrupos()">📑 Lista por plano</button>
+        <button class="btn ${_prevGrupoAtivo==='proxSemana'?'primary':''}" onclick="_prevGrupoAtivo='proxSemana';_prevProxSemanaCarros=_prevProxSemanaCarros||null;prevRenderGrupos()">📦 Prox. Semana</button>
         <button class="btn ${_prevGrupoAtivo==='historico'?'primary':''}" onclick="_prevGrupoAtivo='historico';prevRenderGrupos()">🗂️ Históricos</button>
       </div>
       <div style="font-size:12px;color:var(--text3)">Última importação: <b style="color:var(--text2)">${prevEsc(importado)}</b></div>
@@ -10245,7 +10246,9 @@ function prevHtmlVazio(){
 }
 
 function prevHtmlConteudoAtual(){
-  return _prevGrupoAtivo==='historico'?prevHtmlHistoricos():prevHtmlGrupos();
+  if(_prevGrupoAtivo==='historico') return prevHtmlHistoricos();
+  if(_prevGrupoAtivo==='proxSemana') return prevHtmlProxSemana();
+  return prevHtmlGrupos();
 }
 
 function prevGerarPropostas(){
@@ -10271,7 +10274,7 @@ function prevGerarPropostas(){
     c.descricoes=prevServicosDoCarro(c,'').map(s=>s.replace(/^\d+\s+/,''));
     todos.push(c);
     if(c.pesada) pesadas.push({...c,tipo:'pesada',prioridade:c.pesada.excessoKm||0,base:c.pesada,descricoes:prevServicosDoCarro(c,'pesada')});
-    if(c.leve) leves.push({...c,tipo:'leve',prioridade:c.leve.excessoKm||0,base:c.leve,descricoes:prevServicosDoCarro(c,'leve')});
+    if(c.leve&&!c.pesada) leves.push({...c,tipo:'leve',prioridade:c.leve.excessoKm||0,base:c.leve,descricoes:prevServicosDoCarro(c,'leve')});
     if(c.garantia) garantias.push({...c,tipo:'garantia',prioridade:c.garantia.excessoKm||0,base:c.garantia,intervaloGarantia:c.garantia.proximaExecucao||prevIntervaloGarantia(c.garantia),descricoes:prevServicosDoCarro(c,'garantia')});
     c.outrosRadar.forEach(r=>outros.push({...c,tipo:'outro',prioridade:r.excessoKm||0,base:r,descricoes:prevServicosDoCarro({...c,base:r},'outro')}));
   });
@@ -10346,6 +10349,7 @@ function prevMontarEscala(p){
       return {slotKey:key,tipoSlot:tipo,item,validado:!!_prevValidados[key],origem:'manual'};
     }
     if(autoItem && manualPrefixes.has(autoItem.prefixo)) return {slotKey:key,tipoSlot:tipo,item:null,validado:false,origem:'vazio'};
+    if(autoItem) return {slotKey:key,tipoSlot:tipo,item:autoItem,validado:false,origem:'auto'};
     return {slotKey:key,tipoSlot:tipo,item:null,validado:false,origem:'vazio'};
   };
   return dias.map((d,i)=>({
@@ -10390,6 +10394,132 @@ function prevGerarValetamentoPCM(){
   const rec=prevSalvarValetamentoDaEscala(p);
   toast('✅ Valetamento enviado para o PCM: '+(rec.itens||[]).length+' carros');
   renderFerrPCM('req_compra');
+}
+// ── MOTOR DE SUGESTÕES: OUTROS PLANOS VENCENDO ──────────────────
+function prevHtmlOutrosPlanos(){
+  if(!_prevDados.length) return '';
+  const p=prevGerarPropostas();
+  if(!p.outros.length) return '';
+  const filtro=_prevOutrosFiltro||14;
+  const KM_DIA_DEF=300;
+  const comDias=p.outros.map(c=>{
+    const kmMed=Number((_prevKmMedias||{})[c.prefixo]||KM_DIA_DEF);
+    const dias=kmMed>0?Math.round(-(c.prioridade||0)/kmMed):999;
+    return{...c,diasRestantes:dias};
+  }).filter(c=>c.diasRestantes<=filtro).sort((a,b)=>a.diasRestantes-b.diasRestantes);
+  if(!comDias.length) return '';
+  const linhas=comDias.map(c=>`<tr style="border-top:1px solid var(--border)">
+    <td style="padding:8px 10px;font-weight:900;color:var(--blue);font-family:'DM Mono',monospace">${prevEsc(c.prefixo)}</td>
+    <td style="padding:8px 10px;color:var(--text3);font-size:11px">${prevEsc(c.base?.planoNome||c.base?.planoNum||'—')}</td>
+    <td style="padding:8px 10px;font-family:'DM Mono',monospace;color:${(c.prioridade||0)>0?'var(--red)':'var(--amber)'};font-weight:900">${prevFmtKm(c.prioridade)}</td>
+    <td style="padding:8px 10px;font-weight:900;color:${c.diasRestantes<=0?'var(--red)':c.diasRestantes<=7?'var(--amber)':'var(--text3)'}">${c.diasRestantes<=0?'VENCIDO':c.diasRestantes+' dia(s)'}</td>
+    <td style="padding:8px 10px;display:flex;gap:5px;flex-wrap:wrap">
+      <button class="btn" style="font-size:10px;padding:4px 8px" onclick="prevAdicionarOutroNaEscala('${prevEsc(c.prefixo)}')">+ Escala</button>
+      <button class="btn" style="font-size:10px;padding:4px 8px" onclick="prevAdicionarOutroNoProxSemana('${prevEsc(c.prefixo)}')">+ Prox. sem.</button>
+    </td>
+  </tr>`).join('');
+  return `<section style="background:var(--surface);border:1px solid var(--border);border-left:4px solid #F59E0B;border-radius:10px;padding:14px;margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:12px;flex-wrap:wrap">
+      <div><h3 style="margin:0;color:var(--text);font-size:15px">🔔 Outros Planos Vencendo</h3>
+      <div style="font-size:11px;color:var(--text3);margin-top:3px">Limpeza técnica, calibração e outros planos próximos do vencimento.</div></div>
+      <select class="fi" style="width:120px" onchange="_prevOutrosFiltro=+this.value;prevRenderGrupos()">
+        <option value="7"${filtro===7?' selected':''}>7 dias</option>
+        <option value="14"${filtro===14?' selected':''}>14 dias</option>
+        <option value="30"${filtro===30?' selected':''}>30 dias</option>
+      </select>
+    </div>
+    <div style="overflow:auto;border:1px solid var(--border);border-radius:8px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:600px">
+        <thead><tr style="background:rgba(2,6,23,.55);color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:1px;text-align:left">
+          <th style="padding:8px 10px">Prefixo</th><th style="padding:8px 10px">Plano</th><th style="padding:8px 10px">KM Excedido</th><th style="padding:8px 10px">Estimativa</th><th style="padding:8px 10px">Ação</th>
+        </tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </div>
+  </section>`;
+}
+function prevAdicionarOutroNaEscala(prefixo){
+  const p=prevGerarPropostas();
+  const escala=prevMontarEscala(p);
+  let slotVazio=null;
+  for(const dia of escala){for(const s of [...dia.leves,...dia.pesadas]){if(!s.item){slotVazio=s;break;}}if(slotVazio)break;}
+  if(slotVazio){
+    prevAbrirSeletorSlot(slotVazio.slotKey,slotVazio.tipoSlot);
+    setTimeout(()=>{const inp=document.getElementById('prev-slot-busca');if(inp){inp.value=prefixo;prevFiltrarModalSlot(prefixo);}},150);
+  }else{toast('Todos os slots preenchidos. Use "+ Prox. sem." para este carro.','err');}
+}
+function prevAdicionarOutroNoProxSemana(prefixo){
+  if(!_prevProxSemanaCarros){const p=prevGerarPropostas();_prevProxSemanaCarros=new Set(prevValetamentoPesada(p).map(c=>c.prefixo));}
+  _prevProxSemanaCarros.add(prefixo);
+  _prevGrupoAtivo='proxSemana';
+  prevRenderGrupos();
+  toast('Carro adicionado à lista de Próx. Semana');
+}
+// ── ABA VALETAMENTO PRÓXIMA SEMANA ──────────────────────────────
+function prevHtmlProxSemana(){
+  const p=prevGerarPropostas();
+  if(!_prevProxSemanaCarros){_prevProxSemanaCarros=new Set(prevValetamentoPesada(p).map(c=>c.prefixo));}
+  const semProx=prevDiasSemana().map(d=>{const dt=new Date(d.iso);dt.setDate(dt.getDate()+7);return dt.toISOString().split('T')[0];});
+  const inicioProx=semProx[0];
+  const fimProx=semProx[4];
+  const todosRestantes=p.pesadas.filter(c=>!prevSelecionarSemana(p).heavySet.has(c.prefixo)&&!prevSelecionarSemana(p).garantiaSet.has(c.prefixo));
+  const linhas=todosRestantes.map((c,i)=>{
+    const sel=_prevProxSemanaCarros.has(c.prefixo);
+    return`<tr style="border-top:1px solid var(--border);background:${sel?'rgba(37,99,235,.07)':'transparent'}">
+      <td style="padding:8px 10px;text-align:center"><input type="checkbox" ${sel?'checked':''} onchange="prevToggleProxSemana('${prevEsc(c.prefixo)}',this.checked)" style="width:16px;height:16px;cursor:pointer"></td>
+      <td style="padding:8px 10px;font-weight:900;color:var(--blue);font-family:'DM Mono',monospace">#${i+1+PREV_CAP.pesadaSemana}</td>
+      <td style="padding:8px 10px;font-weight:900;color:var(--blue);font-family:'DM Mono',monospace">${prevEsc(c.prefixo)}</td>
+      <td style="padding:8px 10px;font-family:'DM Mono',monospace;color:${(c.prioridade||0)>0?'var(--red)':'var(--green)'};font-weight:900">${prevFmtKm(c.prioridade)}</td>
+      <td style="padding:8px 10px;color:var(--amber);font-size:11px">${prevEsc(prevResumoServicos(c,'pesada'))}</td>
+    </tr>`;
+  }).join('');
+  const selCount=todosRestantes.filter(c=>_prevProxSemanaCarros.has(c.prefixo)).length;
+  return `<section style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--orange);border-radius:10px;padding:14px;margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+      <div><h3 style="margin:0;color:var(--text);font-size:15px">📦 Valetamento Próxima Semana</h3>
+      <div style="font-size:11px;color:var(--text3);margin-top:3px">Semana ${inicioProx?new Date(inicioProx+'T12:00:00').toLocaleDateString('pt-BR'):'—'} a ${fimProx?new Date(fimProx+'T12:00:00').toLocaleDateString('pt-BR'):'—'} · ${selCount} carro(s) selecionado(s)</div></div>
+      <button class="btn primary" onclick="prevGerarValetamentoProxSemana()" ${selCount?'':'disabled'}>✅ Gerar Valetamento (${selCount})</button>
+    </div>
+    ${todosRestantes.length?`<div style="overflow:auto;border:1px solid var(--border);border-radius:8px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:540px">
+        <thead><tr style="background:rgba(2,6,23,.55);color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:1px;text-align:left">
+          <th style="padding:8px 10px">✓</th><th style="padding:8px 10px">#</th><th style="padding:8px 10px">Prefixo</th><th style="padding:8px 10px">KM Excedido</th><th style="padding:8px 10px">Serviços</th>
+        </tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </div>
+    <div style="margin-top:8px;display:flex;gap:8px">
+      <button class="btn" style="font-size:11px" onclick="prevSelecionarTodosProxSemana(true)">Selecionar todos</button>
+      <button class="btn" style="font-size:11px" onclick="prevSelecionarTodosProxSemana(false)">Limpar seleção</button>
+    </div>`:'<div style="padding:20px;text-align:center;color:var(--text3)">Nenhum carro restante na fila de pesadas para a próxima semana.</div>'}
+  </section>`;
+}
+function prevToggleProxSemana(prefixo,sel){
+  if(!_prevProxSemanaCarros)_prevProxSemanaCarros=new Set();
+  if(sel)_prevProxSemanaCarros.add(prefixo);else _prevProxSemanaCarros.delete(prefixo);
+  prevRenderGrupos();
+}
+function prevSelecionarTodosProxSemana(sel){
+  const p=prevGerarPropostas();
+  const restantes=p.pesadas.filter(c=>!prevSelecionarSemana(p).heavySet.has(c.prefixo)&&!prevSelecionarSemana(p).garantiaSet.has(c.prefixo));
+  if(!_prevProxSemanaCarros)_prevProxSemanaCarros=new Set();
+  restantes.forEach(c=>{if(sel)_prevProxSemanaCarros.add(c.prefixo);else _prevProxSemanaCarros.delete(c.prefixo);});
+  prevRenderGrupos();
+}
+async function prevGerarValetamentoProxSemana(){
+  if(!_prevProxSemanaCarros||!_prevProxSemanaCarros.size){toast('Selecione pelo menos 1 carro','err');return;}
+  const p=prevGerarPropostas();
+  const proxDias=prevDiasSemana().map(d=>{const dt=new Date(d.iso);dt.setDate(dt.getDate()+7);return dt.toISOString().split('T')[0];});
+  const dataValet=proximoSabadoISO(new Date(proxDias[0]+'T12:00:00'));
+  const itens=[...p.pesadas.filter(c=>_prevProxSemanaCarros.has(c.prefixo))].map((c,i)=>({
+    posicao:i+1,prefixo:c.prefixo,prioridade:c.prioridade||0,
+    servicos:prevResumoServicos(c,'pesada'),plano:c.base?.planoNum||'002',planoNome:c.base?.planoNome||'Preventiva Pesada'
+  }));
+  const rec=await salvarValetamentoMetrica(dataValet,itens);
+  toast(`✅ Valetamento próx. semana gerado: ${itens.length} carro(s) · data ${dataValet}`);
+  _prevProxSemanaCarros=null;
+  _prevGrupoAtivo='planos';
+  prevRenderGrupos();
 }
 
 function prevHtmlCarroMini(slot,ultimas){
@@ -10455,6 +10585,7 @@ async function prevConsolidarEscala(){
   const preenchidos=linhas.filter(l=>l.item).length;
   const vazios=linhas.filter(l=>!l.item).length;
   const validados=linhas.filter(l=>l.validado).length;
+  linhas.sort((a,b)=>(b.item?.prioridade||0)-(a.item?.prioridade||0)||(a.item?0:1)-(b.item?0:1));
   const semanaSalva=prevSalvarSemanaHistorico(escala,linhas);
   const valetSalvo=prevSalvarValetamentoDaEscala(p);
   await prevSalvarProgramacaoPreventivaBanco(semanaSalva);
@@ -10475,8 +10606,8 @@ async function prevConsolidarEscala(){
     </div>
     <div style="overflow:auto;border:1px solid var(--border);border-radius:10px">
       <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:860px">
-        <thead><tr style="background:rgba(2,6,23,.65);color:var(--text3);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;text-align:left"><th style="padding:9px">Dia</th><th style="padding:9px">Tipo</th><th style="padding:9px">Prefixo</th><th style="padding:9px">Status</th><th style="padding:9px">Serviços vinculados</th></tr></thead>
-        <tbody>${linhas.map(l=>`<tr style="border-top:1px solid var(--border)"><td style="padding:9px;color:var(--text2);white-space:nowrap;text-transform:capitalize">${prevEsc(l.dia)} ${prevEsc(l.data)}</td><td style="padding:9px">${prevBadgeTipo(l.tipo)}</td><td style="padding:9px;color:${l.item?'var(--blue)':'var(--amber)'};font-weight:900">${l.item?prevEsc(l.item.prefixo):'VAGA ABERTA'}</td><td style="padding:9px;color:${l.validado?'var(--green)':l.origem==='manual'?'var(--amber)':'var(--text3)'};font-weight:900">${l.item?(l.validado?'VALIDADO':l.origem==='manual'?'ALTERADO':'SUGERIDO'):'ABERTO'}</td><td style="padding:9px;color:var(--amber)">${l.item?prevEsc(prevResumoServicos(l.item,l.tipo)):'Aguardando seleção'}</td></tr>`).join('')}</tbody>
+        <thead><tr style="background:rgba(2,6,23,.65);color:var(--text3);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;text-align:left"><th style="padding:9px">Dia</th><th style="padding:9px">Tipo</th><th style="padding:9px">Prefixo</th><th style="padding:9px">KM Excedido</th><th style="padding:9px">Status</th><th style="padding:9px">Serviços vinculados</th></tr></thead>
+        <tbody>${linhas.map(l=>{const kmExc=l.item?.prioridade||0;const kmCor=kmExc>0?'var(--red)':kmExc<0?'var(--text3)':'var(--amber)';return`<tr style="border-top:1px solid var(--border)"><td style="padding:9px;color:var(--text2);white-space:nowrap;text-transform:capitalize">${prevEsc(l.dia)} ${prevEsc(l.data)}</td><td style="padding:9px">${prevBadgeTipo(l.tipo)}</td><td style="padding:9px;color:${l.item?'var(--blue)':'var(--amber)'};font-weight:900">${l.item?prevEsc(l.item.prefixo):'VAGA ABERTA'}</td><td style="padding:9px;font-family:'DM Mono',monospace;font-weight:900;color:${kmCor}">${l.item?(kmExc>0?'+':'')+kmExc+' km':'—'}</td><td style="padding:9px;color:${l.validado?'var(--green)':l.origem==='manual'?'var(--amber)':'var(--text3)'};font-weight:900">${l.item?(l.validado?'VALIDADO':l.origem==='manual'?'ALTERADO':'SUGERIDO'):'ABERTO'}</td><td style="padding:9px;color:var(--amber)">${l.item?prevEsc(prevResumoServicos(l.item,l.tipo)):'Aguardando seleção'}</td></tr>`;}).join('')}</tbody>
       </table>
     </div>
     <div style="margin-top:10px;color:var(--green);font-size:12px;font-weight:800">Histórico da semana ${prevEsc(prevSemanaLabel(semanaSalva))} salvo/atualizado. Valetamento PCM gerado com ${(valetSalvo.itens||[]).length} carro(s) do 11º ao 20º.</div>
@@ -10916,6 +11047,7 @@ function prevHtmlGrupos(){
   if(!dados.length){
     return `<div style="padding:28px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhum item encontrado para a pesquisa.</div>`;
   }
+  const secOutros=!busca?prevHtmlOutrosPlanos():'';
   const grupos=new Map();
   dados.forEach(r=>{
     const key=prevPlanoKey(r);
@@ -10923,7 +11055,7 @@ function prevHtmlGrupos(){
     grupos.get(key).itens.push(r);
   });
   const ordemTipo={pesada:0,leve:1,garantia:2,outro:3};
-  return [...grupos.values()].map(g=>{
+  const gruposHtml=[...grupos.values()].map(g=>{
     g.itens.sort(prevOrdenarPreventiva);
     g.maior=Math.max(...g.itens.map(r=>r.excessoKm||0));
     g.tipoGrupo=prevTipoPorPlano(g.itens[0]||{});
@@ -10934,6 +11066,7 @@ function prevHtmlGrupos(){
     if((a.maior||0)!==(b.maior||0))return (b.maior||0)-(a.maior||0);
     return String(a.planoNum).localeCompare(String(b.planoNum));
   }).map(prevHtmlGrupo).join('');
+  return secOutros+gruposHtml;
 }
 
 function prevHtmlGrupo(g){
