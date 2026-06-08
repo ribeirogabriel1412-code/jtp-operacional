@@ -10398,12 +10398,39 @@ async function prevConsolidarSelecoes(){
   await prevConsolidarEscala();
 }
 // ── REWRITE renderFerrPrev ───────────────────────────────────────
+function prevSemanaVigente(){
+  const h=prevHistoricos();
+  if(!h.semanas.length) return null;
+  const dias=prevDiasSemana();
+  const ini=dias[0]?.iso, fim=dias[4]?.iso;
+  // Busca semana que coincide com a vigente ou a próxima
+  return h.semanas.find(s=>s.inicio===ini&&s.fim===fim) || h.semanas.find(s=>s.inicio>=ini) || h.semanas[0] || null;
+}
+function prevExcluirSemana(id){
+  if(!confirm('Excluir esta programação de semana?')) return;
+  const h=prevHistoricos();
+  h.semanas=h.semanas.filter(s=>s.id!==id);
+  prevSalvarHistoricos(h);
+  prevRenderAbaPrev();
+  toast('Programação excluída');
+}
+function prevExcluirImportacaoHist(id){
+  if(!confirm('Excluir este registro de importação?')) return;
+  const h=prevHistoricos();
+  h.importacoes=h.importacoes.filter(i=>i.id!==id);
+  prevSalvarHistoricos(h);
+  prevRenderAbaPrev();
+  toast('Importação removida do histórico');
+}
 function renderFerrPrev(){
   prevCarregarKmMediasLocal();
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
   const total=_prevDados.length;
   const importado=_prevImportadoEm?new Date(_prevImportadoEm).toLocaleString('pt-BR'):'Nenhum PDF importado';
   const qtdMedias=Object.keys(_prevKmMedias||{}).length;
+  // Auto-abre histórico se não tem PDF mas tem semanas gravadas
+  const semVig=prevSemanaVigente();
+  if(!total && semVig && _prevAbaAtiva!=='historico') _prevAbaAtiva='historico';
   const abas=[
     {id:'pesada',   ic:'🔴',lb:'Pesadas'},
     {id:'leve',     ic:'🟢',lb:'Leves'},
@@ -10435,8 +10462,16 @@ function renderFerrPrev(){
     <div style="font-size:11px;color:var(--text3)">Base KM: <b>${qtdMedias}</b> carro(s) &nbsp;·&nbsp; Última importação: <b style="color:var(--text2)">${prevEsc(importado)}</b></div>
   </div>
   ${kpis}
-  ${total?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${tabsHtml}</div>
-  <div id="prev-aba-content">${prevHtmlAbaLista(_prevAbaAtiva)+prevHtmlOutrosPlanosResumo()}</div>`:prevHtmlVazio()}`);
+  ${semVig&&!total?`<div style="background:var(--surface);border:1px solid #2563EB40;border-left:4px solid var(--blue);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+    <div><b style="color:var(--blue)">📆 Semana ${prevEsc(prevSemanaLabel(semVig))} programada</b>
+    <div style="font-size:11px;color:var(--text3);margin-top:3px">${semVig.totais?.programadas||0} programadas · ${semVig.totais?.slotsAbertos||0} vagas abertas · atualizada ${new Date(semVig.atualizadoEm||semVig.criadoEm).toLocaleString('pt-BR')}</div></div>
+    <div style="display:flex;gap:6px">
+      <button class="btn" style="font-size:11px" onclick="_prevAbaAtiva='historico';prevRenderAbaPrev()">Ver histórico</button>
+      <button class="btn primary" style="font-size:11px" onclick="prevAbrirHistoricoSemana('${semVig.id}')">Abrir semana</button>
+    </div>
+  </div>`:''}
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${tabsHtml}</div>
+  <div id="prev-aba-content">${_prevAbaAtiva==='historico'?prevHtmlHistoricos():(total?prevHtmlAbaLista(_prevAbaAtiva)+prevHtmlOutrosPlanosResumo():prevHtmlVazio())}</div>`);
 }
 
 function prevResumoPropostas(){
@@ -11075,7 +11110,13 @@ function prevHtmlHistoricos(){
         <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:8px"><b style="color:var(--text)">📆 Semanas consolidadas</b><span style="color:var(--text3);font-size:12px">${semanas.length}</span></div>
         <div style="display:grid;gap:8px;padding:10px;max-height:520px;overflow:auto">
           ${semanas.map(s=>`<div style="text-align:left;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:11px;color:var(--text)">
-            <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><button onclick="prevAbrirHistoricoSemana('${s.id}')" style="background:transparent;border:0;padding:0;text-align:left;color:inherit;cursor:pointer;flex:1;font-family:inherit"><b style="font-size:15px;color:var(--blue)">Semana ${prevEsc(prevSemanaLabel(s))}</b><div style="font-size:11px;color:var(--text3);margin-top:3px">Atualizado em ${new Date(s.atualizadoEm||s.criadoEm).toLocaleString('pt-BR')}</div></button><div style="display:flex;gap:6px;align-items:center"><button onclick="prevDiagnosticarSyncApp('${s.id}')" style="font-size:10px;padding:5px 8px;border-radius:7px;border:1px solid var(--amber);background:#F59E0B18;color:var(--amber);font-weight:900;cursor:pointer;font-family:inherit">Diagnóstico</button><button onclick="prevSincronizarSemanaApp('${s.id}')" style="font-size:10px;padding:5px 8px;border-radius:7px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-weight:900;cursor:pointer;font-family:inherit">Sincronizar app</button><button onclick="prevAbrirHistoricoSemana('${s.id}')" class="btn" style="font-size:10px;padding:5px 8px">Abrir</button></div></div>
+            <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><button onclick="prevAbrirHistoricoSemana('${s.id}')" style="background:transparent;border:0;padding:0;text-align:left;color:inherit;cursor:pointer;flex:1;font-family:inherit"><b style="font-size:15px;color:var(--blue)">Semana ${prevEsc(prevSemanaLabel(s))}</b><div style="font-size:11px;color:var(--text3);margin-top:3px">Atualizado em ${new Date(s.atualizadoEm||s.criadoEm).toLocaleString('pt-BR')}</div></button>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <button onclick="prevDiagnosticarSyncApp('${s.id}')" style="font-size:10px;padding:5px 8px;border-radius:7px;border:1px solid var(--amber);background:#F59E0B18;color:var(--amber);font-weight:900;cursor:pointer;font-family:inherit">Diagnóstico</button>
+              <button onclick="prevSincronizarSemanaApp('${s.id}')" style="font-size:10px;padding:5px 8px;border-radius:7px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-weight:900;cursor:pointer;font-family:inherit">Sincronizar app</button>
+              <button onclick="prevAbrirHistoricoSemana('${s.id}')" class="btn" style="font-size:10px;padding:5px 8px">Abrir</button>
+              <button onclick="prevExcluirSemana('${s.id}')" style="font-size:10px;padding:5px 8px;border-radius:7px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-weight:900;cursor:pointer;font-family:inherit">🗑 Excluir</button>
+            </div></div>
             <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:9px;font-size:12px"><span style="color:var(--green)">${s.totais?.programadas||0} programadas</span><span style="color:var(--amber)">${s.totais?.slotsAbertos||0} vagas abertas</span><span style="color:var(--blue)">${s.totais?.validadas||0} validadas</span><span style="color:var(--purple)">${s.totais?.alteradas||0} alteradas</span></div>
           </div>`).join('') || `<div style="padding:22px;text-align:center;color:var(--text3)">Nenhuma semana consolidada ainda.</div>`}
         </div>
