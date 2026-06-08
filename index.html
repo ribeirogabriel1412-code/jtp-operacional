@@ -10025,7 +10025,7 @@ function prevCalcularMediasKm(rows){
   const porPrefixo={}, diasUnicos=new Set();
   const add=(prefixoRaw,dataRaw,kmRaw,empresaRaw='',odometroRaw='')=>{
     const empresa=String(empresaRaw||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-    if(empresaRaw && !/porto\s*velh|porto\s*velho|pvh/.test(empresa))return;
+    if(empresaRaw && !/porto\s*velh|porto\s*velho|pvh|jtp/.test(empresa))return;
     const prefixo=prevPrefixoKey(prefixoRaw);
     const data=prevParseDataKm(dataRaw);
     const km=prevToDecimal(kmRaw);
@@ -10042,17 +10042,32 @@ function prevCalcularMediasKm(rows){
       porPrefixo[prefixo].ultimaData=dia;
     }
   };
-  (rows||[]).forEach(row=>{
+  const normKey=s=>String(s||'').toLowerCase().normalize('NFD').replace(/̀-ͯ/g,'').replace(/[^a-z0-9]/g,'');
+  let headerArr=null;
+  (rows||[]).forEach((row,ri)=>{
     if(Array.isArray(row)){
-      // CTA Plus: A=data, C=empresa, F=prefixo, N=odômetro, O=distância percorrida.
-      add(row[5],row[0],row[14],row[2],row[13]);
+      if(ri===0){
+        // Detecta se primeira linha é cabeçalho (contém textos não numéricos e não datas)
+        const temTexto=row.slice(0,8).some(c=>typeof c==='string'&&c.length>1&&isNaN(Number(String(c).replace(',','.')))&&!prevParseDataKm(c));
+        if(temTexto){headerArr=row.map(c=>normKey(c));return;}
+      }
+      if(headerArr){
+        const col=nomes=>{
+          for(const n of nomes){const nk=normKey(n);const i=headerArr.findIndex(h=>h===nk||h.includes(nk));if(i>=0)return row[i];}
+          return '';
+        };
+        add(col(['prefixo','carro','veiculo','frota','codigo']),col(['data','dt','dia','dataleitura','datakm']),col(['distancia','distanciapercorrida','kmpercorrido','kmrodado','kmdiario','kmdia','km']),col(['empresa','unidade','garagem','filial']),col(['odometro','hodometro']));
+      }else{
+        // CTA Plus sem cabeçalho: A=data, C=empresa, F=prefixo, N=odômetro, O=distância percorrida
+        add(row[5],row[0],row[14],row[2],row[13]);
+      }
       return;
     }
     add(
       prevEscolherCampo(row,['prefixo','carro','veiculo','veículo','frota','codigo','código']),
       prevEscolherCampo(row,['data','dt','dia','data leitura','data km','created_at']),
-      prevEscolherCampo(row,['distancia','distância','distancia percorrida','distância percorrida','km percorrido','km rodado','km']),
-      prevEscolherCampo(row,['empresa','unidade','garagem']),
+      prevEscolherCampo(row,['distancia','distância','distancia percorrida','distância percorrida','km percorrido','km rodado','km diario','km dia','km']),
+      prevEscolherCampo(row,['empresa','unidade','garagem','filial']),
       prevEscolherCampo(row,['odometro','odômetro','hodometro','hodômetro'])
     );
   });
@@ -10110,7 +10125,16 @@ async function processarPrevKmBase(input){
       const ws=wb.Sheets[wb.SheetNames[0]];
       rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true});
     }
-    const medias=prevCalcularMediasKm(rows);
+    let medias=prevCalcularMediasKm(rows);
+    // Se retornou vazio, tenta sem filtro de empresa (garagem sem filtro por cidade)
+    if(!Object.keys(medias).length){
+      medias=prevCalcularMediasKm(rows,true);
+      if(Object.keys(medias).length) toast('ℹ️ Empresa não identificada como Porto Velho/JTP — importado sem filtro de garagem.');
+    }
+    if(!Object.keys(medias).length){
+      toast('Nenhuma linha válida encontrada. Verifique se o arquivo tem colunas de prefixo, data e km percorrido.','err');
+      return;
+    }
     _prevKmMedias=medias;
     prevSalvarKmMediasLocal();
     const dias=Object.values(medias)[0]?.diasPeriodo||0;
