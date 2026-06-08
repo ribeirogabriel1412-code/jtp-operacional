@@ -7522,6 +7522,7 @@ async function renderFerrPCM(aba='painel'){
     <button class="filtro-btn${aba==='conf_orc'?' active':''}" onclick="renderFerrPCM('conf_orc')">📊 Conferência</button>
     <button class="filtro-btn${aba==='sap_precos'?' active':''}" onclick="renderFerrPCM('sap_precos')">💲 Preços SAP</button>
     <button class="filtro-btn${aba==='historico'?' active':''}" onclick="renderFerrPCM('historico')">🗂️ Histórico</button>
+    <button class="filtro-btn${aba==='mao_obra'?' active':''}" onclick="renderFerrPCM('mao_obra')">⏱️ Mão de Obra</button>
   </div>`;
 
   setMain(`<div class="loading"><div class="spinner"></div></div>`);
@@ -8012,6 +8013,117 @@ async function renderFerrPCM(aba='painel'){
         </tr></thead>
         <tbody>${rows||'<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text3)">Nenhuma OS liberada</td></tr>'}</tbody>
       </table></div></div>
+    `);
+    return;
+  }
+
+  // ── MÃO DE OBRA E HORAS ───────────────────────────────────
+  if(aba==='mao_obra'){
+    setMain(`<div class="loading"><div class="spinner"></div></div>`);
+    const dataIso=S._mopData||data;
+    const dataLimite60=new Date();dataLimite60.setDate(dataLimite60.getDate()-60);
+    const[{data:mopRegistros},{data:mopHistorico}]=await Promise.all([
+      sb.from('mao_obra_preventiva').select('*').eq('garagem_id',gid).eq('data',dataIso),
+      sb.from('mao_obra_preventiva').select('data,tipo_prev,total_h').eq('garagem_id',gid)
+        .gte('data',dataLimite60.toISOString().slice(0,10)).order('data',{ascending:true}),
+    ]);
+    const mopPorPref=Object.fromEntries((mopRegistros||[]).map(r=>[r.prefixo,r]));
+    const{pesadas:mopPesadas,leves:mopLeves}=mopGetPrevDia(dataIso);
+    const mopTotalHc=(mopRegistros||[]).reduce((s,r)=>s+Number(r.total_h||0),0);
+    const mopCountReg=(mopRegistros||[]).length;
+    const mopMediaHc=mopCountReg>0?mopTotalHc/mopCountReg:0;
+    const mopPtosPesada=mopCalcPontosSPC(mopHistorico,'pesada');
+    const mopPtosLeve=mopCalcPontosSPC(mopHistorico,'leve');
+    const mopSpcPesada=mopCalcSPC(mopPtosPesada);
+    const mopSpcLeve=mopCalcSPC(mopPtosLeve);
+    const MOP_CAMPOS=[
+      {campo:'mecanico_h',label:'Mecân.'},
+      {campo:'aux_mecanico_h',label:'AuxMec'},
+      {campo:'eletricista_h',label:'Eletr.'},
+      {campo:'aux_eletricista_h',label:'AuxEle'},
+      {campo:'funileiro_h',label:'Funil.'},
+      {campo:'borracheiro_h',label:'Borra.'},
+    ];
+    const mopRow=(item,tipoKey)=>{
+      const pref=item.prefixo||item.veiculo||item.carro||'—';
+      const plano=item.plano||item.ordem||item.tipo_prev||item.tipo||'—';
+      const saved=mopPorPref[pref]||{};
+      const hcTot=MOP_CAMPOS.reduce((s,c)=>s+(parseFloat(saved[c.campo])||0),0);
+      const inputs=MOP_CAMPOS.map(c=>`<td style="padding:4px 2px"><input type="number" min="0" max="24" step="0.5" data-mop-prefixo="${pref}" data-mop-campo="${c.campo}" data-mop-tipo="${tipoKey}" data-mop-plano="${prevEsc(plano)}" value="${saved[c.campo]||''}" placeholder="0" oninput="mopCalcKpis()" style="width:44px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:5px 3px;font-size:11px;font-family:'DM Mono',monospace;text-align:center;outline:none;box-sizing:border-box"></td>`).join('');
+      return`<tr style="border-bottom:1px solid var(--border2)">
+        <td style="padding:6px 8px;font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--blue)">${pref}</td>
+        <td style="padding:6px 8px;font-size:11px;color:var(--text3);white-space:nowrap">${plano}</td>
+        ${inputs}
+        <td id="mop-hc-${pref}" style="padding:6px 8px;font-family:'DM Mono',monospace;font-size:13px;font-weight:800;color:var(--amber);text-align:center">${hcTot>0?hcTot.toFixed(1):'—'}</td>
+      </tr>`;
+    };
+    const mopTh=`<th style="padding:5px 8px;text-align:left;font-size:9px;color:var(--text3)">Prefixo</th><th style="padding:5px 8px;text-align:left;font-size:9px;color:var(--text3)">Plano</th>${MOP_CAMPOS.map(c=>`<th style="padding:5px 2px;font-size:9px;color:var(--text3);text-align:center">${c.label}</th>`).join('')}<th style="padding:5px 8px;text-align:center;font-size:9px;color:var(--amber)">HC</th>`;
+    const rowsPesadaHtml=mopPesadas.length>0?mopPesadas.map(i=>mopRow(i,'pesada')).join(''):`<tr><td colspan="9" style="text-align:center;padding:16px;color:var(--text3);font-size:11px">Nenhuma pesada programada para este dia no histórico local</td></tr>`;
+    const rowsLeveHtml=mopLeves.length>0?mopLeves.map(i=>mopRow(i,'leve')).join(''):`<tr><td colspan="9" style="text-align:center;padding:16px;color:var(--text3);font-size:11px">Nenhuma leve programada para este dia no histórico local</td></tr>`;
+    const mopSpcAtivo=S._mopSpcTipo||'pesada';
+    setMain(`${back}${tabs}
+      <div style="display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;margin-bottom:16px">
+        <div>
+          <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Data</div>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input id="mop-data" type="date" value="${dataIso}" onchange="S._mopData=this.value;renderFerrPCM('mao_obra')" style="background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 8px;font-size:12px;font-family:'DM Mono',monospace;outline:none">
+            <button onclick="document.getElementById('mop-data').showPicker()" style="background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:6px 9px;cursor:pointer;font-size:13px">📅</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--blue);border-radius:8px;padding:8px 16px">
+            <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:1px">Total HC do dia</div>
+            <div id="mop-kpi-total" style="font-family:'DM Mono',monospace;font-size:20px;font-weight:800;color:var(--blue)">${mopTotalHc>0?mopTotalHc.toFixed(1)+'h':'—'}</div>
+          </div>
+          <div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--amber);border-radius:8px;padding:8px 16px">
+            <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:1px">Média por preventiva</div>
+            <div id="mop-kpi-media" style="font-family:'DM Mono',monospace;font-size:20px;font-weight:800;color:var(--amber)">${mopMediaHc>0?mopMediaHc.toFixed(1)+'h':'—'}</div>
+          </div>
+        </div>
+        <button onclick="mopSalvar('${gid}','${dataIso}')" style="background:var(--blue);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">💾 Salvar</button>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:12px;overflow:hidden">
+        <div style="background:var(--surface2);padding:10px 14px;display:flex;align-items:center;gap:8px">
+          <span style="font-size:14px">🟣</span>
+          <span style="font-size:12px;font-weight:700">PESADAS</span>
+          <span style="font-size:11px;color:var(--text3)">${mopPesadas.length} carro${mopPesadas.length!==1?'s':''} programado${mopPesadas.length!==1?'s':''} para hoje</span>
+        </div>
+        <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:var(--surface2)">${mopTh}</tr></thead>
+          <tbody>${rowsPesadaHtml}</tbody>
+        </table></div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:16px;overflow:hidden">
+        <div style="background:var(--surface2);padding:10px 14px;display:flex;align-items:center;gap:8px">
+          <span style="font-size:14px">🟡</span>
+          <span style="font-size:12px;font-weight:700">LEVES</span>
+          <span style="font-size:11px;color:var(--text3)">${mopLeves.length} carro${mopLeves.length!==1?'s':''} programado${mopLeves.length!==1?'s':''} para hoje</span>
+        </div>
+        <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:var(--surface2)">${mopTh}</tr></thead>
+          <tbody>${rowsLeveHtml}</tbody>
+        </table></div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+          <div>
+            <div style="font-size:13px;font-weight:700">📈 Gráfico de Controle (SPC)</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">Média de HC por preventiva · últimos 60 dias</div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button id="mop-btn-pesadas" onclick="mopToggleSPC('pesada')" style="background:${mopSpcAtivo==='pesada'?'var(--blue)':'var(--surface)'};color:${mopSpcAtivo==='pesada'?'#fff':'var(--text2)'};border:1px solid var(--border);border-radius:7px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer">🟣 Pesadas</button>
+            <button id="mop-btn-leves" onclick="mopToggleSPC('leve')" style="background:${mopSpcAtivo==='leve'?'var(--amber)':'var(--surface)'};color:${mopSpcAtivo==='leve'?'#000':'var(--text2)'};border:1px solid var(--border);border-radius:7px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer">🟡 Leves</button>
+          </div>
+        </div>
+        <div id="mop-spc-pesadas" style="display:${mopSpcAtivo==='pesada'?'block':'none'}">${mopRenderSPC(mopPtosPesada,mopSpcPesada,'pesada')}</div>
+        <div id="mop-spc-leves" style="display:${mopSpcAtivo==='leve'?'block':'none'}">${mopRenderSPC(mopPtosLeve,mopSpcLeve,'leve')}</div>
+        <div style="margin-top:12px;font-size:10px;color:var(--text3);display:flex;gap:16px;flex-wrap:wrap">
+          <span><span style="color:var(--red)">╌╌</span> UCL (Limite Superior)</span>
+          <span><span style="color:var(--blue)">──</span> Média (X̄)</span>
+          <span><span style="color:var(--green)">╌╌</span> LCL (Limite Inferior)</span>
+          <span>● Dentro dos limites &nbsp; <span style="color:var(--red)">●</span> Fora dos limites</span>
+        </div>
+      </div>
     `);
     return;
   }
@@ -12391,6 +12503,138 @@ function ind212Input(id,val,ph='',extra=''){
   const travado=String(extra||'').includes('disabled');
   return `<input id="${id}" value="${prevEsc(val||'')}" placeholder="${ph}" ${extra} style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:8px 9px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box;${travado?'opacity:.45;cursor:not-allowed':''}">`;
 }
+// ── MÃO DE OBRA — FUNÇÕES ────────────────────────────────────
+function mopGetPrevDia(dataIso){
+  const hist=prevHistoricos();
+  const itens=[];
+  for(const semana of hist.semanas||[]){
+    for(const item of semana.itens||[]){
+      if(item.iso===dataIso||item.data===dataIso) itens.push(item);
+    }
+  }
+  const pesadas=itens.filter(i=>String(i.tipo||i.tipo_prev||'').toLowerCase().includes('pesada'));
+  const leves=itens.filter(i=>String(i.tipo||i.tipo_prev||'').toLowerCase().includes('leve'));
+  return{pesadas,leves};
+}
+function mopCalcPontosSPC(historico,tipo){
+  const porDia={};
+  (historico||[]).filter(r=>r.tipo_prev===tipo).forEach(r=>{
+    if(!porDia[r.data]) porDia[r.data]={soma:0,count:0};
+    porDia[r.data].soma+=Number(r.total_h||0);
+    porDia[r.data].count+=1;
+  });
+  return Object.entries(porDia).sort(([a],[b])=>a.localeCompare(b))
+    .map(([data,{soma,count}])=>({data,media:count>0?soma/count:0}));
+}
+function mopCalcSPC(pontos){
+  if(!pontos||pontos.length<5) return null;
+  const vals=pontos.map(p=>p.media);
+  const media=vals.reduce((s,v)=>s+v,0)/vals.length;
+  const sigma=Math.sqrt(vals.reduce((s,v)=>s+(v-media)**2,0)/vals.length);
+  return{media,ucl:media+3*sigma,lcl:Math.max(0,media-3*sigma)};
+}
+function mopRenderSPC(pontos,spc,tipo){
+  const label=tipo==='pesada'?'pesadas':'leves';
+  if(!pontos||pontos.length===0) return`<div style="text-align:center;padding:30px;color:var(--text3);font-size:12px">Nenhum dado lançado ainda para ${label}.<br>Lance horas e salve para começar a construir o histórico.</div>`;
+  if(!spc) return`<div style="text-align:center;padding:20px;color:var(--text3);font-size:12px">⏳ Mínimo de <b>5 dias</b> com dados para exibir os limites de controle.<br>Atual: <b>${pontos.length} dia${pontos.length!==1?'s':''}</b> registrado${pontos.length!==1?'s':''}.</div>`;
+  const W=580,H=200,PL=42,PR=36,PT=14,PB=38;
+  const vals=pontos.map(p=>p.media);
+  const yMax=Math.max(spc.ucl*1.12,Math.max(...vals)*1.1,1);
+  const yMin=0;
+  const n=pontos.length;
+  const toX=i=>PL+(n>1?i/(n-1):0.5)*(W-PL-PR);
+  const toY=v=>PT+(1-(v-yMin)/(yMax-yMin||1))*(H-PT-PB);
+  const yclMedia=toY(spc.media);
+  const yclUCL=toY(spc.ucl);
+  const yclLCL=toY(spc.lcl);
+  const polyPts=pontos.map((p,i)=>`${toX(i).toFixed(1)},${toY(p.media).toFixed(1)}`).join(' ');
+  const dots=pontos.map((p,i)=>{
+    const x=toX(i).toFixed(1),y=toY(p.media).toFixed(1);
+    const fora=p.media>spc.ucl||p.media<spc.lcl;
+    return`<circle cx="${x}" cy="${y}" r="4" fill="${fora?'var(--red)':'var(--blue)'}" stroke="white" stroke-width="1.2"/>`;
+  }).join('');
+  const step=Math.max(1,Math.ceil(n/7));
+  const xLabels=pontos.map((p,i)=>{
+    if(i%step!==0&&i!==n-1) return'';
+    const d=p.data.slice(5).replace('-','/');
+    return`<text x="${toX(i).toFixed(1)}" y="${H-PB+16}" text-anchor="middle" font-size="9" fill="#9CA3AF">${d}</text>`;
+  }).join('');
+  const yLabels=[yMin,spc.media,yMax].map(v=>`<text x="${PL-4}" y="${toY(v)+3}" text-anchor="end" font-size="9" fill="#9CA3AF">${v.toFixed(1)}</text>`).join('');
+  return`<div style="overflow-x:auto"><svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;height:${H}px;display:block;overflow:visible;min-width:320px">
+    <line x1="${PL}" y1="${PT}" x2="${PL}" y2="${H-PB}" stroke="#374151" stroke-width="1"/>
+    <line x1="${PL}" y1="${H-PB}" x2="${W-PR}" y2="${H-PB}" stroke="#374151" stroke-width="1"/>
+    <line x1="${PL}" y1="${yclUCL.toFixed(1)}" x2="${(W-PR).toFixed(1)}" y2="${yclUCL.toFixed(1)}" stroke="var(--red)" stroke-width="1.2" stroke-dasharray="5,3"/>
+    <text x="${(W-PR+2).toFixed(1)}" y="${(yclUCL+4).toFixed(1)}" font-size="8" fill="var(--red)" font-weight="bold">UCL</text>
+    <line x1="${PL}" y1="${yclMedia.toFixed(1)}" x2="${(W-PR).toFixed(1)}" y2="${yclMedia.toFixed(1)}" stroke="var(--blue)" stroke-width="1.5"/>
+    <text x="${(W-PR+2).toFixed(1)}" y="${(yclMedia+4).toFixed(1)}" font-size="8" fill="var(--blue)" font-weight="bold">X̄</text>
+    ${spc.lcl>0.01?`<line x1="${PL}" y1="${yclLCL.toFixed(1)}" x2="${(W-PR).toFixed(1)}" y2="${yclLCL.toFixed(1)}" stroke="var(--green)" stroke-width="1.2" stroke-dasharray="5,3"/><text x="${(W-PR+2).toFixed(1)}" y="${(yclLCL+4).toFixed(1)}" font-size="8" fill="var(--green)" font-weight="bold">LCL</text>`:''}
+    <polyline points="${polyPts}" fill="none" stroke="#3B82F660" stroke-width="1.5"/>
+    ${dots}
+    ${yLabels}
+    ${xLabels}
+  </svg></div>`;
+}
+function mopToggleSPC(tipo){
+  S._mopSpcTipo=tipo;
+  const dp=document.getElementById('mop-spc-pesadas');
+  const dl=document.getElementById('mop-spc-leves');
+  const bp=document.getElementById('mop-btn-pesadas');
+  const bl=document.getElementById('mop-btn-leves');
+  if(dp) dp.style.display=tipo==='pesada'?'block':'none';
+  if(dl) dl.style.display=tipo==='leve'?'block':'none';
+  if(bp){bp.style.background=tipo==='pesada'?'var(--blue)':'var(--surface)';bp.style.color=tipo==='pesada'?'#fff':'var(--text2)';}
+  if(bl){bl.style.background=tipo==='leve'?'var(--amber)':'var(--surface)';bl.style.color=tipo==='leve'?'#000':'var(--text2)';}
+}
+function mopCalcKpis(){
+  const byPref={};
+  document.querySelectorAll('[data-mop-prefixo]').forEach(el=>{
+    const p=el.dataset.mopPrefixo;
+    if(!byPref[p]) byPref[p]=0;
+    byPref[p]+=parseFloat(el.value)||0;
+  });
+  Object.entries(byPref).forEach(([p,v])=>{
+    const el=document.getElementById(`mop-hc-${p}`);
+    if(el) el.textContent=v>0?v.toFixed(1)+'h':'—';
+  });
+  const total=Object.values(byPref).reduce((s,v)=>s+v,0);
+  const count=Object.keys(byPref).filter(p=>byPref[p]>0).length;
+  const media=count>0?total/count:0;
+  const el1=document.getElementById('mop-kpi-total');
+  const el2=document.getElementById('mop-kpi-media');
+  if(el1) el1.textContent=total>0?total.toFixed(1)+'h':'—';
+  if(el2) el2.textContent=total>0?media.toFixed(1)+'h':'—';
+}
+async function mopSalvar(gid,dataIso){
+  const inputs=document.querySelectorAll('[data-mop-prefixo]');
+  const rows={};
+  inputs.forEach(el=>{
+    const prefixo=el.dataset.mopPrefixo;
+    const campo=el.dataset.mopCampo;
+    if(!rows[prefixo]) rows[prefixo]={prefixo,tipo_prev:el.dataset.mopTipo,plano:el.dataset.mopPlano};
+    rows[prefixo][campo]=parseFloat(el.value)||0;
+  });
+  const arr=Object.values(rows);
+  if(!arr.length){toast('Nenhum carro para salvar');return;}
+  const btn=document.querySelector('[onclick*="mopSalvar"]');
+  if(btn){btn.disabled=true;btn.textContent='⏳ Salvando...';}
+  let ok=0,err=0;
+  for(const row of arr){
+    try{
+      const{data:ex}=await sb.from('mao_obra_preventiva').select('id')
+        .eq('garagem_id',gid).eq('data',dataIso).eq('prefixo',row.prefixo).limit(1).maybeSingle();
+      const payload={...row,garagem_id:gid,data:dataIso,
+        criado_por:S.perfil?.nome||null,atualizado_em:new Date().toISOString()};
+      if(ex?.id) await sb.from('mao_obra_preventiva').update(payload).eq('id',ex.id);
+      else await sb.from('mao_obra_preventiva').insert(payload);
+      ok++;
+    }catch(e){err++;console.error('mopSalvar erro:',e);}
+  }
+  if(err) toast(`⚠️ ${ok} salvo(s), ${err} erro(s) — verifique o console`);
+  else toast(`✅ ${ok} registro${ok!==1?'s':''} de mão de obra salvo${ok!==1?'s':''}`);
+  S._mopData=dataIso;
+  renderFerrPCM('mao_obra');
+}
+// ────────────────────────────────────────────────────────────
 async function cpkCarregarApontamentos(gid){
   try{const{data}=await sb.from('cpk_anomalias').select('*').eq('garagem_id',gid).order('criado_em',{ascending:false});return data||[];}catch(e){return[];}
 }
