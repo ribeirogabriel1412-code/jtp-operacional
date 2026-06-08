@@ -10215,11 +10215,21 @@ function prevBuildEscalaFromSelecoes(){
   _prevEscalaAlteracoes={}; _prevValidados={};
   const fillSlots=(selSet,tipo,capDia)=>{
     const veics=[...selSet].map(pref=>p.porPrefixo?.get(pref)).filter(Boolean).sort(prevOrdenarPreventiva);
+    // Preencher slots com os veículos selecionados
     veics.forEach((c,i)=>{
       const dia=Math.floor(i/capDia), slot=i%capDia;
       if(dia>=5)return;
       _prevEscalaAlteracoes[prevSlotKey(tipo,dia,slot)]={tipo,prefixo:c.prefixo};
     });
+    // Marcar slots restantes como null (vazio explícito) para impedir auto-preenchimento
+    for(let dia=0;dia<5;dia++){
+      for(let s=0;s<capDia;s++){
+        const key=prevSlotKey(tipo,dia,s);
+        if(!Object.prototype.hasOwnProperty.call(_prevEscalaAlteracoes,key)){
+          _prevEscalaAlteracoes[key]=null;
+        }
+      }
+    }
   };
   fillSlots(new Set([..._prevSelGar20,..._prevSelGar30]),'garantia',PREV_CAP.garantiaDia);
   fillSlots(_prevSelPesada,'pesada',PREV_CAP.pesadaDia);
