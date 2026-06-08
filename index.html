@@ -7454,6 +7454,59 @@ async function abrirDetalheOSFechadaPCM(ocId){
     '<div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;margin-bottom:8px">Histórico</div>'+ 
     (hist.length?'<div class="tbl-wrap"><table style="width:100%;border-collapse:collapse"><tbody>'+rowsHist+'</tbody></table></div>':'<div class="empty">Sem histórico registrado</div>');
 }
+function pcmRenderPreventivasPainel(valetList, dataValet){
+  if(!valetList||!valetList.length){
+    return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px">
+      <div style="font-size:13px;font-weight:800;margin-bottom:6px">🔧 Preventivas da Semana</div>
+      <div style="font-size:12px;color:var(--text3)">Sem valetamento registrado para ${dataValet?dataValet.split('-').reverse().join('/'):'—'}. <a href="#" onclick="renderFerrPCM('req_compra');return false" style="color:var(--blue)">Abrir valetamento →</a></div>
+    </div>`;
+  }
+  // Agrupa por prefixo
+  const grupos={};
+  valetList.forEach(r=>{
+    if(!grupos[r.prefixo])grupos[r.prefixo]=[];
+    grupos[r.prefixo].push(r);
+  });
+  const okStatus=['separado','chegou','comprado'];
+  const carros=Object.entries(grupos).map(([pref,itens])=>{
+    const total=itens.length;
+    const prontos=itens.filter(i=>okStatus.includes(i.status)).length;
+    const tudo=prontos===total;
+    const nada=prontos===0;
+    const ic=tudo?'🟢':nada?'🔴':'🟡';
+    const label=tudo?'Pronto':nada?'Sem kits':'Parcial';
+    const cor=tudo?'var(--green)':nada?'var(--red)':'var(--amber)';
+    const tipo=itens.find(i=>i.plano)?.plano?.toLowerCase().includes('pesada')?'🟣 Pesada':'🟡 Leve';
+    return{pref,total,prontos,ic,label,cor,tipo};
+  }).sort((a,b)=>a.pref.localeCompare(b.pref));
+  const totalCarros=carros.length;
+  const kitsOk=carros.filter(c=>c.prontos===c.total).length;
+  const pendentes=totalCarros-kitsOk;
+  const rows=carros.map(c=>`
+    <div style="display:grid;grid-template-columns:80px 90px 1fr 90px;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border2)">
+      <div style="font-family:'DM Mono',monospace;font-weight:800;font-size:13px">${c.pref}</div>
+      <div style="font-size:11px;color:var(--text3)">${c.tipo}</div>
+      <div style="font-size:11px;color:var(--text3)">${c.prontos}/${c.total} itens</div>
+      <div style="font-size:11px;font-weight:800;color:${c.cor}">${c.ic} ${c.label}</div>
+    </div>`).join('');
+  return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div><div style="font-size:13px;font-weight:800">🔧 Preventivas da Semana</div><div style="font-size:11px;color:var(--text3);margin-top:2px">Sábado ${dataValet?dataValet.split('-').reverse().join('/'):'—'}</div></div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <span style="font-size:11px;padding:3px 8px;border-radius:999px;background:#00C48C14;border:1px solid #00C48C40;color:var(--green);font-weight:700">🟢 ${kitsOk} prontos</span>
+        ${pendentes?`<span style="font-size:11px;padding:3px 8px;border-radius:999px;background:#EF444414;border:1px solid #EF444440;color:var(--red);font-weight:700">🔴 ${pendentes} pendentes</span>`:''}
+        <button onclick="renderFerrPCM('req_compra')" class="btn-sm">Ver valetamento →</button>
+      </div>
+    </div>
+    <div style="grid-template-columns:80px 90px 1fr 90px;gap:8px;display:grid;padding:0 0 4px 0;border-bottom:1px solid var(--border)">
+      <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Prefixo</div>
+      <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Tipo</div>
+      <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Kits</div>
+      <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Status</div>
+    </div>
+    ${rows}
+  </div>`;
+}
 async function renderFerrPCM(aba='painel'){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
   const gid=getGid();
@@ -8225,6 +8278,14 @@ async function renderFerrPCM(aba='painel'){
     .eq('garagem_id',gid).eq('status','liberado')
     .gte('hora_liberacao',inicioFluxo);
 
+  // Valetamento de preventivas — próximo sábado
+  const pcmProxSab=(d=>{const dt=new Date(d+'T12:00:00');const diff=(6-dt.getDay()+7)%7||7;dt.setDate(dt.getDate()+diff);return dt.toISOString().slice(0,10);})(data);
+  let pcmValetList=[];
+  try{
+    const{data:vReqs}=await sb.from('requisicoes_compra').select('prefixo,status,peca,cod_sap,quantidade,plano').eq('garagem_id',gid).eq('data',pcmProxSab).neq('status','cancelado').order('prefixo');
+    pcmValetList=(vReqs||[]).filter(r=>r.cod_sap!=='__PROG_PREV__'&&!String(r.peca||'').includes('Programação preventiva'));
+  }catch(e){}
+
   const totalFrota=(frota||[]).length;
   const parados=(ocs||[]).length;
   const pctDisp=totalFrota>0?(((totalFrota-parados)/totalFrota)*100).toFixed(1):100;
@@ -8330,7 +8391,17 @@ async function renderFerrPCM(aba='painel'){
         <button onclick="oficializarCustoPCM('${gid}','${data}')" class="btn-add" style="height:40px;white-space:nowrap;background:var(--green);border-color:var(--green);color:#fff">Oficializar real</button>
         <button onclick="resetarFluxoCustoPCM('${gid}','${data}')" class="btn-add" style="height:40px;white-space:nowrap;background:var(--red);border-color:var(--red);color:#fff">Resetar</button>
       </div>
-      <div style="font-size:11px;color:var(--text3);margin-top:8px">Status: <strong style="color:${statusFluxo==='oficializado'?'var(--green)':statusFluxo==='previsto'?'var(--amber)':statusFluxo==='resetado'?'var(--red)':'var(--text3)'}">${statusFluxo==='oficializado'?'oficializado':statusFluxo==='previsto'?'previsto aberto':statusFluxo==='resetado'?'resetado':'pendente'}</strong>${meta.oficializado_por?' · por '+meta.oficializado_por:''}${meta.reset_em?' · reset '+new Date(meta.reset_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):''}</div>`})()}
+      <div style="font-size:11px;color:var(--text3);margin-top:8px">Status: <strong style="color:${statusFluxo==='oficializado'?'var(--green)':statusFluxo==='previsto'?'var(--amber)':statusFluxo==='resetado'?'var(--red)':'var(--text3)'}">${statusFluxo==='oficializado'?'oficializado':statusFluxo==='previsto'?'previsto aberto':statusFluxo==='resetado'?'resetado':'pendente'}</strong>${meta.oficializado_por?' · por '+meta.oficializado_por:''}${meta.reset_em?' · reset '+new Date(meta.reset_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):''}</div>
+      ${(()=>{
+        if(!baseCusto)return'';
+        const gastoTotal=totalRealFechado+totalPrevisto;
+        const pct=Math.min(Math.round(gastoTotal/baseCusto*100),100);
+        const cor=pct>=90?'var(--red)':pct>=70?'var(--amber)':'var(--green)';
+        const alerta=pct>=90?`<div style="margin-top:8px;padding:8px 12px;background:#EF444414;border:1px solid #EF444440;border-radius:8px;font-size:11px;color:var(--red);font-weight:700">🚨 Limite de orçamento: ${pct}% utilizado. Saldo: ${pcmMoeda(baseCusto-gastoTotal)}</div>`
+          :pct>=70?`<div style="margin-top:8px;padding:8px 12px;background:#F59E0B14;border:1px solid #F59E0B40;border-radius:8px;font-size:11px;color:var(--amber);font-weight:700">⚠️ Atenção: ${pct}% do orçamento utilizado (real+previsto). Saldo: ${pcmMoeda(baseCusto-gastoTotal)}</div>`:'';
+        return`<div style="margin-top:10px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:10px;color:var(--text3);font-weight:700">UTILIZAÇÃO DO ORÇAMENTO</span><span style="font-size:11px;font-weight:800;color:${cor}">${pct}%</span></div><div style="background:var(--border);border-radius:99px;height:8px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${cor};border-radius:99px;transition:width .3s"></div></div><div style="display:flex;justify-content:space-between;margin-top:3px"><span style="font-size:10px;color:var(--text3)">Gasto real+previsto: ${pcmMoeda(gastoTotal)}</span><span style="font-size:10px;color:var(--text3)">Orçamento: ${pcmMoeda(baseCusto)}</span></div>${alerta}</div>`;
+      })()}
+      `})()}
     </div>
     <!-- 2. KPIs -->
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">
@@ -8351,7 +8422,9 @@ async function renderFerrPCM(aba='painel'){
         <div class="kpi-val" style="color:${agPeca>0?'var(--red)':'var(--text3)'}">${agPeca}</div>
       </div>
     </div>
-    <!-- 3. OS EM ABERTO -->
+    <!-- 3. PREVENTIVAS DA SEMANA -->
+    ${pcmRenderPreventivasPainel(pcmValetList,pcmProxSab)}
+    <!-- 4. OS EM ABERTO -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div style="font-size:13px;font-weight:700">${parados} OS em aberto</div>
       <div style="display:flex;gap:8px">
