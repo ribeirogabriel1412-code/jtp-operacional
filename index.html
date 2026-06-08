@@ -7515,8 +7515,6 @@ async function renderFerrPCM(aba='painel'){
 
   const tabs=`<div class="filtros">
     <button class="filtro-btn${aba==='painel'?' active':''}" onclick="renderFerrPCM('painel')">📊 Painel</button>
-    <button class="filtro-btn${aba==='ronda33'?' active':''}" onclick="renderFerrPCM('ronda33')">👣 3.3 Ronda Operacional</button>
-    <button class="filtro-btn${aba==='mov_pneu'?' active':''}" onclick="renderFerrPCM('mov_pneu')">⚙️ Pneus</button>
     <button class="filtro-btn${aba==='req_compra'?' active':''}" onclick="renderFerrPCM('req_compra')">📦 Valetamento</button>
     <button class="filtro-btn${aba==='ind212'?' active':''}" onclick="renderFerrPCM('ind212')">📊 2.12 / 2.14 Indicadores</button>
     <button class="filtro-btn${aba==='consolidado'?' active':''}" onclick="renderFerrPCM('consolidado')">📋 2.6 - Custo</button>
@@ -8373,23 +8371,19 @@ async function renderFerrPCM(aba='painel'){
     <!-- 1. FLUXO DE CUSTO DO DIA -->
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:12px;flex-wrap:wrap">
-        <div><div style="font-size:13px;font-weight:800">Fluxo de Custo PCM</div><div style="font-size:11px;color:var(--text3);margin-top:2px">Abertura prevista as 08:00; real oficializado pelo Lider PCM as 11:00.</div></div>
+        <div><div style="font-size:13px;font-weight:800">Fluxo de Custo PCM</div><div style="font-size:11px;color:var(--text3);margin-top:2px">Orçamento diário definido pelo Líder PCM.</div></div>
         <span style="font-size:10px;color:var(--text3)">${S.turno==='dia'?'Dia':'Noite'} · ${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</span>
       </div>
-      ${(()=>{const meta=fluxoLocal||pcmReadLocal(pcmFluxoKey(gid,data,S.turno||'dia'));const foiResetado=meta.status_fluxo==='resetado';const previsto=foiResetado?0:(parseFloat(meta.valor_previsto??orc?.valor_previsto??orcDisp??0)||0);const realOficial=foiResetado?0:(parseFloat(meta.valor_real??orc?.valor_real??(meta.status_fluxo==='oficializado'||orc?.status_fluxo==='oficializado'?orcDisp:0))||0);const statusFluxo=meta.status_fluxo||orc?.status_fluxo||(orc?'previsto':'pendente');const baseCusto=realOficial||previsto||orcDisp||0;const saldoFluxo=baseCusto-totalRealFechado-totalPrevisto;return `
-      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:10px">
-        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:var(--amber);font-weight:700;margin-bottom:2px">PREVISTO 08:00</div><div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--amber)">${pcmMoeda(previsto)}</div></div>
-        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:var(--green);font-weight:700;margin-bottom:2px">REAL 11:00</div><div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--green)">${realOficial?pcmMoeda(realOficial):'Aguardando'}</div></div>
+      ${(()=>{const meta=fluxoLocal||pcmReadLocal(pcmFluxoKey(gid,data,S.turno||'dia'));const foiResetado=meta.status_fluxo==='resetado';const previsto=foiResetado?0:(parseFloat(meta.valor_previsto??orc?.valor_previsto??orcDisp??0)||0);const statusFluxo=meta.status_fluxo||orc?.status_fluxo||(orc?'previsto':'pendente');const baseCusto=previsto||orcDisp||0;const saldoFluxo=baseCusto-totalRealFechado-totalPrevisto;return `
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px">
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:var(--amber);font-weight:700;margin-bottom:2px">ORÇAMENTO</div><div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--amber)">${previsto?pcmMoeda(previsto):'—'}</div></div>
         <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:var(--red);font-weight:700;margin-bottom:2px">REAL FECHADO</div><div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--red)">${pcmMoeda(totalRealFechado)}</div></div>
         <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:var(--blue);font-weight:700;margin-bottom:2px">PREVISTO ABERTO</div><div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--blue)">${pcmMoeda(totalPrevisto)}</div></div>
         <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:2px">SALDO FLUXO</div><div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:${saldoFluxo>=0?'var(--green)':'var(--red)'}">${pcmMoeda(saldoFluxo)}</div></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr auto auto auto;gap:8px;align-items:end">
-        <div><label class="campo-label">Custo previsto (abertura 08:00)</label><input type="number" id="custo-previsto-dia" value="${previsto||''}" placeholder="0,00" step="0.01" class="fi" style="font-family:'DM Mono',monospace"></div>
-        <div><label class="campo-label">Custo real (oficializacao 11:00)</label><input type="number" id="custo-real-dia" value="${realOficial||''}" placeholder="0,00" step="0.01" class="fi" style="font-family:'DM Mono',monospace"></div>
-        <button onclick="abrirCustoPrevistoPCM('${gid}','${data}')" class="btn-add" style="height:40px;white-space:nowrap;background:var(--amber);border-color:var(--amber);color:#111827">Abrir previsto</button>
-        <button onclick="oficializarCustoPCM('${gid}','${data}')" class="btn-add" style="height:40px;white-space:nowrap;background:var(--green);border-color:var(--green);color:#fff">Oficializar real</button>
-        <button onclick="resetarFluxoCustoPCM('${gid}','${data}')" class="btn-add" style="height:40px;white-space:nowrap;background:var(--red);border-color:var(--red);color:#fff">Resetar</button>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end">
+        <div><label class="campo-label">Orçamento do dia</label><input type="number" id="custo-previsto-dia" value="${previsto||''}" placeholder="0,00" step="0.01" class="fi" style="font-family:'DM Mono',monospace"></div>
+        <button onclick="abrirCustoPrevistoPCM('${gid}','${data}')" class="btn-add" style="height:40px;white-space:nowrap;background:var(--blue);border-color:var(--blue);color:#fff">💾 Salvar orçamento</button>
       </div>
       <div style="font-size:11px;color:var(--text3);margin-top:8px">Status: <strong style="color:${statusFluxo==='oficializado'?'var(--green)':statusFluxo==='previsto'?'var(--amber)':statusFluxo==='resetado'?'var(--red)':'var(--text3)'}">${statusFluxo==='oficializado'?'oficializado':statusFluxo==='previsto'?'previsto aberto':statusFluxo==='resetado'?'resetado':'pendente'}</strong>${meta.oficializado_por?' · por '+meta.oficializado_por:''}${meta.reset_em?' · reset '+new Date(meta.reset_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):''}</div>
       ${(()=>{
@@ -8428,8 +8422,6 @@ async function renderFerrPCM(aba='painel'){
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div style="font-size:13px;font-weight:700">${parados} OS em aberto</div>
       <div style="display:flex;gap:8px">
-        <button onclick="enviarSituacaoPCM()" class="btn-sm" style="border-color:#25D36640;color:#25D366;background:#25D36610">📲 WhatsApp</button>
-        <button onclick="renderFerrPCM('historico')" class="btn-sm">📋 Histórico</button>
         <button onclick="abrirNovaOcorrencia()" class="btn-add">+ Nova OS</button>
       </div>
     </div>
