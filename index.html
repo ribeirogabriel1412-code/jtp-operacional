@@ -33,9 +33,9 @@ if('caches' in window){
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#020817;--surface:#0F172A;--surface2:#0A0F1E;
-  --border:#1E293B;--border2:#0F1929;
-  --text:#F1F5F9;--text2:#94A3B8;--text3:#475569;--text4:#334155;
+  --bg:#111827;--surface:#1F2937;--surface2:#171E2E;
+  --border:#374151;--border2:#2D3748;
+  --text:#F9FAFB;--text2:#9CA3AF;--text3:#6B7280;--text4:#4B5563;
   --blue:#2563EB;--blue-d:#1D4ED8;
   --green:#00C48C;--amber:#F59E0B;--red:#EF4444;--purple:#8B5CF6;
   --sidebar:220px;
@@ -121,7 +121,7 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min
 .kpi-meta{font-size:11px;font-weight:600}
 .kpi-meta.ok{color:var(--green)}.kpi-meta.nok{color:var(--red)}
 
-.painel-hero{background:linear-gradient(135deg,var(--surface),#1A2540);border:1px solid var(--border);border-radius:14px;padding:20px 24px;margin-bottom:22px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}
+.painel-hero{background:linear-gradient(135deg,var(--surface),#243044);border:1px solid var(--border);border-radius:14px;padding:20px 24px;margin-bottom:22px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}
 .fc-row{display:flex;gap:10px}
 .fc{border-radius:10px;padding:10px 16px;text-align:center;border:1px solid}
 .fc-val{font-family:'DM Mono',monospace;font-size:24px;font-weight:700;display:block}
@@ -145,7 +145,7 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min
 
 /* BOTÕES / CARDS GENÉRICOS */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;background:var(--surface);border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:8px 13px;font-size:12px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .15s;text-decoration:none;line-height:1.2;white-space:nowrap}
-.btn:hover{border-color:#2563EB60;color:var(--text);background:#1E293B70}
+.btn:hover{border-color:#2563EB60;color:var(--text);background:#37415170}
 .btn.primary{background:linear-gradient(135deg,var(--blue-d),var(--blue));border-color:var(--blue);color:#fff}
 .btn.primary:hover{opacity:.9;color:#fff}
 .btn.danger{background:#EF444418;border-color:#EF444440;color:var(--red)}
@@ -187,7 +187,7 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min
 
 /* IMPORT */
 .import-zone{border:2px dashed var(--border);border-radius:14px;padding:40px 32px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg)}
-.import-zone:hover,.import-zone.drag{border-color:var(--blue);background:#1E293B}
+.import-zone:hover,.import-zone.drag{border-color:var(--blue);background:#374151}
 .btn-import{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#F5620F,#D4510B);color:#fff;border:none;border-radius:10px;padding:12px 24px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;margin-top:12px}
 .btn-import:disabled{opacity:.5;cursor:not-allowed}
 .prog-wrap{background:var(--border);border-radius:99px;height:7px;overflow:hidden;margin-top:10px}
@@ -200,7 +200,7 @@ table{width:100%;border-collapse:collapse}
 th{padding:10px 14px;text-align:left;color:var(--text3);font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;background:var(--surface2);border-bottom:1px solid var(--border);white-space:nowrap}
 td{padding:11px 14px;border-bottom:1px solid #0A0F1A;font-size:13px;color:var(--text);vertical-align:middle}
 tr:last-child td{border-bottom:none}
-tr:hover td{background:#0F172A80}
+tr:hover td{background:#1F293780}
 .status-btn{border-radius:7px;padding:5px 11px;font-size:11px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;border:1px solid;transition:all .15s;white-space:nowrap}
 .sb-sim{color:var(--green);background:#00C48C18;border-color:#00C48C40}
 .sb-nao{color:var(--red);background:#EF444418;border-color:#EF444440}
@@ -13515,7 +13515,7 @@ function renderFerrRotina(cargoSel=null){
     <div class="filtros" style="flex-wrap:wrap">${seletorCargo}</div>
 
     <!-- Card do cargo -->
-    <div style="background:linear-gradient(135deg,var(--surface),#1A2540);border:1px solid var(--border);border-radius:14px;padding:20px 24px;margin-bottom:16px">
+    <div style="background:linear-gradient(135deg,var(--surface),#243044);border:1px solid var(--border);border-radius:14px;padding:20px 24px;margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
         <div>
           <div style="font-size:18px;font-weight:800">${rotina.label}</div>
