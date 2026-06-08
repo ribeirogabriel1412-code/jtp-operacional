@@ -7866,60 +7866,8 @@ async function renderFerrPCM(aba='painel'){
       </div>
       ${relatorioCestos}
       ${preventivasSemana}
-      <div style="display:grid;grid-template-columns:minmax(360px,420px) minmax(360px,1fr);gap:16px;align-items:start">
-        <!-- Formulário -->
-        <div>
-          ${secTitle('📝','Solicitar Item do Valetamento')}
-          <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
-            <input type="hidden" id="req-data-site" value="${dataValet}">
-            <input type="hidden" id="req-id-site" value="">
-            <input type="hidden" id="req-sap-site" value="">
-            <div style="position:relative;margin-bottom:10px">
-              <label class="campo-label">🔎 Base de Peças SAP</label>
-              <input type="text" id="valet-sap-busca" placeholder="Digite código SAP ou descrição da peça" oninput="valetBuscarPecaSap(this)"
-                style="width:100%;background:var(--surface2);border:1px solid var(--blue);border-radius:8px;padding:10px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
-              <div id="valet-sap-drop" style="display:none;position:absolute;z-index:20;left:0;right:0;top:64px;max-height:260px;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 14px 30px #0008"></div>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-              <div>
-                <label class="campo-label">🚌 Prefixo / OS</label>
-                <input type="text" id="req-pref-site" placeholder="02.250"
-                  style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:14px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
-              </div>
-              <div>
-                <label class="campo-label">🔢 Quantidade</label>
-                <input type="number" id="req-qtd-site" value="1" min="1"
-                  style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:14px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
-              </div>
-            </div>
-            <div style="margin-bottom:10px">
-              <label class="campo-label">📦 Descrição da Peça</label>
-              <input type="text" id="req-peca-site" placeholder="Ex: Filtro de óleo motor"
-                style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-              <div>
-                <label class="campo-label">💰 Valor Estimado (R$)</label>
-                <input type="number" id="req-valor-site" placeholder="0,00" step="0.01"
-                  style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:14px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
-              </div>
-              <div>
-                <label class="campo-label">📝 Justificativa</label>
-                <input type="text" id="req-just-site" placeholder="Sem estoque"
-                  style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
-              </div>
-            </div>
-            <button onclick="salvarReqCompraSite()" style="width:100%;padding:12px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
-              ➕ Salvar e enviar ao almox
-            </button>
-          </div>
-        </div>
-        <!-- Lista -->
-        <div>
-          ${secTitle('🛒','Itens do Valetamento',`<div style="font-size:12px;color:var(--text3)">${listasOficina} oficina · ${solicitados} solicitados · ${separados} separados · ${compras} compras · ${comprados} chegaram</div>`)}
-          ${valetCards||'<div class="empty">Nenhum item solicitado para este valetamento</div>'}
-        </div>
-      </div>
+      ${secTitle('🛒','Itens do Valetamento',`<div style="font-size:12px;color:var(--text3)">${listasOficina} oficina · ${solicitados} solicitados · ${separados} separados · ${compras} compras · ${comprados} chegaram</div>`)}
+      ${valetCards||'<div class="empty">Nenhum item solicitado para este valetamento</div>'}
     `);
     return;
   }
