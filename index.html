@@ -6616,15 +6616,19 @@ function renderAlmoxPreventivasProgramadas(dataValet,gruposReq){
   const dias=(semana.dias||[]).filter(d=>itens.some(i=>i.iso===d.iso));
   const totalPesadas=itens.length;
   const totalComLista=itens.filter(i=>(gruposNorm[almoxPrefKey(i.prefixo)]||[]).length).length;
+  const semanaId=semana.id||'';
   return `<section style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:10px;padding:14px;margin-bottom:16px">
     <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px">
       <div>
         <div style="font-size:14px;font-weight:900;color:var(--text)">📆 Preventivas programadas</div>
         <div style="font-size:12px;color:var(--text3);margin-top:4px">Semana ${esc(prevSemanaLabel(semana))} · somente preventivas pesadas · Valet ${fmtDiaMes(parseISODateLocal(dataValet))}</div>
       </div>
-      <div style="text-align:right">
-        <div style="font-family:'DM Mono',monospace;color:var(--blue);font-size:18px;font-weight:900">${totalPesadas}</div>
-        <div style="font-size:10px;color:var(--text3);font-weight:900">pesadas · ${totalComLista} com lista</div>
+      <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+        <div>
+          <div style="font-family:'DM Mono',monospace;color:var(--blue);font-size:18px;font-weight:900">${totalPesadas}</div>
+          <div style="font-size:10px;color:var(--text3);font-weight:900">pesadas · ${totalComLista} com lista</div>
+        </div>
+        ${semanaId?`<button onclick="(function(){if(!confirm('Excluir a programação desta semana do histórico?'))return;const h=prevHistoricos();h.semanas=h.semanas.filter(s=>s.id!=='${semanaId}');prevSalvarHistoricos(h);renderAlmoxarifado();toast('Programação removida');})();" style="border:1px solid var(--red);background:#EF444418;color:var(--red);border-radius:6px;padding:4px 8px;font-size:10px;font-weight:800;cursor:pointer">🗑 Limpar</button>`:''}
       </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px">
@@ -10193,8 +10197,8 @@ function prevToggleSel(tipo,prefixo,sel){
   const mp={pesada:_prevSelPesada,leve:_prevSelLeve,gar20:_prevSelGar20,gar30:_prevSelGar30};
   const s=mp[tipo]; if(!s)return;
   if(sel)s.add(prefixo);else s.delete(prefixo);
-  // Pesada selecionada → remove da leve automaticamente
-  if(tipo==='pesada'&&sel) _prevSelLeve.delete(prefixo);
+  // Pesada selecionada → remove da leve e do valetamento automaticamente
+  if(tipo==='pesada'&&sel){_prevSelLeve.delete(prefixo);if(_prevProxSemanaCarros)_prevProxSemanaCarros.delete(prefixo);}
   prevRenderAbaPrev();
 }
 function prevToggleSelTodos(tipo,sel){
@@ -10207,12 +10211,17 @@ function prevToggleSelTodos(tipo,sel){
   const mp={pesada:_prevSelPesada,leve:_prevSelLeve,gar20:_prevSelGar20,gar30:_prevSelGar30};
   const s=mp[tipo]; if(!s)return;
   lista.forEach(c=>{ if(sel)s.add(c.prefixo); else s.delete(c.prefixo); });
-  if(tipo==='pesada'&&sel) lista.forEach(c=>_prevSelLeve.delete(c.prefixo));
+  if(tipo==='pesada'&&sel) lista.forEach(c=>{_prevSelLeve.delete(c.prefixo);if(_prevProxSemanaCarros)_prevProxSemanaCarros.delete(c.prefixo);});
   prevRenderAbaPrev();
 }
 function prevBuildEscalaFromSelecoes(){
   const p=prevGerarPropostas();
   _prevEscalaAlteracoes={}; _prevValidados={};
+  // Segurança: pesada tem prioridade — remove da lista de valetamento qualquer carro selecionado p/ pesada
+  if(_prevProxSemanaCarros&&_prevProxSemanaCarros.size){
+    _prevSelPesada.forEach(pref=>_prevProxSemanaCarros.delete(pref));
+    _prevSelLeve.forEach(pref=>_prevProxSemanaCarros.delete(pref));
+  }
   const fillSlots=(selSet,tipo,capDia)=>{
     const veics=[...selSet].map(pref=>p.porPrefixo?.get(pref)).filter(Boolean).sort(prevOrdenarPreventiva);
     // Preencher slots com os veículos selecionados
@@ -10303,6 +10312,9 @@ function prevHtmlAbaLista(tipo){
     const proxDias=prevDiasSemana().map(d=>{const dt=new Date(d.iso+'T12:00:00');dt.setDate(dt.getDate()+7);return dt.toISOString().split('T')[0];});
     const semStr=proxDias[0]?`${new Date(proxDias[0]+'T12:00:00').toLocaleDateString('pt-BR')} a ${new Date(proxDias[4]+'T12:00:00').toLocaleDateString('pt-BR')}`:'';
     return`<div>
+      <div style="background:rgba(249,115,22,.08);border:1px solid rgba(249,115,22,.3);border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:11px;color:var(--amber)">
+        ⚠️ <b>Valetamento ≠ Programação desta semana.</b> Carros selecionados aqui vão para o PCM preparar peças na <b>próxima semana</b> — ficam fora das pesadas/leves desta semana.
+      </div>
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px">
         <div>
           <span style="font-size:13px;font-weight:700;color:var(--text)">📦 Valetamento — Próxima Semana</span>
@@ -10874,7 +10886,17 @@ async function prevConsolidarEscala(){
   const validados=linhas.filter(l=>l.validado).length;
   linhas.sort((a,b)=>(b.item?.prioridade||0)-(a.item?.prioridade||0)||(a.item?0:1)-(b.item?0:1));
   const semanaSalva=prevSalvarSemanaHistorico(escala,linhas);
-  const valetSalvo=prevSalvarValetamentoDaEscala(p);
+  // Valetamento: usa seleção explícita do usuário se disponível; caso contrário, calcula posições 11-20
+  let valetItens;
+  if(_prevProxSemanaCarros&&_prevProxSemanaCarros.size){
+    valetItens=[...p.pesadas.filter(c=>_prevProxSemanaCarros.has(c.prefixo))].map((c,i)=>({
+      posicao:i+1,prefixo:c.prefixo,prioridade:c.prioridade||0,
+      servicos:prevResumoServicos(c,'pesada'),plano:c.base?.planoNum||'002',planoNome:c.base?.planoNome||'Preventiva Pesada'
+    }));
+  }else{
+    valetItens=prevValetamentoPesada(p);
+  }
+  const valetSalvo=salvarValetamentoMetrica(proximoSabadoISO(),valetItens);
   await prevSalvarProgramacaoPreventivaBanco(semanaSalva);
   let modal=document.getElementById('modal-prev-consolidado');
   if(!modal){
@@ -10897,7 +10919,7 @@ async function prevConsolidarEscala(){
         <tbody>${linhas.map(l=>{const kmExc=l.item?.prioridade||0;const kmCor=kmExc>0?'var(--red)':kmExc<0?'var(--text3)':'var(--amber)';return`<tr style="border-top:1px solid var(--border)"><td style="padding:9px;color:var(--text2);white-space:nowrap;text-transform:capitalize">${prevEsc(l.dia)} ${prevEsc(l.data)}</td><td style="padding:9px">${prevBadgeTipo(l.tipo)}</td><td style="padding:9px;color:${l.item?'var(--blue)':'var(--amber)'};font-weight:900">${l.item?prevEsc(l.item.prefixo):'VAGA ABERTA'}</td><td style="padding:9px;font-family:'DM Mono',monospace;font-weight:900;color:${kmCor}">${l.item?(kmExc>0?'+':'')+kmExc+' km':'—'}</td><td style="padding:9px;color:${l.validado?'var(--green)':l.origem==='manual'?'var(--amber)':'var(--text3)'};font-weight:900">${l.item?(l.validado?'VALIDADO':l.origem==='manual'?'ALTERADO':'SUGERIDO'):'ABERTO'}</td><td style="padding:9px;color:var(--amber)">${l.item?prevEsc(prevResumoServicos(l.item,l.tipo)):'Aguardando seleção'}</td></tr>`;}).join('')}</tbody>
       </table>
     </div>
-    <div style="margin-top:10px;color:var(--green);font-size:12px;font-weight:800">Histórico da semana ${prevEsc(prevSemanaLabel(semanaSalva))} salvo/atualizado. Valetamento PCM gerado com ${(valetSalvo.itens||[]).length} carro(s) do 11º ao 20º.</div>
+    <div style="margin-top:10px;color:var(--green);font-size:12px;font-weight:800">Histórico da semana ${prevEsc(prevSemanaLabel(semanaSalva))} salvo/atualizado. Valetamento: ${(valetSalvo.itens||[]).length} carro(s) ${_prevProxSemanaCarros&&_prevProxSemanaCarros.size?'(seleção manual da aba Valetamento)':'(posições 11–20 automáticas)'}.</div>
   </div>`;
   modal.style.display='flex';
 }
