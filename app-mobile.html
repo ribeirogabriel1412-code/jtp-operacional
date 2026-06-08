@@ -6077,21 +6077,36 @@ async function gerarPDFSOS218Mobile(d){
 
 // ─── 2.1 FECHAMENTO DE TURNO GARAGEM ──────────────────────────
 const MOB_F21_BLOCOS=[
-  {id:'operacao',titulo:'Operação',resp:'supervisor',cols:['Item de Verificação','Realizado','Meta','Prefixo','Observações / Tratativa'],rows:[['Soltura de Frota','','100%','',''],['Recolhas Anormais (RA)','','0','',''],['Recolhas Operacionais (RO)','','0','',''],['Lavagens','','','',''],['Escovão + varrer + retirar os lixo','','','',''],['Sinistros','','','',''],['Partidas Perdidas','','','']]},
-  {id:'absenteismo',titulo:'Absenteísmo',resp:'supervisor',cols:['Matrícula','Motivo','Matrícula reserva','Tratativas'],rows:Array.from({length:8},()=>['','','',''])},
-  {id:'man_indisp',titulo:'Manutenção — Indisponíveis',resp:'ambos',cols:['Prefixo','Solicitações','Custo (2.6)','Tratativas'],rows:Array.from({length:6},()=>['','','',''])},
-  {id:'man_andamento',titulo:'Manutenção — Em Andamento',resp:'ambos',cols:['Prefixo','Mecânico','Principal pendência'],rows:Array.from({length:8},()=>['','',''])},
-  {id:'suprimentos',titulo:'Suprimentos',resp:'ambos',cols:['Item de Verificação','Realizado','Meta','Status','Observações'],rows:[['Kits preventivos separados (D-1)','','','','']]},
+  // Setor OPERACAO (preenchido pelo Lider de Pátio / Lider Operacional)
+  {id:'operacao',titulo:'Operação',resp:'operacao',setor:'operacao',cols:['Item de Verificação','Realizado','Meta','Prefixo','Observações / Tratativa'],rows:[['Soltura de Frota','','100%','',''],['Recolhas Anormais (RA)','','0','',''],['Recolhas Operacionais (RO)','','0','',''],['Lavagens','','','',''],['Escovão + varrer + retirar os lixo','','','',''],['Sinistros','','','',''],['Partidas Perdidas','','','']]},
+  {id:'absenteismo',titulo:'Absenteísmo',resp:'operacao',setor:'operacao',cols:['Matrícula','Motivo','Matrícula reserva','Tratativas'],rows:Array.from({length:8},()=>['','','',''])},
+  // Setor PCM (preenchido pelo Lider PCM / Lider de Oficina)
+  {id:'man_indisp',titulo:'Manutenção — Indisponíveis',resp:'pcm',setor:'pcm',cols:['Prefixo','Solicitações','Custo (2.6)','Tratativas'],rows:Array.from({length:6},()=>['','','',''])},
+  {id:'man_andamento',titulo:'Manutenção — Em Andamento',resp:'pcm',setor:'pcm',cols:['Prefixo','Mecânico','Principal pendência'],rows:Array.from({length:8},()=>['','',''])},
+  {id:'suprimentos',titulo:'Suprimentos',resp:'pcm',setor:'pcm',cols:['Item de Verificação','Realizado','Meta','Status','Observações'],rows:[['Kits preventivos separados (D-1)','','','','']]},
+  // Compartilhado (qualquer líder ou supervisor)
   {id:'obs',titulo:'Observações Gerais',resp:'ambos',tipo:'texto',rows:''},
 ];
 let _f21Data=dataOperacionalAtual(turnoOperacionalAtual()),_f21Turno=turnoOperacionalAtual(),_f21State=null;
 function f21Key(d,t){return `jtp_fech21_novo:${getGid()}:${d}:${t}`;}
+function f21SetorDoCargo(){
+  const c=cargo();
+  if(['lider_patio','lider_operacional'].includes(c))return'operacao';
+  if(['lider_pcm','lider_oficina','lider_suprimentos'].includes(c))return'pcm';
+  if(['supervisor','coordenador','gerente_garagem','gerente_operacional'].includes(c))return'supervisor';
+  return null;
+}
 function f21PodeBloco(b){
   const c=cargo();
   if(S.perfil?.is_admin)return true;
-  if(b.resp==='ambos')return['supervisor','coordenador','gerente_garagem','gerente_operacional'].includes(c);
-  if(b.resp==='supervisor')return['supervisor','coordenador','gerente_garagem','gerente_operacional'].includes(c);
-  if(b.resp==='coordenador')return['coordenador','gerente_garagem','gerente_operacional'].includes(c);
+  const setorCargo=f21SetorDoCargo();
+  if(!setorCargo)return false;
+  if(setorCargo==='supervisor')return true; // supervisor vê tudo
+  if(b.resp==='ambos')return true; // qualquer setor pode preencher
+  if(b.resp==='operacao')return setorCargo==='operacao';
+  if(b.resp==='pcm')return setorCargo==='pcm';
+  if(b.resp==='supervisor')return setorCargo==='supervisor';
+  if(b.resp==='coordenador')return['supervisor','coordenador','gerente_garagem','gerente_operacional'].includes(c);
   return false;
 }
 function f21EstadoVazio(d,t){
@@ -6120,18 +6135,26 @@ async function telaFech21(){
   _f21State=await f21Buscar(_f21Data,_f21Turno)||f21EstadoVazio(_f21Data,_f21Turno);
   const blocos=MOB_F21_BLOCOS.filter(f21PodeBloco);
   const tot=blocos.length,fil=blocos.filter(b=>f21ProgBloco(b,_f21State).f>0).length;
+  const sc=_f21State?.setores_concluidos||{};
+  // Badges dos setores
+  const setorBadge=(id,nome)=>{const ok=sc[id]?.ok;return`<span style="font-size:10px;padding:3px 8px;border-radius:999px;margin-right:6px;border:1px solid ${ok?'#00C48C50':'#33333340'};background:${ok?'#00C48C14':'transparent'};color:${ok?'var(--green)':'var(--text3)'}">${ok?'✅':'⏳'} ${nome}${ok&&sc[id]?.por?` · ${sc[id].por.split(' ')[0]}`:''}${ok&&sc[id]?.em?` ${new Date(sc[id].em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`:''}</span>`;};
+  const setorBadges=`<div style="padding:6px 14px 10px">${setorBadge('operacao','Operação')}${setorBadge('pcm','PCM')}</div>`;
   const cards=blocos.map(b=>{
     const{f,t}=f21ProgBloco(b,_f21State);
     const pct=t?Math.round(f/t*100):0;
     const cor=pct===100?'var(--green)':pct>0?'var(--amber)':'var(--text3)';
     const ic=pct===100?'✅':pct>0?'⏳':'○';
-    return`<button onclick="abrirBloco21('${b.id}')" style="width:100%;display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid ${pct===100?'#00C48C30':pct>0?'#F59E0B30':'var(--border)'};border-radius:12px;padding:14px;margin-bottom:10px;color:var(--text);font-family:inherit;text-align:left"><div><div style="font-weight:800;font-size:14px">${escHtml(b.titulo)}</div><div style="font-size:11px;color:var(--text3);margin-top:3px">${b.tipo==='texto'?(pct?'Preenchido':'Pendente'):`${f}/${t} itens preenchidos`}</div></div><span style="font-size:22px;color:${cor}">${ic}</span></button>`;
+    const quemPreencheu=_f21State?.blocos?.[b.id]?.por?`<div style="font-size:10px;color:var(--green);margin-top:2px">✓ ${_f21State.blocos[b.id].por}</div>`:'';
+    return`<button onclick="abrirBloco21('${b.id}')" style="width:100%;display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid ${pct===100?'#00C48C30':pct>0?'#F59E0B30':'var(--border)'};border-radius:12px;padding:14px;margin-bottom:10px;color:var(--text);font-family:inherit;text-align:left"><div><div style="font-weight:800;font-size:14px">${escHtml(b.titulo)}</div><div style="font-size:11px;color:var(--text3);margin-top:3px">${b.tipo==='texto'?(pct?'Preenchido':'Pendente'):`${f}/${t} itens preenchidos`}</div>${quemPreencheu}</div><span style="font-size:22px;color:${cor}">${ic}</span></button>`;
   }).join('');
+  const setorCargo=f21SetorDoCargo();
+  const btnLabel=setorCargo==='supervisor'||setorCargo==='coordenador'?'✅ Enviar 2.1 completo':`✅ Enviar minha parte (${setorCargo==='operacao'?'Operação':'PCM'})`;
   render(`<div style="padding:14px 14px 0"><div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:18px;font-weight:900">📋 Fechamento 2.1</div><div style="font-size:11px;color:var(--text3)">Fechamento de Turno Garagem</div></div><button onclick="telaFech21()" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;color:var(--text)">🔄</button></div></div>
   <div style="display:grid;grid-template-columns:1fr 110px;gap:8px;padding:12px 14px"><input class="fi2" type="date" value="${_f21Data}" onchange="_f21Data=this.value;_f21State=null;telaFech21()"><select class="fi2" onchange="_f21Turno=this.value;_f21State=null;telaFech21()"><option value="dia"${_f21Turno==='dia'?' selected':''}>☀️ Dia</option><option value="noite"${_f21Turno==='noite'?' selected':''}>🌙 Noite</option></select></div>
+  ${setorBadges}
   <div style="padding:0 14px 12px"><div style="background:var(--border);border-radius:99px;height:6px;overflow:hidden"><div style="width:${tot?Math.round(fil/tot*100):0}%;height:100%;background:var(--green);border-radius:99px"></div></div><div style="font-size:10px;color:var(--text3);margin-top:4px">${fil}/${tot} blocos preenchidos</div></div>
   <div style="padding:0 14px">${cards}</div>
-  <div style="padding:12px 14px 30px"><button onclick="enviarFech21()" style="width:100%;padding:15px;border-radius:12px;border:none;background:var(--green);color:#06131f;font-weight:900;font-family:inherit;font-size:15px">✅ Enviar 2.1</button></div>`);
+  <div style="padding:12px 14px 30px"><button onclick="enviarFech21()" style="width:100%;padding:15px;border-radius:12px;border:none;background:var(--green);color:#06131f;font-weight:900;font-family:inherit;font-size:15px">${btnLabel}</button></div>`);
 }
 function abrirBloco21(blocoId){
   const b=MOB_F21_BLOCOS.find(x=>x.id===blocoId);if(!b)return;
@@ -6175,15 +6198,53 @@ function salvarBloco21(blocoId){
 async function enviarFech21(){
   if(!_f21State){toast('Carregue o formulário primeiro','err');return;}
   const gid=getGid();
-  _f21State.atualizadoEm=new Date().toISOString();_f21State.preenchidoPor=S.perfil?.nome||'';_f21State.status='fechado';
+  const agora=new Date().toISOString();
+  const setorCargo=f21SetorDoCargo();
+  const blocosDoSetor=MOB_F21_BLOCOS.filter(b=>f21PodeBloco(b)).map(b=>b.id);
+  // Carrega o estado mais recente do banco para merge seguro (evita race condition)
+  const estadoBase=await f21Buscar(_f21Data,_f21Turno)||f21EstadoVazio(_f21Data,_f21Turno);
+  // Mescla apenas os blocos do setor atual (preserva blocos dos outros setores)
+  blocosDoSetor.forEach(id=>{if(_f21State.blocos?.[id]?.em)estadoBase.blocos[id]=_f21State.blocos[id];});
+  estadoBase.atualizadoEm=agora;
+  if(!estadoBase.setores_concluidos)estadoBase.setores_concluidos={};
+  // Marca setores concluídos
+  if(setorCargo==='supervisor'||setorCargo==='coordenador'){
+    // Supervisor/Coord preenche tudo → marca ambos setores
+    estadoBase.setores_concluidos.operacao={ok:true,por:S.perfil?.nome||'',em:agora};
+    estadoBase.setores_concluidos.pcm={ok:true,por:S.perfil?.nome||'',em:agora};
+  }else if(setorCargo){
+    estadoBase.setores_concluidos[setorCargo]={ok:true,por:S.perfil?.nome||'',em:agora};
+  }
+  const sc=estadoBase.setores_concluidos;
+  const todosSetores=['operacao','pcm'].every(s=>sc[s]?.ok);
+  estadoBase.status=todosSetores?'fechado':'em_andamento';
+  estadoBase.preenchidoPor=S.perfil?.nome||'';
   const numero=`2.1-${_f21Data}-${_f21Turno}`;
-  const payload={garagem_id:gid,numero,turno:_f21Turno,data:_f21Data,responsavel_id:S.perfil?.id||null,responsavel_nome:S.perfil?.nome||'',status_geral:'em_andamento',bastao_obs:JSON.stringify(_f21State),enviado_wpp:false,enviado_em:new Date().toISOString()};
-  let{error}=await sb.from('fechamento_turno_garagem').insert(payload);
-  if(error?.message?.includes('responsavel_id')||error?.message?.includes('foreign key'))error=(await sb.from('fechamento_turno_garagem').insert({...payload,responsavel_id:undefined})).error;
+  // Upsert: atualiza registro existente ou insere novo
+  let existenteId=null;
+  try{
+    const{data:rows}=await sb.from('fechamento_turno_garagem').select('id').eq('garagem_id',gid).eq('data',_f21Data).eq('turno',_f21Turno).order('created_at',{ascending:false}).limit(1);
+    existenteId=rows?.[0]?.id||null;
+  }catch(e){}
+  let error=null;
+  if(existenteId){
+    const r=await sb.from('fechamento_turno_garagem').update({status_geral:estadoBase.status,bastao_obs:JSON.stringify(estadoBase),enviado_em:agora,responsavel_nome:S.perfil?.nome||''}).eq('id',existenteId);
+    error=r.error;
+  }else{
+    const payload={garagem_id:gid,numero,turno:_f21Turno,data:_f21Data,responsavel_id:S.perfil?.id||null,responsavel_nome:S.perfil?.nome||'',status_geral:estadoBase.status,bastao_obs:JSON.stringify(estadoBase),enviado_em:agora};
+    let r=await sb.from('fechamento_turno_garagem').insert(payload);
+    if(r.error?.message?.includes('responsavel_id')||r.error?.message?.includes('foreign key')){r=await sb.from('fechamento_turno_garagem').insert({...payload,responsavel_id:undefined});}
+    error=r.error;
+  }
   if(error){toast('Erro: '+error.message,'err');return;}
-  try{await sb.from('relatorios_gerados').insert({garagem_id:gid,tipo:'2.1',numero,data_evento:_f21Data,turno:_f21Turno,status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){}
+  // Registra em relatorios_gerados apenas quando todos os setores concluíram
+  if(todosSetores){
+    try{await sb.from('relatorios_gerados').insert({garagem_id:gid,tipo:'2.1',numero,data_evento:_f21Data,turno:_f21Turno,status:'fechado',fechado_em:agora,preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){}
+  }
   try{localStorage.removeItem(f21Key(_f21Data,_f21Turno));}catch(e){}
-  toast('✅ 2.1 enviado!');_f21State=null;telaFech21();
+  const setorLabel={operacao:'Operação',pcm:'PCM',supervisor:'Supervisor',coordenador:'Coordenador'};
+  const msg=todosSetores?'✅ 2.1 completo — todos os setores enviaram!':`✅ ${setorLabel[setorCargo]||'Setor'} enviado. Aguardando demais setores.`;
+  toast(msg);_f21State=null;telaFech21();
 }
 // ─────────────────────────────────────────────────────────────────
 const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,prev26:telaPrev26,valet_oficina:telaValetOficina,prev_oficina:telaPrevOficina,valet_almox:telaValetAlmox,ronda33:telaRonda33,patio_man:telaPatioMan,recolha:telaRecolha,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip,sos218:telaSOS218,fech21:telaFech21};
