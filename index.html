@@ -7860,33 +7860,9 @@ async function renderFerrPCM(aba='painel'){
 
     setMain(`${back}${tabs}
       ${secTitle('📦','Valetamento PCM - Kits preventivos',seletorSemana)}
-      <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:16px">
-        <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--amber);border-radius:10px;padding:14px">
-          <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:2px">Carros 11-20</div>
-          <div style="font-family:'DM Mono',monospace;font-size:24px;font-weight:800;color:var(--amber);margin-top:6px">${carrosValet.length||osPecas.length}</div>
-        </div>
-        <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:10px;padding:14px">
-          <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:2px">Com almox</div>
-          <div style="font-family:'DM Mono',monospace;font-size:24px;font-weight:800;color:var(--blue);margin-top:6px">${listasOficina}</div>
-        </div>
-        <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--green);border-radius:10px;padding:14px">
-          <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:2px">Itens solicitados</div>
-          <div style="font-family:'DM Mono',monospace;font-size:24px;font-weight:800;color:var(--blue);margin-top:6px">${reqs.length}</div>
-        </div>
-        <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${compras?'var(--red)':'var(--green)'};border-radius:10px;padding:14px">
-          <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:2px">A comprar</div>
-          <div style="font-family:'DM Mono',monospace;font-size:24px;font-weight:800;color:${compras?'var(--red)':'var(--green)'};margin-top:6px">${compras}</div>
-        </div>
-        <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--green);border-radius:10px;padding:14px">
-          <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:2px">Valor estimado</div>
-          <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:800;color:var(--green);margin-top:8px">R$ ${totalVal.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px">
-        ${kpi('Itens solicitados',reqs.length,undefined,'',false,0)}
-        ${kpi('Separados',separados,undefined,'',false,0)}
-        ${kpi('Pedido compra',compras,0,'',true,0)}
-        ${kpi('Cestos disponíveis',cestosDisponiveis,undefined,'',false,0)}
+      <div style="display:inline-flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--green);border-radius:10px;padding:10px 20px;margin-bottom:16px">
+        <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:2px">Valor estimado dos kits</div>
+        <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:800;color:var(--green)">R$ ${totalVal.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
       </div>
       ${relatorioCestos}
       ${preventivasSemana}
@@ -7936,21 +7912,6 @@ async function renderFerrPCM(aba='painel'){
             <button onclick="salvarReqCompraSite()" style="width:100%;padding:12px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
               ➕ Salvar e enviar ao almox
             </button>
-          </div>
-          <div style="margin-top:16px">
-            ${secTitle('🚌','Carros do Valetamento 11 ao 20')}
-            ${carrosValet.length?carrosValet.map(c=>`
-              <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--orange);border-radius:10px;padding:12px;margin-bottom:8px">
-                <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
-                  <div>
-                    <div style="display:flex;gap:8px;align-items:center"><span style="font-size:10px;color:var(--text3);font-weight:900">#${c.posicao||'—'}</span><span style="font-family:'DM Mono',monospace;font-size:15px;font-weight:900;color:var(--blue)">${safeText(c.prefixo||'—')}</span></div>
-                    <div style="font-size:11px;color:${(c.prioridade||0)>0?'var(--red)':'var(--green)'};font-weight:900;margin-top:3px">${(c.prioridade||0)>0?'Vencido ':'A vencer '}${prevFmtKm(Math.abs(c.prioridade||0))}</div>
-                  </div>
-                  <button onclick="preencherValetCarro('${arg(c.prefixo)}','${arg(c.servicos)}')" style="padding:6px 10px;border-radius:8px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">Selecionar</button>
-                </div>
-                <div style="font-size:12px;color:var(--text2);margin-top:10px;line-height:1.35">${safeText(c.servicos||'Preventiva pesada')}</div>
-              </div>
-            `).join(''):`<div class="empty">Consolide a escala preventiva para trazer os carros 11 ao 20 da pesada</div>`}
           </div>
           <div style="margin-top:16px">
             ${secTitle('🔩','OS com Peças Faltantes')}
