@@ -10396,7 +10396,7 @@ function prevGerarValetamentoPCM(){
   renderFerrPCM('req_compra');
 }
 // ── MOTOR DE SUGESTÕES: OUTROS PLANOS VENCENDO ──────────────────
-function prevHtmlOutrosPlanos(){
+function prevHtmlSugestoesVencendo(){
   if(!_prevDados.length) return '';
   const p=prevGerarPropostas();
   if(!p.outros.length) return '';
@@ -11047,7 +11047,7 @@ function prevHtmlGrupos(){
   if(!dados.length){
     return `<div style="padding:28px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhum item encontrado para a pesquisa.</div>`;
   }
-  const secOutros=!busca?prevHtmlOutrosPlanos():'';
+  const secOutros=!busca?prevHtmlSugestoesVencendo():'';
   const grupos=new Map();
   dados.forEach(r=>{
     const key=prevPlanoKey(r);
