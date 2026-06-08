@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#0A0F1E">
+<meta name="theme-color" content="#111827">
 <title>JTP Operacional</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -14,9 +14,9 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
-  --bg:#0A0F1E;--surface:#111827;--surface2:#1A2236;--border:#1E2D45;--border2:#1A2535;
+  --bg:#111827;--surface:#1F2937;--surface2:#171E2E;--border:#374151;--border2:#2D3748;
   --blue:#2563EB;--green:#00C48C;--red:#EF4444;--amber:#F59E0B;--purple:#8B5CF6;
-  --text:#F1F5F9;--text2:#CBD5E1;--text3:#64748B;--text4:#334155;
+  --text:#F9FAFB;--text2:#9CA3AF;--text3:#6B7280;--text4:#4B5563;
   --safe-top:env(safe-area-inset-top,0px);--safe-bot:env(safe-area-inset-bottom,0px);
   --nav-h:64px;
 }
@@ -84,7 +84,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .kpi2{background:var(--surface2);border-radius:12px;padding:12px;text-align:center}
 .kpi2-v{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums}
 .kpi2-l{font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;margin-top:2px}
-#toast{position:fixed;top:calc(var(--safe-top)+60px);left:50%;transform:translateX(-50%) translateY(-20px);background:#1E293B;border:1px solid var(--border);border-radius:12px;padding:10px 20px;font-size:14px;font-weight:600;white-space:nowrap;opacity:0;transition:all .3s;z-index:500;pointer-events:none}
+#toast{position:fixed;top:calc(var(--safe-top)+60px);left:50%;transform:translateX(-50%) translateY(-20px);background:#374151;border:1px solid var(--border);border-radius:12px;padding:10px 20px;font-size:14px;font-weight:600;white-space:nowrap;opacity:0;transition:all .3s;z-index:500;pointer-events:none}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 #toast.err{border-color:var(--red);color:var(--red)}
 </style>
@@ -131,7 +131,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 <script>
 // Verificar se Supabase carregou
 if(typeof supabase === 'undefined'){
-  document.body.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;padding:24px;text-align:center;background:#0F172A;color:#F1F5F9"><div style="font-size:48px;margin-bottom:16px">⚠️</div><div style="font-size:18px;font-weight:700;margin-bottom:8px">Sem conexão</div><div style="font-size:14px;color:#94A3B8;margin-bottom:24px">Verifique sua internet e tente novamente.</div><button onclick="location.reload()" style="background:#2563EB;color:#fff;border:none;border-radius:12px;padding:14px 28px;font-size:16px;font-weight:700;cursor:pointer">🔄 Tentar Novamente</button></div>';
+  document.body.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;padding:24px;text-align:center;background:#1F2937;color:#F9FAFB"><div style="font-size:48px;margin-bottom:16px">⚠️</div><div style="font-size:18px;font-weight:700;margin-bottom:8px">Sem conexão</div><div style="font-size:14px;color:#9CA3AF;margin-bottom:24px">Verifique sua internet e tente novamente.</div><button onclick="location.reload()" style="background:#2563EB;color:#fff;border:none;border-radius:12px;padding:14px 28px;font-size:16px;font-weight:700;cursor:pointer">🔄 Tentar Novamente</button></div>';
   throw new Error('Supabase não carregou');
 }
 const {createClient}=supabase;
