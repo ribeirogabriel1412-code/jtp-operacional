@@ -12278,8 +12278,8 @@ const INDICADORES_212=[
   {id:'cpk',nome:'CPK - Custo por KM (R$/km)',meta:'',tipo:'menor'},
   {id:'mkbf',nome:'MKBF - KM entre Falhas',meta:'',tipo:'maior'},
   {id:'prev_geral',nome:'Cumprimento Preventiva Geral',meta:'',tipo:'maior'},
-  {id:'prev_pesada',nome:'Cumprimento Preventiva Pesada',meta:'',tipo:'maior'},
-  {id:'prev_leve',nome:'Cumprimento Preventiva Leve',meta:'',tipo:'maior'},
+  {id:'prev_pesada',nome:'Cumprimento Preventiva Pesada',meta:'2',tipo:'maior',metaFixa:true},
+  {id:'prev_leve',nome:'Cumprimento Preventiva Leve',meta:'6',tipo:'maior',metaFixa:true},
   {id:'indisp',nome:'Indisponibilidade de Frota',meta:'',tipo:'menor',base:'d1'},
   {id:'pneu_sucata',nome:'Pneus sucateados',meta:'',tipo:'menor'},
   {id:'rod_pneu',nome:'Rodagem pneus km',meta:'',tipo:'maior'},
@@ -12338,7 +12338,7 @@ async function salvarInd212Banco(gid,state,status='em_andamento'){
   }catch(e){return false;}
 }
 function ind212ColetarTela(){
-  const state={data:document.getElementById('ind212-data')?.value||hoje(),turno:document.getElementById('ind212-turno')?.value||turnoOperacionalAtual(),itens:{},criadoPor:S.perfil?.nome||null,atualizadoEm:new Date().toISOString()};
+  const state={data:document.getElementById('ind212-data')?.value||hoje(),turno:'dia',itens:{},criadoPor:S.perfil?.nome||null,atualizadoEm:new Date().toISOString()};
   INDICADORES_212.forEach(it=>{
     const row={};
     ['d1','s1','m1','meta','acao','causa','statusManual'].forEach(c=>row[c]=document.getElementById(`ind212-${it.id}-${c}`)?.value||'');
@@ -12391,36 +12391,119 @@ function ind212Input(id,val,ph='',extra=''){
   const travado=String(extra||'').includes('disabled');
   return `<input id="${id}" value="${prevEsc(val||'')}" placeholder="${ph}" ${extra} style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:8px 9px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box;${travado?'opacity:.45;cursor:not-allowed':''}">`;
 }
+async function cpkCarregarApontamentos(gid){
+  try{const{data}=await sb.from('cpk_anomalias').select('*').eq('garagem_id',gid).order('criado_em',{ascending:false});return data||[];}catch(e){return[];}
+}
+function cpkRenderApontamentos(lista,gid){
+  const abertos=lista.filter(a=>!a.resolvido);
+  const TIPO_LABEL={baixa_errada:'Baixa errada',valor_errado:'Valor errado',outro:'Outro'};
+  const diasStr=em=>{const d=Math.floor((Date.now()-new Date(em).getTime())/(1000*60*60*24));return d===0?'hoje':d===1?'1 dia':`${d} dias`;};
+  const listaHTML=abertos.length===0?`<div style="padding:8px;color:var(--text3);font-size:12px">Nenhum apontamento em aberto ✅</div>`:
+    abertos.map(a=>`<div style="display:grid;grid-template-columns:90px 75px 120px 1fr 70px auto;gap:6px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border2)">
+      <div style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--blue)">${a.prefixo||'—'}</div>
+      <div style="font-size:11px;color:var(--text2)">${a.data_erro?new Date(a.data_erro+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):'—'}</div>
+      <div><span style="font-size:10px;padding:2px 7px;border-radius:4px;background:${a.tipo==='baixa_errada'?'#EF444420':'#F59E0B20'};color:${a.tipo==='baixa_errada'?'var(--red)':'var(--amber)'}">${TIPO_LABEL[a.tipo]||a.tipo||'—'}</span></div>
+      <div style="font-size:11px;color:var(--text2)">${a.descricao||'—'}</div>
+      <div style="font-size:11px;color:var(--red);font-weight:700">${diasStr(a.criado_em)}</div>
+      <button onclick="cpkResolverApontamento('${a.id}')" style="padding:4px 10px;border-radius:6px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">✅ Resolver</button>
+    </div>`).join('');
+  return `<div style="padding:12px 16px;background:var(--surface2);border-top:2px solid var(--amber)">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <span style="font-size:12px;font-weight:800;color:var(--amber)">⚠️ Apontamentos CPK</span>
+      ${abertos.length>0?`<span style="background:#EF444418;color:var(--red);padding:1px 8px;border-radius:10px;font-size:10px;font-weight:700">${abertos.length} em aberto</span>`:''}
+    </div>
+    <div style="margin-bottom:10px">
+      <div style="display:grid;grid-template-columns:90px 75px 120px 1fr 70px auto;gap:6px;padding:4px 0;border-bottom:1px solid var(--border)">
+        <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Prefixo</div>
+        <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Data erro</div>
+        <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Tipo</div>
+        <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Descrição</div>
+        <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">Sem trat.</div>
+        <div></div>
+      </div>
+      ${listaHTML}
+    </div>
+    <div style="padding-top:10px;border-top:1px solid var(--border2)">
+      <div style="font-size:10px;color:var(--text3);font-weight:700;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">+ Novo apontamento</div>
+      <div style="display:grid;grid-template-columns:90px 160px 140px 1fr auto;gap:6px;align-items:end">
+        <div><label style="font-size:9px;color:var(--text3);font-weight:700;display:block;margin-bottom:2px">PREFIXO</label>
+          <input id="cpk-new-prefixo" class="fi" placeholder="02.250" style="font-family:'DM Mono',monospace;font-size:12px;padding:6px 8px"></div>
+        <div><label style="font-size:9px;color:var(--text3);font-weight:700;display:block;margin-bottom:2px">DATA DO ERRO</label>
+          <div style="display:flex;gap:4px"><input id="cpk-new-data" class="fi" type="date" value="${hoje()}" style="font-size:12px;padding:6px 8px;flex:1">
+          <button onclick="const el=document.getElementById('cpk-new-data');if(el?.showPicker)el.showPicker();else el?.focus();" style="width:30px;height:32px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;cursor:pointer">📅</button></div></div>
+        <div><label style="font-size:9px;color:var(--text3);font-weight:700;display:block;margin-bottom:2px">TIPO</label>
+          <select id="cpk-new-tipo" class="fi" style="font-size:12px;padding:6px 8px"><option value="baixa_errada">Baixa errada</option><option value="valor_errado">Valor errado</option><option value="outro">Outro</option></select></div>
+        <div><label style="font-size:9px;color:var(--text3);font-weight:700;display:block;margin-bottom:2px">DESCRIÇÃO</label>
+          <input id="cpk-new-desc" class="fi" placeholder="Descreva o problema..." style="font-size:12px;padding:6px 8px"></div>
+        <button onclick="cpkSalvarApontamento('${gid}')" style="padding:7px 14px;border-radius:7px;border:none;background:var(--blue);color:#fff;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;height:32px">💾 Salvar</button>
+      </div>
+    </div>
+  </div>`;
+}
+async function cpkSalvarApontamento(gid){
+  const prefixo=(document.getElementById('cpk-new-prefixo')?.value||'').trim();
+  const data_erro=document.getElementById('cpk-new-data')?.value;
+  const tipo=document.getElementById('cpk-new-tipo')?.value;
+  const descricao=(document.getElementById('cpk-new-desc')?.value||'').trim();
+  if(!descricao){toast('Informe a descrição do problema','err');return;}
+  try{
+    const{error}=await sb.from('cpk_anomalias').insert({garagem_id:gid,prefixo,data_erro,tipo,descricao,resolvido:false,criado_por:S.perfil?.nome||null,criado_em:new Date().toISOString()});
+    if(error)throw error;
+    toast('✅ Apontamento CPK registrado');
+    if(S._ind212DentroPCM)renderFerrPCM('ind212');else renderFerr212();
+  }catch(e){toast('Erro ao salvar: '+e.message,'err');}
+}
+async function cpkResolverApontamento(id){
+  try{
+    const{error}=await sb.from('cpk_anomalias').update({resolvido:true,resolvido_em:new Date().toISOString(),resolvido_por:S.perfil?.nome||null}).eq('id',id);
+    if(error)throw error;
+    toast('✅ Apontamento resolvido');
+    if(S._ind212DentroPCM)renderFerrPCM('ind212');else renderFerr212();
+  }catch(e){toast('Erro: '+e.message,'err');}
+}
+function cpkToggleExpand(){
+  const el=document.getElementById('cpk-expand-row');
+  if(el)el.style.display=el.style.display==='none'?'table-row':'none';
+}
 async function renderFerr212(backArg='',tabsArg=''){
   const back=backArg||`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
   S._ind212DentroPCM=!!tabsArg;
   const gid=getGid();
   const data=S._ind212Data||hoje();
-  const turno=S._ind212Turno||S.turno||turnoOperacionalAtual();
+  const turno='dia';
   setMain(`<div class="loading"><div class="spinner"></div> Carregando 2.12...</div>`);
-  const banco=await buscarInd212Banco(gid,data,turno);
+  const [banco,cpkLista]=await Promise.all([buscarInd212Banco(gid,data,turno),cpkCarregarApontamentos(gid)]);
   const state=banco?.dados||ind212GetState(data,turno,gid);
+  const cpkAbertos=cpkLista.filter(a=>!a.resolvido).length;
   const rows=INDICADORES_212.map(it=>{
-    const r={meta:'',...(state.itens?.[it.id]||{})};
+    const r={meta:it.metaFixa?it.meta:'',...(state.itens?.[it.id]||{})};
+    if(it.metaFixa)r.meta=it.meta;
     const calc=ind212Calc(it,r);
     const precisa=calc.status==='nok';
     const oncalc=`oninput="atualizarStatusIndicador212('${it.id}')"`;
     const soD1=it.base==='d1';
     const disabledS1=soD1?'disabled title="Este indicador usa apenas D-1"':'';
     const disabledM1=soD1?'disabled title="Este indicador usa apenas D-1"':'';
+    const nomeCell=it.id==='cpk'
+      ?`<span onclick="cpkToggleExpand()" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">${it.nome}<span id="cpk-toggle-icon" style="font-size:10px;color:var(--text3)">▶</span>${cpkAbertos>0?`<span style="background:#EF444418;color:var(--red);border:1px solid #EF444440;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">⚠️ ${cpkAbertos}</span>`:''}</span>`
+      :it.nome;
+    const metaCell=it.metaFixa
+      ?`<td style="padding:7px;text-align:center"><div style="padding:8px;font-family:'DM Mono',monospace;font-weight:800;font-size:13px;color:var(--text2)">${it.meta}</div><input type="hidden" id="ind212-${it.id}-meta" value="${it.meta}"></td>`
+      :`<td style="padding:7px">${ind212Input(`ind212-${it.id}-meta`,r.meta,'Meta',oncalc)}</td>`;
+    const extraRow=it.id==='cpk'?`<tr id="cpk-expand-row" style="display:none"><td colspan="8" style="padding:0">${cpkRenderApontamentos(cpkLista,gid)}</td></tr>`:'';
     return `<tr style="border-top:1px solid var(--border2)">
-      <td style="padding:9px 10px;color:var(--text);font-weight:800">${it.nome}</td>
+      <td style="padding:9px 10px;color:var(--text);font-weight:800">${nomeCell}</td>
       <td style="padding:7px">${ind212Input(`ind212-${it.id}-d1`,r.d1,'D-1',oncalc)}</td>
       <td style="padding:7px">${ind212Input(`ind212-${it.id}-s1`,soD1?'':r.s1,soD1?'Não usado':'S-1',`${oncalc} ${disabledS1}`)}</td>
       <td style="padding:7px">${ind212Input(`ind212-${it.id}-m1`,soD1?'':r.m1,soD1?'Não usado':'M-1 acumulado',`${oncalc} ${disabledM1}`)}</td>
-      <td style="padding:7px">${ind212Input(`ind212-${it.id}-meta`,r.meta,'Meta',oncalc)}</td>
+      ${metaCell}
       <td style="padding:7px;text-align:center">
         <span id="ind212-${it.id}-status" style="${ind212StatusStyle(calc)}">${calc.label}</span>
         ${it.tipo==='texto'?`<select id="ind212-${it.id}-statusManual" onchange="atualizarStatusIndicador212('${it.id}')" style="margin-top:5px;width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:5px;font-size:11px"><option value="">Auto/manual</option><option value="ok"${r.statusManual==='ok'?' selected':''}>OK</option><option value="nok"${r.statusManual==='nok'?' selected':''}>NOK</option></select>`:`<input id="ind212-${it.id}-statusManual" type="hidden" value="${prevEsc(r.statusManual||'')}">`}
       </td>
       <td style="padding:7px">${ind212Input(`ind212-${it.id}-causa`,r.causa,precisa?'Causa do desvio 2.14':'Análise 2.14')}</td>
       <td style="padding:7px">${ind212Input(`ind212-${it.id}-acao`,r.acao,precisa?'Obrigatório para NOK':'Plano de ação / obs')}</td>
-    </tr>`;
+    </tr>${extraRow}`;
   }).join('');
   const resumo=INDICADORES_212.reduce((acc,it)=>{
     const c=ind212Calc(it,state.itens?.[it.id]||{});
@@ -12432,9 +12515,8 @@ async function renderFerr212(backArg='',tabsArg=''){
   const rerender212=tabsArg?`renderFerrPCM('ind212')`:'renderFerr212()';
   setMain(`${back}${tabsArg||''}
     ${secTitle('📊','2.12 / 2.14 - Indicadores Técnicos',`<button class="btn-add" onclick="gerarRelatorio212()" style="background:var(--blue);border-color:var(--blue);color:#fff">📄 Exportar PDF</button>`)}
-    <div style="display:grid;grid-template-columns:215px 150px 1fr auto;gap:10px;align-items:end;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:14px">
+    <div style="display:grid;grid-template-columns:215px 1fr auto;gap:10px;align-items:end;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:14px">
       <div><label class="campo-label">Data</label><div style="display:flex;gap:6px;align-items:center"><input id="ind212-data" class="fi" type="date" value="${data}" onchange="S._ind212Data=this.value;${rerender212}"><button title="Abrir calendário" onclick="const el=document.getElementById('ind212-data');if(el?.showPicker)el.showPicker();else el?.focus();" style="width:38px;height:38px;border-radius:9px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:16px;cursor:pointer">📅</button></div></div>
-      <div><label class="campo-label">Turno</label><select id="ind212-turno" class="fi" onchange="S._ind212Turno=this.value;${rerender212}"><option value="dia"${turno==='dia'?' selected':''}>Dia</option><option value="noite"${turno==='noite'?' selected':''}>Noite</option></select></div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${ind212ResumoBox('ok','OK',resumo.ok)}${ind212ResumoBox('nok','NOK',resumo.nok,0)}${ind212ResumoBox('pend','Pendentes',resumo.pend,0)}</div>
       <button class="btn-add" onclick="salvarIndicadores212()" style="height:44px;background:var(--green);border-color:var(--green);color:#06131f">💾 Salvar</button>
     </div>
