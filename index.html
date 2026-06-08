@@ -9679,6 +9679,8 @@ async function salvarCustoRapido(ocId, gid, data){
 // PAINEL PREVENTIVAS — IMPORTAÇÃO MAN V1
 // ══════════════════════════════════════════════════════════════
 let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='planos', _prevImportId=null, _prevBuscaPrefixo='', _prevEscalaAlteracoes={}, _prevValidados={}, _prevHistFiltro='', _prevPlanoSel={}, _prevKmMedias={}, _prevOutrosFiltro=14, _prevProxSemanaCarros=null;
+// ── SELEÇÕES POR ABA ──────────────────────────────────────────────
+let _prevSelPesada=new Set(), _prevSelLeve=new Set(), _prevSelGar20=new Set(), _prevSelGar30=new Set(), _prevAbaAtiva='pesada';
 
 const PREV_CAP={garantiaDia:1,garantiaSemana:5,pesadaDia:2,pesadaSemana:10,leveDia:6,leveSemana:30};
 const PREV_OUTROS_LIMITE_KM=1000;
@@ -10175,50 +10177,235 @@ function prevResumoServicos(c,tipoPreferido=''){
   return prevServicosDoCarro(c,tipoPreferido).slice(0,4).join(' · ');
 }
 
+// ── HELPERS DE SELEÇÃO ────────────────────────────────────────────
+function prevInitSelecoes(){
+  const p=prevGerarPropostas();
+  const selPesadas=p.pesadas.slice(0,PREV_CAP.pesadaSemana);
+  _prevSelPesada=new Set(selPesadas.map(c=>c.prefixo));
+  const pesadasSet=_prevSelPesada;
+  _prevSelLeve=new Set(p.leves.filter(c=>!pesadasSet.has(c.prefixo)).slice(0,PREV_CAP.leveSemana).map(c=>c.prefixo));
+  const g20=p.garantias.filter(c=>String(c.base?.planoNum||'').startsWith('003')||/20[\s.]?000|20k/i.test(c.base?.planoNome||''));
+  const g30=p.garantias.filter(c=>!g20.some(x=>x.prefixo===c.prefixo));
+  _prevSelGar20=new Set(g20.slice(0,PREV_CAP.garantiaSemana).map(c=>c.prefixo));
+  _prevSelGar30=new Set(g30.slice(0,PREV_CAP.garantiaSemana).map(c=>c.prefixo));
+}
+function prevToggleSel(tipo,prefixo,sel){
+  const mp={pesada:_prevSelPesada,leve:_prevSelLeve,gar20:_prevSelGar20,gar30:_prevSelGar30};
+  const s=mp[tipo]; if(!s)return;
+  if(sel)s.add(prefixo);else s.delete(prefixo);
+  // Pesada selecionada → remove da leve automaticamente
+  if(tipo==='pesada'&&sel) _prevSelLeve.delete(prefixo);
+  prevRenderAbaPrev();
+}
+function prevToggleSelTodos(tipo,sel){
+  const p=prevGerarPropostas();
+  let lista=[];
+  if(tipo==='pesada') lista=p.pesadas.slice(0,PREV_CAP.pesadaSemana);
+  else if(tipo==='leve') lista=p.leves.filter(c=>!_prevSelPesada.has(c.prefixo)).slice(0,PREV_CAP.leveSemana);
+  else if(tipo==='gar20') lista=p.garantias.filter(c=>String(c.base?.planoNum||'').startsWith('003')||/20[\s.]?000|20k/i.test(c.base?.planoNome||''));
+  else if(tipo==='gar30') lista=p.garantias.filter(c=>!lista.some(x=>x.prefixo===c.prefixo));
+  const mp={pesada:_prevSelPesada,leve:_prevSelLeve,gar20:_prevSelGar20,gar30:_prevSelGar30};
+  const s=mp[tipo]; if(!s)return;
+  lista.forEach(c=>{ if(sel)s.add(c.prefixo); else s.delete(c.prefixo); });
+  if(tipo==='pesada'&&sel) lista.forEach(c=>_prevSelLeve.delete(c.prefixo));
+  prevRenderAbaPrev();
+}
+function prevBuildEscalaFromSelecoes(){
+  const p=prevGerarPropostas();
+  _prevEscalaAlteracoes={}; _prevValidados={};
+  const fillSlots=(selSet,tipo,capDia)=>{
+    const veics=[...selSet].map(pref=>p.porPrefixo?.get(pref)).filter(Boolean).sort(prevOrdenarPreventiva);
+    veics.forEach((c,i)=>{
+      const dia=Math.floor(i/capDia), slot=i%capDia;
+      if(dia>=5)return;
+      _prevEscalaAlteracoes[prevSlotKey(tipo,dia,slot)]={tipo,prefixo:c.prefixo};
+    });
+  };
+  fillSlots(new Set([..._prevSelGar20,..._prevSelGar30]),'garantia',PREV_CAP.garantiaDia);
+  fillSlots(_prevSelPesada,'pesada',PREV_CAP.pesadaDia);
+  fillSlots(_prevSelLeve,'leve',PREV_CAP.leveDia);
+}
+function prevMiniSemana(selSet,tipo,capDia){
+  const p=prevGerarPropostas();
+  const dias=prevDiasSemana();
+  const veics=[...selSet].map(pref=>p.porPrefixo?.get(pref)).filter(Boolean).sort(prevOrdenarPreventiva);
+  if(!veics.length) return `<div style="font-size:11px;color:var(--text3);padding:8px">Nenhum selecionado</div>`;
+  return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${dias.map((d,i)=>{
+    const slots=veics.slice(i*capDia,(i+1)*capDia);
+    const cor=tipo==='pesada'?'var(--orange)':tipo==='leve'?'var(--green)':'var(--purple)';
+    return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;min-width:90px">
+      <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:capitalize;margin-bottom:4px">${d.label.slice(0,3).toUpperCase()} ${d.data}</div>
+      ${slots.length?slots.map(c=>`<div style="font-size:11px;font-weight:900;color:${cor}">${prevEsc(c.prefixo)}</div>`).join(''):`<div style="font-size:10px;color:var(--text4)">—</div>`}
+    </div>`;
+  }).join('')}</div>`;
+}
+function prevHtmlLinhaVeiculo(c,tipo,selecionado){
+  const km=c.prioridade||c.base?.excessoKm||0;
+  const kmCor=km>0?'var(--red)':km<=-1000?'var(--green)':'var(--amber)';
+  const outros=c.outrosRadar||[];
+  const outrosStr=outros.slice(0,3).map(r=>`<span style="font-size:9px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:1px 5px;color:var(--amber)">${prevEsc(r.planoNum)}</span>`).join(' ');
+  return`<tr style="border-top:1px solid var(--border);background:${selecionado?'rgba(37,99,235,.06)':'transparent'}">
+    <td style="padding:8px 10px;text-align:center"><input type="checkbox" ${selecionado?'checked':''} onchange="prevToggleSel('${tipo}','${prevEsc(c.prefixo)}',this.checked)" style="width:16px;height:16px;cursor:pointer"></td>
+    <td style="padding:8px 10px;font-weight:900;color:var(--blue);font-family:'DM Mono',monospace">${prevEsc(c.prefixo)}</td>
+    <td style="padding:8px 10px;font-family:'DM Mono',monospace;font-weight:900;color:${kmCor}">${prevFmtKm(km)}</td>
+    <td style="padding:8px 10px;color:var(--text3);font-size:11px">${prevEsc(prevResumoServicos(c,tipo==='gar20'||tipo==='gar30'?'garantia':tipo))}</td>
+    <td style="padding:8px 10px">${outrosStr}</td>
+  </tr>`;
+}
+function prevHtmlAbaLista(tipo){
+  const p=prevGerarPropostas();
+  let lista=[], selSet, cap, titulo, desc;
+  if(tipo==='pesada'){
+    lista=p.pesadas; selSet=_prevSelPesada; cap=PREV_CAP.pesadaDia;
+    titulo='🔴 Preventiva Pesada'; desc=`${selSet.size} selecionadas · Cap. semana: ${PREV_CAP.pesadaSemana} · ${PREV_CAP.pesadaDia}/dia`;
+  }else if(tipo==='leve'){
+    lista=p.leves.filter(c=>!_prevSelPesada.has(c.prefixo)); selSet=_prevSelLeve; cap=PREV_CAP.leveDia;
+    titulo='🟢 Preventiva Leve'; desc=`${selSet.size} selecionadas · Cap. semana: ${PREV_CAP.leveSemana} · ${PREV_CAP.leveDia}/dia`;
+  }else if(tipo==='gar20'){
+    lista=p.garantias.filter(c=>String(c.base?.planoNum||'').startsWith('003')||/20[\s.]?000|20k/i.test(c.base?.planoNome||''));
+    selSet=_prevSelGar20; cap=PREV_CAP.garantiaDia;
+    titulo='🔵 Garantia — 1º Intervalo'; desc=`${selSet.size} selecionadas`;
+  }else if(tipo==='gar30'){
+    lista=p.garantias.filter(c=>!p.garantias.filter(x=>String(x.base?.planoNum||'').startsWith('003')||/20[\s.]?000|20k/i.test(x.base?.planoNome||'')).some(x=>x.prefixo===c.prefixo));
+    selSet=_prevSelGar30; cap=PREV_CAP.garantiaDia;
+    titulo='🔵 Garantia — 2º Intervalo'; desc=`${selSet.size} selecionadas`;
+  }else{
+    // valetamento: backlog de pesadas não selecionadas para esta semana
+    lista=p.pesadas.filter(c=>!_prevSelPesada.has(c.prefixo));
+    titulo='📦 Valetamento — Próxima Semana';
+    desc=`${lista.length} carro(s) no backlog de pesadas`;
+    const linhas=lista.map((c,i)=>{
+      const km=c.prioridade||0;
+      const kmCor=km>0?'var(--red)':km<=-1000?'var(--green)':'var(--amber)';
+      const outros=(c.outrosRadar||[]).slice(0,3).map(r=>`<span style="font-size:9px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:1px 5px;color:var(--amber)">${prevEsc(r.planoNum)}</span>`).join(' ');
+      return`<tr style="border-top:1px solid var(--border)">
+        <td style="padding:8px 10px;font-size:11px;color:var(--text3);font-family:'DM Mono',monospace">#${i+PREV_CAP.pesadaSemana+1}</td>
+        <td style="padding:8px 10px;font-weight:900;color:var(--blue);font-family:'DM Mono',monospace">${prevEsc(c.prefixo)}</td>
+        <td style="padding:8px 10px;font-family:'DM Mono',monospace;font-weight:900;color:${kmCor}">${prevFmtKm(km)}</td>
+        <td style="padding:8px 10px;color:var(--text3);font-size:11px">${prevEsc(prevResumoServicos(c,'pesada'))}</td>
+        <td style="padding:8px 10px">${outros}</td>
+      </tr>`;
+    }).join('');
+    return`<div><div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px">${titulo} <span style="font-size:11px;color:var(--text3);font-weight:400">${desc}</span></div>
+      ${lista.length?`<div style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:560px">
+        <thead><tr style="background:rgba(2,6,23,.6);color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:1px;text-align:left">
+          <th style="padding:8px 10px">#</th><th style="padding:8px 10px">Prefixo</th><th style="padding:8px 10px">KM Excedido</th><th style="padding:8px 10px">Serviços</th><th style="padding:8px 10px">Outros planos</th>
+        </tr></thead><tbody>${linhas}</tbody></table></div>`
+        :`<div style="padding:20px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Todos os veículos estão programados para esta semana.</div>`}
+    </div>`;
+  }
+  // Lista com checkboxes para pesada/leve/garantias
+  const linhas=lista.map(c=>prevHtmlLinhaVeiculo(c,tipo,selSet.has(c.prefixo))).join('');
+  const capAtual=tipo==='leve'?PREV_CAP.leveSemana:tipo==='pesada'?PREV_CAP.pesadaSemana:PREV_CAP.garantiaSemana;
+  return`<div>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+      <div><span style="font-size:13px;font-weight:700;color:var(--text)">${titulo}</span> <span style="font-size:11px;color:var(--text3)">${desc}</span></div>
+      <div style="display:flex;gap:6px">
+        <button class="btn" style="font-size:11px;padding:5px 10px" onclick="prevToggleSelTodos('${tipo}',true)">✓ Selecionar ${capAtual} primeiros</button>
+        <button class="btn" style="font-size:11px;padding:5px 10px" onclick="prevToggleSelTodos('${tipo}',false)">✕ Limpar</button>
+      </div>
+    </div>
+    ${selSet.size?`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:10px">
+      <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;margin-bottom:4px">Distribuição na semana</div>
+      ${prevMiniSemana(selSet,tipo,cap)}
+    </div>`:''}
+    ${lista.length?`<div style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:560px">
+      <thead><tr style="background:rgba(2,6,23,.6);color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:1px;text-align:left">
+        <th style="padding:8px 10px">✓</th><th style="padding:8px 10px">Prefixo</th><th style="padding:8px 10px">KM Excedido</th><th style="padding:8px 10px">Serviços</th><th style="padding:8px 10px">Outros planos</th>
+      </tr></thead><tbody>${linhas}</tbody></table></div>`
+      :`<div style="padding:20px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhum veículo neste plano.</div>`}
+  </div>`;
+}
+function prevHtmlOutrosPlanosResumo(){
+  const p=prevGerarPropostas();
+  const todosSelected=new Set([..._prevSelPesada,..._prevSelLeve,..._prevSelGar20,..._prevSelGar30]);
+  if(!todosSelected.size||!p.todos.length) return '';
+  // Veículos selecionados com outros planos vencendo
+  const comOutros=p.todos.filter(c=>todosSelected.has(c.prefixo)&&(c.outrosRadar||[]).length>0);
+  // Veículos NÃO selecionados agrupados por plano
+  const naoSel=p.todos.filter(c=>!todosSelected.has(c.prefixo));
+  const porPlano=new Map();
+  naoSel.forEach(c=>{
+    c.itens?.forEach(r=>{
+      const key=`${r.planoNum} ${r.planoNome}`;
+      if(!porPlano.has(key))porPlano.set(key,{planoNum:r.planoNum,planoNome:r.planoNome.replace(/^\(KM\)\s*/i,''),carros:[]});
+      if(!porPlano.get(key).carros.find(x=>x===c.prefixo))porPlano.get(key).carros.push(c.prefixo);
+    });
+  });
+  const secOutros=comOutros.length?`<div style="margin-bottom:16px">
+    <div style="font-size:12px;font-weight:700;color:var(--amber);margin-bottom:8px">⚠️ Outros planos vencendo nos veículos programados (${comOutros.length})</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      ${comOutros.map(c=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px">
+        <b style="color:var(--blue)">${prevEsc(c.prefixo)}</b>
+        <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">${(c.outrosRadar||[]).map(r=>`<span style="font-size:9px;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.35);border-radius:4px;padding:2px 6px;color:var(--amber)">${prevEsc(r.planoNum)} ${prevEsc(r.planoNome.replace(/^\(KM\)\s*/i,'').slice(0,20))}</span>`).join('')}</div>
+      </div>`).join('')}
+    </div>
+  </div>`:'';
+  const secNaoSel=porPlano.size?`<div>
+    <div style="font-size:12px;font-weight:700;color:var(--text3);margin-bottom:8px">📋 Planos não programados nesta semana (${naoSel.length} veículos)</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px">
+      ${[...porPlano.values()].sort((a,b)=>b.carros.length-a.carros.length).slice(0,20).map(g=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px">
+        <div style="font-size:11px;font-weight:700;color:var(--text2)">${prevEsc(g.planoNum)} — ${prevEsc(g.planoNome.slice(0,30))}</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:4px">${g.carros.length} veículo(s): ${g.carros.slice(0,5).map(p=>prevEsc(p)).join(', ')}${g.carros.length>5?'...':''}</div>
+      </div>`).join('')}
+    </div>
+  </div>`:'';
+  if(!secOutros&&!secNaoSel)return '';
+  return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:12px">${secOutros}${secNaoSel}</div>`;
+}
+function prevRenderAbaPrev(){
+  const el=document.getElementById('prev-aba-content');
+  if(el){
+    if(_prevAbaAtiva==='historico'){el.innerHTML=prevHtmlHistoricos();return;}
+    el.innerHTML=prevHtmlAbaLista(_prevAbaAtiva)+prevHtmlOutrosPlanosResumo();
+  }
+}
+async function prevConsolidarSelecoes(){
+  const total=_prevSelPesada.size+_prevSelLeve.size+_prevSelGar20.size+_prevSelGar30.size;
+  if(!total){toast('Selecione pelo menos um veículo nas abas antes de consolidar.','err');return;}
+  prevBuildEscalaFromSelecoes();
+  await prevConsolidarEscala();
+}
+// ── REWRITE renderFerrPrev ───────────────────────────────────────
 function renderFerrPrev(){
   prevCarregarKmMediasLocal();
-  if(_prevGrupoAtivo==='propostas') _prevGrupoAtivo='planos';
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
   const total=_prevDados.length;
-  const resumo=prevResumoPropostas();
   const importado=_prevImportadoEm?new Date(_prevImportadoEm).toLocaleString('pt-BR'):'Nenhum PDF importado';
   const qtdMedias=Object.keys(_prevKmMedias||{}).length;
-  setMain(`${secTitle('📋','Preventivas — lista por plano',back)}\r\n    <div class="prev-toolbar">
-      <div>
-        <div style="font-size:14px;font-weight:800;color:var(--text)">Importação MAN e escala por seleção PCM</div>
-        <div style="color:var(--text3);font-size:12px;margin-top:4px">Garantia: 1/dia • Pesada: 10/semana, 2 por manhã • Leve: 30/semana, 6 por dia • Base KM: ${qtdMedias} carro(s)</div>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <label class="btn" style="cursor:pointer;margin:0">📈 Importar base KM
-          <input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="processarPrevKmBase(this)">
-        </label>
-        <label class="btn primary" style="cursor:pointer;margin:0">📄 Importar PDF
-          <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="processarPrevPDF(this.files[0]);this.value=''">
-        </label>
-        ${total?`<button class="btn primary" onclick="prevConsolidarEscala()">✓ Consolidar preventivas</button><button class="btn" onclick="_prevDados=[];_prevGrupoAtivo='planos';_prevBuscaPrefixo='';_prevEscalaAlteracoes={};_prevValidados={};_prevPlanoSel={};renderFerrPrev()">Limpar lista</button>`:''}
-      </div>
+  const abas=[
+    {id:'pesada',   ic:'🔴',lb:'Pesadas'},
+    {id:'leve',     ic:'🟢',lb:'Leves'},
+    {id:'valetamento',ic:'📦',lb:'Valetamento'},
+    {id:'gar20',    ic:'🔵',lb:'Garantia 1º'},
+    {id:'gar30',    ic:'🔵',lb:'Garantia 2º'},
+    {id:'historico',ic:'🗂️',lb:'Históricos'},
+  ];
+  const tabsHtml=abas.map(a=>`<button class="btn ${_prevAbaAtiva===a.id?'primary':''}" style="white-space:nowrap" onclick="_prevAbaAtiva='${a.id}';prevRenderAbaPrev()">${a.ic} ${a.lb}</button>`).join('');
+  const p=total?prevGerarPropostas():null;
+  const kpis=p?`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:12px">
+    <div class="card"><div class="label">PESADAS</div><div class="big red">${p.pesadas.length}</div><div style="color:var(--text3);font-size:11px">${_prevSelPesada.size} selecionadas</div></div>
+    <div class="card"><div class="label">LEVES</div><div class="big green">${p.leves.filter(c=>!_prevSelPesada.has(c.prefixo)).length}</div><div style="color:var(--text3);font-size:11px">${_prevSelLeve.size} selecionadas</div></div>
+    <div class="card"><div class="label">GARANTIAS</div><div class="big purple">${p.garantias.length}</div><div style="color:var(--text3);font-size:11px">${_prevSelGar20.size+_prevSelGar30.size} selecionadas</div></div>
+    <div class="card"><div class="label">BACKLOG PESADA</div><div class="big amber">${p.pesadas.filter(c=>!_prevSelPesada.has(c.prefixo)).length}</div><div style="color:var(--text3);font-size:11px">próx. semana</div></div>
+  </div>`:'';
+  setMain(`${secTitle('🔧','Planejamento de Preventivas',back)}
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <label class="btn" style="cursor:pointer;margin:0">📈 Importar KM
+        <input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="processarPrevKmBase(this)">
+      </label>
+      <label class="btn primary" style="cursor:pointer;margin:0">📄 Importar PDF
+        <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="processarPrevPDF(this.files[0]);this.value=''">
+      </label>
+      ${total?`<button class="btn primary" onclick="prevConsolidarSelecoes()">✅ Consolidar semana</button>
+               <button class="btn" onclick="_prevDados=[];_prevSelPesada=new Set();_prevSelLeve=new Set();_prevSelGar20=new Set();_prevSelGar30=new Set();_prevAbaAtiva='pesada';renderFerrPrev()">🗑️ Limpar</button>`:''}
     </div>
-    <div style="display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:10px;margin-bottom:12px">
-      <div class="card"><div class="label">CARROS ELEGÍVEIS</div><div class="big blue">${resumo.elegiveis}</div></div>
-      <div class="card"><div class="label">PESADAS</div><div class="big red">${resumo.pesadas}</div><div style="color:var(--text3);font-size:11px">Semana: ${PREV_CAP.pesadaSemana}</div></div>
-      <div class="card"><div class="label">LEVES</div><div class="big green">${resumo.leves}</div><div style="color:var(--text3);font-size:11px">Semana: ${PREV_CAP.leveSemana}</div></div>
-      <div class="card"><div class="label">GARANTIAS</div><div class="big purple">${resumo.garantiasRadar}</div><div style="color:var(--text3);font-size:11px">Semana: ${PREV_CAP.garantiaSemana}</div></div>
-      <div class="card"><div class="label">BACKLOG SEMANA</div><div class="big amber">${resumo.backlogSemana}</div><div style="color:var(--text3);font-size:11px">fora da capacidade</div></div>
-    </div>
-    ${total?prevHtmlMetricasDetalhadas(resumo):''}
-    <div class="prev-toolbar">
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <button class="btn ${_prevGrupoAtivo==='planos'||_prevGrupoAtivo==='propostas'?'primary':''}" onclick="_prevGrupoAtivo='planos';prevRenderGrupos()">📑 Lista por plano</button>
-        <button class="btn ${_prevGrupoAtivo==='proxSemana'?'primary':''}" onclick="_prevGrupoAtivo='proxSemana';_prevProxSemanaCarros=_prevProxSemanaCarros||null;prevRenderGrupos()">📦 Prox. Semana</button>
-        <button class="btn ${_prevGrupoAtivo==='historico'?'primary':''}" onclick="_prevGrupoAtivo='historico';prevRenderGrupos()">🗂️ Históricos</button>
-      </div>
-      <div style="font-size:12px;color:var(--text3)">Última importação: <b style="color:var(--text2)">${prevEsc(importado)}</b></div>
-      <div style="position:relative;min-width:260px;max-width:420px;flex:1">
-        <span style="position:absolute;left:12px;top:9px;color:var(--text3)">🔎</span>
-        <input value="${prevEsc(_prevBuscaPrefixo)}" oninput="_prevBuscaPrefixo=this.value;prevRenderGrupos()" placeholder="Pesquisar carro ou plano..." class="prev-search">
-      </div>
-    </div>
-    <div id="prev-lista-v1">${(_prevGrupoAtivo==='historico'||total)?prevHtmlConteudoAtual():prevHtmlVazio()}</div>`);
+    <div style="font-size:11px;color:var(--text3)">Base KM: <b>${qtdMedias}</b> carro(s) &nbsp;·&nbsp; Última importação: <b style="color:var(--text2)">${prevEsc(importado)}</b></div>
+  </div>
+  ${kpis}
+  ${total?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${tabsHtml}</div>
+  <div id="prev-aba-content">${prevHtmlAbaLista(_prevAbaAtiva)+prevHtmlOutrosPlanosResumo()}</div>`:prevHtmlVazio()}`);
 }
 
 function prevResumoPropostas(){
@@ -11144,14 +11331,16 @@ async function processarPrevPDF(file){
     _prevDados=dados.sort(prevOrdenarPreventiva);
     _prevImportadoEm=new Date().toISOString();
     _prevGrupoAtivo='planos';
+    _prevAbaAtiva='pesada';
     _prevBuscaPrefixo='';
     _prevEscalaAlteracoes={};
     _prevValidados={};
     _prevPlanoSel={};
+    prevInitSelecoes();
     renderFerrPrev();
     const r=prevResumoPropostas();
     prevRegistrarImportacao(file,dados,r);
-    toast(`Importação concluída: ${dados.length} itens. Propostas: ${r.pesadas} pesadas, ${r.leves} leves, ${r.garantiasRadar} garantias e ${r.outrosRadar} outros planos no radar.`);
+    toast(`Importação concluída: ${dados.length} itens. ${_prevSelPesada.size} pesadas, ${_prevSelLeve.size} leves e ${_prevSelGar20.size+_prevSelGar30.size} garantias pré-selecionadas.`);
   }catch(e){
     console.error('[PREV IMPORT]',e);
     toast('Erro ao ler o PDF de preventivas. Veja o console para detalhes.','err');
