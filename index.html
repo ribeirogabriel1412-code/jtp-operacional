@@ -278,7 +278,7 @@ tr:hover td{background:#1F293780}
       <button class="nav-btn active" onclick="navTo('painel',this)"><span>🏠</span> Painel do Dia</button>
       <button class="nav-btn" onclick="navTo('frota',this)"><span>🚌</span> Frota <span class="nav-badge green" id="badge-frota">—</span></button>
       <button class="nav-btn" onclick="navTo('indicadores',this)"><span>📊</span> Indicadores</button>
-      <button class="nav-btn" onclick="navTo('manutencao',this)"><span>🔧</span> Manutenção</button>
+      <button class="nav-btn" onclick="navTo('manutencao',this)"><span>🔧</span> OS / PRAXIO</button>
       <button class="nav-btn" onclick="navTo('almoxarifado',this)"><span>📦</span> Almoxarifado</button>
       <button class="nav-btn" onclick="navTo('rotina',this)"><span>📅</span> Minha Rotina</button>
 
@@ -1419,7 +1419,79 @@ function toggleSolturaDetalhe(){
   if(el) el.style.display=el.style.display==='none'?'block':'none';
 }
 
-function renderManutencao(){setMain(`${secTitle('🔧','Ordens de Serviço')}<div class="empty"><div style="font-size:40px">🔧</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Em desenvolvimento</div></div><div class="info-blue info-banner">🔗 Fase 2: OS integradas ao banco + integração Praxio</div>`)}
+let _praxioCache=null;
+function praxioDedupOS(rows){const m=new Map();rows.forEach(r=>{const k=`${r.filial}|${r.numero_os}`;if(!m.has(k))m.set(k,r)});return Array.from(m.values())}
+function praxioTipo(r){const s=(r.revisao||r.tipoos||'').toUpperCase();if(s.includes('PREVENTIVA LEVE')||s.includes('PREV LEVE'))return'leve';if(s.includes('PREVENTIVA PESADA')||s.includes('PREV PESADA'))return'pesada';if(s.includes('PREVENTIVA'))return'prev';if(s.includes('CORRETIVA'))return'corretiva';return'outro'}
+function praxioAberta(r){const s=(r.condicao_os||'').toUpperCase();return!s.includes('FECHAD')&&!s.includes('CANCELAD')}
+function praxioRenderConteudo(){
+  const rows=_praxioCache||[];
+  const garFiltro=S._praxioGar||'__todos';
+  const tipoFiltro=S._praxioTipo||'__todos';
+  const el=document.getElementById('praxio-conteudo');
+  if(!el)return;
+  const garagens=[...new Set(rows.map(r=>r.garagem).filter(Boolean))].sort();
+  const porGar=garFiltro==='__todos'?rows:rows.filter(r=>r.garagem===garFiltro);
+  const dedup=praxioDedupOS(porGar);
+  const porTipo=tipoFiltro==='__todos'?dedup:dedup.filter(r=>praxioTipo(r)===tipoFiltro);
+  const total=dedup.length,ab=dedup.filter(r=>praxioAberta(r)).length,fc=total-ab;
+  const lv=dedup.filter(r=>praxioTipo(r)==='leve').length,ps=dedup.filter(r=>praxioTipo(r)==='pesada').length,co=dedup.filter(r=>praxioTipo(r)==='corretiva').length;
+  const tabRows=porTipo.slice(0,200);
+  const tipoBadge=t=>({leve:'🟡 Prev. Leve',pesada:'🟣 Prev. Pesada',prev:'🔵 Preventiva',corretiva:'🔴 Corretiva',outro:'⚪ Outro'})[t]||'⚪';
+  const stBadge=r=>praxioAberta(r)?'<span style="background:#ef444420;color:#ef4444;padding:2px 8px;border-radius:20px;font-size:11px">Aberta</span>':'<span style="background:#22c55e20;color:#22c55e;padding:2px 8px;border-radius:20px;font-size:11px">Fechada</span>';
+  const fmtDt=s=>{if(!s)return'—';try{const d=s.includes('T')?new Date(s):new Date(s+'T00:00:00');return isNaN(d)?s:d.toLocaleDateString('pt-BR')}catch(e){return s}};
+  const kc=(l,v,c)=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;min-width:90px;text-align:center"><div style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${l}</div><div style="font-size:26px;font-weight:700;color:${c||'var(--text)'}">${v.toLocaleString('pt-BR')}</div></div>`;
+  const tipos=[{id:'__todos',l:'Todos'},{id:'leve',l:'🟡 Prev. Leve'},{id:'pesada',l:'🟣 Prev. Pesada'},{id:'corretiva',l:'🔴 Corretiva'},{id:'outro',l:'⚪ Outros'}];
+  el.innerHTML=`
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+      <select id="praxio-sel-gar" onchange="S._praxioGar=this.value;praxioRenderConteudo()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;cursor:pointer;outline:none">
+        <option value="__todos"${garFiltro==='__todos'?' selected':''}>🏢 Todas as garagens</option>
+        ${garagens.map(g=>`<option value="${g.replace(/"/g,'&quot;')}"${garFiltro===g?' selected':''}>${g}</option>`).join('')}
+      </select>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${tipos.map(t=>`<button onclick="S._praxioTipo='${t.id}';praxioRenderConteudo()" style="padding:6px 14px;border-radius:20px;border:1px solid ${tipoFiltro===t.id?'var(--blue)':'var(--border)'};background:${tipoFiltro===t.id?'var(--blue)':'var(--surface2)'};color:${tipoFiltro===t.id?'#fff':'var(--text)'};cursor:pointer;font-size:13px;transition:all .15s">${t.l}</button>`).join('')}
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+      ${kc('Total OS',total,'var(--blue)')}${kc('Abertas',ab,'#ef4444')}${kc('Fechadas',fc,'#22c55e')}${kc('Prev. Leve',lv,'#a855f7')}${kc('Prev. Pesada',ps,'#7c3aed')}${kc('Corretiva',co,'#f97316')}
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Exibindo ${Math.min(porTipo.length,200).toLocaleString('pt-BR')} de ${porTipo.length.toLocaleString('pt-BR')} OS${tipoFiltro!=='__todos'?' (filtrado)':''}</div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:var(--surface2)">
+          <th style="padding:10px 12px;color:var(--text3);font-weight:600;text-align:left;white-space:nowrap">Prefixo</th>
+          <th style="padding:10px 12px;color:var(--text3);font-weight:600;text-align:left;white-space:nowrap">Nº OS</th>
+          <th style="padding:10px 12px;color:var(--text3);font-weight:600;text-align:left;white-space:nowrap">Tipo</th>
+          <th style="padding:10px 12px;color:var(--text3);font-weight:600;text-align:left;white-space:nowrap">Status</th>
+          <th style="padding:10px 12px;color:var(--text3);font-weight:600;text-align:left;white-space:nowrap">Defeito</th>
+          <th style="padding:10px 12px;color:var(--text3);font-weight:600;text-align:left;white-space:nowrap">Data OS</th>
+        </tr></thead>
+        <tbody>${tabRows.length===0?`<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text3)">Nenhuma OS encontrada</td></tr>`:tabRows.map(r=>`<tr style="border-top:1px solid var(--border)" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''"><td style="padding:10px 12px;font-family:monospace;font-weight:700">${r.prefixo_veic||r.codigoveic||'—'}</td><td style="padding:10px 12px;font-family:monospace">${r.numero_os||'—'}</td><td style="padding:10px 12px;white-space:nowrap">${tipoBadge(praxioTipo(r))}</td><td style="padding:10px 12px">${stBadge(r)}</td><td style="padding:10px 12px;color:var(--text2);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(r.defeito||'').replace(/"/g,'&quot;')}">${r.defeito||'—'}</td><td style="padding:10px 12px;white-space:nowrap;color:var(--text2)">${fmtDt(r.data_os)}</td></tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+}
+async function renderManutencao(){
+  setMain(`${secTitle('🔧','OS PRAXIO')}<div class="loading"><div class="spinner"></div></div>`);
+  const{data:rows,error}=await sb.from('praxio_os').select('numero_os,codigoveic,prefixo_veic,tipoos,revisao,condicao_os,data_os,garagem,filial,defeito,sincronizado_em').order('sincronizado_em',{ascending:false}).limit(3000);
+  if(error||!rows){setMain(`${secTitle('🔧','OS PRAXIO')}<div class="info-blue info-banner">❌ Erro ao carregar dados do PRAXIO: ${error?.message||'verifique a conexão'}</div>`);return}
+  _praxioCache=rows;
+  S._praxioTipo='__todos';
+  const ultimoSync=rows.reduce((mx,r)=>r.sincronizado_em>mx?r.sincronizado_em:mx,'');
+  const min=ultimoSync?Math.round((Date.now()-new Date(ultimoSync))/60000):null;
+  const syncBadge=min===null?`<span style="color:var(--text3)">⚠️ Sem dados sincronizados</span>`:min<90?`<span style="color:var(--green)">✅ Sincronizado há ${min} min</span>`:`<span style="color:var(--yellow)">⚠️ Último sync há ${min} min — verifique o agendador</span>`;
+  const garNome=(S.garagens.find(g=>g.id===getGid())?.nome||'').toUpperCase();
+  const garagens=[...new Set(rows.map(r=>r.garagem).filter(Boolean))].sort();
+  S._praxioGar=garagens.find(g=>g.toUpperCase().includes(garNome))||'__todos';
+  setMain(`${secTitle('🔧','OS PRAXIO')}
+    <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:20px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:10px;font-size:13px">
+      ${syncBadge}
+      <span style="color:var(--text3)">•</span>
+      <span style="color:var(--text3)">${ultimoSync?new Date(ultimoSync).toLocaleString('pt-BR'):'—'}</span>
+      <span style="color:var(--text3)">•</span>
+      <span style="color:var(--text3)">${rows.length.toLocaleString('pt-BR')} linhas no banco</span>
+    </div>
+    <div id="praxio-conteudo"></div>`);
+  praxioRenderConteudo();
+}
 async function renderAlmoxarifado(){
   const gid=getGid();
   const cdHabilitado=fluxoCdHabilitado(gid);
