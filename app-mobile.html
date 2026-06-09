@@ -6309,7 +6309,10 @@ async function telaLubriRel(dataFiltro=null){
   render(`<div style="padding:14px 14px 0">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <div style="font-weight:800;font-size:17px">🛢️ Lubrificação</div>
-      <div style="font-family:'DM Mono',monospace;font-weight:700;font-size:14px;color:${alertas.length>0?'var(--amber)':'var(--green)'}">${alertas.length>0?`⚠️ ${alertas.length}`:`✅ ${total}`}</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="font-family:'DM Mono',monospace;font-weight:700;font-size:14px;color:${alertas.length>0?'var(--amber)':'var(--green)'}">${alertas.length>0?`⚠️ ${alertas.length}`:`✅ ${total}`}</div>
+        ${total?`<button onclick="exportarLubriPDF('${_lubriRelData}')" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">📤 Exportar</button>`:''}
+      </div>
     </div>
     <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:8px;scrollbar-width:none">${pills}</div>
     <div class="prog"><div class="prog-f" style="width:${total>0?100:0}%;background:var(--green)"></div></div>
@@ -6325,6 +6328,80 @@ async function telaLubriRel(dataFiltro=null){
   }`);
 }
 
+async function exportarLubriPDF(data){
+  const gid=getGid();
+  const garaGemNome=S.garagem?.nome||'Garagem';
+  const{data:lista}=await sb.from('checklist_lubrificacao').select('*').eq('garagem_id',gid).eq('data',data).order('prefixo');
+  const rows=lista||[];
+  if(!rows.length){toast('Nenhum registro para exportar','err');return;}
+  const alertas=rows.filter(r=>r.oleo_motor_st==='completou'||r.aditivo_st==='completou'||r.oleo_direcao_st==='completou');
+  const dtFmt=new Date(data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
+  const B='border:1px solid #ccc;';
+  const BH='border:1px solid #999;background:#334155;color:#fff;text-align:center;font-weight:900;';
+  const stCell=(st,lt)=>st==='ok'?`<td style="${B}padding:3px 6px;text-align:center;color:#15803d;font-weight:700">✅ OK</td>`
+    :st==='completou'?`<td style="${B}padding:3px 6px;text-align:center;color:#b45309;font-weight:700;background:#fffbeb">➕${lt?` ${lt}L`:''}</td>`
+    :`<td style="${B}padding:3px 6px;text-align:center;color:#999">—</td>`;
+  const alertaRows=alertas.map(r=>{
+    const its=[];
+    if(r.oleo_motor_st==='completou')its.push(`🔴 Óleo Motor${r.oleo_motor_lt?` ${r.oleo_motor_lt}L`:''}`);
+    if(r.aditivo_st==='completou')its.push(`🔵 Aditivo${r.aditivo_lt?` ${r.aditivo_lt}L`:''}`);
+    if(r.oleo_direcao_st==='completou')its.push(`🟠 Óleo Direção${r.oleo_direcao_lt?` ${r.oleo_direcao_lt}L`:''}`);
+    return`<tr style="background:#fffbeb"><td style="${B}padding:3px 6px;font-family:monospace;font-weight:700">${r.prefixo}${r.is_vw?' <span style="font-size:9px;background:#dbeafe;color:#1d4ed8;padding:1px 4px;border-radius:3px">VW</span>':''}</td><td style="${B}padding:3px 6px">${r.modelo||'—'}</td><td style="${B}padding:3px 6px;color:#b45309;font-weight:700" colspan="3">${its.join(' · ')}</td><td style="${B}padding:3px 6px;font-size:9px;color:#666">${r.observacao||''}</td></tr>`;
+  }).join('');
+  const veicRows=rows.map(r=>{
+    const hora=r.criado_em?new Date(r.criado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):'';
+    const hl=r.oleo_motor_st==='completou'||r.aditivo_st==='completou'||r.oleo_direcao_st==='completou';
+    return`<tr${hl?' style="background:#fffbeb"':''}>
+      <td style="${B}padding:3px 6px;font-family:monospace;font-weight:700">${r.prefixo}${r.is_vw?' <span style="font-size:9px;background:#dbeafe;color:#1d4ed8;padding:1px 4px;border-radius:3px">VW</span>':''}</td>
+      <td style="${B}padding:3px 6px">${r.modelo||'—'}</td>
+      ${stCell(r.oleo_motor_st,r.oleo_motor_lt)}${stCell(r.aditivo_st,r.aditivo_lt)}${stCell(r.oleo_direcao_st,r.oleo_direcao_lt)}
+      <td style="${B}padding:3px 6px;font-size:9px;color:#666">${r.observacao||''}</td>
+      <td style="${B}padding:3px 6px;font-size:9px;color:#666">${r.executado_por||'—'}</td>
+      <td style="${B}padding:3px 6px;font-family:monospace;text-align:center">${hora}</td>
+    </tr>`;
+  }).join('');
+  const html=`<html><head><meta charset="UTF-8">
+<style>
+  body{font-family:Arial,sans-serif;font-size:10px;color:#000;margin:0;padding:10px}
+  @media print{.no-print{display:none!important}body{padding:0;margin:0}@page{margin:8mm;size:A4 landscape}}
+  table{border-collapse:collapse;width:100%}th,td{font-size:10px}
+  tr:nth-child(even):not(.alt){background:#f9f9f9}
+</style></head><body>
+<div class="no-print" style="position:sticky;top:0;background:#1e293b;padding:8px 12px;display:flex;gap:8px;align-items:center;z-index:999;margin:-10px -10px 10px -10px">
+  <span style="color:#fff;font-size:12px;font-weight:700">🛢️ JTP — Relatório de Lubrificação</span>
+  <button onclick="window.print()" style="margin-left:auto;padding:6px 16px;background:#3B82F6;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">🖨️ Salvar PDF</button>
+</div>
+<div style="text-align:center;border:2.5px solid #000;padding:6px;margin-bottom:5px;background:#fff">
+  <div style="font-size:13px;font-weight:900;letter-spacing:1px">GRUPO JTP  │  OPERAÇÃO GARAGEM  │  Relatório de Lubrificação</div>
+</div>
+<table style="margin-bottom:4px">
+  <tr>
+    <td style="${B}padding:3px 6px"><strong>Data:</strong> ${dtFmt}</td>
+    <td style="${B}padding:3px 6px"><strong>Garagem:</strong> ${garaGemNome}</td>
+    <td style="${B}padding:3px 6px"><strong>Total verificado:</strong> ${rows.length}</td>
+    <td style="${B}padding:3px 6px"><strong>Alertas (fluido adicionado):</strong> ${alertas.length}</td>
+    <td style="${B}padding:3px 6px"><strong>Responsável:</strong> ${S.perfil?.nome||'—'}</td>
+  </tr>
+</table>
+${alertas.length?`<div style="font-weight:900;background:#92400e;color:#fff;border:1.5px solid #111;padding:3px 8px;margin-bottom:2px">⚠️ FLUIDOS ADICIONADOS (${alertas.length})</div>
+<table style="margin-bottom:8px"><thead><tr>
+  <th style="${BH}padding:3px;width:65px">PREFIXO</th><th style="${BH}padding:3px;text-align:left">MODELO</th>
+  <th style="${BH}padding:3px" colspan="3">FLUIDOS ADICIONADOS</th><th style="${BH}padding:3px;text-align:left">OBS.</th>
+</tr></thead><tbody>${alertaRows}</tbody></table>`:''}
+<div style="font-weight:900;background:#334155;color:#fff;border:1.5px solid #111;padding:3px 8px;margin-bottom:2px">■ TODOS OS VERIFICADOS (${rows.length})</div>
+<table><thead><tr>
+  <th style="${BH}padding:3px;width:65px">PREFIXO</th><th style="${BH}padding:3px;text-align:left">MODELO</th>
+  <th style="${BH}padding:3px;width:60px">ÓLEO<br>MOTOR</th><th style="${BH}padding:3px;width:60px">ADITIVO</th>
+  <th style="${BH}padding:3px;width:60px">ÓLEO<br>DIREÇÃO</th><th style="${BH}padding:3px;text-align:left">OBS.</th>
+  <th style="${BH}padding:3px;width:55px">EXECUTADO<br>POR</th><th style="${BH}padding:3px;width:40px">HORA</th>
+</tr></thead><tbody>${veicRows}</tbody></table>
+<div style="margin-top:10px;display:flex;justify-content:space-between;font-size:9px;color:#666">
+  <span>Gerado em: ${new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'})} por ${S.perfil?.nome||'—'}</span>
+  <span>JTP Transportes · Operação Garagem</span>
+</div>
+</body></html>`;
+  await downloadPDF(html,`JTP_Lubrificacao_${data.replace(/-/g,'')}_${garaGemNome.replace(/\s/g,'_')}.pdf`);
+}
 // ── LUBRIFICAÇÃO ──────────────────────────────────────────────────
 let _lbrPrefixo='',_lbrModelo='',_lbrIsVW=false;
 let _lbrOm={st:'',lt:''},_lbrAd={st:'',lt:''},_lbrOd={st:'',lt:''};
