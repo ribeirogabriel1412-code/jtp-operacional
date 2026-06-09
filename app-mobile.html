@@ -186,7 +186,7 @@ function fluxoCdMobileHabilitado(gid=getGid()){
   return nome.includes('braganca');
 }
 function cargo(){return S.perfil?.cargo}
-const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente',coordenador:'Coordenador',supervisor:'Supervisor',lider_pcm:'Líder PCM',assistente_pcm:'Ass. PCM',almoxarifado:'Almoxarifado',lider_almoxarifado:'Líder Almox.',lider_operacional:'L. Operacional',lider_suprimentos:'L. Suprimentos',operacoes_seguras:'Op. Seguras',lider_oficina:'L. Oficina',lider_patio:'L. Pátio',lavador:'Lavador',manobrista:'Manobrista',frentista:'Frentista',plantao:'Plantão'};
+const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente',coordenador:'Coordenador',supervisor:'Supervisor',lider_pcm:'Líder PCM',assistente_pcm:'Ass. PCM',almoxarifado:'Almoxarifado',lider_almoxarifado:'Líder Almox.',lider_operacional:'L. Operacional',lider_suprimentos:'L. Suprimentos',operacoes_seguras:'Op. Seguras',lider_oficina:'L. Oficina',lider_patio:'L. Pátio',lavador:'Lavador',manobrista:'Manobrista',frentista:'Frentista',plantao:'Plantão',lubrificador:'Lubrificador'};
 function toast(msg,tipo='ok',dur=2200){const t=document.getElementById('toast');t.textContent=msg;t.className='show'+(tipo==='err'?' err':'');clearTimeout(t._t);t._t=setTimeout(()=>t.className='',dur);}
 function render(html){document.getElementById('content').innerHTML=html}
 function setTela(t){S.tela=t;buildNav();render('<div class="loading"><div class="sp"></div></div>');TELAS[t]&&TELAS[t]()}
@@ -251,7 +251,7 @@ async function init(){
 async function doLogout(){await sb.auth.signOut();location.reload()}
 
 // NAVBAR
-const TELA_INICIO={lavador:'lavagem',lider_patio:'patio',lider_oficina:'oficina',lider_pcm:'oficina',assistente_pcm:'oficina',almoxarifado:'valet_almox',lider_almoxarifado:'valet_almox',lider_suprimentos:'valet_almox',coordenador:'fech21',supervisor:'fech21',lider_operacional:'ronda33',manobrista:'patio_man',frentista:'abastecimento',plantao:'recolha',gerente_garagem:'fech21',gerente_operacional:'fech21'};
+const TELA_INICIO={lavador:'lavagem',lider_patio:'patio',lider_oficina:'oficina',lider_pcm:'oficina',assistente_pcm:'oficina',almoxarifado:'valet_almox',lider_almoxarifado:'valet_almox',lider_suprimentos:'valet_almox',coordenador:'fech21',supervisor:'fech21',lider_operacional:'ronda33',manobrista:'patio_man',frentista:'abastecimento',plantao:'recolha',gerente_garagem:'fech21',gerente_operacional:'fech21',lubrificador:'lubrificacao'};
 const NAV={
   lavador:[{id:'lavagem',ic:'🚿',lb:'Lavagem'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_patio:[{id:'patio',ic:'✅',lb:'Validar'},{id:'patio_man',ic:'🚗',lb:'Zona'},{id:'soltura',ic:'🚌',lb:'Soltura'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'abastecimento',ic:'⛽',lb:'Abastec.'},{id:'lav_pesada',ic:'🚿',lb:'Lavagem'},{id:'home',ic:'🏠',lb:'Início'}],
@@ -269,6 +269,7 @@ const NAV={
   manobrista:[{id:'patio_man',ic:'🚗',lb:'Pátio'},{id:'home',ic:'🏠',lb:'Início'}],
   frentista:[{id:'abastecimento',ic:'⛽',lb:'Abastecer'},{id:'home',ic:'🏠',lb:'Início'}],
   plantao:[{id:'recolha',ic:'🔑',lb:'Recolha'},{id:'home',ic:'🏠',lb:'Início'}],
+  lubrificador:[{id:'lubrificacao',ic:'🛢️',lb:'Lubr.'},{id:'home',ic:'🏠',lb:'Início'}],
 };
 const NAV_DEF=[{id:'home',ic:'🏠',lb:'Início'}];
 function buildNav(){
@@ -6246,8 +6247,65 @@ async function enviarFech21(){
   const msg=todosSetores?'✅ 2.1 completo — todos os setores enviaram!':`✅ ${setorLabel[setorCargo]||'Setor'} enviado. Aguardando demais setores.`;
   toast(msg);_f21State=null;telaFech21();
 }
+// ── LUBRIFICAÇÃO ──────────────────────────────────────────────────
+let _lbrPrefixo='',_lbrModelo='',_lbrIsVW=false;
+let _lbrOm={st:'',lt:''},_lbrAd={st:'',lt:''},_lbrOd={st:'',lt:''};
+async function telaLubrificacao(){
+  const gid=getGid();
+  const{data:frota}=await sb.from('frota').select('prefixo,modelo').eq('garagem_id',gid).neq('status','sinistro').order('prefixo');
+  if(!frota?.length){render(`<div class="empty"><div class="empty-ic">🛢️</div><div style="font-weight:700;font-size:16px;margin-bottom:8px">Frota não encontrada</div></div>`);return}
+  const vw=frota.filter(v=>(v.modelo||'').toUpperCase().startsWith('VW'));
+  const outros=frota.filter(v=>!(v.modelo||'').toUpperCase().startsWith('VW'));
+  const dow=new Date().getDay();
+  const gi=(dow===0||dow===6)?0:dow-1;
+  const tam=Math.ceil(outros.length/5);
+  const rotacao=outros.slice(gi*tam,Math.min(gi*tam+tam,outros.length));
+  const{data:feitos}=await sb.from('checklist_lubrificacao').select('prefixo').eq('garagem_id',gid).eq('data',hoje());
+  const fs=new Set((feitos||[]).map(f=>f.prefixo));
+  const vwSet=new Set(vw.map(v=>v.prefixo)),rotSet=new Set(rotacao.map(v=>v.prefixo));
+  const total=vw.length+rotacao.length,exec=[...fs].filter(p=>vwSet.has(p)||rotSet.has(p)).length;
+  const pct=total>0?Math.round(exec/total*100):0;
+  const dias=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const mk=v=>{
+    const feito=fs.has(v.prefixo);
+    const mdl=(v.modelo||'').replace(/'/g,'').replace(/"/g,'');
+    const isVW=(v.modelo||'').toUpperCase().startsWith('VW');
+    return`<div class="vcard ${feito?'done':''}" onclick="abrirLubri('${v.prefixo}','${mdl}',${isVW})"><div style="flex:1"><div class="prefixo" style="color:${feito?'var(--green)':'var(--text)'}">${v.prefixo}</div><div class="vcard-sub">${v.modelo||'—'}${feito?' · ✅':''}</div></div><div class="btn-ck ${feito?'ok':''}">${feito?'✅':'○'}</div></div>`;
+  };
+  render(`<div style="padding:14px 14px 0"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="font-weight:800;font-size:17px">🛢️ Lubrificação</div><div style="font-family:'DM Mono',monospace;font-weight:700;color:${pct===100?'var(--green)':'var(--blue)'}">${exec}/${total}</div></div><div class="prog"><div class="prog-f" style="width:${pct}%;background:${pct===100?'var(--green)':'var(--blue)'}"></div></div></div><div class="sl">🔵 VW — Todo dia (${vw.length})</div>${vw.map(mk).join('')}<div class="sl">📅 Rotação ${dias[dow]} (${rotacao.length} veículos)</div>${rotacao.map(mk).join('')}`);
+}
+function abrirLubri(prefixo,modelo,isVW){
+  _lbrPrefixo=prefixo;_lbrModelo=modelo;_lbrIsVW=isVW;
+  _lbrOm={st:'',lt:''};_lbrAd={st:'',lt:''};_lbrOd={st:'',lt:''};
+  rndrLubriSh();
+}
+function rndrLubriSh(){
+  const obsVal=document.getElementById('lubri-obs')?.value||'';
+  const mi=(label,key,st,lt)=>{
+    const ok=st==='ok',comp=st==='completou';
+    return`<div style="margin-bottom:14px"><div style="font-size:13px;font-weight:700;color:var(--text2);margin-bottom:6px">${label}</div><div style="display:flex;gap:8px"><button onclick="setLbr('${key}','ok')" style="flex:1;padding:10px;border-radius:10px;border:2px solid ${ok?'var(--green)':'var(--border)'};background:${ok?'#10B98115':'var(--surface2)'};color:${ok?'var(--green)':'var(--text)'};font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">✅ OK</button><button onclick="setLbr('${key}','completou')" style="flex:1;padding:10px;border-radius:10px;border:2px solid ${comp?'var(--blue)':'var(--border)'};background:${comp?'#3B82F615':'var(--surface2)'};color:${comp?'var(--blue)':'var(--text)'};font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">➕ Completou</button></div>${comp?`<div style="display:flex;align-items:center;gap:8px;margin-top:8px"><span style="font-size:12px;color:var(--text3)">Litros:</span><input type="number" id="lt_${key}" min="0" step="0.1" value="${lt||''}" placeholder="0.0" oninput="updLbrLt('${key}',this.value)" style="width:80px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:'DM Mono',monospace;font-size:13px"><span style="font-size:12px;color:var(--text3)">L</span></div>`:''}</div>`;
+  };
+  const pronto=_lbrOm.st&&_lbrAd.st&&_lbrOd.st;
+  openSheet('🛢️ '+_lbrPrefixo+' — '+_lbrModelo,`${mi('Óleo Motor','Om',_lbrOm.st,_lbrOm.lt)}${mi('Aditivo','Ad',_lbrAd.st,_lbrAd.lt)}${mi('Óleo Direção','Od',_lbrOd.st,_lbrOd.lt)}<div style="margin-bottom:14px"><div style="font-size:13px;font-weight:700;color:var(--text2);margin-bottom:6px">Observação (opcional)</div><textarea id="lubri-obs" placeholder="..." style="width:100%;box-sizing:border-box;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;resize:none;height:64px">${obsVal}</textarea></div><button onclick="salvarLubri()" ${!pronto?'disabled':''} style="width:100%;padding:15px;border-radius:12px;border:none;background:${pronto?'var(--green)':'var(--surface2)'};color:${pronto?'white':'var(--text4)'};font-size:15px;font-weight:700;font-family:inherit;cursor:${pronto?'pointer':'not-allowed'}">${pronto?'✅ Salvar':'Preencha todos os itens'}</button>`);
+}
+function setLbr(key,st){const m={Om:_lbrOm,Ad:_lbrAd,Od:_lbrOd};m[key].st=st;if(st==='ok')m[key].lt='';rndrLubriSh()}
+function updLbrLt(key,v){const m={Om:_lbrOm,Ad:_lbrAd,Od:_lbrOd};m[key].lt=v}
+async function salvarLubri(){
+  if(!_lbrOm.st||!_lbrAd.st||!_lbrOd.st){toast('❌ Preencha todos os itens','err');return}
+  const gid=getGid();
+  const obs=document.getElementById('lubri-obs')?.value?.trim()||null;
+  const{error}=await sb.from('checklist_lubrificacao').insert({
+    garagem_id:gid,prefixo:_lbrPrefixo,modelo:_lbrModelo,data:hoje(),is_vw:_lbrIsVW,
+    oleo_motor_st:_lbrOm.st,oleo_motor_lt:_lbrOm.lt?parseFloat(_lbrOm.lt):null,
+    aditivo_st:_lbrAd.st,aditivo_lt:_lbrAd.lt?parseFloat(_lbrAd.lt):null,
+    oleo_direcao_st:_lbrOd.st,oleo_direcao_lt:_lbrOd.lt?parseFloat(_lbrOd.lt):null,
+    observacao:obs,executado_por:S.perfil?.nome||null,executado_por_id:S.perfil?.id||null,
+  });
+  if(error){toast('❌ Erro: '+error.message,'err');console.error('[salvarLubri]',error);return}
+  closeSheet(true);toast('✅ Lubrificação registrada!');telaLubrificacao();
+}
 // ─────────────────────────────────────────────────────────────────
-const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,prev26:telaPrev26,valet_oficina:telaValetOficina,prev_oficina:telaPrevOficina,valet_almox:telaValetAlmox,ronda33:telaRonda33,patio_man:telaPatioMan,recolha:telaRecolha,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip,sos218:telaSOS218,fech21:telaFech21};
+const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,prev26:telaPrev26,valet_oficina:telaValetOficina,prev_oficina:telaPrevOficina,valet_almox:telaValetAlmox,ronda33:telaRonda33,patio_man:telaPatioMan,recolha:telaRecolha,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip,sos218:telaSOS218,fech21:telaFech21,lubrificacao:telaLubrificacao};
 
 // ── INIT ───────────────────────────────────────────────────
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login').style.display!=='none')doLogin()});
