@@ -1420,15 +1420,44 @@ function toggleSolturaDetalhe(){
 }
 
 let _praxioCache=null;
+let _praxioCostCache=null;
 function praxioDedupOS(rows){const m=new Map();rows.forEach(r=>{const k=`${r.filial}|${r.numero_os}`;if(!m.has(k))m.set(k,r)});return Array.from(m.values())}
 function praxioTipo(r){const s=(r.revisao||r.tipoos||'').toUpperCase();if(s.includes('PREVENTIVA LEVE')||s.includes('PREV LEVE'))return'leve';if(s.includes('PREVENTIVA PESADA')||s.includes('PREV PESADA'))return'pesada';if(s.includes('PREVENTIVA'))return'prev';if(s.includes('CORRETIVA'))return'corretiva';return'outro'}
 function praxioAberta(r){const s=(r.condicao_os||'').toUpperCase();return!s.includes('FECHAD')&&!s.includes('CANCELAD')}
+function praxioCustos(rows,garFiltro,mes,tipoFiltro){
+  let filtered=rows.filter(r=>{
+    if(garFiltro!=='__todos'&&r.garagem!==garFiltro)return false;
+    if(mes&&(r.data_os||'').substring(0,7)!==mes)return false;
+    return true;
+  });
+  const dedup=praxioDedupOS(filtered);
+  const filtrado=tipoFiltro==='__todos'?dedup:dedup.filter(r=>praxioTipo(r)===tipoFiltro);
+  const agrup={};
+  filtrado.forEach(r=>{
+    const key=`${r.prefixo_veic||r.codigoveic||'—'}||${praxioTipo(r)}`;
+    if(!agrup[key])agrup[key]={prefixo:r.prefixo_veic||r.codigoveic||'—',tipo:praxioTipo(r),qtdOS:0,mo:0,moTerc:0,pecas:0};
+    agrup[key].qtdOS++;
+    agrup[key].mo+=parseFloat(r.vlr_mobra||0);
+    agrup[key].moTerc+=parseFloat(r.vlr_mobra_terc||0);
+    agrup[key].pecas+=parseFloat(r.vlr_peca_terc||0);
+  });
+  return Object.values(agrup).map(a=>({...a,total:a.mo+a.moTerc+a.pecas})).sort((a,b)=>b.total-a.total);
+}
+async function praxioCarregarCustos(){
+  if(_praxioCostCache)return;
+  const{data}=await sb.from('praxio_os').select('numero_os,codigoveic,prefixo_veic,revisao,tipoos,garagem,filial,data_os,vlr_mobra,vlr_mobra_terc,vlr_peca_terc').order('data_os',{ascending:false}).limit(30000);
+  _praxioCostCache=data||[];
+}
 function praxioRenderConteudo(){
+  const tab=S._praxioTab||'os';
   const rows=_praxioCache||[];
   const garFiltro=S._praxioGar||'__todos';
   const tipoFiltro=S._praxioTipo||'__todos';
   const el=document.getElementById('praxio-conteudo');
   if(!el)return;
+  const tabsHtml=`<div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid var(--border)"><button onclick="S._praxioTab='os';praxioRenderConteudo()" style="padding:10px 22px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:3px solid ${tab==='os'?'var(--blue)':'transparent'};margin-bottom:-2px;color:${tab==='os'?'var(--blue)':'var(--text3)'}">📋 OS</button><button onclick="S._praxioTab='custos';S._praxioTipo='__todos';praxioRenderConteudo()" style="padding:10px 22px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:3px solid ${tab==='custos'?'var(--blue)':'transparent'};margin-bottom:-2px;color:${tab==='custos'?'var(--blue)':'var(--text3)'}">💰 Custos</button></div>`;
+  if(tab==='custos'){praxioRenderCustos(el,tabsHtml);return}
+  // ---- ABA OS ----
   const garagens=[...new Set(rows.map(r=>r.garagem).filter(Boolean))].sort();
   const porGar=garFiltro==='__todos'?rows:rows.filter(r=>r.garagem===garFiltro);
   const dedup=praxioDedupOS(porGar);
@@ -1441,7 +1470,7 @@ function praxioRenderConteudo(){
   const fmtDt=s=>{if(!s)return'—';try{const d=s.includes('T')?new Date(s):new Date(s+'T00:00:00');return isNaN(d)?s:d.toLocaleDateString('pt-BR')}catch(e){return s}};
   const kc=(l,v,c)=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;min-width:90px;text-align:center"><div style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${l}</div><div style="font-size:26px;font-weight:700;color:${c||'var(--text)'}">${v.toLocaleString('pt-BR')}</div></div>`;
   const tipos=[{id:'__todos',l:'Todos'},{id:'leve',l:'🟡 Prev. Leve'},{id:'pesada',l:'🟣 Prev. Pesada'},{id:'corretiva',l:'🔴 Corretiva'},{id:'outro',l:'⚪ Outros'}];
-  el.innerHTML=`
+  el.innerHTML=tabsHtml+`
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
       <select id="praxio-sel-gar" onchange="S._praxioGar=this.value;praxioRenderConteudo()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;cursor:pointer;outline:none">
         <option value="__todos"${garFiltro==='__todos'?' selected':''}>🏢 Todas as garagens</option>
@@ -1469,12 +1498,74 @@ function praxioRenderConteudo(){
       </table>
     </div>`;
 }
+async function praxioRenderCustos(el,tabsHtml){
+  const rows=_praxioCache||[];
+  const garagens=[...new Set(rows.map(r=>r.garagem).filter(Boolean))].sort();
+  const garFiltro=S._praxioGar||'__todos';
+  // Meses disponíveis
+  const mesesSet=new Set((rows).map(r=>(r.data_os||'').substring(0,7)).filter(s=>s.length===7));
+  const meses=[...mesesSet].sort().reverse();
+  const mesNomes=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const mesFmt=ym=>{const[a,m]=ym.split('-');return`${mesNomes[parseInt(m)-1]}/${a}`};
+  const mesAtual=(new Date()).toISOString().substring(0,7);
+  if(!S._praxioMes) S._praxioMes=meses.find(m=>m===mesAtual)||meses[0]||'';
+  const mesFiltro=S._praxioMes||'';
+  const tipoFiltro=S._praxioCTipo||'__todos';
+  // Carrega dados de custo se ainda não carregados
+  if(!_praxioCostCache){
+    el.innerHTML=tabsHtml+'<div class="loading"><div class="spinner"></div></div>';
+    await praxioCarregarCustos();
+  }
+  const costRows=_praxioCostCache||[];
+  const linhas=praxioCustos(costRows,garFiltro,mesFiltro,tipoFiltro);
+  const totalMO=linhas.reduce((s,r)=>s+r.mo,0),totalMOT=linhas.reduce((s,r)=>s+r.moTerc,0),totalPec=linhas.reduce((s,r)=>s+r.pecas,0),totalGeral=linhas.reduce((s,r)=>s+r.total,0);
+  const fmtR=v=>`R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const kc=(l,v,c)=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;min-width:120px;text-align:center"><div style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${l}</div><div style="font-size:20px;font-weight:700;color:${c||'var(--text)'}">${fmtR(v)}</div></div>`;
+  const tipos=[{id:'__todos',l:'Todos'},{id:'leve',l:'🟡 Prev. Leve'},{id:'pesada',l:'🟣 Prev. Pesada'},{id:'corretiva',l:'🔴 Corretiva'},{id:'outro',l:'⚪ Outros'}];
+  const tipoBadge=t=>({leve:'🟡 Prev. Leve',pesada:'🟣 Prev. Pesada',prev:'🔵 Preventiva',corretiva:'🔴 Corretiva',outro:'⚪ Outro'})[t]||'⚪';
+  el.innerHTML=tabsHtml+`
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+      <select id="praxio-sel-gar" onchange="S._praxioGar=this.value;praxioRenderConteudo()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;cursor:pointer;outline:none">
+        <option value="__todos"${garFiltro==='__todos'?' selected':''}>🏢 Todas as garagens</option>
+        ${garagens.map(g=>`<option value="${g.replace(/"/g,'&quot;')}"${garFiltro===g?' selected':''}>${g}</option>`).join('')}
+      </select>
+      <select onchange="S._praxioMes=this.value;praxioRenderConteudo()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;cursor:pointer;outline:none">
+        <option value="">📅 Todos os meses</option>
+        ${meses.map(m=>`<option value="${m}"${mesFiltro===m?' selected':''}>${mesFmt(m)}</option>`).join('')}
+      </select>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${tipos.map(t=>`<button onclick="S._praxioCTipo='${t.id}';praxioRenderConteudo()" style="padding:6px 14px;border-radius:20px;border:1px solid ${tipoFiltro===t.id?'var(--blue)':'var(--border)'};background:${tipoFiltro===t.id?'var(--blue)':'var(--surface2)'};color:${tipoFiltro===t.id?'#fff':'var(--text)'};cursor:pointer;font-size:13px;transition:all .15s">${t.l}</button>`).join('')}
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+      ${kc('Total Gasto',totalGeral,'var(--blue)')}${kc('Mão de Obra',totalMO,'#7c3aed')}${kc('MO Terceiro',totalMOT,'#a855f7')}${kc('Peças',totalPec,'#f97316')}
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:8px">${linhas.length.toLocaleString('pt-BR')} veículos com OS no período</div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:var(--surface2)">
+          <th style="padding:10px 12px;color:var(--text3);font-weight:600;text-align:left">Prefixo</th>
+          <th style="padding:10px 12px;color:var(--text3);font-weight:600;text-align:left">Tipo OS</th>
+          <th style="padding:10px 12px;color:var(--text3);font-weight:600;text-align:right">Qtd OS</th>
+          <th style="padding:10px 12px;color:var(--text3);font-weight:600;text-align:right;white-space:nowrap">MO Própria</th>
+          <th style="padding:10px 12px;color:var(--text3);font-weight:600;text-align:right;white-space:nowrap">MO Terc.</th>
+          <th style="padding:10px 12px;color:var(--text3);font-weight:600;text-align:right">Peças</th>
+          <th style="padding:10px 12px;color:var(--text3);font-weight:600;text-align:right">Total</th>
+        </tr></thead>
+        <tbody>${linhas.length===0?`<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text3)">Nenhum dado de custo encontrado</td></tr>`:linhas.slice(0,200).map(r=>`<tr style="border-top:1px solid var(--border)" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''"><td style="padding:10px 12px;font-family:monospace;font-weight:700">${r.prefixo}</td><td style="padding:10px 12px;white-space:nowrap">${tipoBadge(r.tipo)}</td><td style="padding:10px 12px;text-align:right;color:var(--text2)">${r.qtdOS}</td><td style="padding:10px 12px;text-align:right;white-space:nowrap">${r.mo>0?fmtR(r.mo):'—'}</td><td style="padding:10px 12px;text-align:right;white-space:nowrap">${r.moTerc>0?fmtR(r.moTerc):'—'}</td><td style="padding:10px 12px;text-align:right;white-space:nowrap">${r.pecas>0?fmtR(r.pecas):'—'}</td><td style="padding:10px 12px;text-align:right;font-weight:700;color:var(--blue);white-space:nowrap">${r.total>0?fmtR(r.total):'—'}</td></tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+}
 async function renderManutencao(){
   setMain(`${secTitle('🔧','OS PRAXIO')}<div class="loading"><div class="spinner"></div></div>`);
   const{data:rows,error}=await sb.from('praxio_os').select('numero_os,codigoveic,prefixo_veic,tipoos,revisao,condicao_os,data_os,garagem,filial,defeito,sincronizado_em').order('sincronizado_em',{ascending:false}).limit(3000);
   if(error||!rows){setMain(`${secTitle('🔧','OS PRAXIO')}<div class="info-blue info-banner">❌ Erro ao carregar dados do PRAXIO: ${error?.message||'verifique a conexão'}</div>`);return}
   _praxioCache=rows;
+  _praxioCostCache=null;
+  S._praxioTab='os';
   S._praxioTipo='__todos';
+  S._praxioCTipo='__todos';
+  S._praxioMes=null;
   const ultimoSync=rows.reduce((mx,r)=>r.sincronizado_em>mx?r.sincronizado_em:mx,'');
   const min=ultimoSync?Math.round((Date.now()-new Date(ultimoSync))/60000):null;
   const syncBadge=min===null?`<span style="color:var(--text3)">⚠️ Sem dados sincronizados</span>`:min<90?`<span style="color:var(--green)">✅ Sincronizado há ${min} min</span>`:`<span style="color:var(--yellow)">⚠️ Último sync há ${min} min — verifique o agendador</span>`;
