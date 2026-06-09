@@ -6262,50 +6262,63 @@ async function telaLubrificacao(){
   const gid=getGid();
   const{data:frota}=await sb.from('frota').select('prefixo,modelo').eq('garagem_id',gid).neq('status','sinistro').order('prefixo');
   if(!frota?.length){render(`<div class="empty"><div class="empty-ic">🛢️</div><div style="font-weight:700;font-size:16px;margin-bottom:8px">Frota não encontrada</div></div>`);return}
-  const vw=frota.filter(v=>(v.modelo||'').toUpperCase().startsWith('VW'));
-  const outros=frota.filter(v=>!(v.modelo||'').toUpperCase().startsWith('VW'));
+  const isVW=m=>(m||'').toUpperCase().includes('VOLKSWAGEN');
+  const vw=frota.filter(v=>isVW(v.modelo));
+  const outros=frota.filter(v=>!isVW(v.modelo));
   const tam=Math.ceil(outros.length/5);
   const grupos=Array.from({length:5},(_,gi)=>outros.slice(gi*tam,Math.min(gi*tam+tam,outros.length)));
   const semana=lbrSemanaAtual();
-  const{data:feitosSem}=await sb.from('checklist_lubrificacao').select('prefixo,data').eq('garagem_id',gid).gte('data',semana[0]).lte('data',semana[4]);
+  const hojeStr=hoje();
+  const{data:feitosSem}=await sb.from('checklist_lubrificacao').select('prefixo,data').eq('garagem_id',gid).gte('data',semana[0]).lte('data',hojeStr);
   const porDia={};(feitosSem||[]).forEach(f=>{if(!porDia[f.data])porDia[f.data]=new Set();porDia[f.data].add(f.prefixo);});
   const dow=new Date().getDay();
-  const hojeGi=(dow===0||dow===6)?0:dow-1;
-  const fs=porDia[hoje()]||new Set();
-  const rotHoje=grupos[hojeGi];
-  const vwSet=new Set(vw.map(v=>v.prefixo)),rotHojeSet=new Set(rotHoje.map(v=>v.prefixo));
-  const totalHoje=vw.length+rotHoje.length;
-  const execHoje=[...fs].filter(p=>vwSet.has(p)||rotHojeSet.has(p)).length;
-  const pct=totalHoje>0?Math.round(execHoje/totalHoje*100):0;
+  const fds=dow===0||dow===6;
+  const vwSet=new Set(vw.map(v=>v.prefixo));
   const diasNome=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  // Pendentes da semana (não-VW que não foram feitos no dia deles)
+  const pendSemana=[];
+  grupos.forEach((grp,gi)=>{const fd=porDia[semana[gi]]||new Set();grp.forEach(v=>{if(!fd.has(v.prefixo))pendSemana.push({...v,diaPrev:gi});});});
+  // Progresso de hoje
+  const fs=porDia[hojeStr]||new Set();
+  const rotHoje=fds?pendSemana:grupos[dow-1];
+  const rotSet=new Set(rotHoje.map(v=>v.prefixo));
+  const totalHoje=vw.length+rotHoje.length;
+  const execHoje=[...fs].filter(p=>vwSet.has(p)||rotSet.has(p)).length;
+  const pct=totalHoje>0?Math.round(execHoje/totalHoje*100):0;
   const tabs=`<div style="display:flex;gap:8px;margin:10px 0"><button onclick="_lbrTab='hoje';telaLubrificacao()" style="flex:1;padding:9px;border-radius:10px;border:none;background:${_lbrTab==='hoje'?'var(--blue)':'var(--surface2)'};color:${_lbrTab==='hoje'?'white':'var(--text)'};font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">Hoje</button><button onclick="_lbrTab='semana';telaLubrificacao()" style="flex:1;padding:9px;border-radius:10px;border:none;background:${_lbrTab==='semana'?'var(--blue)':'var(--surface2)'};color:${_lbrTab==='semana'?'white':'var(--text)'};font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">📅 Semana</button></div>`;
   const header=`<div style="padding:14px 14px 0"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="font-weight:800;font-size:17px">🛢️ Lubrificação</div><div style="font-family:'DM Mono',monospace;font-weight:700;color:${pct===100?'var(--green)':'var(--blue)'}">${execHoje}/${totalHoje}</div></div><div class="prog"><div class="prog-f" style="width:${pct}%;background:${pct===100?'var(--green)':'var(--blue)'}"></div></div>${tabs}</div>`;
   if(_lbrTab==='semana'){
     const diasLabel=['Segunda','Terça','Quarta','Quinta','Sexta'];
-    const cards=semana.map((data,gi)=>{
-      const grp=grupos[gi];
-      const feitos=porDia[data]||new Set();
-      const vwPs=new Set(vw.map(v=>v.prefixo)),grpPs=new Set(grp.map(v=>v.prefixo));
-      const execD=[...feitos].filter(p=>vwPs.has(p)||grpPs.has(p)).length;
-      const totalD=vw.length+grp.length;
-      const pctD=totalD>0?Math.round(execD/totalD*100):0;
-      const isHoje=data===hoje();
-      const aberto=_lbrDiasAbertos.has(gi);
+    const diasCurto=['Seg','Ter','Qua','Qui','Sex'];
+    let cards=semana.map((data,gi)=>{
+      const grp=grupos[gi];const feitos=porDia[data]||new Set();
+      const grpPs=new Set(grp.map(v=>v.prefixo));
+      const execD=[...feitos].filter(p=>vwSet.has(p)||grpPs.has(p)).length;
+      const totalD=vw.length+grp.length,pctD=totalD>0?Math.round(execD/totalD*100):0;
+      const isHoje=data===hojeStr,aberto=_lbrDiasAbertos.has(gi);
       const cor=execD===totalD&&totalD>0?'var(--green)':execD>0?'var(--blue)':'var(--text3)';
-      const label=execD===totalD&&totalD>0?'✅ Completo':execD>0?`⏳ ${execD}/${totalD} feitos`:`○ ${totalD} veículos`;
+      const lbl=execD===totalD&&totalD>0?'✅ Completo':execD>0?`⏳ ${execD}/${totalD} feitos`:`○ ${totalD} veículos`;
       const dtFmt=data.slice(8)+'/'+data.slice(5,7);
       const listaVW=aberto?`<div style="margin-top:10px"><div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:4px">🔵 VW — ${vw.length} veículos</div>${vw.map(v=>{const f=feitos.has(v.prefixo);return`<div style="display:flex;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)"><span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:${f?'var(--green)':'var(--text)'};min-width:60px">${v.prefixo}</span><span style="font-size:12px;color:var(--text3);flex:1">${v.modelo||'—'}</span><span style="font-size:13px">${f?'✅':'○'}</span></div>`;}).join('')}</div>`:'';
       const listaRot=aberto?`<div style="margin-top:10px"><div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:4px">📅 Rotação — ${grp.length} veículos</div>${grp.map(v=>{const f=feitos.has(v.prefixo);return`<div style="display:flex;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)"><span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:${f?'var(--green)':'var(--text)'};min-width:60px">${v.prefixo}</span><span style="font-size:12px;color:var(--text3);flex:1">${v.modelo||'—'}</span><span style="font-size:13px">${f?'✅':'○'}</span></div>`;}).join('')}</div>`:'';
-      return`<div style="margin:0 14px 10px;border-radius:12px;border:${isHoje?'2px solid var(--blue)':'1px solid var(--border)'};background:var(--surface2);overflow:hidden"><div onclick="toggleLubrDia(${gi})" style="padding:12px 14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between"><div style="flex:1"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:14px;font-weight:800;color:${isHoje?'var(--blue)':'var(--text)'}">${diasLabel[gi]}</span><span style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace">${dtFmt}</span>${isHoje?`<span style="font-size:10px;background:var(--blue);color:white;padding:1px 6px;border-radius:10px;font-weight:700">HOJE</span>`:''}</div><div style="font-size:12px;color:${cor};margin-top:3px">${label}</div></div><div style="font-size:18px;color:var(--text3)">${aberto?'▲':'▼'}</div></div>${aberto?`<div style="padding:0 14px 14px">${pctD>0?`<div class="prog" style="margin-bottom:10px"><div class="prog-f" style="width:${pctD}%;background:${pctD===100?'var(--green)':'var(--blue)'}"></div></div>`:''} ${listaVW}${listaRot}</div>`:''}</div>`;
+      return`<div style="margin:0 14px 10px;border-radius:12px;border:${isHoje?'2px solid var(--blue)':'1px solid var(--border)'};background:var(--surface2);overflow:hidden"><div onclick="toggleLubrDia(${gi})" style="padding:12px 14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between"><div style="flex:1"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:14px;font-weight:800;color:${isHoje?'var(--blue)':'var(--text)'}">${diasLabel[gi]}</span><span style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace">${dtFmt}</span>${isHoje?`<span style="font-size:10px;background:var(--blue);color:white;padding:1px 6px;border-radius:10px;font-weight:700">HOJE</span>`:''}</div><div style="font-size:12px;color:${cor};margin-top:3px">${lbl}</div></div><div style="font-size:18px;color:var(--text3)">${aberto?'▲':'▼'}</div></div>${aberto?`<div style="padding:0 14px 14px">${pctD>0?`<div class="prog" style="margin-bottom:10px"><div class="prog-f" style="width:${pctD}%;background:${pctD===100?'var(--green)':'var(--blue)'}"></div></div>`:''} ${listaVW}${listaRot}</div>`:''}</div>`;
     }).join('');
+    if(pendSemana.length>0){
+      const aFDS=_lbrDiasAbertos.has(5);
+      const listaFDS=aFDS?pendSemana.map(v=>`<div style="display:flex;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)"><span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--amber);min-width:60px">${v.prefixo}</span><span style="font-size:12px;color:var(--text3);flex:1">${v.modelo||'—'}</span><span style="font-size:10px;background:#F59E0B20;color:var(--amber);padding:2px 6px;border-radius:6px;font-weight:700">${['Seg','Ter','Qua','Qui','Sex'][v.diaPrev]}</span></div>`).join(''):'';
+      cards+=`<div style="margin:0 14px 10px;border-radius:12px;border:1px solid #F59E0B40;background:var(--surface2);overflow:hidden"><div onclick="toggleLubrDia(5)" style="padding:12px 14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between"><div style="flex:1"><div style="font-size:14px;font-weight:800;color:var(--amber)">⚠️ Pendentes — Fim de Semana</div><div style="font-size:12px;color:var(--amber);margin-top:3px">${pendSemana.length} veículo(s) não checado(s) na semana</div></div><div style="font-size:18px;color:var(--text3)">${aFDS?'▲':'▼'}</div></div>${aFDS?`<div style="padding:0 14px 14px">${listaFDS}</div>`:''}</div>`;
+    }
     render(header+cards);return;
   }
   const mk=v=>{
     const feito=fs.has(v.prefixo);
     const mdl=(v.modelo||'').replace(/'/g,'').replace(/"/g,'');
-    const isVW=(v.modelo||'').toUpperCase().startsWith('VW');
-    return`<div class="vcard ${feito?'done':''}" onclick="${feito?'':'abrirLubri(\''+v.prefixo+'\',\''+mdl+'\','+isVW+')'}"><div style="flex:1"><div class="prefixo" style="color:${feito?'var(--green)':'var(--text)'}">${v.prefixo}</div><div class="vcard-sub">${v.modelo||'—'}${feito?' · ✅':''}</div></div><div class="btn-ck ${feito?'ok':''}">${feito?'✅':'○'}</div></div>`;
+    return`<div class="vcard ${feito?'done':''}" onclick="${feito?'':'abrirLubri(\''+v.prefixo+'\',\''+mdl+'\','+isVW(v.modelo)+')'}"><div style="flex:1"><div class="prefixo" style="color:${feito?'var(--green)':'var(--text)'}">${v.prefixo}</div><div class="vcard-sub">${v.modelo||'—'}${feito?' · ✅':''}</div></div><div class="btn-ck ${feito?'ok':''}">${feito?'✅':'○'}</div></div>`;
   };
+  if(fds){
+    render(header+`<div class="sl">🔵 VW — Todo dia (${vw.length})</div>${vw.map(mk).join('')}`+(pendSemana.length?`<div class="sl">⚠️ Pendentes da semana (${pendSemana.length})</div>${pendSemana.map(mk).join('')}`:`<div class="sl" style="color:var(--green)">✅ Todos feitos na semana!</div>`));
+    return;
+  }
   render(header+`<div class="sl">🔵 VW — Todo dia (${vw.length})</div>${vw.map(mk).join('')}<div class="sl">📅 Rotação ${diasNome[dow]} (${rotHoje.length} veículos)</div>${rotHoje.map(mk).join('')}`);
 }
 function toggleLubrDia(gi){if(_lbrDiasAbertos.has(gi))_lbrDiasAbertos.delete(gi);else _lbrDiasAbertos.add(gi);telaLubrificacao()}
