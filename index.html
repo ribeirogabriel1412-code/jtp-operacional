@@ -1448,6 +1448,49 @@ async function praxioCarregarCustos(){
   const{data}=await sb.from('praxio_os').select('numero_os,codigoveic,prefixo_veic,revisao,tipoos,garagem,filial,data_os,vlr_mobra,vlr_mobra_terc,vlr_peca_terc').order('data_os',{ascending:false}).limit(10000);
   _praxioCostCache=data||[];
 }
+async function praxioAutoSyncOS(gid){
+  try{
+    const garNome=(S.garagens.find(g=>g.id===gid)?.nome||'').toUpperCase();
+    const gPrefix=garNome.substring(0,6);
+    if(!gPrefix)return;
+    const d30=new Date();d30.setDate(d30.getDate()-30);
+    const d30s=d30.toISOString().substring(0,10);
+    const{data:prRows}=await sb.from('praxio_os').select('numero_os,prefixo_veic,codigoveic,tipoos,revisao,defeito,data_os,hora_os,data_fechamento,condicao_os,filial,garagem,vlr_mobra,vlr_mobra_terc,vlr_peca_terc').gte('data_os',d30s).order('data_os',{ascending:false}).limit(1000);
+    const porGar=praxioDedupOS((prRows||[]).filter(r=>(r.garagem||'').toUpperCase().includes(gPrefix)));
+    if(!porGar.length)return;
+    const{data:vinc}=await sb.from('ocorrencias_22').select('id,praxio_os_id,status').eq('garagem_id',gid).not('praxio_os_id','is',null);
+    const vincMap=new Map((vinc||[]).map(r=>[r.praxio_os_id,r]));
+    const{data:frota}=await sb.from('frota').select('id,prefixo').eq('garagem_id',gid);
+    const frotaMap=new Map((frota||[]).map(r=>[r.prefixo.trim(),r.id]));
+    const tipoMap={leve:'preventiva_leve',pesada:'preventiva_pesada',corretiva:'corretiva',prev:'preventiva_leve',outro:'corretiva'};
+    for(const r of porGar){
+      if(!r.numero_os)continue;
+      const existing=vincMap.get(r.numero_os);
+      if(!existing){
+        if(!praxioAberta(r))continue;
+        const prefixo=(r.prefixo_veic||r.codigoveic||'').trim();
+        const vid=frotaMap.get(prefixo)||null;
+        const tipo=tipoMap[praxioTipo(r)]||'corretiva';
+        const horaStr=(r.hora_os||'07:00:00').substring(0,5);
+        const horaEnt=r.data_os?(r.data_os.substring(0,10)+'T'+horaStr):new Date().toISOString();
+        await sb.from('ocorrencias_22').insert({garagem_id:gid,veiculo_id:vid,prefixo,numero:'PRAXIO-'+r.numero_os,tipo,status:'em_manutencao',prioridade:'normal',praxio_os_id:r.numero_os,descricao:r.defeito||null,hora_entrada:horaEnt,aberto_por_nome:'PRAXIO (automático)'});
+      }else if(!praxioAberta(r)&&existing.status!=='liberado'){
+        const custo=(parseFloat(r.vlr_mobra||0)+parseFloat(r.vlr_mobra_terc||0)+parseFloat(r.vlr_peca_terc||0))||null;
+        const horaLib=r.data_fechamento?new Date(r.data_fechamento).toISOString():new Date().toISOString();
+        await sb.from('ocorrencias_22').update({status:'liberado',hora_liberacao:horaLib,custo_real:custo,fechado_por_nome:'PRAXIO (automático)'}).eq('id',existing.id);
+      }
+    }
+  }catch(e){console.warn('praxioAutoSyncOS erro:',e)}
+}
+async function herdarOSParaTurno(id,inicioFluxo){
+  await sb.from('ocorrencias_22').update({hora_entrada:inicioFluxo}).eq('id',id);
+  renderFerrPCM();
+}
+function ignorarOSHerdada(id){
+  try{localStorage.setItem('oc22_ign_'+id+'_'+hoje(),'1')}catch(e){}
+  document.getElementById('herdada-card-'+id)?.remove();
+  if(!document.querySelector('[id^="herdada-card-"]'))document.getElementById('validacao-turno-section')?.remove();
+}
 function praxioRenderConteudo(){
   const tab=S._praxioTab||'os';
   const rows=_praxioCache||[];
@@ -8433,6 +8476,8 @@ async function renderFerrPCM(aba='painel'){
   const periodoPainel=pcmPeriodoTurno(data,turnoPainel==='dia'?'07:00':'21:00',turnoPainel==='dia'?'17:00':'07:20');
   const inicioFluxo=fluxoLocal.reset_em||periodoPainel.ini;
 
+  await praxioAutoSyncOS(gid);
+
   const[{data:ocs},{data:frota}]=await Promise.all([
     sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado')
       .gte('hora_entrada',inicioFluxo)
@@ -8444,6 +8489,10 @@ async function renderFerrPCM(aba='painel'){
   const{data:fechadasHoje}=await sb.from('ocorrencias_22').select('custo_real,custo_previsto,tipo')
     .eq('garagem_id',gid).eq('status','liberado')
     .gte('hora_liberacao',inicioFluxo);
+
+  // OS herdadas de turno anterior (abertas antes do inicioFluxo)
+  const{data:herdadasRaw}=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado').lt('hora_entrada',inicioFluxo).order('hora_entrada',{ascending:true});
+  const herdadas=(herdadasRaw||[]).filter(o=>{try{return localStorage.getItem('oc22_ign_'+o.id+'_'+hoje())!=='1'}catch(e){return true}});
 
   // Valetamento de preventivas — próximo sábado
   const pcmProxSab=(d=>{const dt=new Date(d+'T12:00:00');const diff=(6-dt.getDay()+7)%7||7;dt.setDate(dt.getDate()+diff);return dt.toISOString().slice(0,10);})(data);
@@ -8587,6 +8636,11 @@ async function renderFerrPCM(aba='painel'){
     </div>
     <!-- 3. PREVENTIVAS DA SEMANA -->
     ${pcmRenderPreventivasPainel(pcmValetList,pcmProxSab)}
+    <!-- Validação de Turno -->
+    ${herdadas.length?`<div id="validacao-turno-section" style="margin-bottom:20px;border:1px solid var(--yellow);border-radius:10px;padding:16px;background:var(--surface)">
+      <div style="font-size:13px;font-weight:700;color:var(--yellow);margin-bottom:12px">⚠️ Validação de Turno — ${herdadas.length} OS aberta${herdadas.length>1?'s':''} do turno anterior</div>
+      ${herdadas.map(o=>{const tBadge={corretiva:'🔴',preventiva_leve:'🟡',preventiva_pesada:'🟣',eletrica:'⚡',pneu:'⭕',sinistro:'⚠️'}[o.tipo]||'⚪';const fmtDt=s=>{try{return new Date(s).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}catch(e){return s||'—'}};return`<div id="herdada-card-${o.id}" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--border)"><span style="font-family:monospace;font-weight:700;min-width:72px">${o.prefixo||'—'}</span><span style="white-space:nowrap;font-size:12px">${tBadge} ${(o.tipo||'').replace(/_/g,' ')}</span><span style="color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px" title="${(o.descricao||'').replace(/"/g,'&quot;')}">${o.descricao||'—'}</span><span style="color:var(--text3);font-size:11px;white-space:nowrap">${fmtDt(o.hora_entrada)}</span><div style="display:flex;gap:6px"><button onclick="herdarOSParaTurno('${o.id}','${inicioFluxo}')" style="padding:4px 12px;border-radius:6px;border:none;background:var(--green);color:#fff;cursor:pointer;font-size:12px;font-weight:600">✅ Herdar</button><button onclick="ignorarOSHerdada('${o.id}')" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;font-size:12px">⏭ Ignorar hoje</button></div></div>`}).join('')}
+    </div>`:''}
     <!-- 4. OS EM ABERTO -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div style="font-size:13px;font-weight:700">${parados} OS em aberto</div>
