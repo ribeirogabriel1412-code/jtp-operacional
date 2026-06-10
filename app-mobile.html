@@ -1359,21 +1359,48 @@ async function telaOficina(){
   var fechadasReq=sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).eq('status','liberado').gte('updated_at',jan.ini.toISOString()).lt('updated_at',jan.fim.toISOString()).order('updated_at',{ascending:true});
   var libsReq=sb.from('checklist_38').select('id,prefixo,criado_por,criado_em').eq('garagem_id',gid).gte('criado_em',jan.ini.toISOString()).lt('criado_em',jan.fim.toISOString()).order('criado_em',{ascending:false});
   var rr=await Promise.all([abertasReq,fechadasReq,libsReq]);
+  var agora=new Date();
+  var hojeKey=new Date().toISOString().slice(0,10);
+  var abertas=(rr[0].data||[]);
+  // OS de turno anterior (abertas antes do início do turno) e não ignoradas hoje
+  var herdadas=abertas.filter(function(o){
+    return new Date(o.hora_entrada||o.created_at)<jan.ini
+      && localStorage.getItem('oc22_ign_'+o.id+'_'+hojeKey)!=='1';
+  });
+  var prevIds={}; abertas.forEach(function(o){ if(new Date(o.hora_entrada||o.created_at)<jan.ini) prevIds[o.id]=true; });
   var mapa={}, ocs=[];
-  (rr[0].data||[]).concat(rr[1].data||[]).forEach(function(o){if(!mapa[o.id]){mapa[o.id]=true;ocs.push(o);}});
+  abertas.filter(function(o){return !prevIds[o.id];}).concat(rr[1].data||[]).forEach(function(o){if(!mapa[o.id]){mapa[o.id]=true;ocs.push(o);}});
   var libMap={};
   (rr[2].data||[]).forEach(function(l){if(l.prefixo&&!libMap[l.prefixo])libMap[l.prefixo]=l;});
-  if(!ocs.length){
+  if(!ocs.length&&!herdadas.length){
     render('<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px"><button onclick="S.turno=\'dia\';telaOficina()" style="padding:10px;border-radius:10px;border:1px solid '+(S.turno!=='noite'?'var(--blue)':'var(--border)')+';background:'+(S.turno!=='noite'?'#2563EB18':'transparent')+';color:'+(S.turno!=='noite'?'var(--blue)':'var(--text3)')+';font-family:inherit;font-weight:800">☀️ Dia</button><button onclick="S.turno=\'noite\';telaOficina()" style="padding:10px;border-radius:10px;border:1px solid '+(S.turno==='noite'?'var(--blue)':'var(--border)')+';background:'+(S.turno==='noite'?'#2563EB18':'transparent')+';color:'+(S.turno==='noite'?'var(--blue)':'var(--text3)')+';font-family:inherit;font-weight:800">🌙 Noite</button></div><div class="empty"><div class="empty-ic">✅</div><div style="font-weight:700;font-size:16px">Nenhuma OS do turno</div></div>');
     if(['lider_pcm','assistente_pcm','lider_oficina'].includes(cargo()))
       document.getElementById('content').insertAdjacentHTML('beforeend','<button class="fab" onclick="abrirNovaOS()">＋</button>');
     return;
   }
-  var agora=new Date();
   var SC={em_manutencao:{c:'var(--amber)',l:'Manutenção'},aguardando_peca:{c:'var(--red)',l:'Ag. Peça'},aguardando_aprovacao:{c:'var(--purple)',l:'Ag. Aprovação'},liberado:{c:'var(--green)',l:'Fechada'}};
   var totalPessoas=ocs.reduce(function(s,o){return s+(parseInt(o.manutentores)||0);},0);
   var html='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px"><button onclick="S.turno=\'dia\';telaOficina()" style="padding:10px;border-radius:10px;border:1px solid '+(S.turno!=='noite'?'var(--blue)':'var(--border)')+';background:'+(S.turno!=='noite'?'#2563EB18':'transparent')+';color:'+(S.turno!=='noite'?'var(--blue)':'var(--text3)')+';font-family:inherit;font-weight:800">☀️ Dia</button><button onclick="S.turno=\'noite\';telaOficina()" style="padding:10px;border-radius:10px;border:1px solid '+(S.turno==='noite'?'var(--blue)':'var(--border)')+';background:'+(S.turno==='noite'?'#2563EB18':'transparent')+';color:'+(S.turno==='noite'?'var(--blue)':'var(--text3)')+';font-family:inherit;font-weight:800">🌙 Noite</button></div>'+
     '<div class="sl">🔧 '+ocs.length+' OS do turno · '+jan.label+(totalPessoas>0?' · 👷 '+totalPessoas+' na oficina':'')+'</div>';
+  if(herdadas.length){
+    html+='<div style="border:1px solid var(--amber);border-radius:12px;padding:14px;margin-bottom:14px;background:var(--surface)">'+
+      '<div style="font-size:13px;font-weight:800;color:var(--amber);margin-bottom:10px">⚠️ '+herdadas.length+' OS do turno anterior — habilitar neste turno?</div>';
+    herdadas.forEach(function(o){
+      var bd=new Date(o.hora_entrada||o.created_at);
+      var mn=Math.max(0,Math.round((agora-bd)/60000));var hh=Math.floor(mn/60),mm=mn%60;
+      html+='<div style="background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:10px 12px;margin-bottom:8px">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'+
+          '<div style="font-size:17px;font-weight:900;font-family:monospace">'+o.prefixo+'</div>'+
+          '<span style="font-size:11px;color:var(--text3)">'+(o.tipo||'').replace(/_/g,' ')+' · ⏱ '+(hh>0?hh+'h '+mm+'min':mm+'min')+'</span>'+
+        '</div>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+          '<button data-ocid="'+o.id+'" data-action="herdar-os" style="padding:9px;border-radius:9px;border:none;background:var(--blue);color:#fff;font-family:inherit;font-weight:800;font-size:13px">✓ Habilitar</button>'+
+          '<button data-ocid="'+o.id+'" data-action="ignorar-os" style="padding:9px;border-radius:9px;border:1px solid var(--border);background:transparent;color:var(--text3);font-family:inherit;font-weight:700;font-size:13px">Ignorar</button>'+
+        '</div>'+
+      '</div>';
+    });
+    html+='</div>';
+  }
   ocs.forEach(function(o){
     var st=SC[o.status]||{c:'var(--text3)',l:o.status};
     var lib=libMap[o.prefixo];
@@ -1403,7 +1430,10 @@ async function telaOficina(){
     var el=e.target.closest('[data-action]');
     if(!el) return;
     document.getElementById('content').removeEventListener('click',handler);
-    if(el.dataset.action==='open-os') abrirOS_v2(el.dataset.ocid);
+    var act=el.dataset.action, ocid=el.dataset.ocid;
+    if(act==='open-os'){ abrirOS_v2(ocid); }
+    else if(act==='herdar-os'){ sb.from('ocorrencias_22').update({hora_entrada:jan.ini.toISOString()}).eq('id',ocid).then(function(){telaOficina();}); }
+    else if(act==='ignorar-os'){ try{localStorage.setItem('oc22_ign_'+ocid+'_'+hojeKey,'1');}catch(e){} telaOficina(); }
   });
   if(['lider_pcm','assistente_pcm','lider_oficina'].includes(cargo()))
     document.getElementById('content').insertAdjacentHTML('beforeend','<button class="fab" onclick="abrirNovaOS()">＋</button>');
@@ -6155,7 +6185,7 @@ async function telaFech21(){
   ${setorBadges}
   <div style="padding:0 14px 12px"><div style="background:var(--border);border-radius:99px;height:6px;overflow:hidden"><div style="width:${tot?Math.round(fil/tot*100):0}%;height:100%;background:var(--green);border-radius:99px"></div></div><div style="font-size:10px;color:var(--text3);margin-top:4px">${fil}/${tot} blocos preenchidos</div></div>
   <div style="padding:0 14px">${cards}</div>
-  <div style="padding:12px 14px 30px"><button onclick="enviarFech21()" style="width:100%;padding:15px;border-radius:12px;border:none;background:var(--green);color:#06131f;font-weight:900;font-family:inherit;font-size:15px">${btnLabel}</button></div>`);
+  <div style="padding:12px 14px 30px">${setorCargo==='supervisor'?`<button onclick="gerarPDFFech21Mobile()" style="width:100%;padding:13px;border-radius:12px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-weight:700;font-family:inherit;font-size:14px;margin-bottom:8px;display:block">📄 Exportar PDF 2.1</button>`:''}<button onclick="enviarFech21()" style="width:100%;padding:15px;border-radius:12px;border:none;background:var(--green);color:#06131f;font-weight:900;font-family:inherit;font-size:15px">${btnLabel}</button></div>`);
 }
 function abrirBloco21(blocoId){
   const b=MOB_F21_BLOCOS.find(x=>x.id===blocoId);if(!b)return;
@@ -6247,6 +6277,41 @@ async function enviarFech21(){
   const msg=todosSetores?'✅ 2.1 completo — todos os setores enviaram!':`✅ ${setorLabel[setorCargo]||'Setor'} enviado. Aguardando demais setores.`;
   toast(msg);_f21State=null;telaFech21();
 }
+async function gerarPDFFech21Mobile(){
+  if(!_f21State){toast('Carregue o formulário primeiro','err');return;}
+  try{
+    const g=escHtml(S.garagem?.nome||'Garagem');
+    const dataBr=new Date(_f21Data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
+    const sc=_f21State.setores_concluidos||{};
+    const scFmt=(s)=>s?.ok?`✅ ${escHtml(s.por||'')} · ${new Date(s.em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`:'⏳ Pendente';
+    const BH='border:1px solid #111;padding:5px;background:#1a1a2e;color:#fff;font-size:9px;font-weight:700';
+    const BC='border:1px solid #ccc;padding:5px;font-size:9px;vertical-align:top';
+    const blocoHtml=MOB_F21_BLOCOS.map(b=>{
+      const bd=_f21State.blocos?.[b.id]||{rows:JSON.parse(JSON.stringify(b.rows)),por:null,em:null};
+      const quem=bd.por?` <span style="font-weight:400;font-size:9px;opacity:.8">· ${escHtml(bd.por)}</span>`:'';
+      let tabela='';
+      if(b.tipo==='texto'){
+        tabela=`<table style="width:100%;border-collapse:collapse"><tbody><tr><td style="${BC};padding:8px">${escHtml(String(bd.rows||''))}</td></tr></tbody></table>`;
+      }else{
+        const rows=Array.isArray(bd.rows)?bd.rows:JSON.parse(JSON.stringify(b.rows));
+        const thead=`<thead><tr>${b.cols.map(c=>`<th style="${BH}">${escHtml(c)}</th>`).join('')}</tr></thead>`;
+        const tbody=`<tbody>${rows.map(row=>`<tr>${row.map(cell=>`<td style="${BC}">${escHtml(String(cell||''))}</td>`).join('')}</tr>`).join('')}</tbody>`;
+        tabela=`<table style="width:100%;border-collapse:collapse;margin-bottom:2px">${thead}${tbody}</table>`;
+      }
+      return`<div style="background:#1a1a2e;color:#fff;font-weight:900;padding:6px 8px;margin-top:8px;margin-bottom:2px;font-size:10px">${escHtml(b.titulo)}${quem}</div>${tabela}`;
+    }).join('');
+    const css=`<style>@page{size:A4 portrait;margin:10mm}body{font-family:Arial,sans-serif;color:#000;font-size:10px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:5px;vertical-align:top}.no-print{position:sticky;top:0;background:#1f2937;padding:8px;text-align:right}@media print{.no-print{display:none}}</style>`;
+    const html=`<!doctype html><html><head><meta charset="utf-8">${css}</head><body>
+<div class="no-print"><button onclick="window.print()" style="background:#2563eb;color:#fff;border:0;border-radius:6px;padding:8px 14px;font-weight:800">🖨️ Imprimir / PDF</button></div>
+<div style="border:2px solid #000;text-align:center;font-weight:900;font-size:13px;padding:7px;margin-bottom:6px">GRUPO JTP | FECHAMENTO 2.1 | ${g}</div>
+<table style="margin-bottom:6px"><tr><td><b>Data:</b> ${dataBr}</td><td><b>Turno:</b> ${_f21Turno==='dia'?'Dia':'Noite'}</td><td><b>Gerado:</b> ${new Date().toLocaleString('pt-BR')}</td></tr><tr><td><b>Operação:</b> ${scFmt(sc.operacao)}</td><td><b>PCM:</b> ${scFmt(sc.pcm)}</td><td><b>Responsável:</b> ${escHtml(S.perfil?.nome||'--')}</td></tr></table>
+${blocoHtml}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:32px"><div style="border-top:1px solid #111;text-align:center;padding-top:7px">Supervisor / Coordenador</div><div style="border-top:1px solid #111;text-align:center;padding-top:7px">Gerência / Diretoria</div></div>
+</body></html>`;
+    await downloadPDF(html,`JTP_21_FechTurno_${String(_f21Data).replace(/-/g,'')}_${_f21Turno}_${String(S.garagem?.nome||'').replace(/\s+/g,'')}.pdf`);
+  }catch(e){toast('Erro ao gerar PDF 2.1: '+(e.message||e),'err');}
+}
+
 // ── RELATÓRIO LUBRIFICAÇÃO (mobile) ──────────────────────────────
 let _lubriRelData=null;
 async function telaLubriRel(dataFiltro=null){
