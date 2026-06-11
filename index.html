@@ -33,12 +33,13 @@ if('caches' in window){
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#111827;--surface:#1F2937;--surface2:#171E2E;
-  --border:#374151;--border2:#2D3748;
-  --text:#F9FAFB;--text2:#9CA3AF;--text3:#6B7280;--text4:#4B5563;
-  --blue:#2563EB;--blue-d:#1D4ED8;
-  --green:#00C48C;--amber:#F59E0B;--red:#EF4444;--purple:#8B5CF6;
-  --sidebar:220px;
+  --bg:#0A1E3F;--surface:#0F2850;--surface2:#081730;
+  --border:#1E3A6E;--border2:#13305E;
+  --text:#F4F6FB;--text2:#9CA3AF;--text3:#6B7280;--text4:#4B5563;
+  --blue:#4A8FDB;--blue-d:#1E3A6E;
+  --gold:#C8A24A;--gold-light:#E7D19A;
+  --green:#2C7A4B;--amber:#E0A800;--red:#C0392B;--purple:#8B5CF6;
+  --sidebar:240px;
 }
 body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh}
 *::-webkit-scrollbar{width:5px}*::-webkit-scrollbar-track{background:var(--bg)}*::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
@@ -49,8 +50,8 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min
 @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
 .fl{display:block;color:var(--text3);font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}
 .fi,.fs{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:11px 14px;color:var(--text);font-size:14px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color .2s;margin-bottom:14px;appearance:none}
-.fi:focus,.fs:focus{border-color:var(--blue)}
-.btn-login{width:100%;background:linear-gradient(135deg,var(--blue-d),var(--blue));color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;transition:opacity .2s}
+.fi:focus,.fs:focus{border-color:var(--gold)}
+.btn-login{width:100%;background:linear-gradient(135deg,var(--blue-d),var(--gold));color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;transition:opacity .2s}
 .btn-login:hover{opacity:.9}
 .btn-login:disabled{opacity:.5;cursor:not-allowed}
 
@@ -1453,7 +1454,7 @@ function praxioCustos(rows,garFiltro,mes,tipoFiltro){
 async function praxioCarregarCustos(){
   if(_praxioCostCache)return;
   const dc12=new Date();dc12.setFullYear(dc12.getFullYear()-1);const dc12s=dc12.toISOString().substring(0,10);
-  const{data}=await sb.from('praxio_os').select('numero_os,codigoveic,prefixo_veic,revisao,tipoos,garagem,filial,data_os,vlr_mobra,vlr_mobra_terc,vlr_peca_terc').gte('data_os',dc12s).order('data_os',{ascending:false}).limit(10000);
+  const isDiretoriaCust=S.perfil?.cargo==='diretoria'||S.perfil?.is_admin;const gidCust=getGid();const garNomeCust=(S.garagens.find(g=>g.id===gidCust)?.nome||'').toUpperCase().substring(0,6);let qCust=sb.from('praxio_os').select('numero_os,codigoveic,prefixo_veic,revisao,tipoos,garagem,filial,data_os,vlr_mobra,vlr_mobra_terc,vlr_peca_terc').gte('data_os',dc12s).order('data_os',{ascending:false}).limit(3000);if(!isDiretoriaCust&&garNomeCust)qCust=qCust.ilike('garagem','%'+garNomeCust+'%');const{data}=await qCust;
   _praxioCostCache=data||[];
 }
 async function praxioAutoSyncOS(gid){
@@ -1610,7 +1611,7 @@ async function praxioRenderCustos(el,tabsHtml){
 async function renderManutencao(){
   setMain(`${secTitle('🔧','OS PRAXIO')}<div class="loading"><div class="spinner"></div></div>`);
   const d12=new Date();d12.setFullYear(d12.getFullYear()-1);const d12s=d12.toISOString().substring(0,10);
-  const{data:rows,error}=await sb.from('praxio_os').select('numero_os,codigoveic,prefixo_veic,tipoos,revisao,condicao_os,data_os,garagem,filial,defeito,sincronizado_em').gte('data_os',d12s).order('data_os',{ascending:false}).limit(5000);
+  const isDiretoriaOS=S.perfil?.cargo==='diretoria'||S.perfil?.is_admin;const gidOS=getGid();const garNomeOS=(S.garagens.find(g=>g.id===gidOS)?.nome||'').toUpperCase().substring(0,6);let qOS=sb.from('praxio_os').select('numero_os,codigoveic,prefixo_veic,tipoos,revisao,condicao_os,data_os,garagem,filial,defeito,sincronizado_em').gte('data_os',d12s).order('data_os',{ascending:false}).limit(2000);if(!isDiretoriaOS&&garNomeOS)qOS=qOS.ilike('garagem','%'+garNomeOS+'%');const{data:rows,error}=await qOS;
   if(error||!rows){setMain(`${secTitle('🔧','OS PRAXIO')}<div class="info-blue info-banner">❌ Erro ao carregar dados do PRAXIO: ${error?.message||'verifique a conexão'}</div>`);return}
   _praxioCache=rows;
   _praxioCostCache=null;
