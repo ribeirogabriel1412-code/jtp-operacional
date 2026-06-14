@@ -686,9 +686,9 @@ if(window.pdfjsLib&&pdfjsLib.GlobalWorkerOptions){
   pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 }
 const {createClient}=supabase;
-const SUPABASE_URL='https://jboclubugfxmurvhcxgr.supabase.co';
+const SUPABASE_URL='https://yxwxcxdegkvjvwchemsm.supabase.co';
 // Publishable Key para auth + Anon Key JWT para operações RLS
-const SUPABASE_PK='sb_publishable_hasmgR_BbXcJC6Xko6DzaA_N7kl7rNT';
+const SUPABASE_PK='sb_publishable_SvC1D0cMk94sZ_9kYv41QQ_RJVrSuUV';
 const sb=createClient(SUPABASE_URL,SUPABASE_PK);
 
 const S={user:null,perfil:null,tela:'painel',subtela:null,turno:'dia',garagens:[],frota:[],soltura210:[],filtroFrota:'todos',editVId:null,editSaidaId:null,editUserId:null,data210:null};
@@ -5151,7 +5151,7 @@ function setGidAtivo(gid){
 async function notificarWhatsApp(ocorrencia_id, status_novo){
   try{
     const gid=getGid();
-    const resp=await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
+    const resp=await fetch(`https://yxwxcxdegkvjvwchemsm.supabase.co/functions/v1/swift-responder`,{
       method:'POST',
       headers:{
         'Content-Type':'application/json',
@@ -5177,7 +5177,7 @@ async function jtpRegistrarEnvio(tipo,data,turno){
   try{await sb.from('relatorios_gerados').insert({garagem_id:gid,tipo,numero:`${tipo}-${data}-${turno}`,data_evento:data,turno,status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){console.warn(`[relatorios_gerados ${tipo}] erro:`,e?.message);}
 }
 async function jtpEnviarWpp(mensagem){
-  try{await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+getAuthKey(),'apikey':getAuthKey()},body:JSON.stringify({tipo:'notificacao_ferr',garagem_id:getGid(),usuario_nome:S.perfil?.nome||'Sistema',mensagem_custom:mensagem})});}catch(e){console.warn('[wpp] erro:',e?.message);}
+  try{await fetch(`https://yxwxcxdegkvjvwchemsm.supabase.co/functions/v1/swift-responder`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+getAuthKey(),'apikey':getAuthKey()},body:JSON.stringify({tipo:'notificacao_ferr',garagem_id:getGid(),usuario_nome:S.perfil?.nome||'Sistema',mensagem_custom:mensagem})});}catch(e){console.warn('[wpp] erro:',e?.message);}
 }
 async function salvarOcorrencia22(){
   const gid=getGid();
@@ -5901,7 +5901,7 @@ async function notificarWhatsAppLiberacao(ocId, liderNome, gid){
       `_JTP Operacional · Sistema Automático_`,
     ].join('\n');
 
-    await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
+    await fetch(`https://yxwxcxdegkvjvwchemsm.supabase.co/functions/v1/swift-responder`,{
       method:'POST',
       headers:{'Content-Type':'application/json','apikey':getAuthKey(),'Authorization':'Bearer '+getAuthKey()},
       body:JSON.stringify({
@@ -5981,7 +5981,7 @@ async function toggleCheckItem(itemId, ocId){
 async function notificarWhatsAppChecklist(ocId, pct, feitos, total){
   try{
     const gid=getGid();
-    await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
+    await fetch(`https://yxwxcxdegkvjvwchemsm.supabase.co/functions/v1/swift-responder`,{
       method:'POST',
       headers:{'Content-Type':'application/json','apikey':getAuthKey(),'Authorization':'Bearer '+getAuthKey()},
       body:JSON.stringify({
@@ -6500,7 +6500,7 @@ async function salvarFechamentoPCM(){
   msg.push(`_JTP Operacional · Sistema Automático_`);
 
   try{
-    await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
+    await fetch(`https://yxwxcxdegkvjvwchemsm.supabase.co/functions/v1/swift-responder`,{
       method:'POST',headers:{'Content-Type':'application/json','apikey':getAuthKey(),'Authorization':'Bearer '+getAuthKey()},
       body:JSON.stringify({ocorrencia_id:'00000000-0000-0000-0000-000000000000',garagem_id:gid,usuario_nome:S.perfil?.nome,status_novo:'fechamento_pcm',mensagem_custom:msg.join('\n')}),
     });
@@ -6595,7 +6595,7 @@ async function enviarResumoWpp(){
   const msg=(S._resumoMsg||[]).join('\n');
   const gid=getGid();
   try{
-    await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
+    await fetch(`https://yxwxcxdegkvjvwchemsm.supabase.co/functions/v1/swift-responder`,{
       method:'POST',
       headers:{'Content-Type':'application/json','apikey':getAuthKey(),'Authorization':'Bearer '+getAuthKey()},
       body:JSON.stringify({ocorrencia_id:'00000000-0000-0000-0000-000000000000',garagem_id:gid,usuario_nome:S.perfil?.nome,status_novo:'resumo',mensagem_custom:msg}),
@@ -12424,7 +12424,7 @@ async function enviar211WhatsApp(){
   ].join('\n');
 
   try{
-    await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
+    await fetch(`https://yxwxcxdegkvjvwchemsm.supabase.co/functions/v1/swift-responder`,{
       method:'POST',
       headers:{'Content-Type':'application/json','apikey':getAuthKey(),'Authorization':'Bearer '+getAuthKey()},
       body:JSON.stringify({ocorrencia_id:'00000000-0000-0000-0000-000000000000',garagem_id:gid,usuario_nome:S.perfil?.nome,status_novo:'211',mensagem_custom:msg}),
@@ -12605,7 +12605,7 @@ async function enviar212WhatsApp(){
   ].join('\n');
 
   try{
-    await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
+    await fetch(`https://yxwxcxdegkvjvwchemsm.supabase.co/functions/v1/swift-responder`,{
       method:'POST',
       headers:{'Content-Type':'application/json','apikey':getAuthKey(),'Authorization':'Bearer '+getAuthKey()},
       body:JSON.stringify({ocorrencia_id:'00000000-0000-0000-0000-000000000000',garagem_id:gid,usuario_nome:S.perfil?.nome,status_novo:'212',mensagem_custom:msg}),
@@ -14291,7 +14291,7 @@ async function salvarFechamento21(gid, numero, turno, data){
     ].filter(l=>l!==null&&l!==undefined).join('\n').replace(/\n{3,}/g,'\n\n');
 
     try{
-      await fetch(`https://jboclubugfxmurvhcxgr.supabase.co/functions/v1/swift-responder`,{
+      await fetch(`https://yxwxcxdegkvjvwchemsm.supabase.co/functions/v1/swift-responder`,{
         method:'POST',
         headers:{'Content-Type':'application/json','Authorization':'Bearer '+getAuthKey(),'apikey':getAuthKey()},
         body:JSON.stringify({ocorrencia_id:'00000000-0000-0000-0000-000000000000',garagem_id:gid,usuario_nome:S.perfil?.nome,status_novo:'fechamento_garagem',mensagem_custom:msg}),
