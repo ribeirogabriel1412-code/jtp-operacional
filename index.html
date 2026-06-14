@@ -405,10 +405,10 @@ tr:hover td{background:#1F293780}
       <div style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;line-height:1.8">Prefixo* · Modelo · Placa · Ano · Status · Chassi · Tipo · Fabricante · Combustivel · KM · Capacidade · Garantia · Garantia_Ate · Cor</div>
       <div style="font-size:11px;color:var(--text4);margin-top:6px">* Obrigatório. Status: disponivel / manutencao / em_linha / sinistro. Garantia: sim / nao.</div>
     </div>
-    <label style="display:flex;align-items:center;justify-content:center;gap:10px;background:var(--blue);color:#fff;padding:12px 18px;border-radius:10px;cursor:pointer;font-weight:700;font-size:14px;margin-bottom:14px">
-      Selecionar arquivo Excel / CSV
-      <input type="file" id="imp-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="processExcelFile(event)">
-    </label>
+    <input type="file" id="imp-file" accept=".xlsx,.xls,.csv" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none" onchange="processExcelFile(event)">
+    <button style="display:flex;align-items:center;justify-content:center;gap:10px;background:var(--blue);color:#fff;padding:12px 18px;border-radius:10px;cursor:pointer;font-weight:700;font-size:14px;margin-bottom:14px;width:100%;border:none" onclick="document.getElementById('imp-file').click()">
+      📂 Selecionar arquivo Excel / CSV
+    </button>
     <div id="imp-preview" style="display:none">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <div style="font-size:13px;font-weight:700" id="imp-resumo"></div>
@@ -15766,19 +15766,21 @@ function processExcelFile(event){
       const norm=k=>String(k).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[\s_\-]+/g,'');
       const colMap={
         'prefixo':'prefixo','codigo':'prefixo','codigodoveiculo':'prefixo','veiculo':'prefixo',
-        'modelo':'modelo','descricao':'modelo',
+        'modelo':'modelo','descricao':'modelo','modelochassi':'modelo','modelodecarrocaria':'modelo',
         'placa':'placa',
-        'ano':'ano','anofabricacao':'ano','anomodelo':'ano',
+        'ano':'ano','anofabricacao':'ano','anomodelo':'ano','anofab':'ano','anomod':'ano',
         'status':'status','situacao':'status',
-        'chassi':'chassi','numerodochassi':'chassi','chassis':'chassi','numerochassi':'chassi',
-        'tipo':'tipo','tipoveiculo':'tipo',
-        'fabricante':'fabricante','marca':'fabricante',
+        'chassi':'chassi','numerodochassi':'chassi','chassis':'chassi','numerochassi':'chassi','chassinumero':'chassi',
+        'tipo':'tipo','tipoveiculo':'tipo','tpveiculo':'tipo','tpoperacao':'tipo',
+        'fabricante':'fabricante','marca':'fabricante','marcachassi':'fabricante','marcadecarrocaria':'fabricante',
         'combustivel':'combustivel','tipocombustivel':'combustivel',
         'km':'km','quilometragem':'km','odometro':'km','kilometragem':'km',
         'capacidade':'capacidade','passageiros':'capacidade','lotacao':'capacidade',
-        'garantia':'garantia',
-        'garantiaate':'garantia_ate','validadedagarantia':'garantia_ate','fimgarantia':'garantia_ate','garantiaaté':'garantia_ate',
+        'garantia':'garantia','emgarantia':'garantia',
+        'garantiaate':'garantia_ate','validadedagarantia':'garantia_ate','fimgarantia':'garantia_ate',
+        'garantiaaté':'garantia_ate','datadevencimento':'garantia_ate','datavencimento':'garantia_ate',
         'cor':'cor',
+        'garagem':'_garagem_nome','nomegaragem':'_garagem_nome','garagemdooficial':'_garagem_nome',
       };
       const statusMap={
         'disponivel':'disponivel','disponível':'disponivel','disp':'disponivel','ok':'disponivel',
@@ -15828,11 +15830,23 @@ async function confirmarImportExcel(){
   if(!_excelRows.length) return;
   const btn=document.getElementById('imp-btn-confirm');
   btn.disabled=true;btn.textContent='Importando...';
-  const gid=getGid();
+  const gidPadrao=getGid();
+  // Mapa nome da garagem → id para lookup pelo campo GARAGEM do Excel
+  const gNomeMap={};
+  (S.garagens||[]).forEach(g=>{
+    const n=String(g.nome||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+    gNomeMap[n]=g.id;
+  });
   let ok=0,erros=0;
   for(const row of _excelRows){
-    const payload={...row,garagem_id:gid};
-    const{data:existe}=await sb.from('frota').select('id').eq('prefixo',row.prefixo).eq('garagem_id',gid).maybeSingle();
+    const{_garagem_nome,...dados}=row;
+    let gid=gidPadrao;
+    if(_garagem_nome){
+      const nk=String(_garagem_nome).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+      gid=gNomeMap[nk]||gidPadrao;
+    }
+    const payload={...dados,garagem_id:gid};
+    const{data:existe}=await sb.from('frota').select('id').eq('prefixo',dados.prefixo).eq('garagem_id',gid).maybeSingle();
     let error;
     if(existe){const{prefixo,...upd}=payload;({error}=await sb.from('frota').update(upd).eq('id',existe.id));}
     else({error}=await sb.from('frota').insert(payload));
