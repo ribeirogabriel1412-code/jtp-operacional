@@ -2191,7 +2191,7 @@ function supFindRotinaEnvio(a,ctx){
   if(a.tipo==='2.4'){
     const fech24Turno=(ctx.fech24||[]).filter(r=>!r.turno||r.turno===turnoRef);
     const row=fech24Turno.sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
-    if(row&&supRowDentroJanela(row,janela))return{row,quando:supRowTime(row),fonte:'Fechamento 2.4'};
+    if(row)return{row,quando:supRowTime(row)||janela?.ini,fonte:'Fechamento 2.4'};
   }
   if(a.tipo==='2.6'){
     const rowLider=(ctx.fechLiderPCM||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
