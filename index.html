@@ -2381,6 +2381,8 @@ async function renderSupPeriodo(gid){
 
   const r22ids=SUPERVISAO_ROTINA.filter(x=>x.tipo==='2.2').map(x=>x.id);
   const r41ids=SUPERVISAO_ROTINA.filter(x=>x.tipo==='4.1').map(x=>x.id);
+  const r24ids=SUPERVISAO_ROTINA.filter(x=>x.tipo==='2.4').map(x=>x.id);
+  const r34ids=SUPERVISAO_ROTINA.filter(x=>x.tipo==='3.4').map(x=>x.id);
 
   const[
     {data:fGar},{data:fLid},{data:f24},{data:ck33},
@@ -2404,10 +2406,10 @@ async function renderSupPeriodo(gid){
     {tipo:'2.1', label:'Fechamento de Turno', icon:'📋', expected:nDias*2, actual:(fGar||[]).length},
     {tipo:'2.6', label:'Custo do Turno',       icon:'💰', expected:nDias*2, actual:(fLid||[]).length},
     {tipo:'3.3', label:'Ronda Operacional',    icon:'🚶', expected:nDias*3, actual:uniqSet(ck33||[],r=>`${r.data}_${r.turno}_${r.rodada??'n'}`)},
-    {tipo:'2.4', label:'Assistente PCM',       icon:'🔧', expected:nDias*3, actual:(f24||[]).length},
-    {tipo:'3.4', label:'Relatório de Ativos',  icon:'📊', expected:nDias*3, actual:(ck34||[]).length},
+    {tipo:'2.4', label:'Fechamento de Turno 2.4',icon:'🔧', expected:nDias*3, actual:(f24||[]).length+relCount(r24ids)},
+    {tipo:'3.4', label:'Relatório de Ativos (3.4)',icon:'📊',expected:nDias*3, actual:(ck34||[]).length+relCount(r34ids)},
     {tipo:'2.12',label:'Indicadores Técnicos', icon:'📈', expected:nDias*1, actual:uniqSet(ind||[],r=>r.data)},
-    {tipo:'2.10',label:'Relatório de Soltura', icon:'🚌', expected:nDias*1, actual:(solt||[]).filter(r=>r.numero_relatorio).length},
+    {tipo:'2.10',label:'Relatório de Soltura', icon:'🚌', expected:nDias*1, actual:uniqSet((solt||[]).filter(r=>r.numero_relatorio),r=>r.data)},
     {tipo:'⛽',  label:'Abastecimento/Recolha',icon:'⛽', expected:nDias*1, actual:(fAbast||[]).length},
     {tipo:'2.2', label:'Priorização',          icon:'📝', expected:nDias*4, actual:relCount(r22ids)},
     {tipo:'4.1', label:'5W2H / E-mails',       icon:'📧', expected:nDias*2, actual:relCount(r41ids)},
