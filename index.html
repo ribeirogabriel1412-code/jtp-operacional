@@ -2364,6 +2364,111 @@ async function registrarEnvioSupervisaoRotina(id,data,gid,turno=null){
   renderSupervisao(gid||getGid());
 }
 
+// ══════════════════════════════════════════════════════════════
+// SUPERVISÃO — ACOMPANHAMENTO DO PERÍODO
+// ══════════════════════════════════════════════════════════════
+async function renderSupPeriodo(gid){
+  const el=document.getElementById('sup-periodo-section');
+  if(!el)return;
+  const tz=opTimezone(gid);
+  const hj=opISODate(new Date(),tz);
+  if(!S._periodoFim)S._periodoFim=hj;
+  if(!S._periodoIni)S._periodoIni=opAddDays(hj,-6);
+  const ini=S._periodoIni,fim=S._periodoFim;
+  const nDias=Math.round((new Date(fim)-new Date(ini))/86400000)+1;
+
+  el.innerHTML='<div style="display:flex;align-items:center;gap:8px;padding:16px 0;color:var(--text3);font-size:13px"><div class="spinner" style="width:18px;height:18px;border-width:2px"></div> Carregando período...</div>';
+
+  const r22ids=SUPERVISAO_ROTINA.filter(x=>x.tipo==='2.2').map(x=>x.id);
+  const r41ids=SUPERVISAO_ROTINA.filter(x=>x.tipo==='4.1').map(x=>x.id);
+
+  const[
+    {data:fGar},{data:fLid},{data:f24},{data:ck33},
+    {data:ck34},{data:ind},{data:solt},{data:fAbast},{data:rels},
+  ]=await Promise.all([
+    sb.from('fechamento_turno_garagem').select('data,fechado_em').eq('garagem_id',gid).gte('data',ini).lte('data',fim),
+    sb.from('fechamento_lider_pcm').select('data,fechado_em').eq('garagem_id',gid).gte('data',ini).lte('data',fim),
+    sb.from('fechamento_24').select('data,fechado_em').eq('garagem_id',gid).gte('data',ini).lte('data',fim),
+    sb.from('checklist_33').select('data,turno,rodada').eq('garagem_id',gid).gte('data',ini).lte('data',fim),
+    sb.from('checklist_equipamentos').select('data').eq('garagem_id',gid).gte('data',ini).lte('data',fim),
+    sb.from('indicadores_tecnicos').select('data').eq('garagem_id',gid).gte('data',ini).lte('data',fim),
+    sb.from('soltura_2_10').select('data,numero_relatorio').eq('garagem_id',gid).gte('data',ini).lte('data',fim),
+    sb.from('fechamento_abastecimento').select('data').eq('garagem_id',gid).gte('data',ini).lte('data',fim),
+    sb.from('relatorios_gerados').select('tipo,numero,data_evento').eq('garagem_id',gid).gte('data_evento',ini).lte('data_evento',fim),
+  ]);
+
+  const uniqSet=(arr,keyFn)=>new Set((arr||[]).map(keyFn)).size;
+  const relCount=(ids)=>(rels||[]).filter(r=>ids.some(id=>String(r.tipo||r.numero||'').includes('SUP:'+id)||String(r.tipo||r.numero||'').includes(id))).length;
+
+  const cards=[
+    {tipo:'2.1', label:'Fechamento de Turno', icon:'📋', expected:nDias*2, actual:(fGar||[]).length},
+    {tipo:'2.6', label:'Custo do Turno',       icon:'💰', expected:nDias*2, actual:(fLid||[]).length},
+    {tipo:'3.3', label:'Ronda Operacional',    icon:'🚶', expected:nDias*3, actual:uniqSet(ck33||[],r=>`${r.data}_${r.turno}_${r.rodada??'n'}`)},
+    {tipo:'2.4', label:'Assistente PCM',       icon:'🔧', expected:nDias*3, actual:(f24||[]).length},
+    {tipo:'3.4', label:'Relatório de Ativos',  icon:'📊', expected:nDias*3, actual:(ck34||[]).length},
+    {tipo:'2.12',label:'Indicadores Técnicos', icon:'📈', expected:nDias*1, actual:uniqSet(ind||[],r=>r.data)},
+    {tipo:'2.10',label:'Relatório de Soltura', icon:'🚌', expected:nDias*1, actual:(solt||[]).filter(r=>r.numero_relatorio).length},
+    {tipo:'⛽',  label:'Abastecimento/Recolha',icon:'⛽', expected:nDias*1, actual:(fAbast||[]).length},
+    {tipo:'2.2', label:'Priorização',          icon:'📝', expected:nDias*4, actual:relCount(r22ids)},
+    {tipo:'4.1', label:'5W2H / E-mails',       icon:'📧', expected:nDias*2, actual:relCount(r41ids)},
+  ];
+
+  const totalEsp=cards.reduce((s,c)=>s+c.expected,0);
+  const totalReal=cards.reduce((s,c)=>s+c.actual,0);
+  const pctTotal=totalEsp>0?Math.round(totalReal/totalEsp*100):0;
+  const corTotal=pctTotal>=80?'var(--green)':pctTotal>=50?'var(--amber)':'var(--red)';
+
+  const cardHtml=cards.map(c=>{
+    const pct=c.expected>0?Math.min(100,Math.round(c.actual/c.expected*100)):0;
+    const cor=pct>=80?'var(--green)':pct>=50?'var(--amber)':'var(--red)';
+    const barBg=pct>=80?'#00C48C':pct>=50?'#F59E0B':'#EF4444';
+    return`<div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:12px 14px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+        <span style="font-size:13px">${c.icon}</span>
+        <span style="font-size:11px;font-weight:700;color:var(--text2);flex:1">${c.label}</span>
+        <span style="font-family:'DM Mono',monospace;font-size:16px;font-weight:800;color:${cor}">${pct}%</span>
+      </div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:6px">${c.actual} / ${c.expected} em ${nDias} dia${nDias>1?'s':''}</div>
+      <div style="background:var(--border);border-radius:99px;height:4px;overflow:hidden">
+        <div style="width:${pct}%;height:100%;background:${barBg}"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML=`
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:20px">
+    <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+      <div style="flex:1;min-width:160px">
+        <div style="font-size:14px;font-weight:800">📅 Acompanhamento do Período</div>
+        <div style="color:var(--text3);font-size:11px;margin-top:3px">${totalReal}/${totalEsp} registros · ${nDias} dia${nDias>1?'s':''}</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <label style="display:block;color:var(--text3);font-size:10px;font-weight:700;text-transform:uppercase;margin-bottom:3px">De</label>
+          <div style="display:flex;gap:4px">
+            <input id="periodo-ini" class="fi" type="date" value="${ini}" onchange="S._periodoIni=this.value;renderSupPeriodo('${gid}')" style="width:140px">
+            <button onclick="const e=document.getElementById('periodo-ini');e?.showPicker?e.showPicker():e?.focus()" style="width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);font-size:14px;cursor:pointer">📅</button>
+          </div>
+        </div>
+        <div>
+          <label style="display:block;color:var(--text3);font-size:10px;font-weight:700;text-transform:uppercase;margin-bottom:3px">Até</label>
+          <div style="display:flex;gap:4px">
+            <input id="periodo-fim" class="fi" type="date" value="${fim}" onchange="S._periodoFim=this.value;renderSupPeriodo('${gid}')" style="width:140px">
+            <button onclick="const e=document.getElementById('periodo-fim');e?.showPicker?e.showPicker():e?.focus()" style="width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);font-size:14px;cursor:pointer">📅</button>
+          </div>
+        </div>
+        <div style="text-align:center;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:7px 16px">
+          <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:800;color:${corTotal}">${pctTotal}%</div>
+          <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">CONFORMIDADE</div>
+        </div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px">
+      ${cardHtml}
+    </div>
+  </div>`;
+}
+
 // ADMIN — GESTÃO DE USUÁRIOS
 // ══════════════════════════════════════════════════════════════
 // SUPERVISÃO — painel consolidado por garagem
@@ -2573,6 +2678,8 @@ async function renderSupervisao(gidFiltro=null){
 
     ${rotinaHtml}
 
+    <div id="sup-periodo-section"></div>
+
     <!-- 4 BLOCOS PRINCIPAIS -->
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:20px">
 
@@ -2720,6 +2827,8 @@ async function renderSupervisao(gidFiltro=null){
       </table>
     </div>`:'<div style="background:#00C48C12;border:1px solid #00C48C30;border-radius:10px;padding:14px;text-align:center;color:var(--green);font-weight:700;margin-bottom:20px">✅ Nenhum veículo indisponível!</div>'}
   `);
+
+  renderSupPeriodo(gid);
 
   if(window._supRealtimeCh){sb.removeChannel(window._supRealtimeCh);window._supRealtimeCh=null;}
   const _supCh=sb.channel('sup-retroalimentacao');
