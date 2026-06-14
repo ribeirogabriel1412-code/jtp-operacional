@@ -244,10 +244,10 @@ tr:hover td{background:#1F293780}
       <div style="font-size:22px;font-weight:800;letter-spacing:-.5px">JTP Transportes</div>
       <div style="color:var(--text3);font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-top:4px">Sistema Operacional</div>
     </div>
-    <label class="fl">E-mail</label>
-    <input class="fi" id="l-email" type="email" placeholder="seu@email.com">
+    <label class="fl">Matrícula ou E-mail</label>
+    <input class="fi" id="l-login" type="text" placeholder="Ex: 4521 ou usuario@email.com" autocomplete="username">
     <label class="fl">Senha</label>
-    <input class="fi" id="l-senha" type="password" placeholder="••••••••">
+    <input class="fi" id="l-senha" type="password" placeholder="••••••••" autocomplete="current-password">
     <div id="l-erro" style="color:var(--red);font-size:12px;text-align:center;margin-bottom:10px;display:none"></div>
     <button class="btn-login" id="btn-login" onclick="doLogin()">Entrar no Sistema</button>
     <div style="text-align:center;margin-top:16px;color:var(--text4);font-size:11px">🔒 Acesso restrito — Grupo JTP</div>
@@ -269,6 +269,7 @@ tr:hover td{background:#1F293780}
     <div style="display:flex;align-items:center;gap:10px">
       <span style="color:var(--text3);font-size:12px" id="tb-role">—</span>
       <div class="avatar" id="tb-av">?</div>
+      <button class="btn-out" style="background:var(--surface2);color:var(--text3);border:1px solid var(--border)" onclick="openModalSenha()">Senha</button>
       <button class="btn-out" onclick="doLogout()">Sair</button>
     </div>
   </div>
@@ -351,6 +352,92 @@ tr:hover td{background:#1F293780}
       <div><label class="fl">Placa</label><input class="fi" id="cad-placa" placeholder="ABC1D23" style="margin-bottom:0"></div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px"><button class="btn-sec" onclick="closeM('modal-cad')">Cancelar</button><button class="btn-success" onclick="salvarVeiculo()">💾 Salvar</button></div>
+  </div>
+</div>
+
+<!-- Editar Veículo Completo -->
+<div class="modal-ov" id="modal-edit-v" style="display:none" onclick="if(event.target===this)closeM('modal-edit-v')">
+  <div class="modal" style="max-width:560px;max-height:90vh;overflow-y:auto">
+    <div class="modal-title"><span>Editar — <span id="ev-pref" style="font-family:'DM Mono',monospace;color:var(--blue)"></span></span><button class="btn-x" onclick="closeM('modal-edit-v')">✕</button></div>
+    <div style="color:var(--text3);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Status Operacional</div>
+    <div class="mgrid" style="margin-bottom:14px">
+      <div><label class="fl">Status</label><select class="fs" id="ev-status" style="margin-bottom:0"><option value="disponivel">Disponível</option><option value="em_linha">Em Linha</option><option value="manutencao">Manutenção</option><option value="aguardando_peca">Ag. Peça</option><option value="sinistro">Sinistro</option></select></div>
+      <div><label class="fl">Observação</label><input class="fi" id="ev-obs" placeholder="Opcional..." style="margin-bottom:0"></div>
+    </div>
+    <div style="color:var(--text3);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Dados do Veículo</div>
+    <div class="mgrid" style="margin-bottom:14px">
+      <div><label class="fl">Modelo</label><input class="fi" id="ev-modelo" placeholder="Mercedes OF-1721" style="margin-bottom:0"></div>
+      <div><label class="fl">Fabricante</label><input class="fi" id="ev-fabricante" placeholder="Mercedes-Benz" style="margin-bottom:0"></div>
+      <div><label class="fl">Placa</label><input class="fi" id="ev-placa" placeholder="ABC1D23" style="margin-bottom:0"></div>
+      <div><label class="fl">Ano</label><input class="fi" id="ev-ano" type="number" placeholder="2023" style="margin-bottom:0"></div>
+      <div><label class="fl">Chassi</label><input class="fi" id="ev-chassi" placeholder="9BM..." style="margin-bottom:0"></div>
+      <div><label class="fl">Tipo</label><select class="fs" id="ev-tipo" style="margin-bottom:0"><option value="">—</option><option value="urbano">Urbano</option><option value="rodoviario">Rodoviário</option><option value="articulado">Articulado</option><option value="micro">Micro-ônibus</option><option value="van">Van</option></select></div>
+      <div><label class="fl">Combustível</label><select class="fs" id="ev-combustivel" style="margin-bottom:0"><option value="">—</option><option value="diesel">Diesel</option><option value="gas">Gás (GNV)</option><option value="eletrico">Elétrico</option><option value="hibrido">Híbrido</option></select></div>
+      <div><label class="fl">KM Atual</label><input class="fi" id="ev-km" type="number" placeholder="150000" style="margin-bottom:0"></div>
+      <div><label class="fl">Capacidade (pax)</label><input class="fi" id="ev-capacidade" type="number" placeholder="80" style="margin-bottom:0"></div>
+      <div><label class="fl">Cor</label><input class="fi" id="ev-cor" placeholder="Branco" style="margin-bottom:0"></div>
+    </div>
+    <div style="color:var(--text3);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Garantia</div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;font-weight:600;margin-bottom:10px">
+        <input type="checkbox" id="ev-garantia" style="width:16px;height:16px;accent-color:var(--blue)" onchange="document.getElementById('ev-garantia-wrap').style.display=this.checked?'block':'none'">
+        Veículo em garantia
+      </label>
+      <div id="ev-garantia-wrap" style="display:none"><label class="fl">Válida até</label><input class="fi" id="ev-garantia-ate" type="date" style="margin-bottom:0"></div>
+    </div>
+    <div id="ev-mover-wrap" style="display:none">
+      <div style="color:var(--text3);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Mover para Garagem</div>
+      <select class="fs" id="ev-garagem" style="margin-bottom:14px"></select>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:space-between;margin-top:6px">
+      <button class="btn-danger" id="ev-btn-excluir" onclick="excluirVeiculo()" style="display:none">Excluir</button>
+      <div style="display:flex;gap:10px;margin-left:auto"><button class="btn-sec" onclick="closeM('modal-edit-v')">Cancelar</button><button class="btn-success" onclick="salvarVeiculoEdit()">Salvar</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- Importar Frota Excel -->
+<div class="modal-ov" id="modal-import-excel" style="display:none" onclick="if(event.target===this)closeM('modal-import-excel')">
+  <div class="modal" style="max-width:720px;max-height:88vh;overflow-y:auto">
+    <div class="modal-title"><span>Importar Frota via Excel</span><button class="btn-x" onclick="closeM('modal-import-excel')">✕</button></div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
+      <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px">Colunas reconhecidas (cabeçalho na 1ª linha):</div>
+      <div style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;line-height:1.8">Prefixo* · Modelo · Placa · Ano · Status · Chassi · Tipo · Fabricante · Combustivel · KM · Capacidade · Garantia · Garantia_Ate · Cor</div>
+      <div style="font-size:11px;color:var(--text4);margin-top:6px">* Obrigatório. Status: disponivel / manutencao / em_linha / sinistro. Garantia: sim / nao.</div>
+    </div>
+    <label style="display:flex;align-items:center;justify-content:center;gap:10px;background:var(--blue);color:#fff;padding:12px 18px;border-radius:10px;cursor:pointer;font-weight:700;font-size:14px;margin-bottom:14px">
+      Selecionar arquivo Excel / CSV
+      <input type="file" id="imp-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="processExcelFile(event)">
+    </label>
+    <div id="imp-preview" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-size:13px;font-weight:700" id="imp-resumo"></div>
+        <div style="font-size:11px;color:var(--text4)" id="imp-legenda"></div>
+      </div>
+      <div style="overflow-x:auto;max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:8px"><table style="width:100%;border-collapse:collapse;font-size:12px" id="imp-table"></table></div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+      <button class="btn-sec" onclick="closeM('modal-import-excel')">Cancelar</button>
+      <button class="btn-success" id="imp-btn-confirm" onclick="confirmarImportExcel()" style="display:none">Importar <span id="imp-count"></span> veículo(s)</button>
+    </div>
+  </div>
+</div>
+
+<!-- Alterar Senha -->
+<div class="modal-ov" id="modal-senha" style="display:none" onclick="if(event.target===this)closeM('modal-senha')">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-title"><span>Alterar Senha</span><button class="btn-x" onclick="closeM('modal-senha')">✕</button></div>
+    <label class="fl">Senha Atual</label>
+    <input class="fi" id="ms-atual" type="password" placeholder="••••••••" autocomplete="current-password">
+    <label class="fl">Nova Senha <span style="font-weight:400;color:var(--text4)">(mín. 6 caracteres)</span></label>
+    <input class="fi" id="ms-nova" type="password" placeholder="••••••••" autocomplete="new-password">
+    <label class="fl">Confirmar Nova Senha</label>
+    <input class="fi" id="ms-confirm" type="password" placeholder="••••••••" autocomplete="new-password" style="margin-bottom:20px">
+    <div id="ms-erro" style="color:var(--red);font-size:12px;text-align:center;margin-bottom:12px;display:none"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn-sec" onclick="closeM('modal-senha')">Cancelar</button>
+      <button class="btn-success" id="ms-btn" onclick="salvarSenha()">Alterar Senha</button>
+    </div>
   </div>
 </div>
 
@@ -931,12 +1018,25 @@ function kpi(label,val,meta,unit='%',inv=false,dec=1){
 
 // AUTH — LOGIN REAL
 async function doLogin(){
-  const email=document.getElementById('l-email').value.trim();
+  const loginVal=document.getElementById('l-login').value.trim();
   const senha=document.getElementById('l-senha').value;
   const erro=document.getElementById('l-erro');
-  if(!email||!senha){erro.textContent='Preencha e-mail e senha.';erro.style.display='block';return}
+  if(!loginVal||!senha){erro.textContent='Preencha matrícula/e-mail e senha.';erro.style.display='block';return}
   erro.style.display='none';
   const btn=document.getElementById('btn-login');btn.textContent='Entrando...';btn.disabled=true;
+
+  // Resolve email: se não tem @ é matrícula → busca email no perfis
+  let email=loginVal;
+  if(!loginVal.includes('@')){
+    const{data:pf}=await sb.from('perfis').select('email').eq('matricula',loginVal).maybeSingle();
+    if(!pf||!pf.email){
+      btn.textContent='Entrar no Sistema';btn.disabled=false;
+      erro.textContent='Matrícula não encontrada. Verifique ou use seu e-mail.';
+      erro.style.display='block';
+      return;
+    }
+    email=pf.email;
+  }
 
   let data,error;
   try{
@@ -952,7 +1052,7 @@ async function doLogin(){
   btn.textContent='Entrar no Sistema';btn.disabled=false;
 
   if(error){
-    erro.textContent=error.message.includes('Invalid')?'E-mail ou senha incorretos.':error.message;
+    erro.textContent=error.message.includes('Invalid')?'Matrícula/e-mail ou senha incorretos.':error.message;
     erro.style.display='block';
     console.warn('[LOGIN] Supabase recusou:',error);
     return;
@@ -1031,12 +1131,44 @@ async function doLogin(){
   atualizarSubmenuFerramentas();
 }
 
+function openModalSenha(){
+  document.getElementById('ms-atual').value='';
+  document.getElementById('ms-nova').value='';
+  document.getElementById('ms-confirm').value='';
+  document.getElementById('ms-erro').style.display='none';
+  document.getElementById('modal-senha').style.display='flex';
+}
+
+async function salvarSenha(){
+  const msErro=document.getElementById('ms-erro');
+  msErro.style.display='none';
+  const senhaAtual=document.getElementById('ms-atual').value;
+  const novaSenha=document.getElementById('ms-nova').value;
+  const confirmSenha=document.getElementById('ms-confirm').value;
+  if(!senhaAtual){msErro.textContent='Informe a senha atual.';msErro.style.display='block';return;}
+  if(novaSenha.length<6){msErro.textContent='Nova senha deve ter mínimo 6 caracteres.';msErro.style.display='block';return;}
+  if(novaSenha!==confirmSenha){msErro.textContent='Senhas não coincidem.';msErro.style.display='block';return;}
+  const btn=document.getElementById('ms-btn');btn.disabled=true;btn.textContent='Verificando...';
+  // Verifica senha atual via re-autenticação
+  const email=S.perfil?.email||S.user?.email;
+  const{error:authErr}=await sb.auth.signInWithPassword({email,password:senhaAtual});
+  if(authErr){
+    btn.disabled=false;btn.textContent='Alterar Senha';
+    msErro.textContent='Senha atual incorreta.';msErro.style.display='block';return;
+  }
+  btn.textContent='Salvando...';
+  const{error}=await sb.auth.updateUser({password:novaSenha});
+  btn.disabled=false;btn.textContent='Alterar Senha';
+  if(error){msErro.textContent='Erro: '+error.message;msErro.style.display='block';return;}
+  toast('Senha alterada com sucesso!');closeM('modal-senha');
+}
+
 async function doLogout(){
   await sb.auth.signOut();
   S.user=null;S.perfil=null;
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('app').classList.remove('on');
-  document.getElementById('l-email').value='';
+  document.getElementById('l-login').value='';
   document.getElementById('l-senha').value='';
   document.getElementById('sec-admin').style.display='none';
   document.querySelectorAll('.admin-only').forEach(el=>el.style.display='none');
@@ -1286,17 +1418,20 @@ async function renderFrota(){
             <span style="font-size:9px;color:var(--text4)">${new Date(ult.data+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</span>
           </div>`
         :`<div style="margin-top:4px;font-size:9px;color:var(--text4)">🚿 Sem registro</div>`;
-      return`<div class="frota-card" onclick="openModalV('${v.id}','${v.prefixo}','${v.status}')">
+      const garantiaH=v.garantia?`<div style="margin-top:4px;font-size:9px;font-weight:700;color:#10B981">✓ Garantia${v.garantia_ate?' até '+new Date(v.garantia_ate+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit'}):''}</div>`:'';
+      return`<div class="frota-card" onclick="openModalEditV('${v.id}')">
         <div>
           <div class="fp">${v.prefixo}</div>
           <div class="fm">${v.modelo||'—'}</div>
           <div style="color:var(--text4);font-size:10px;margin-top:2px;font-family:'DM Mono',monospace">${v.placa||''}</div>
+          ${garantiaH}
           ${lavHTML}
         </div>
         ${badge(v.status)}
       </div>`;
     }).join('');
-  setMain(`${secTitle('🚌',`Gestão de Frota — ${S.frota.length} veículo(s)`,`<button class="btn-add" onclick="openModalCad()">+ Novo</button>`)}<div class="filtros">${filtrosH}</div><div class="frota-grid">${cards}</div>`);
+  const adminBtns=S.perfil?.is_admin?`<button class="btn-add" style="background:var(--surface2);color:var(--text2);border:1px solid var(--border)" onclick="openImportExcel()">Importar Excel</button><button class="btn-add" onclick="openModalCad()">+ Novo</button>`:`<button class="btn-add" onclick="openModalCad()">+ Novo</button>`;
+  setMain(`${secTitle('🚌',`Gestão de Frota — ${S.frota.length} veículo(s)`,adminBtns)}<div class="filtros">${filtrosH}</div><div class="frota-grid">${cards}</div>`);
 }
 
 async function renderIndicadores(){
@@ -15538,6 +15673,176 @@ async function salvarVeiculo(){
   toast('Veículo cadastrado!');closeM('modal-cad');renderFrota();
 }
 
+// MODAL EDIÇÃO COMPLETA VEÍCULO
+async function openModalEditV(id){
+  S.editVId=id;
+  const v=S.frota.find(x=>x.id===id);
+  if(!v) return;
+  document.getElementById('ev-pref').textContent=v.prefixo;
+  document.getElementById('ev-status').value=v.status||'disponivel';
+  document.getElementById('ev-obs').value='';
+  document.getElementById('ev-modelo').value=v.modelo||'';
+  document.getElementById('ev-fabricante').value=v.fabricante||'';
+  document.getElementById('ev-placa').value=v.placa||'';
+  document.getElementById('ev-ano').value=v.ano||'';
+  document.getElementById('ev-chassi').value=v.chassi||'';
+  document.getElementById('ev-tipo').value=v.tipo||'';
+  document.getElementById('ev-combustivel').value=v.combustivel||'';
+  document.getElementById('ev-km').value=v.km||'';
+  document.getElementById('ev-capacidade').value=v.capacidade||'';
+  document.getElementById('ev-cor').value=v.cor||'';
+  const gChecked=v.garantia===true;
+  document.getElementById('ev-garantia').checked=gChecked;
+  document.getElementById('ev-garantia-ate').value=v.garantia_ate||'';
+  document.getElementById('ev-garantia-wrap').style.display=gChecked?'block':'none';
+  const isAdmin=S.perfil?.is_admin;
+  const moverWrap=document.getElementById('ev-mover-wrap');
+  const btnExcluir=document.getElementById('ev-btn-excluir');
+  if(isAdmin){
+    moverWrap.style.display='block';
+    btnExcluir.style.display='inline-flex';
+    document.getElementById('ev-garagem').innerHTML=S.garagens.map(g=>`<option value="${g.id}"${g.id===v.garagem_id?' selected':''}>${g.nome||g.sigla||g.id.slice(0,8)}</option>`).join('');
+  } else {
+    moverWrap.style.display='none';
+    btnExcluir.style.display='none';
+  }
+  document.getElementById('modal-edit-v').style.display='flex';
+}
+
+async function salvarVeiculoEdit(){
+  const btn=document.querySelector('#modal-edit-v .btn-success');
+  if(btn) btn.disabled=true;
+  const updates={
+    status:document.getElementById('ev-status').value,
+    modelo:document.getElementById('ev-modelo').value.trim()||null,
+    fabricante:document.getElementById('ev-fabricante').value.trim()||null,
+    placa:document.getElementById('ev-placa').value.trim()||null,
+    ano:document.getElementById('ev-ano').value||null,
+    chassi:document.getElementById('ev-chassi').value.trim()||null,
+    tipo:document.getElementById('ev-tipo').value||null,
+    combustivel:document.getElementById('ev-combustivel').value||null,
+    km:parseFloat(document.getElementById('ev-km').value)||null,
+    capacidade:parseInt(document.getElementById('ev-capacidade').value)||null,
+    cor:document.getElementById('ev-cor').value.trim()||null,
+    garantia:document.getElementById('ev-garantia').checked,
+    garantia_ate:document.getElementById('ev-garantia-ate').value||null,
+  };
+  if(S.perfil?.is_admin) updates.garagem_id=document.getElementById('ev-garagem').value;
+  const{error}=await sb.from('frota').update(updates).eq('id',S.editVId);
+  if(btn) btn.disabled=false;
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('Veículo atualizado!');closeM('modal-edit-v');await loadFrota();renderFrota();
+}
+
+async function excluirVeiculo(){
+  if(!confirm('Excluir este veículo? Esta ação não pode ser desfeita.')) return;
+  const{error}=await sb.from('frota').delete().eq('id',S.editVId);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('Veículo excluído!');closeM('modal-edit-v');await loadFrota();renderFrota();
+}
+
+// IMPORTAR FROTA EXCEL
+let _excelRows=[];
+
+function openImportExcel(){
+  _excelRows=[];
+  document.getElementById('imp-file').value='';
+  document.getElementById('imp-preview').style.display='none';
+  document.getElementById('imp-btn-confirm').style.display='none';
+  document.getElementById('modal-import-excel').style.display='flex';
+}
+
+function processExcelFile(event){
+  const file=event.target.files[0];
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:true});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+      if(!rows.length){toast('Arquivo vazio!','err');return;}
+
+      const norm=k=>String(k).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[\s_\-]+/g,'');
+      const colMap={
+        'prefixo':'prefixo','codigo':'prefixo','codigodoveiculo':'prefixo','veiculo':'prefixo',
+        'modelo':'modelo','descricao':'modelo',
+        'placa':'placa',
+        'ano':'ano','anofabricacao':'ano','anomodelo':'ano',
+        'status':'status','situacao':'status',
+        'chassi':'chassi','numerodochassi':'chassi','chassis':'chassi','numerochassi':'chassi',
+        'tipo':'tipo','tipoveiculo':'tipo',
+        'fabricante':'fabricante','marca':'fabricante',
+        'combustivel':'combustivel','tipocombustivel':'combustivel',
+        'km':'km','quilometragem':'km','odometro':'km','kilometragem':'km',
+        'capacidade':'capacidade','passageiros':'capacidade','lotacao':'capacidade',
+        'garantia':'garantia',
+        'garantiaate':'garantia_ate','validadedagarantia':'garantia_ate','fimgarantia':'garantia_ate','garantiaaté':'garantia_ate',
+        'cor':'cor',
+      };
+      const statusMap={
+        'disponivel':'disponivel','disponível':'disponivel','disp':'disponivel','ok':'disponivel',
+        'manutencao':'manutencao','manutenção':'manutencao','manut':'manutencao','em manutencao':'manutencao',
+        'em linha':'em_linha','emlinha':'em_linha','em_linha':'em_linha','linha':'em_linha',
+        'aguardando peca':'aguardando_peca','aguardando_peca':'aguardando_peca','ag peca':'aguardando_peca','agpeca':'aguardando_peca',
+        'sinistro':'sinistro',
+      };
+
+      const parsed=rows.map(row=>{
+        const out={};
+        Object.entries(row).forEach(([k,v])=>{const m=colMap[norm(k)];if(m) out[m]=v;});
+        if(!out.prefixo) return null;
+        out.prefixo=String(out.prefixo).trim();
+        if(!out.prefixo) return null;
+        out.status=statusMap[norm(String(out.status||'disponivel'))]||'disponivel';
+        if(out.garantia!==undefined){const g=norm(String(out.garantia));out.garantia=['sim','yes','true','1','s'].includes(g);}
+        if(out.garantia_ate){
+          if(out.garantia_ate instanceof Date) out.garantia_ate=out.garantia_ate.toISOString().split('T')[0];
+          else{const m=String(out.garantia_ate).trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);if(m) out.garantia_ate=`${m[3]}-${m[2]}-${m[1]}`;}
+        }
+        if(out.ano) out.ano=String(out.ano).replace(/\D/g,'').slice(0,4)||null;
+        if(out.km) out.km=parseFloat(String(out.km).replace('.','').replace(',','.'))||null;
+        if(out.capacidade) out.capacidade=parseInt(out.capacidade)||null;
+        return out;
+      }).filter(Boolean);
+
+      if(!parsed.length){toast('Nenhuma linha com Prefixo encontrada!','err');return;}
+      _excelRows=parsed;
+
+      const cols=['prefixo','modelo','placa','ano','status','chassi','garantia','garantia_ate'];
+      const lbl={prefixo:'Prefixo',modelo:'Modelo',placa:'Placa',ano:'Ano',status:'Status',chassi:'Chassi',garantia:'Garantia',garantia_ate:'Até'};
+      const thead=`<thead style="position:sticky;top:0;background:var(--surface2)"><tr>${cols.map(c=>`<th style="padding:6px 10px;text-align:left;font-size:11px;color:var(--text3);white-space:nowrap;border-bottom:1px solid var(--border)">${lbl[c]||c}</th>`).join('')}</tr></thead>`;
+      const tbody=`<tbody>${parsed.slice(0,25).map(r=>`<tr>${cols.map(c=>`<td style="padding:5px 10px;font-size:12px;border-bottom:1px solid var(--border);white-space:nowrap${c==='prefixo'?";font-family:'DM Mono',monospace;font-weight:700":''}">${r[c]!==undefined?(c==='garantia'?(r[c]?'Sim':'—'):(r[c]||'—')):'—'}</td>`).join('')}</tr>`).join('')}</tbody>`;
+      document.getElementById('imp-table').innerHTML=thead+tbody;
+      document.getElementById('imp-resumo').textContent=`${parsed.length} veículo(s) encontrado(s)`;
+      document.getElementById('imp-legenda').textContent=parsed.length>25?`Mostrando 25 de ${parsed.length}`:'';
+      document.getElementById('imp-count').textContent=parsed.length;
+      document.getElementById('imp-preview').style.display='block';
+      document.getElementById('imp-btn-confirm').style.display='inline-flex';
+    }catch(err){toast('Erro ao ler arquivo: '+err.message,'err');}
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+async function confirmarImportExcel(){
+  if(!_excelRows.length) return;
+  const btn=document.getElementById('imp-btn-confirm');
+  btn.disabled=true;btn.textContent='Importando...';
+  const gid=getGid();
+  let ok=0,erros=0;
+  for(const row of _excelRows){
+    const payload={...row,garagem_id:gid};
+    const{data:existe}=await sb.from('frota').select('id').eq('prefixo',row.prefixo).eq('garagem_id',gid).maybeSingle();
+    let error;
+    if(existe){const{prefixo,...upd}=payload;({error}=await sb.from('frota').update(upd).eq('id',existe.id));}
+    else({error}=await sb.from('frota').insert(payload));
+    if(error) erros++;else ok++;
+  }
+  btn.disabled=false;
+  toast(`Importação: ${ok} ok${erros?', '+erros+' erro(s)':''}`);
+  closeM('modal-import-excel');await loadFrota();renderFrota();
+}
+
 // MODAL SAÍDA
 function openModalSaida(id,pref,h){
   S.editSaidaId=id;
@@ -15888,7 +16193,7 @@ window.doLogin=doLogin;
 (async()=>{
   const{data:{session}}=await sb.auth.getSession();
   if(session){
-    document.getElementById('l-email').value=session.user.email;
+    document.getElementById('l-login').value=session.user.email;
     // Auto-login silencioso se sessão ativa
   }
 })();
@@ -16261,3 +16566,4 @@ async function abrirRelatorioHTMLPCM(html, nomePDF){
 </script>
 </body>
 </html>
+
