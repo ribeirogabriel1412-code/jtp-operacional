@@ -2189,7 +2189,8 @@ function supFindRotinaEnvio(a,ctx){
     }
   }
   if(a.tipo==='2.4'){
-    const row=(ctx.fech24||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
+    const fech24Turno=(ctx.fech24||[]).filter(r=>!r.turno||r.turno===turnoRef);
+    const row=fech24Turno.sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
     if(row&&supRowDentroJanela(row,janela))return{row,quando:supRowTime(row),fonte:'Fechamento 2.4'};
   }
   if(a.tipo==='2.6'){
@@ -2406,7 +2407,7 @@ async function renderSupPeriodo(gid){
     {tipo:'2.1', label:'Fechamento de Turno', icon:'📋', expected:nDias*2, actual:(fGar||[]).length},
     {tipo:'2.6', label:'Custo do Turno',       icon:'💰', expected:nDias*2, actual:(fLid||[]).length},
     {tipo:'3.3', label:'Ronda Operacional',    icon:'🚶', expected:nDias*3, actual:uniqSet(ck33||[],r=>`${r.data}_${r.turno}_${r.rodada??'n'}`)},
-    {tipo:'2.4', label:'Fechamento de Turno 2.4',icon:'🔧', expected:nDias*3, actual:(f24||[]).length+relCount(r24ids)},
+    {tipo:'2.4', label:'Fechamento de Turno 2.4',icon:'🔧', expected:nDias*2, actual:(f24||[]).length+relCount(r24ids)},
     {tipo:'3.4', label:'Relatório de Ativos (3.4)',icon:'📊',expected:nDias*3, actual:(ck34||[]).length+relCount(r34ids)},
     {tipo:'2.12',label:'Indicadores Técnicos', icon:'📈', expected:nDias*1, actual:uniqSet(ind||[],r=>r.data)},
     {tipo:'2.10',label:'Relatório de Soltura', icon:'🚌', expected:nDias*1, actual:uniqSet((solt||[]).filter(r=>r.numero_relatorio),r=>r.data)},
@@ -4983,9 +4984,9 @@ Deixe em branco para usar o previsto:`);
 async function abrirFechamentoCustoTurno(){
   const gid=getGid();
   const agora=new Date();
-  const hoje=agora.toISOString().slice(0,10);
-  const ontem=new Date(agora); ontem.setDate(ontem.getDate()-1);
-  const ontemStr=ontem.toISOString().slice(0,10);
+  const tz=opTimezone(gid);
+  const hoje=opISODate(agora,tz);
+  const ontemStr=opAddDays(hoje,-1);
   const turno=S.turno||'dia';
   const ini=turno==='dia'?`${hoje}T07:00`:`${ontemStr}T21:00`;
   const fim=turno==='dia'?`${hoje}T17:00`:`${hoje}T05:20`;
@@ -9265,10 +9266,9 @@ document.addEventListener('click',function(e){
 
 // ── Conferência de Custo ──────────────────────────────────────────
 async function fazerConferenciaOrc(){
-  var gid=getGid(), agora=new Date(), hoje_=agora.toISOString().slice(0,10);
+  var gid=getGid(), agora=new Date(), tz=opTimezone(gid), hoje_=opISODate(agora,tz);
   var turno=S.turno||'dia';
-  var ontem=new Date(agora); ontem.setDate(ontem.getDate()-1);
-  var ontemStr=ontem.toISOString().slice(0,10);
+  var ontemStr=opAddDays(hoje_,-1);
   var ini=turno==='dia'?(hoje_+'T07:00'):(ontemStr+'T21:00');
   var fim=turno==='dia'?(hoje_+'T17:00'):(hoje_+'T07:20');
   var r1=await sb.from('pcm_orcamento').select('*').eq('garagem_id',gid).eq('data',hoje_).eq('turno',turno).limit(1);
@@ -9318,9 +9318,8 @@ async function verificarEstouroAoLancar(gid){
 
 async function renderConfOrc(gid,back,tabs){
   setMain(back+tabs+'<div class="loading"><div class="spinner"></div></div>');
-  var hoje_=new Date().toISOString().slice(0,10), agora=new Date(), turno=S.turno||'dia';
-  var ontem=new Date(agora); ontem.setDate(ontem.getDate()-1);
-  var ontemStr=ontem.toISOString().slice(0,10);
+  var agora=new Date(), tz=opTimezone(gid), hoje_=opISODate(agora,tz), turno=S.turno||'dia';
+  var ontemStr=opAddDays(hoje_,-1);
   var ini=turno==='dia'?(hoje_+'T07:00'):(ontemStr+'T21:00');
   var fim=turno==='dia'?(hoje_+'T17:00'):(hoje_+'T07:20');
   var r1=await sb.from('pcm_orcamento').select('*').eq('garagem_id',gid).eq('data',hoje_).eq('turno',turno).limit(1);
@@ -9401,9 +9400,9 @@ async function abrirFechamentoCustoTurno(){renderFerrPCM('custo_turno');}
 
 async function renderCustoTurno(gid,back,tabs){
   setMain(back+tabs+'<div class="loading"><div class="spinner"></div></div>');
-  var agora=new Date(), hoje_=agora.toISOString().slice(0,10), turno=S.turno||'dia';
-  var ontem=new Date(agora); ontem.setDate(ontem.getDate()-1);
-  var ini=turno==='dia'?(hoje_+'T07:00'):(ontem.toISOString().slice(0,10)+'T21:00');
+  var agora=new Date(), tz=opTimezone(gid), hoje_=opISODate(agora,tz), turno=S.turno||'dia';
+  var ontemStr=opAddDays(hoje_,-1);
+  var ini=turno==='dia'?(hoje_+'T07:00'):(ontemStr+'T21:00');
   var fim=turno==='dia'?(hoje_+'T17:00'):(hoje_+'T07:20');
   var tLabel=turno==='dia'?'☀️ Diurno — 07:00 a 17:00':'🌙 Noturno — 21:00 a 07:20';
   var res=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).gte('hora_entrada',new Date(ini).toISOString()).lte('hora_entrada',new Date(fim).toISOString()).order('hora_entrada');
@@ -9541,9 +9540,8 @@ async function gerarRelatorioCustoTurno(ini,fim,turno){
 // ── Consolidado do Dia Operacional ────────────────────────────────
 async function renderConsolidado(gid,back,tabs){
   setMain(back+tabs+'<div class="loading"><div class="spinner"></div></div>');
-  var agora=new Date(), hoje_=agora.toISOString().slice(0,10);
-  var ontem=new Date(agora); ontem.setDate(ontem.getDate()-1);
-  var ontemStr=ontem.toISOString().slice(0,10);
+  var agora=new Date(), tz=opTimezone(gid), hoje_=opISODate(agora,tz);
+  var ontemStr=opAddDays(hoje_,-1);
   var ini=ontemStr+'T08:00', fim=hoje_+'T08:00';
   var labelPeriodo=ontemStr.split('-').reverse().join('/')+' 08:00 → '+hoje_.split('-').reverse().join('/')+' 08:00';
   var r1=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).gte('hora_entrada',new Date(ini).toISOString()).lte('hora_entrada',new Date(fim).toISOString()).order('prefixo');
@@ -9982,9 +9980,9 @@ async function pdfFechLiderPCM(gid,data,fluxo){
 }
 async function renderFech24(gid,back,tabs){
   setMain(back+tabs+'<div class="loading"><div class="spinner"></div></div>');
-  var agora=new Date(), hoje_=agora.toISOString().slice(0,10);
+  var agora=new Date(), tz=opTimezone(gid), hoje_=opISODate(agora,tz);
   var turno=S._fech24Turno||S.turno||'dia';
-  var dataRef=S._fech24Data||hoje_;
+  var dataRef=S._fech24Data||dataOperacionalAtual(turno,tz);
   var horaIni=S._fech24HoraIni||(turno==='dia'?'07:00':'21:00');
   var horaFim=S._fech24HoraFim||(turno==='dia'?'17:00':'07:20');
   var periodo=pcmPeriodoTurno(dataRef,horaIni,horaFim);
@@ -15439,8 +15437,8 @@ function renderRelatorios(){
 function aplicarTurnoRel(turno){
   S.turno=turno;
   const data=document.getElementById('rel-data-global')?.value||hoje();
-  const agora=new Date(); const ant=new Date(agora); ant.setDate(ant.getDate()-1);
-  const antStr=ant.toISOString().slice(0,10);
+  const agora=new Date();
+  const antStr=opAddDays(opISODate(agora,opTimezone(getGid())),-1);
   const ini=document.getElementById('rel-hora-ini');
   const fim=document.getElementById('rel-hora-fim');
   if(turno==='dia')      { if(ini) ini.value='07:00'; if(fim) fim.value='17:00'; }
@@ -16549,7 +16547,7 @@ async function gerarRelatorio34(dataArg=null,turnoArg=null,gidArg=null){
   const garagem=S.garagens?.find(g=>g.id===gid);
   const resp=S.perfil?.nome||'—';
   const turno=turnoArg||S.turno||'dia';
-  const dataRef=dataArg||agora.toISOString().slice(0,10);
+  const dataRef=dataArg||dataOperacionalAtual(turno,opTimezone(gid));
 
   // Buscar checklist de equipamentos do dia (se já preenchido)
   const{data:ckEquip}=await sb.from('checklist_equipamentos').select('*')
