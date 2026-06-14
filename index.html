@@ -29,7 +29,7 @@ if('caches' in window){
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js" onerror="this.onerror=null;this.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -16563,7 +16563,7 @@ async function abrirRelatorioHTMLPCM(html, nomePDF){
         return;
       }
     }catch(e){ if(e.name==='AbortError') return; }
-  }
+  }A
   const url=URL.createObjectURL(blob);
   const w=window.open(url,'_blank');
   if(w) setTimeout(()=>URL.revokeObjectURL(url),60000);
