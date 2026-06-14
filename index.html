@@ -2083,7 +2083,7 @@ const SUPERVISAO_ROTINA=[
   {id:'r33_completo_0300',doc:'3.3 - Ronda operacional completo',ferr:'APP',hora:'03:00',resp:'Ocibmar',cargo:'Supervisor',tipo:'3.3'},
   {id:'r26_aprov_0420',doc:'2.6 - Custo - Aprovação',ferr:'SITE',hora:'04:20',resp:'Ocibmar',cargo:'Supervisor',tipo:'2.6'},
   {id:'r26_turno_0420',doc:'2.6 - Custo do turno',ferr:'SITE',hora:'04:20',resp:'Natan',cargo:'Líder PCM',tipo:'2.6'},
-  {id:'r24_0420',doc:'2.4 - Assistente PCM',ferr:'SITE',hora:'04:20',resp:'Natan',cargo:'Líder PCM',tipo:'2.4'},
+  {id:'r24_0420',doc:'2.4 - Fechamento PCM',ferr:'SITE',hora:'04:20',resp:'Natan',cargo:'Líder PCM',tipo:'2.4'},
   {id:'r34_0420',doc:'3.4 - Relatório de ativos',ferr:'SITE',hora:'04:20',resp:'Natan',cargo:'Líder PCM',tipo:'3.4'},
   {id:'r21_0720',doc:'2.1 - Fechamento de turno',ferr:'SITE',hora:'07:20',resp:'Ocibmar',cargo:'Supervisor',tipo:'2.1',setores:['operacao','pcm']},
   {id:'r210_0720',doc:'2.10 - Relatório de soltura',ferr:'APP',hora:'07:20',resp:'Nilton',cargo:'Líder de Pátio',tipo:'2.10'},
@@ -2093,7 +2093,7 @@ const SUPERVISAO_ROTINA=[
   {id:'r214_1000',doc:'2.14 - Análise de desvio',ferr:'SITE',hora:'10:00',resp:'Geremias',cargo:'Líder PCM',tipo:'2.14'},
   {id:'r41_desvios_1200',doc:'4.1 - 5W2H - E-mails com desvios e indicadores técnicos',ferr:'EMAIL',hora:'12:00',resp:'Alcides',cargo:'Coordenador Operação',tipo:'4.1'},
   {id:'r33_parcial_1200',doc:'3.3 - Ronda operacional parcial',ferr:'APP',hora:'12:00',resp:'Alcides',cargo:'Coordenador Operação',tipo:'3.3',rodada:1},
-  {id:'r24_1245',doc:'2.4 - Assistente PCM',ferr:'SITE',hora:'12:45',resp:'Gabriel',cargo:'Assistente PCM',tipo:'2.4'},
+  {id:'r24_1245',doc:'2.4 - Fechamento PCM',ferr:'SITE',hora:'12:45',resp:'Gabriel',cargo:'Assistente PCM',tipo:'2.4'},
   {id:'r34_1245',doc:'3.4 - Relatório de ativos',ferr:'SITE',hora:'12:45',resp:'Gabriel',cargo:'Assistente PCM',tipo:'3.4'},
   {id:'r22_1300',doc:'2.2 - Priorização',ferr:'WHATSAPP',hora:'13:00',resp:'Wadalla',cargo:'Assistente PCM',tipo:'2.2'},
   {id:'r41_fup_1400',doc:'4.1 - FUP - cobrança de Operações Seguras',ferr:'EMAIL',hora:'14:00',resp:'Alcides',cargo:'Coordenador Operação',tipo:'4.1'},
@@ -2102,7 +2102,7 @@ const SUPERVISAO_ROTINA=[
   {id:'r33_lpcm_1800',doc:'3.3 - Ronda operacional',ferr:'APP',hora:'18:00',resp:'Geremias',cargo:'Líder PCM',tipo:'3.3',rodada:2,setor:'pcm'},
   {id:'r26_turno_1800',doc:'2.6 - Custo do turno',ferr:'SITE',hora:'18:00',resp:'Geremias',cargo:'Líder PCM',tipo:'2.6'},
   {id:'r22_leves_2000',doc:'2.2 - Priorização Preventivas Leves',ferr:'WHATSAPP',hora:'20:00',resp:'Natan',cargo:'Líder PCM',tipo:'2.2'},
-  {id:'r24_2000',doc:'2.4 - Assistente PCM',ferr:'SITE',hora:'20:00',resp:'Wadalla',cargo:'Assistente PCM',tipo:'2.4'},
+  {id:'r24_2000',doc:'2.4 - Fechamento PCM',ferr:'SITE',hora:'20:00',resp:'Wadalla',cargo:'Assistente PCM',tipo:'2.4'},
   {id:'r34_2000',doc:'3.4 - Relatório de ativos',ferr:'SITE',hora:'20:00',resp:'Wadalla',cargo:'Assistente PCM',tipo:'3.4'},
   {id:'r22_corretivas_2300',doc:'2.2 - Priorização Corretivas',ferr:'WHATSAPP',hora:'23:00',resp:'Natan',cargo:'Líder PCM',tipo:'2.2'},
   {id:'r218_sos_demanda',doc:'2.18 - Relatório de S.O.S',ferr:'WHATSAPP',hora:'--',resp:'Gabriel / Wadalla',cargo:'Assistente PCM',tipo:'2.18',sobDemanda:true},
@@ -2167,31 +2167,41 @@ function supFindRotinaEnvio(a,ctx){
     return{row,quando:todos?supRowTime(row):feitos.map(s=>sc[s]?.em).filter(Boolean).sort().pop()||null,fonte:'Checklist 3.3',parcial:!todos,setoresConcluidos:sc};
   }
   if(a.tipo==='3.4'){
-    const row=(ctx.ck34||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
-    if(row&&supRowDentroJanela(row,janela))return{row,quando:supRowTime(row),fonte:'Checklist 3.4'};
+    const ck34Turno=(ctx.ck34||[]).filter(r=>!r.turno||r.turno===turnoRef);
+    const row=ck34Turno.sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
+    if(row)return{row,quando:supRowTime(row)||janela?.ini,fonte:'Checklist 3.4'};
   }
   if(a.tipo==='3.8'){
     const row=(ctx.libs38||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
     if(row&&supRowDentroJanela(row,janela))return{row,quando:supRowTime(row),fonte:'Checklist 3.8'};
   }
   if(a.tipo==='2.1'){
-    const row=(ctx.fechGaragem||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
-    if(row&&supRowDentroJanela(row,janela)){
+    const fechTurno=(ctx.fechGaragem||[]).filter(r=>!r.turno||r.turno===turnoRef);
+    const row=fechTurno.sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
+    if(row){
       // Tenta ler setores_concluidos do bastao_obs (formato multi-setor novo)
       let sc=null;
       try{const parsed=JSON.parse(row.bastao_obs||'null');sc=parsed?.setores_concluidos||null;}catch(e){}
-      if(!sc)return{row,quando:supRowTime(row),fonte:'Fechamento 2.1'}; // registro antigo sem multi-setor: considera enviado
+      if(!sc)return{row,quando:supRowTime(row)||janela?.ini,fonte:'Fechamento 2.1'}; // registro antigo sem multi-setor: considera enviado
       const setores21=['operacao','pcm'];
       const feitos=setores21.filter(s=>sc[s]?.ok);
       if(feitos.length===0)return null; // nenhum setor enviou ainda
       const todos=feitos.length===setores21.length;
-      return{row,quando:todos?supRowTime(row):feitos.map(s=>sc[s]?.em).filter(Boolean).sort().pop()||null,fonte:'Fechamento 2.1',parcial:!todos,setoresConcluidos:sc};
+      return{row,quando:todos?supRowTime(row):feitos.map(s=>sc[s]?.em).filter(Boolean).sort().pop()||janela?.ini,fonte:'Fechamento 2.1',parcial:!todos,setoresConcluidos:sc};
     }
   }
   if(a.tipo==='2.4'){
     const fech24Turno=(ctx.fech24||[]).filter(r=>!r.turno||r.turno===turnoRef);
     const row=fech24Turno.sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
-    if(row)return{row,quando:supRowTime(row)||janela?.ini,fonte:'Fechamento 2.4'};
+    if(row){
+      let quando=supRowTime(row);
+      if(!row.fechado_em&&!row.enviado_em&&row.hora_fechamento){
+        const tz=opTimezone(ctx.gid||getGid());
+        const dataBase=(turnoRef==='noite'&&row.hora_fechamento<'12:00')?opAddDays(row.data,1):row.data;
+        quando=opDateTimeISO(dataBase,row.hora_fechamento,tz);
+      }
+      return{row,quando:quando||janela?.ini,fonte:'Fechamento 2.4'};
+    }
   }
   if(a.tipo==='2.6'){
     const rowLider=(ctx.fechLiderPCM||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
@@ -2200,8 +2210,9 @@ function supFindRotinaEnvio(a,ctx){
     if(row&&supRowDentroJanela(row,janela))return{row,quando:supRowTime(row),fonte:'Custo 2.6'};
   }
   if(a.tipo==='2.10'){
-    const row=(ctx.soltura||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
-    if(row&&supRowDentroJanela(row,janela))return{row,quando:supRowTime(row),fonte:'Soltura 2.10'};
+    const solturaTurno=(ctx.soltura||[]).filter(r=>!r.turno||r.turno===turnoRef);
+    const row=solturaTurno.sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
+    if(row)return{row,quando:supRowTime(row)||janela?.ini,fonte:'Soltura 2.10'};
   }
   if(a.tipo==='2.12'||a.tipo==='2.14'){
     const row=(ctx.ind212||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
@@ -2216,8 +2227,9 @@ function supFindRotinaEnvio(a,ctx){
     if(row)return{row,quando:supRowTime(row),fonte:'Solicitação compra'}; // 2.19 sem restrição de janela (sob demanda)
   }
   if(a.tipo==='abastecimento'){
-    const row=[...(ctx.abastecimento||[]),...(ctx.fechAbastecimento||[])].sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
-    if(row&&supRowDentroJanela(row,janela))return{row,quando:supRowTime(row),fonte:'Abastecimento/Recolha'};
+    const abastTurno=[...(ctx.abastecimento||[]),...(ctx.fechAbastecimento||[])].filter(r=>!r.turno||r.turno===turnoRef);
+    const row=abastTurno.sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
+    if(row)return{row,quando:supRowTime(row)||janela?.ini,fonte:'Abastecimento/Recolha'};
   }
   // Fallback: itens SUP: registrados manualmente em relatorios_gerados (já filtrados por turno na query)
   const rel=(ctx.relatorios||[]).find(r=>(!r.turno||r.turno===turnoRef)&&(String(r.tipo||'').includes('SUP:'+a.id)||String(r.numero||'').includes(a.id)||String(r.tipo||r.numero||'').includes(a.tipo)));
