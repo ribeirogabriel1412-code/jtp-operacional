@@ -2097,9 +2097,9 @@ const SUPERVISAO_ROTINA=[
   {id:'r34_1245',doc:'3.4 - Relatório de ativos',ferr:'SITE',hora:'12:45',resp:'Gabriel',cargo:'Assistente PCM',tipo:'3.4'},
   {id:'r22_1300',doc:'2.2 - Priorização',ferr:'WHATSAPP',hora:'13:00',resp:'Wadalla',cargo:'Assistente PCM',tipo:'2.2'},
   {id:'r41_fup_1400',doc:'4.1 - FUP - cobrança de Operações Seguras',ferr:'EMAIL',hora:'14:00',resp:'Alcides',cargo:'Coordenador Operação',tipo:'4.1'},
-  {id:'r33_coord_1800',doc:'3.3 - Ronda operacional',ferr:'APP',hora:'18:00',resp:'Alcides',cargo:'Coordenador Operação',tipo:'3.3',rodada:2},
+  {id:'r33_coord_1800',doc:'3.3 - Ronda operacional',ferr:'APP',hora:'18:00',resp:'Alcides',cargo:'Coordenador Operação',tipo:'3.3',rodada:2,setor:'todos'},
   {id:'r21_1800',doc:'2.1 - Fechamento de turno',ferr:'SITE',hora:'18:00',resp:'Alcides',cargo:'Coordenador Operação',tipo:'2.1',setores:['operacao','pcm']},
-  {id:'r33_lpcm_1800',doc:'3.3 - Ronda operacional',ferr:'APP',hora:'18:00',resp:'Geremias',cargo:'Líder PCM',tipo:'3.3',rodada:2},
+  {id:'r33_lpcm_1800',doc:'3.3 - Ronda operacional',ferr:'APP',hora:'18:00',resp:'Geremias',cargo:'Líder PCM',tipo:'3.3',rodada:2,setor:'pcm'},
   {id:'r26_turno_1800',doc:'2.6 - Custo do turno',ferr:'SITE',hora:'18:00',resp:'Geremias',cargo:'Líder PCM',tipo:'2.6'},
   {id:'r22_leves_2000',doc:'2.2 - Priorização Preventivas Leves',ferr:'WHATSAPP',hora:'20:00',resp:'Natan',cargo:'Líder PCM',tipo:'2.2'},
   {id:'r24_2000',doc:'2.4 - Assistente PCM',ferr:'SITE',hora:'20:00',resp:'Wadalla',cargo:'Assistente PCM',tipo:'2.4'},
@@ -2154,6 +2154,11 @@ function supFindRotinaEnvio(a,ctx){
     const row=base.sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
     if(!row)return null;
     const sc=row.dados?.setores_concluidos;
+    // Se a rotina tem setor específico (líder preenche só a sua área)
+    if(a.setor&&a.setor!=='todos'){
+      if(!sc||!sc[a.setor]?.ok)return null;
+      return{row,quando:sc[a.setor].em||supRowTime(row),fonte:'Checklist 3.3',parcial:false};
+    }
     if(!sc)return{row,quando:supRowTime(row),fonte:'Checklist 3.3',parcial:false};
     const setores33=['pcm','almox','operacao'];
     const feitos=setores33.filter(s=>sc[s]?.ok);
@@ -2227,7 +2232,8 @@ function renderSupervisaoRotina(data,ctx){
     const quando=found?.quando?new Date(found.quando):null;
     const enviado=!!quando;
     const atraso=enviado?Math.round((quando-due)/60000):Math.round((agora-due)/60000);
-    const status=enviado?(a.sobDemanda?'ok':(atraso<=0?'ok':'late')):(a.sobDemanda?'wait':(agora>due?'miss':'wait'));
+    const isEarly=enviado&&!a.sobDemanda&&atraso<-60&&['2.1','2.6'].includes(a.tipo);
+    const status=enviado?(a.sobDemanda?'ok':(isEarly?'early':(atraso<=0?'ok':'late'))):(a.sobDemanda?'wait':(agora>due?'miss':'wait'));
     return{...a,due,found,quando,enviado,atraso,status};
   });
   const feitos=rows.filter(r=>r.enviado).length;
@@ -2236,6 +2242,7 @@ function renderSupervisaoRotina(data,ctx){
   const pendentes=rows.filter(r=>r.status==='wait'||r.status==='miss').length;
   const cfg={
     ok:{txt:'ENVIADO',c:'var(--green)',bg:'#00C48C14',bd:'#00C48C45'},
+    early:{txt:'ENVIADO',c:'var(--amber)',bg:'#F59E0B14',bd:'#F59E0B45'},
     late:{txt:'ENVIADO ATRASADO',c:'var(--amber)',bg:'#F59E0B14',bd:'#F59E0B45'},
     wait:{txt:'AGUARDANDO',c:'var(--blue)',bg:'#2563EB14',bd:'#2563EB45'},
     miss:{txt:'NÃO ENVIADO',c:'var(--red)',bg:'#EF444414',bd:'#EF444445'},
@@ -2251,7 +2258,8 @@ function renderSupervisaoRotina(data,ctx){
   const linha=rows2.map(r=>{
     const c=cfg[r.status]||cfg.wait;
     const horaReal=r.quando?r.quando.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:opTimezone(ctx.gid)}):'--';
-    const dif=r.sobDemanda?(r.enviado?'Registrado':'Sob demanda'):(r.enviado?(r.atraso<=0?'No prazo':`+${r.atraso} min`):(r.status==='miss'?`Atrasado ${r.atraso} min`:r.status==='parcial'?'Parcial':'Aguardando'));
+    const _cedo=(()=>{const m=Math.abs(r.atraso),h=Math.floor(m/60),mm=m%60;return h>0?`${h}h${mm>0?mm+'min':''} antes`:`${mm}min antes`;})();
+    const dif=r.sobDemanda?(r.enviado?'Registrado':'Sob demanda'):(r.status==='early'?`⚠️ ${_cedo}`:(r.enviado?(r.atraso<=0?'No prazo':`+${r.atraso} min`):(r.status==='miss'?`Atrasado ${Math.abs(r.atraso)} min`:r.status==='parcial'?'Parcial':'Aguardando')));
     const sc=r.found?.setoresConcluidos;
     const _setorLabel={pcm:'PCM',almox:'Almox',operacao:'Pátio',supervisor:'Supervisor',coordenador:'Coord'};
     const setorBadges=sc?Object.keys(sc).map(sid=>{const n=_setorLabel[sid]||sid;return`<span style="font-size:8px;padding:1px 5px;border-radius:3px;margin-left:3px;background:${sc[sid]?.ok?'#00C48C20':'#33333322'};color:${sc[sid]?.ok?'var(--green)':'var(--text4)'};">${sc[sid]?.ok?'✅':'⏳'} ${n}</span>`;}).join(''):'';
@@ -2263,7 +2271,7 @@ function renderSupervisaoRotina(data,ctx){
       <td style="padding:9px 10px;color:var(--text2);font-size:11px">${r.resp}</td>
       <td style="padding:9px 10px;color:var(--text3);font-size:11px">${r.cargo}</td>
       <td style="padding:9px 10px"><span style="display:inline-block;border:1px solid ${c.bd};background:${c.bg};color:${c.c};border-radius:999px;padding:4px 8px;font-size:9px;font-weight:900">${c.txt}</span>${setorBadges}</td>
-      <td style="padding:9px 10px;color:${r.status==='miss'||r.status==='late'?'var(--amber)':'var(--text3)'};font-size:11px">${dif}</td>
+      <td style="padding:9px 10px;color:${r.status==='miss'||r.status==='late'||r.status==='early'?'var(--amber)':'var(--text3)'};font-size:11px">${dif}</td>
       <td style="padding:9px 10px;text-align:right">${r.enviado?`<button onclick="abrirRelatorioSupervisaoRotina('${r.id}','${data}','${ctx.gid}','${ctx.turno||'dia'}')" style="padding:5px 8px;border-radius:7px;border:1px solid var(--green);background:#00C48C14;color:var(--green);font-size:10px;font-weight:900;cursor:pointer">Abrir PDF</button>`:r.status==='parcial'?`<span style="font-size:10px;color:var(--text4)">Aguardando setores</span>`:`<button onclick="registrarEnvioSupervisaoRotina('${r.id}','${data}','${ctx.gid}','${ctx.turno||'dia'}')" style="padding:5px 8px;border-radius:7px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:10px;font-weight:900;cursor:pointer">Registrar envio</button>`}</td>
     </tr>`;
   }).join('');
