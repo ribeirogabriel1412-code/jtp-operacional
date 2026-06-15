@@ -2480,10 +2480,11 @@ async function renderSupPeriodo(gid){
     const isWpp=['2.2','4.1'].includes(c.tipo);
     const badgeTipo=isWpp?'<span style="font-size:8px;background:#FF6B0022;color:#FF6B00;border-radius:4px;padding:1px 5px;font-weight:700;margin-left:4px">WPP</span>':'<span style="font-size:8px;background:#3B82F622;color:#3B82F6;border-radius:4px;padding:1px 5px;font-weight:700;margin-left:4px">APP</span>';
     const extraLabel=c.actual>c.expected?` <span style="color:var(--text3)">(+${c.actual-c.expected})</span>`:'';
+    const numDoc=/^\d/.test(c.tipo)?`<span style="font-family:'DM Mono',monospace;font-size:9px;font-weight:800;color:var(--text4);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px;margin-right:4px">${c.tipo}</span>`:'';
     return`<div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:12px 14px">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
         <span style="font-size:13px">${c.icon}</span>
-        <span style="font-size:11px;font-weight:700;color:var(--text2);flex:1">${c.label}${badgeTipo}</span>
+        <span style="font-size:11px;font-weight:700;color:var(--text2);flex:1">${numDoc}${c.label}${badgeTipo}</span>
         <span style="font-family:'DM Mono',monospace;font-size:16px;font-weight:800;color:${cor}">${pct}%</span>
       </div>
       <div style="font-size:10px;color:var(--text3);margin-bottom:6px">${capped} / ${c.expected} em ${nDias} dia${nDias>1?'s':''}${extraLabel}</div>
