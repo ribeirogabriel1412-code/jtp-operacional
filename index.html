@@ -16050,13 +16050,31 @@ async function confirmarImportExcel(){
   const btn=document.getElementById('imp-btn-confirm');
   btn.disabled=true;btn.textContent='Importando...';
   const gidPadrao=getGid();
-  // Mapa nome da garagem → id para lookup pelo campo GARAGEM do Excel
   const gNomeMap={};
   (S.garagens||[]).forEach(g=>{
     const n=String(g.nome||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
     gNomeMap[n]=g.id;
   });
-  let ok=0,erros=0;
+
+  // Colunas permitidas com seus tipos (baseado no schema real da tabela frota)
+  const FROTA_TEXT =['prefixo','status','modelo','ano','placa','veiculo_id','fabricante','chassi','tipo','cor','combustivel','observacao','linha','renavam'];
+  const FROTA_NUM  =['km'];
+  const FROTA_INT  =['capacidade'];
+  const FROTA_BOOL =['garantia'];
+  const FROTA_DATE =['garantia_ate'];
+
+  function sanitizarRow(dados, gid){
+    const row={garagem_id:gid};
+    for(const k of FROTA_TEXT)  { const v=dados[k]; if(v!==undefined&&v!==null&&v!=='') row[k]=String(v).trim(); }
+    for(const k of FROTA_NUM)   { const v=parseFloat(String(dados[k]||'').replace(',','.')); if(!isNaN(v)) row[k]=v; }
+    for(const k of FROTA_INT)   { const v=parseInt(dados[k]); if(!isNaN(v)) row[k]=v; }
+    for(const k of FROTA_BOOL)  { const v=dados[k]; if(v!==undefined) row[k]=v===true||String(v).toLowerCase()==='sim'||String(v).toLowerCase()==='true'||v==='1'; }
+    for(const k of FROTA_DATE)  { const v=String(dados[k]||'').trim(); if(v&&v.match(/^\d{4}-\d{2}-\d{2}$/)) row[k]=v; }
+    return row;
+  }
+
+  // Agrupar rows por garagem
+  const porGaragem={};
   for(const row of _excelRows){
     const{_garagem_nome,...dados}=row;
     let gid=gidPadrao;
@@ -16064,15 +16082,26 @@ async function confirmarImportExcel(){
       const nk=String(_garagem_nome).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
       gid=gNomeMap[nk]||gidPadrao;
     }
-    const payload={...dados,garagem_id:gid};
-    const{data:existe}=await sb.from('frota').select('id').eq('prefixo',dados.prefixo).eq('garagem_id',gid).maybeSingle();
-    let error;
-    if(existe){const{prefixo,...upd}=payload;({error}=await sb.from('frota').update(upd).eq('id',existe.id));}
-    else({error}=await sb.from('frota').insert(payload));
-    if(error) erros++;else ok++;
+    if(!porGaragem[gid]) porGaragem[gid]=[];
+    porGaragem[gid].push(sanitizarRow(dados, gid));
   }
+
+  let ok=0,erros=0;
+  for(const [gid,rows] of Object.entries(porGaragem)){
+    // Apaga lista atual da garagem e substitui pela nova (evita duplicatas)
+    btn.textContent=`Substituindo ${rows.length} veículos...`;
+    const{error:delErr}=await sb.from('frota').delete().eq('garagem_id',gid);
+    if(delErr){erros+=rows.length;continue;}
+    // Insere em lotes de 200 para não exceder limites
+    for(let i=0;i<rows.length;i+=200){
+      const lote=rows.slice(i,i+200);
+      const{error}=await sb.from('frota').insert(lote);
+      if(error) erros+=lote.length; else ok+=lote.length;
+    }
+  }
+
   btn.disabled=false;
-  toast(`Importação: ${ok} ok${erros?', '+erros+' erro(s)':''}`);
+  toast(`Frota atualizada: ${ok} veículo${ok!==1?'s':''}${erros?', '+erros+' erro(s)':''}`);
   closeM('modal-import-excel');await loadFrota();renderFrota();
 }
 
