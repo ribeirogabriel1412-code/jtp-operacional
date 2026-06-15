@@ -2150,7 +2150,11 @@ function supFindRotinaEnvio(a,ctx){
   const janela=ctx.janela||null;
   if(a.tipo==='3.3'){
     const rodadaNum=a.rodada?Number(a.rodada):null;
-    const base=(ctx.ck33||[]).filter(r=>!rodadaNum||Number(r.rodada)===rodadaNum);
+    const base=(ctx.ck33||[]).filter(r=>{
+      if(!rodadaNum)return true;
+      if(r.rodada!=null)return Number(r.rodada)===rodadaNum;
+      return Object.keys(r.dados?.respostas||{}).some(k=>k.startsWith('r'+rodadaNum+'_'));
+    });
     const row=base.sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
     if(!row)return null;
     const sc=row.dados?.setores_concluidos;
@@ -12300,7 +12304,13 @@ async function renderFerr33(){
       <div class="info-blue info-banner" style="border-color:#EF444455;color:var(--red)">Tabela checklist_33 ainda não existe ou o banco recusou a consulta. Rode o arquivo SQL criado em Downloads/checklist_33.sql no Supabase.</div>`);
     return;
   }
-  const porRodada={};(rows||[]).forEach(r=>porRodada[r.rodada]=r);
+  const porRodada={};
+  (rows||[]).forEach(r=>{
+    if(r.rodada!=null){porRodada[r.rodada]=r;return;}
+    const res=r.dados?.respostas||{},ks=Object.keys(res);
+    if(ks.some(x=>x.startsWith('r1_'))&&!porRodada[1])porRodada[1]={...r,rodada:1};
+    if(ks.some(x=>x.startsWith('r2_'))&&!porRodada[2])porRodada[2]={...r,rodada:2};
+  });
   const atalhoHtml=atalhos.filter(a=>!(a.data===data&&a.turno===turno)).map(a=>{
     const ativo=a.data===data&&a.turno===turno;
     return `<button onclick="S._r33Data='${a.data}';S._r33Turno='${a.turno}';renderFerr33()" style="border:1px solid ${ativo?'var(--blue)':'var(--border)'};background:${ativo?'#2563EB22':'var(--surface2)'};color:${ativo?'var(--blue)':'var(--text2)'};border-radius:9px;padding:8px 10px;text-align:left;font-family:inherit;cursor:pointer"><b style="font-size:11px">${a.turno==='noite'?'🌙':'☀️'} ${formatData(a.data)} · ${a.turno}</b><div style="font-size:10px;color:var(--text3);margin-top:2px">${a.label} · ${a.preenchidos} preench.</div></button>`;
@@ -12353,12 +12363,22 @@ function ronda33BuscaItemSite(itemId){
   }
   return null;
 }
+async function ck33BuscarRec(gid,data,turno,rodada){
+  const {data:rec,error}=await sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno).eq('rodada',rodada).maybeSingle();
+  if(error)return{data:null,error};
+  if(rec)return{data:rec,error:null};
+  const {data:nullRecs,error:e2}=await sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno).is('rodada',null);
+  if(e2)return{data:null,error:e2};
+  const pref=`r${rodada}_`;
+  const found=(nullRecs||[]).find(r=>Object.keys(r.dados?.respostas||{}).some(k=>k.startsWith(pref)))||null;
+  return{data:found,error:null};
+}
 async function editarItemRonda33Site(rodada,itemId){
   const ref=ronda33BuscaItemSite(itemId);
   if(!ref){toast('Item não encontrado','err');return;}
   if(!ronda33PodeEditarSetor(ref.setor)&&!podeVisualizar('ferr-33')){toast('Sem permissão para editar este setor','err');return;}
   const gid=getGid(), data=S._r33Data||ronda33DataPadrao(), turno=S._r33Turno||S.turno||turnoOperacionalAtual();
-  const atual=await sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno).eq('rodada',rodada).maybeSingle();
+  const atual=await ck33BuscarRec(gid,data,turno,rodada);
   if(atual.error){toast('Erro: '+atual.error.message,'err');return;}
   const rec=atual.data||{dados:{respostas:{},resumos:{}}};
   const dados=rec.dados||{respostas:{},resumos:{}};
@@ -12378,7 +12398,13 @@ async function gerarRelatorio33(){
   const gid=getGid(), garagem=S.garagens?.find(g=>g.id===gid), data=S._r33Data||ronda33DataPadrao(), turno=S._r33Turno||S.turno||turnoOperacionalAtual();
   const {data:rows,error}=await sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno);
   if(error){toast('Erro ao gerar PDF: '+error.message,'err');return;}
-  const porRodada={};(rows||[]).forEach(r=>porRodada[r.rodada]=r);
+  const porRodada={};
+  (rows||[]).forEach(r=>{
+    if(r.rodada!=null){porRodada[r.rodada]=r;return;}
+    const res=r.dados?.respostas||{},ks=Object.keys(res);
+    if(ks.some(x=>x.startsWith('r1_'))&&!porRodada[1])porRodada[1]={...r,rodada:1};
+    if(ks.some(x=>x.startsWith('r2_'))&&!porRodada[2])porRodada[2]={...r,rodada:2};
+  });
   const statusTxt={ok:'OK',nok:'NOK',na:'N/A'};
   const statusCor={ok:'#DCFCE7',nok:'#FEE2E2',na:'#F3F4F6'};
   const B='border:1px solid #333;';
@@ -12474,7 +12500,7 @@ async function salvarFechar33(){
 async function submeterSetor33(setor,rodada,data,turno,gid){
   const setorDef=ronda33Setores().find(s=>s.id===setor);
   if(!setorDef){toast('Setor inválido','err');return;}
-  const atual=await sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno).eq('rodada',rodada).maybeSingle();
+  const atual=await ck33BuscarRec(gid,data,turno,rodada);
   if(atual.error){toast('Erro: '+atual.error.message,'err');return;}
   const rec=atual.data||null;
   if(!rec){toast('Preencha os itens antes de submeter','err');return;}
@@ -12492,7 +12518,7 @@ async function submeterSetor33(setor,rodada,data,turno,gid){
 }
 async function salvarVerificacao33(rodada,itemId,valor){
   const gid=getGid(), data=S._r33Data||ronda33DataPadrao(), turno=S._r33Turno||S.turno||turnoOperacionalAtual();
-  const atual=await sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',turno).eq('rodada',rodada).maybeSingle();
+  const atual=await ck33BuscarRec(gid,data,turno,rodada);
   if(atual.error){toast('Erro: '+atual.error.message,'err');return;}
   const rec=atual.data||{dados:{respostas:{},resumos:{}}};
   const dados=rec.dados||{respostas:{},resumos:{}};
