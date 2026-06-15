@@ -165,10 +165,10 @@ function opDateTimeISO(data,hora,tz=opTimezone()){
   }
   return new Date(utc).toISOString();
 }
-function turnoOperacionalAtual(tz=opTimezone()){const h=opParts(new Date(),tz).H;return (h>=20||h<5)?'noite':'dia';}
+function turnoOperacionalAtual(tz=opTimezone()){const p=opParts(new Date(),tz),min=p.H*60+p.M;return (min>=20*60||min<4*60+20)?'noite':'dia';}
 function dataOperacionalAtual(turno=turnoOperacionalAtual(),tz=opTimezone()){
-  const data=opISODate(new Date(),tz),h=opParts(new Date(),tz).H;
-  return turno==='noite'&&h<5?opAddDays(data,-1):data;
+  const data=opISODate(new Date(),tz),p=opParts(new Date(),tz),min=p.H*60+p.M;
+  return turno==='noite'&&min<4*60+20?opAddDays(data,-1):data;
 }
 function janelaOperacional(turno=turnoOperacionalAtual(),dataRef=dataOperacionalAtual(turno),tz=opTimezone()){
   const defs={dia:{ini:'08:00',fim:'18:00',label:'Dia 08:00-18:00'},noite:{ini:'20:00',fim:'04:20',label:'Noite 20:00-04:20'},dia_completo:{ini:'08:00',fim:'08:00',label:'Dia completo 08:00-08:00',diaAnterior:true}};
@@ -2535,8 +2535,16 @@ function r33StatusCard(titulo,valor,sub,cor,acao){
 async function r33Registro(rodada){
   const gid=getGid();
   if(_r33Cache[rodada])return _r33Cache[rodada];
-  const r=await sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',_r33Data).eq('turno',_r33Turno).eq('rodada',rodada).maybeSingle();
+  let r=await sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',_r33Data).eq('turno',_r33Turno).eq('rodada',rodada).maybeSingle();
   if(r.error)throw r.error;
+  if(!r.data){
+    const {data:nullRecs,error:e2}=await sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',_r33Data).eq('turno',_r33Turno).is('rodada',null);
+    if(!e2&&nullRecs?.length){
+      const pref=`r${rodada}_`;
+      const found=nullRecs.find(n=>Object.keys(n.dados?.respostas||{}).some(k=>k.startsWith(pref)));
+      if(found)r={data:found,error:null};
+    }
+  }
   _r33Cache[rodada]=r.data||{garagem_id:gid,data:_r33Data,turno:_r33Turno,rodada,dados:{respostas:{},resumos:{}}};
   return _r33Cache[rodada];
 }
@@ -2864,8 +2872,8 @@ let _rcData=hoje(), _rcEscalaData='', _rcEscalaLista=[];
 // O operador escolhe só o DIA — faixa 19:00 → dia+1 07:20 calculada automaticamente
 
 function _diaRefDefault(){
-  const h=opParts(new Date(),opTimezone()).H;
-  return h<17?opAddDays(hoje(),-1):hoje();
+  const p=opParts(new Date(),opTimezone()),min=p.H*60+p.M;
+  return min<7*60+20?opAddDays(hoje(),-1):hoje();
 }
 
 if(!window._diaRef) window._diaRef=_diaRefDefault();
