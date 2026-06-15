@@ -2452,18 +2452,19 @@ async function renderSupPeriodo(gid){
   ];
   const cards=[...cardsApp,...cardsWpp];
 
+  // capped = conta no maximo ate o esperado por card (nao deixa 1 card compensar outros)
   const appEsp=cardsApp.reduce((s,c)=>s+c.expected,0);
-  const appReal=cardsApp.reduce((s,c)=>s+c.actual,0);
-  const appPct=appEsp>0?Math.round(Math.min(appReal,appEsp)/appEsp*100):0;
+  const appReal=cardsApp.reduce((s,c)=>s+Math.min(c.actual,c.expected),0);
+  const appPct=appEsp>0?Math.round(appReal/appEsp*100):0;
   const corApp=appPct>=80?'var(--green)':appPct>=50?'var(--amber)':'var(--red)';
 
   const wppEsp=cardsWpp.reduce((s,c)=>s+c.expected,0);
-  const wppReal=cardsWpp.reduce((s,c)=>s+c.actual,0);
-  const wppPct=wppEsp>0?Math.round(Math.min(wppReal,wppEsp)/wppEsp*100):0;
+  const wppReal=cardsWpp.reduce((s,c)=>s+Math.min(c.actual,c.expected),0);
+  const wppPct=wppEsp>0?Math.round(wppReal/wppEsp*100):0;
   const corWpp=wppPct>=80?'var(--green)':wppPct>=50?'var(--amber)':'var(--red)';
 
   const totalEsp=cards.reduce((s,c)=>s+c.expected,0);
-  const totalReal=cards.reduce((s,c)=>s+c.actual,0);
+  const totalReal=cards.reduce((s,c)=>s+Math.min(c.actual,c.expected),0);
   const pctTotal=totalEsp>0?Math.round(totalReal/totalEsp*100):0;
   const corTotal=pctTotal>=80?'var(--green)':pctTotal>=50?'var(--amber)':'var(--red)';
 
@@ -2473,18 +2474,20 @@ async function renderSupPeriodo(gid){
   const btnUteisColor=soUteis?'#fff':'var(--text3)';
 
   const cardHtml=cards.map(c=>{
-    const pct=c.expected>0?Math.min(100,Math.round(c.actual/c.expected*100)):0;
+    const capped=Math.min(c.actual,c.expected);
+    const pct=c.expected>0?Math.round(capped/c.expected*100):0;
     const cor=pct>=80?'var(--green)':pct>=50?'var(--amber)':'var(--red)';
     const barBg=pct>=80?'#00C48C':pct>=50?'#F59E0B':'#EF4444';
     const isWpp=['2.2','4.1'].includes(c.tipo);
     const badgeTipo=isWpp?'<span style="font-size:8px;background:#FF6B0022;color:#FF6B00;border-radius:4px;padding:1px 5px;font-weight:700;margin-left:4px">WPP</span>':'<span style="font-size:8px;background:#3B82F622;color:#3B82F6;border-radius:4px;padding:1px 5px;font-weight:700;margin-left:4px">APP</span>';
+    const extraLabel=c.actual>c.expected?` <span style="color:var(--text3)">(+${c.actual-c.expected})</span>`:'';
     return`<div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:12px 14px">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
         <span style="font-size:13px">${c.icon}</span>
         <span style="font-size:11px;font-weight:700;color:var(--text2);flex:1">${c.label}${badgeTipo}</span>
         <span style="font-family:'DM Mono',monospace;font-size:16px;font-weight:800;color:${cor}">${pct}%</span>
       </div>
-      <div style="font-size:10px;color:var(--text3);margin-bottom:6px">${c.actual} / ${c.expected} em ${nDias} dia${nDias>1?'s':''}</div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:6px">${capped} / ${c.expected} em ${nDias} dia${nDias>1?'s':''}${extraLabel}</div>
       <div style="background:var(--border);border-radius:99px;height:4px;overflow:hidden">
         <div style="width:${pct}%;height:100%;background:${barBg}"></div>
       </div>
