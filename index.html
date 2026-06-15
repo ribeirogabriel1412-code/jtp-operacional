@@ -2392,7 +2392,16 @@ async function renderSupPeriodo(gid){
   if(!S._periodoFim)S._periodoFim=hj;
   if(!S._periodoIni)S._periodoIni=opAddDays(hj,-6);
   const ini=S._periodoIni,fim=S._periodoFim;
-  const nDias=Math.round((new Date(fim)-new Date(ini))/86400000)+1;
+  const soUteis=!!S._periodoUteis;
+
+  // contar dias no periodo (calendario ou uteis)
+  function contarDias(a,b,uteis){
+    let n=0,d=new Date(a+'T12:00:00'),e=new Date(b+'T12:00:00');
+    while(d<=e){if(!uteis||(d.getDay()!==0&&d.getDay()!==6))n++;d.setDate(d.getDate()+1);}
+    return Math.max(n,1);
+  }
+  const nDias=contarDias(ini,fim,soUteis);
+  const nDiasTotal=contarDias(ini,fim,false);
 
   el.innerHTML='<div style="display:flex;align-items:center;gap:8px;padding:16px 0;color:var(--text3);font-size:13px"><div class="spinner" style="width:18px;height:18px;border-width:2px"></div> Carregando período...</div>';
 
@@ -2405,7 +2414,7 @@ async function renderSupPeriodo(gid){
     {data:fGar},{data:fLid},{data:f24},{data:ck33},
     {data:ck34},{data:ind},{data:solt},{data:fAbast},{data:rels},
   ]=await Promise.all([
-    sb.from('fechamento_turno_garagem').select('data,fechado_em').eq('garagem_id',gid).gte('data',ini).lte('data',fim),
+    sb.from('fechamento_turno_garagem').select('data').eq('garagem_id',gid).gte('data',ini).lte('data',fim),
     sb.from('fechamento_lider_pcm').select('data,fechado_em').eq('garagem_id',gid).gte('data',ini).lte('data',fim),
     sb.from('fechamento_24').select('data,fechado_em').eq('garagem_id',gid).gte('data',ini).lte('data',fim),
     sb.from('checklist_33').select('data,turno,rodada').eq('garagem_id',gid).gte('data',ini).lte('data',fim),
@@ -2416,35 +2425,63 @@ async function renderSupPeriodo(gid){
     sb.from('relatorios_gerados').select('tipo,numero,data_evento').eq('garagem_id',gid).gte('data_evento',ini).lte('data_evento',fim),
   ]);
 
+  // se dias uteis filtrar registros que caem em fim de semana
+  function filtrarUteis(arr,campo='data'){
+    if(!soUteis)return arr||[];
+    return(arr||[]).filter(r=>{const d=new Date((r[campo]||'')+'T12:00:00');return d.getDay()!==0&&d.getDay()!==6;});
+  }
+
   const uniqSet=(arr,keyFn)=>new Set((arr||[]).map(keyFn)).size;
   const relCount=(ids)=>(rels||[]).filter(r=>ids.some(id=>String(r.tipo||r.numero||'').includes('SUP:'+id)||String(r.tipo||r.numero||'').includes(id))).length;
 
-  const cards=[
-    {tipo:'2.1', label:'Fechamento de Turno', icon:'📋', expected:nDias*2, actual:(fGar||[]).length},
-    {tipo:'2.6', label:'Custo do Turno',       icon:'💰', expected:nDias*2, actual:(fLid||[]).length},
-    {tipo:'3.3', label:'Ronda Operacional',    icon:'🚶', expected:nDias*3, actual:uniqSet(ck33||[],r=>`${r.data}_${r.turno}_${r.rodada??'n'}`)},
-    {tipo:'2.4', label:'Fechamento de Turno 2.4',icon:'🔧', expected:nDias*2, actual:(f24||[]).length+relCount(r24ids)},
-    {tipo:'3.4', label:'Relatório de Ativos (3.4)',icon:'📊',expected:nDias*3, actual:(ck34||[]).length+relCount(r34ids)},
-    {tipo:'2.12',label:'Indicadores Técnicos', icon:'📈', expected:nDias*1, actual:uniqSet(ind||[],r=>r.data)},
-    {tipo:'2.10',label:'Relatório de Soltura', icon:'🚌', expected:nDias*1, actual:uniqSet((solt||[]).filter(r=>r.numero_relatorio),r=>r.data)},
-    {tipo:'⛽',  label:'Abastecimento/Recolha',icon:'⛽', expected:nDias*1, actual:(fAbast||[]).length},
-    {tipo:'2.2', label:'Priorização',          icon:'📝', expected:nDias*4, actual:relCount(r22ids)},
-    {tipo:'4.1', label:'5W2H / E-mails',       icon:'📧', expected:nDias*2, actual:relCount(r41ids)},
+  // App = registros diretos nas tabelas do banco
+  // WhatsApp = registros em relatorios_gerados (2.2 e 4.1 so existem via WPP)
+  const cardsApp=[
+    {tipo:'2.1', label:'Fechamento de Turno',       icon:'📋', expected:nDias*2, actual:filtrarUteis(fGar).length},
+    {tipo:'2.6', label:'Custo do Turno',             icon:'💰', expected:nDias*2, actual:filtrarUteis(fLid,'data').length},
+    {tipo:'3.3', label:'Ronda Operacional',          icon:'🚶', expected:nDias*3, actual:uniqSet(filtrarUteis(ck33),r=>`${r.data}_${r.turno}_${r.rodada??'n'}`)},
+    {tipo:'2.4', label:'Fechamento de Turno 2.4',   icon:'🔧', expected:nDias*2, actual:filtrarUteis(f24).length+relCount(r24ids)},
+    {tipo:'3.4', label:'Relatório de Ativos (3.4)', icon:'📊', expected:nDias*3, actual:filtrarUteis(ck34).length+relCount(r34ids)},
+    {tipo:'2.12',label:'Indicadores Técnicos',      icon:'📈', expected:nDias*1, actual:uniqSet(filtrarUteis(ind),r=>r.data)},
+    {tipo:'2.10',label:'Relatório de Soltura',      icon:'🚌', expected:nDias*1, actual:uniqSet(filtrarUteis(solt||[]).filter(r=>r.numero_relatorio),r=>r.data)},
+    {tipo:'⛽',  label:'Abastecimento/Recolha',     icon:'⛽', expected:nDias*1, actual:filtrarUteis(fAbast).length},
   ];
+  const cardsWpp=[
+    {tipo:'2.2', label:'Priorização',   icon:'📝', expected:nDias*4, actual:relCount(r22ids)},
+    {tipo:'4.1', label:'5W2H / E-mails',icon:'📧', expected:nDias*2, actual:relCount(r41ids)},
+  ];
+  const cards=[...cardsApp,...cardsWpp];
+
+  const appEsp=cardsApp.reduce((s,c)=>s+c.expected,0);
+  const appReal=cardsApp.reduce((s,c)=>s+c.actual,0);
+  const appPct=appEsp>0?Math.round(Math.min(appReal,appEsp)/appEsp*100):0;
+  const corApp=appPct>=80?'var(--green)':appPct>=50?'var(--amber)':'var(--red)';
+
+  const wppEsp=cardsWpp.reduce((s,c)=>s+c.expected,0);
+  const wppReal=cardsWpp.reduce((s,c)=>s+c.actual,0);
+  const wppPct=wppEsp>0?Math.round(Math.min(wppReal,wppEsp)/wppEsp*100):0;
+  const corWpp=wppPct>=80?'var(--green)':wppPct>=50?'var(--amber)':'var(--red)';
 
   const totalEsp=cards.reduce((s,c)=>s+c.expected,0);
   const totalReal=cards.reduce((s,c)=>s+c.actual,0);
   const pctTotal=totalEsp>0?Math.round(totalReal/totalEsp*100):0;
   const corTotal=pctTotal>=80?'var(--green)':pctTotal>=50?'var(--amber)':'var(--red)';
 
+  const labelDias=soUteis?`${nDias} dia${nDias>1?'s':''} úteis (${nDiasTotal} corridos)`:`${nDias} dia${nDias>1?'s':''}`;
+  const btnUteisBg=soUteis?'var(--blue-d)':'var(--surface2)';
+  const btnUteisBorder=soUteis?'var(--blue)':'var(--border)';
+  const btnUteisColor=soUteis?'#fff':'var(--text3)';
+
   const cardHtml=cards.map(c=>{
     const pct=c.expected>0?Math.min(100,Math.round(c.actual/c.expected*100)):0;
     const cor=pct>=80?'var(--green)':pct>=50?'var(--amber)':'var(--red)';
     const barBg=pct>=80?'#00C48C':pct>=50?'#F59E0B':'#EF4444';
+    const isWpp=['2.2','4.1'].includes(c.tipo);
+    const badgeTipo=isWpp?'<span style="font-size:8px;background:#FF6B0022;color:#FF6B00;border-radius:4px;padding:1px 5px;font-weight:700;margin-left:4px">WPP</span>':'<span style="font-size:8px;background:#3B82F622;color:#3B82F6;border-radius:4px;padding:1px 5px;font-weight:700;margin-left:4px">APP</span>';
     return`<div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ${cor};border-radius:10px;padding:12px 14px">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
         <span style="font-size:13px">${c.icon}</span>
-        <span style="font-size:11px;font-weight:700;color:var(--text2);flex:1">${c.label}</span>
+        <span style="font-size:11px;font-weight:700;color:var(--text2);flex:1">${c.label}${badgeTipo}</span>
         <span style="font-family:'DM Mono',monospace;font-size:16px;font-weight:800;color:${cor}">${pct}%</span>
       </div>
       <div style="font-size:10px;color:var(--text3);margin-bottom:6px">${c.actual} / ${c.expected} em ${nDias} dia${nDias>1?'s':''}</div>
@@ -2459,7 +2496,7 @@ async function renderSupPeriodo(gid){
     <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div style="flex:1;min-width:160px">
         <div style="font-size:14px;font-weight:800">📅 Acompanhamento do Período</div>
-        <div style="color:var(--text3);font-size:11px;margin-top:3px">${totalReal}/${totalEsp} registros · ${nDias} dia${nDias>1?'s':''}</div>
+        <div style="color:var(--text3);font-size:11px;margin-top:3px">${totalReal}/${totalEsp} registros · ${labelDias}</div>
       </div>
       <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
         <div>
@@ -2476,9 +2513,24 @@ async function renderSupPeriodo(gid){
             <button onclick="const e=document.getElementById('periodo-fim');e?.showPicker?e.showPicker():e?.focus()" style="width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);font-size:14px;cursor:pointer">📅</button>
           </div>
         </div>
-        <div style="text-align:center;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:7px 16px">
-          <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:800;color:${corTotal}">${pctTotal}%</div>
-          <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">CONFORMIDADE</div>
+        <div>
+          <label style="display:block;color:var(--text3);font-size:10px;font-weight:700;text-transform:uppercase;margin-bottom:3px">Filtro</label>
+          <button onclick="S._periodoUteis=!S._periodoUteis;renderSupPeriodo('${gid}')" style="height:34px;padding:0 12px;border-radius:8px;border:1px solid ${btnUteisBorder};background:${btnUteisBg};color:${btnUteisColor};font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Dias Úteis ${soUteis?'✓':''}</button>
+        </div>
+        <div style="text-align:center;background:#3B82F611;border:1px solid #3B82F644;border-radius:10px;padding:7px 14px;min-width:80px">
+          <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:800;color:${corApp}">${appPct}%</div>
+          <div style="font-size:9px;color:#3B82F6;font-weight:700;text-transform:uppercase">APP</div>
+          <div style="font-size:9px;color:var(--text3)">${appReal}/${appEsp}</div>
+        </div>
+        <div style="text-align:center;background:#FF6B0011;border:1px solid #FF6B0044;border-radius:10px;padding:7px 14px;min-width:80px">
+          <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:800;color:${corWpp}">${wppPct}%</div>
+          <div style="font-size:9px;color:#FF6B00;font-weight:700;text-transform:uppercase">WHATSAPP</div>
+          <div style="font-size:9px;color:var(--text3)">${wppReal}/${wppEsp}</div>
+        </div>
+        <div style="text-align:center;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:7px 14px;min-width:80px">
+          <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:800;color:${corTotal}">${pctTotal}%</div>
+          <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase">GLOBAL</div>
+          <div style="font-size:9px;color:var(--text3)">${totalReal}/${totalEsp}</div>
         </div>
       </div>
     </div>
