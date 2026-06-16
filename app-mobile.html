@@ -3341,7 +3341,7 @@ async function salvarRecolha(horarioRef=''){
   }catch(e){}
 
   // Insere na recolha_checklist (retorna id para linkagem)
-  const{data:rcRows,error}=await sb.from('recolha_checklist').insert({
+  const _payload={
     garagem_id:gid,
     prefixo,
     veiculo_id:veiId,
@@ -3359,9 +3359,19 @@ async function salvarRecolha(horarioRef=''){
     status,
     plantao_nome:S.perfil?.nome||null,
     plantao_id:S.perfil?.id||null,
-  }).select('id');
-
-  if(error){toast('Erro: '+error.message,'err');return;}
+  };
+  let{data:rcRows,error}=await sb.from('recolha_checklist').insert(_payload).select('id');
+  // Se falhou por coluna inexistente, tenta sem os campos novos (banco desatualizado)
+  if(error&&(error.message?.includes('tabela')||error.message?.includes('avaria_itens')||error.message?.includes('linha')||error.message?.includes('motorista'))){
+    const{data:rcRows2,error:e2}=await sb.from('recolha_checklist').insert({
+      garagem_id:gid,prefixo,veiculo_id:veiId,data_recolha:dataGravar,
+      horario_real:horarioReal,horario_previsto:horarioRef||null,
+      km_hodometro:km||null,visual_externo:externo,visual_interno:interno,
+      observacao:obs||null,status,plantao_nome:S.perfil?.nome||null,plantao_id:S.perfil?.id||null,
+    }).select('id');
+    rcRows=rcRows2; error=e2;
+  }
+  if(error){toast('Erro ao salvar: '+error.message,'err',6000);return;}
 
   // Se avaria, registra no dashboard de avarias
   if(status==='avaria'){
