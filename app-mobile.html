@@ -3367,24 +3367,23 @@ async function salvarRecolha(horarioRef=''){
   if(status==='avaria'){
     const recolhaId=rcRows?.[0]?.id||null;
     const itensNok=avaria_itens?Object.entries(avaria_itens).filter(([,v])=>v==='nok').map(([k])=>k):[];
-    try{
-      await sb.from('avarias_recolha').insert({
-        garagem_id:gid,
-        recolha_id:recolhaId,
-        prefixo,
-        data_recolha:dataGravar,
-        horario_real:horarioReal,
-        motorista:motorista||null,
-        linha:linha||null,
-        tabela:tabela||null,
-        visual_externo:externo,
-        visual_interno:interno,
-        itens_nok:itensNok.length>0?itensNok:null,
-        observacao:obs||null,
-        status:'aberto',
-        plantao_nome:S.perfil?.nome||null,
-      });
-    }catch(e){console.error('[avarias_recolha insert]',e);}
+    const{error:avErr}=await sb.from('avarias_recolha').insert({
+      garagem_id:gid,
+      recolha_id:recolhaId,
+      prefixo,
+      data_recolha:dataGravar,
+      horario_real:horarioReal,
+      motorista:motorista||null,
+      linha:linha||null,
+      tabela:tabela||null,
+      visual_externo:externo,
+      visual_interno:interno,
+      itens_nok:itensNok.length>0?itensNok:null,
+      observacao:obs||null,
+      status:'aberto',
+      plantao_nome:S.perfil?.nome||null,
+    });
+    if(avErr) toast('⚠️ Avaria salva mas erro no dashboard: '+avErr.message,'err');
   }
 
   _rcAvariaItens={};
@@ -3724,7 +3723,9 @@ function selOpt(fieldId, val, btn, cor){
   const extVal=document.getElementById('rc-ext')?.value;
   const intVal=document.getElementById('rc-int')?.value;
   const obsWrap=document.getElementById('rc-obs-wrap');
-  if(obsWrap) obsWrap.style.display=(extVal==='avaria'||intVal==='avaria')?'flex':'none';
+  const temAvaria=extVal==='avaria'||intVal==='avaria';
+  if(obsWrap) obsWrap.style.display=temAvaria?'flex':'none';
+  if(temAvaria) setTimeout(()=>abrirChecklistAvaria(),100);
 }
 
 // Busca dados da escala ao digitar prefixo
