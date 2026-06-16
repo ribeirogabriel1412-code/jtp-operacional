@@ -11,6 +11,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-title" content="JTP">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
+<script>window.supabase||document.write('\x3Cscript src="https://unpkg.com/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"\x3E\x3C\/script\x3E')</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
@@ -257,16 +258,16 @@ const NAV={
   lavador:[{id:'lavagem',ic:'🚿',lb:'Lavagem'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_patio:[{id:'patio',ic:'✅',lb:'Validar'},{id:'patio_man',ic:'🚗',lb:'Zona'},{id:'soltura',ic:'🚌',lb:'Soltura'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'abastecimento',ic:'⛽',lb:'Abastec.'},{id:'lav_pesada',ic:'🚿',lb:'Lavagem'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_operacional:[{id:'ronda33',ic:'👣',lb:'3.3'},{id:'patio_man',ic:'🚗',lb:'Pátio'},{id:'lubri_rel',ic:'🛢️',lb:'Lubri.'},{id:'home',ic:'🏠',lb:'Início'}],
-  lider_oficina:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'valet_oficina',ic:'📦',lb:'Valet'},{id:'prev_oficina',ic:'🧰',lb:'Prev.'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'home',ic:'🏠',lb:'Início'}],
-  lider_pcm:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'checklist_equip',ic:'📋',lb:'3.4'},{id:'sos218',ic:'🆘',lb:'2.18'},{id:'prev26',ic:'💰',lb:'2.6'},{id:'lubri_rel',ic:'🛢️',lb:'Lubri.'},{id:'home',ic:'🏠',lb:'Início'}],
-  assistente_pcm:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'checklist_equip',ic:'📋',lb:'3.4'},{id:'sos218',ic:'🆘',lb:'2.18'},{id:'prev26',ic:'💰',lb:'2.6'},{id:'home',ic:'🏠',lb:'Início'}],
+  lider_oficina:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'avarias',ic:'⚠️',lb:'Avarias'},{id:'valet_oficina',ic:'📦',lb:'Valet'},{id:'prev_oficina',ic:'🧰',lb:'Prev.'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'home',ic:'🏠',lb:'Início'}],
+  lider_pcm:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'avarias',ic:'⚠️',lb:'Avarias'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'checklist_equip',ic:'📋',lb:'3.4'},{id:'sos218',ic:'🆘',lb:'2.18'},{id:'prev26',ic:'💰',lb:'2.6'},{id:'lubri_rel',ic:'🛢️',lb:'Lubri.'},{id:'home',ic:'🏠',lb:'Início'}],
+  assistente_pcm:[{id:'oficina',ic:'🔧',lb:'OS'},{id:'avarias',ic:'⚠️',lb:'Avarias'},{id:'checklist_equip',ic:'📋',lb:'3.4'},{id:'sos218',ic:'🆘',lb:'2.18'},{id:'prev26',ic:'💰',lb:'2.6'},{id:'home',ic:'🏠',lb:'Início'}],
   almoxarifado:[{id:'valet_almox',ic:'📦',lb:'Kits'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_almoxarifado:[{id:'valet_almox',ic:'📦',lb:'Kits'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'home',ic:'🏠',lb:'Início'}],
   lider_suprimentos:[{id:'valet_almox',ic:'📦',lb:'Kits'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'home',ic:'🏠',lb:'Início'}],
-  coordenador:[{id:'fech21',ic:'📋',lb:'2.1'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'lubri_rel',ic:'🛢️',lb:'Lubri.'},{id:'home',ic:'🏠',lb:'Início'}],
-  gerente_garagem:[{id:'fech21',ic:'📋',lb:'2.1'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'lubri_rel',ic:'🛢️',lb:'Lubri.'},{id:'home',ic:'🏠',lb:'Início'}],
-  gerente_operacional:[{id:'fech21',ic:'📋',lb:'2.1'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'lubri_rel',ic:'🛢️',lb:'Lubri.'},{id:'home',ic:'🏠',lb:'Início'}],
-  supervisor:[{id:'fech21',ic:'📋',lb:'2.1'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'soltura',ic:'🚌',lb:'Soltura'},{id:'abastecimento',ic:'⛽',lb:'Abast.'},{id:'recolha',ic:'🔑',lb:'Recolha'},{id:'lubri_rel',ic:'🛢️',lb:'Lubri.'},{id:'home',ic:'🏠',lb:'Início'}],
+  coordenador:[{id:'fech21',ic:'📋',lb:'2.1'},{id:'avarias',ic:'⚠️',lb:'Avarias'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'lubri_rel',ic:'🛢️',lb:'Lubri.'},{id:'home',ic:'🏠',lb:'Início'}],
+  gerente_garagem:[{id:'fech21',ic:'📋',lb:'2.1'},{id:'avarias',ic:'⚠️',lb:'Avarias'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'lubri_rel',ic:'🛢️',lb:'Lubri.'},{id:'home',ic:'🏠',lb:'Início'}],
+  gerente_operacional:[{id:'fech21',ic:'📋',lb:'2.1'},{id:'avarias',ic:'⚠️',lb:'Avarias'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'lubri_rel',ic:'🛢️',lb:'Lubri.'},{id:'home',ic:'🏠',lb:'Início'}],
+  supervisor:[{id:'fech21',ic:'📋',lb:'2.1'},{id:'avarias',ic:'⚠️',lb:'Avarias'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'soltura',ic:'🚌',lb:'Soltura'},{id:'abastecimento',ic:'⛽',lb:'Abast.'},{id:'recolha',ic:'🔑',lb:'Recolha'},{id:'lubri_rel',ic:'🛢️',lb:'Lubri.'},{id:'home',ic:'🏠',lb:'Início'}],
   manobrista:[{id:'patio_man',ic:'🚗',lb:'Pátio'},{id:'home',ic:'🏠',lb:'Início'}],
   frentista:[{id:'abastecimento',ic:'⛽',lb:'Abastecer'},{id:'home',ic:'🏠',lb:'Início'}],
   plantao:[{id:'recolha',ic:'🔑',lb:'Recolha'},{id:'home',ic:'🏠',lb:'Início'}],
@@ -2974,6 +2975,17 @@ function confirmarDiaRef(){
   if(window._faixaCallback) window._faixaCallback();
 }
 
+// ── CHECKLIST DE AVARIA POR POSIÇÃO DO VEÍCULO ───────────────
+const CK_AVARIA=[
+  {grupo:'Frente',itens:['Para-choque dianteiro','Ponteira LE dianteira','Ponteira LD dianteira','Para-brisa','Farol dianteiro LE','Farol dianteiro LD','Retrovisor LE','Retrovisor LD']},
+  {grupo:'Traseira',itens:['Para-choque traseiro','Ponteira LE traseira','Ponteira LD traseira','Vigia traseiro','Lanterna traseira LE','Lanterna traseira LD','Placa']},
+  {grupo:'Lateral Esquerda',itens:['Vidro janela 1 LE','Vidro janela 2 LE','Vidro janela 3 LE','Vidro janela 4 LE','Vidro janela 5 LE','Lanterna lateral LE']},
+  {grupo:'Lateral Direita',itens:['Vidro janela 1 LD','Vidro janela 2 LD','Vidro janela 3 LD','Vidro janela 4 LD','Vidro janela 5 LD','Lanterna lateral LD','Porta embarque']},
+  {grupo:'Interior',itens:['Bancos','Corrimão / Balaustre','Piso','Teto / Forração interna','Painel motorista']},
+  {grupo:'Rodas',itens:['Pneu dianteiro LE','Pneu dianteiro LD','Pneu traseiro LE externo','Pneu traseiro LE interno','Pneu traseiro LD externo','Pneu traseiro LD interno']},
+];
+let _rcAvariaItens={};
+
 async function telaRecolha(dataFiltro=null){
   const gid=getGid();
   setMain('<div class="loading"><div class="sp"></div></div>');
@@ -3028,26 +3040,67 @@ async function telaRecolha(dataFiltro=null){
   const recMap={};recolhas.forEach(r=>{recMap[r.prefixo]=r;});
   _rcEscalaLista=frotaRaw;
 
+  // Busca escala D+1 para mostrar linha/tabela/horário previsto nos cards
+  let escalaMap={};
+  try{
+    const{data:esc}=await sb.from('soltura_2_10')
+      .select('prefixo,linha,posicao,horario_fim,motorista')
+      .eq('garagem_id',gid)
+      .eq('data',_diaSoltura());
+    (esc||[]).forEach(e=>{escalaMap[e.prefixo]=e;});
+  }catch(e){}
+
   const tot=Object.keys(recMap).length;
   const totFrota=frotaRaw.length;
   const totDisp=frotaRaw.filter(e=>recMap[e.prefixo]&&abastMap[e.prefixo]).length;
   const pct=totFrota>0?Math.round((tot/totFrota)*100):0;
 
+  // Helper: delta em minutos entre horario_real e horario_previsto
+  function _calcDelta(horReal,horPrev){
+    if(!horReal||!horPrev)return null;
+    const [ph,pm]=horPrev.split(':').map(Number);
+    const [rh,rm]=horReal.split(':').map(Number);
+    if(isNaN(ph)||isNaN(rh))return null;
+    let d=(rh*60+rm)-(ph*60+pm);
+    if(d>600)d-=1440; // virada de meia-noite
+    if(d<-600)d+=1440;
+    if(Math.abs(d)>600)return null;
+    return d;
+  }
+
   const cards=frotaRaw.map(e=>{
     const rec=recMap[e.prefixo];
     const ab=abastMap[e.prefixo];
+    const esc=escalaMap[e.prefixo]||{};
     const recOk=!!rec;
     const abOk=!!ab;
     const dispOk=recOk&&abOk;
-    return`<div class="vcard ${dispOk?'done':''}" onclick="abrirRecolha('${e.prefixo}','','','')">
+    const linhaTxt=rec?.linha||esc.linha||'';
+    const tabelaTxt=rec?.tabela||esc.posicao||'';
+    const horPrev=rec?.horario_previsto||esc.horario_fim||'';
+    const horReal=rec?.horario_real||'';
+    const motoristaEsc=(esc.motorista||'').replace(/'/g,'');
+    const km=rec?.km_hodometro;
+
+    // Badge de pontualidade
+    const delta=_calcDelta(horReal,horPrev);
+    const deltaBadge=delta===null?'':delta>5
+      ?`<span style="color:var(--red);font-size:9px;font-weight:700">⚠️ +${delta}min</span>`
+      :delta<-5
+        ?`<span style="color:var(--green);font-size:9px;font-weight:700">✅ −${Math.abs(delta)}min</span>`
+        :`<span style="color:var(--green);font-size:9px;font-weight:700">✅ Pontual</span>`;
+
+    return`<div class="vcard ${dispOk?'done':rec?.status==='avaria'?'nok':''}" onclick="abrirRecolha('${e.prefixo}','${linhaTxt}','${motoristaEsc}','${horPrev}','${tabelaTxt}')">
       <div style="flex:1;min-width:0">
-        <div class="prefixo" style="color:${dispOk?'var(--green)':recOk?'var(--amber)':'var(--text)'}">${e.prefixo}</div>
+        <div class="prefixo" style="color:${dispOk?'var(--green)':rec?.status==='avaria'?'var(--red)':recOk?'var(--amber)':'var(--text)'}">${e.prefixo}</div>
+        ${(linhaTxt||tabelaTxt)?`<div class="vcard-sub" style="font-size:10px;color:var(--blue)">🚌 ${linhaTxt?'L.'+linhaTxt:''}${tabelaTxt?' · Tab '+tabelaTxt:''}</div>`:''}
         ${e.modelo?`<div class="vcard-sub" style="color:var(--text4)">${e.modelo}</div>`:''}
-        ${rec?`<div class="vcard-sub" style="color:var(--amber);font-size:10px">🔑 ${rec.horario_real||rec.created_at?.slice(11,16)||'✓'}${rec.km_hodometro?' · '+rec.km_hodometro.toLocaleString()+'km':''}</div>`:''}
+        ${!recOk&&horPrev?`<div class="vcard-sub" style="font-size:9px;color:var(--text4)">⏱ Prev. ${horPrev}</div>`:''}
+        ${recOk?`<div class="vcard-sub" style="color:var(--amber);font-size:10px">🔑 ${horReal||'✓'}${km?' · '+Number(km).toLocaleString()+'km':''} ${deltaBadge}</div>`:''}
         ${ab?`<div class="vcard-sub" style="color:var(--green);font-size:10px">⛽ ${ab.litros}L${ab.arla_litros?' · ARLA '+ab.arla_litros+'L':''}</div>`:''}
       </div>
       <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:3px;margin-left:8px">
-        <div style="width:62px;height:20px;border-radius:5px;border:2px solid ${recOk?'var(--amber)':'var(--border)'};background:${recOk?'#F59E0B18':'transparent'};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:${recOk?'var(--amber)':'var(--text4)'}">🔑 Recolha</div>
+        <div style="width:62px;height:20px;border-radius:5px;border:2px solid ${recOk?(rec?.status==='avaria'?'var(--red)':'var(--amber)'):'var(--border)'};background:${recOk?(rec?.status==='avaria'?'#EF444418':'#F59E0B18'):'transparent'};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:${recOk?(rec?.status==='avaria'?'var(--red)':'var(--amber)'):'var(--text4)'}">🔑 ${rec?.status==='avaria'?'⚠️ Avaria':'Recolha'}</div>
         <div style="width:62px;height:20px;border-radius:5px;border:2px solid ${abOk?'var(--green)':'var(--border)'};background:${abOk?'#00C48C18':'transparent'};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:${abOk?'var(--green)':'var(--text4)'}">⛽ Abast.</div>
         ${dispOk?`<div style="font-size:8px;font-weight:800;color:var(--green)">✅ Pronto</div>`:`<div style="font-size:8px;color:var(--text4)">—</div>`}
       </div>
@@ -3124,7 +3177,10 @@ function filtrarRecolha(busca){
   });
 }
 
-async function abrirRecolha(prefixo='',linha='',motorista='',horario=''){
+async function abrirRecolha(prefixo='',linha='',motorista='',horario='',tabela=''){
+  _rcAvariaItens={};
+  const tabBtns=['1A','2A','1B','2B'].map(t=>`<button onclick="selTabela('${t}',this)" data-tab="${t}"
+    style="padding:10px;border-radius:8px;border:1px solid ${tabela===t?'var(--blue)':'var(--border)'};background:${tabela===t?'#2563EB18':'transparent'};color:${tabela===t?'var(--blue)':'var(--text3)'};font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">${t}</button>`).join('');
   openSheet('🔑 Receber Veículo',`
     <div style="display:flex;flex-direction:column;gap:12px">
       <!-- Prefixo -->
@@ -3132,27 +3188,33 @@ async function abrirRecolha(prefixo='',linha='',motorista='',horario=''){
         <label class="fl">Prefixo</label>
         <input class="fi2" id="rc-prefixo" type="text" value="${prefixo}" placeholder="Ex: 02.210"
           style="font-family:'DM Mono',monospace;font-size:22px;text-transform:uppercase"
-          oninput="this.value=this.value.toUpperCase()">
+          oninput="this.value=this.value.toUpperCase();buscarEscalaRecolha(this.value)">
       </div>
-      <!-- Referência da escala (pré-preenchida) -->
-      ${prefixo?`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px">
-        <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;margin-bottom:4px">📋 Referência da Escala</div>
-        <div style="font-size:12px;display:flex;gap:10px;flex-wrap:wrap;color:var(--text2)">
-          <span>🚌 ${linha||'—'}</span>
-          <span>⏱ ${horario||'—'}</span>
-          <span>👤 ${motorista?.split(' ').slice(0,2).join(' ')||'—'}</span>
-        </div>
+      <!-- Horário previsto (referência da escala) -->
+      ${horario?`<div style="background:#2563EB0A;border:1px solid #2563EB30;border-radius:10px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:11px;color:var(--text3)">⏱ Horário previsto de recolha</span>
+        <span style="font-weight:800;color:var(--blue)">${horario}</span>
       </div>`:''}
       <!-- KM -->
       <div>
         <label class="fl">KM Hodômetro</label>
         <input class="fi2" id="rc-km" type="number" placeholder="Ex: 125430" inputmode="numeric">
       </div>
-      <!-- Matrícula motorista -->
+      <!-- Linha -->
       <div>
-        <label class="fl">Matrícula do Motorista <span style="color:var(--text3);font-weight:400">(conferência)</span></label>
-        <input class="fi2" id="rc-matricula" type="text" placeholder="Ex: 3390" inputmode="numeric"
-          style="font-family:'DM Mono',monospace;font-size:18px">
+        <label class="fl">Linha</label>
+        <input class="fi2" id="rc-linha" type="text" value="${linha}" placeholder="Ex: 350" inputmode="numeric">
+      </div>
+      <!-- Tabela / Posição no pátio -->
+      <div>
+        <label class="fl">Tabela / Posição no Pátio</label>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:4px">${tabBtns}</div>
+        <input type="hidden" id="rc-tabela" value="${tabela}">
+      </div>
+      <!-- Motorista -->
+      <div>
+        <label class="fl">Motorista</label>
+        <input class="fi2" id="rc-motorista" type="text" value="${motorista?motorista.split(' ').slice(0,2).join(' '):''}" placeholder="Nome do motorista">
       </div>
       <!-- Visual Externo -->
       <div>
@@ -3176,21 +3238,84 @@ async function abrirRecolha(prefixo='',linha='',motorista='',horario=''){
         </div>
         <input type="hidden" id="rc-int" value="ok">
       </div>
-      <div id="rc-obs-wrap" style="display:none">
-        <label class="fl">Descrição da Avaria</label>
-        <textarea class="fi2" id="rc-obs" rows="2" placeholder="Ex: Vidro quebrado..." style="resize:none"></textarea>
+      <!-- Avaria: botão checklist + obs livre -->
+      <div id="rc-obs-wrap" style="display:none;flex-direction:column;gap:8px">
+        <button onclick="abrirChecklistAvaria()"
+          style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--amber);background:#F59E0B14;color:var(--amber);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">🔍 Detalhar Avaria (Checklist)</button>
+        <div id="rc-avaria-resumo" style="font-size:11px"></div>
+        <div id="rc-avaria-panel" style="display:none"></div>
+        <textarea class="fi2" id="rc-obs" rows="2" placeholder="Observação livre (opcional)..." style="resize:none"></textarea>
       </div>
-      <button onclick="salvarRecolha('${linha}','${motorista}','${horario}')" style="padding:15px;border-radius:12px;border:none;background:var(--green);color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">🔑 Confirmar Recolha</button>
+      <button onclick="salvarRecolha('${horario}')" style="padding:15px;border-radius:12px;border:none;background:var(--green);color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">🔑 Confirmar Recolha</button>
     </div>
   `);
 }
 
-async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
+function selTabela(val,btn){
+  document.querySelectorAll('[data-tab]').forEach(b=>{
+    b.style.background='transparent';b.style.borderColor='var(--border)';b.style.color='var(--text3)';
+  });
+  btn.style.background='#2563EB18';btn.style.borderColor='var(--blue)';btn.style.color='var(--blue)';
+  const h=document.getElementById('rc-tabela');if(h)h.value=val;
+}
+
+// ── CHECKLIST DE AVARIA (inline no sheet de recolha) ─────────
+function abrirChecklistAvaria(){
+  CK_AVARIA.forEach(g=>g.itens.forEach(it=>{if(!_rcAvariaItens[it])_rcAvariaItens[it]='ok';}));
+  _renderChecklistAvaria();
+}
+function _renderChecklistAvaria(){
+  const panel=document.getElementById('rc-avaria-panel');
+  if(!panel) return;
+  const nokCount=Object.values(_rcAvariaItens).filter(v=>v==='nok').length;
+  const corpo=CK_AVARIA.map(g=>`
+    <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;padding:10px 0 4px">${g.grupo}</div>
+    ${g.itens.map(it=>{
+      const val=_rcAvariaItens[it]||'ok';
+      const esc=it.replace(/'/g,"\\'");
+      return`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border2)">
+        <div style="font-size:11px;flex:1;color:${val==='nok'?'var(--red)':'var(--text2)'}">${it}</div>
+        <div style="display:flex;gap:5px">
+          <button onclick="_setAvaria('${esc}','ok')" style="padding:5px 10px;border-radius:7px;border:1px solid ${val==='ok'?'var(--green)':'var(--border)'};background:${val==='ok'?'#00C48C18':'transparent'};color:${val==='ok'?'var(--green)':'var(--text4)'};font-size:10px;font-weight:700;font-family:inherit;cursor:pointer">OK</button>
+          <button onclick="_setAvaria('${esc}','nok')" style="padding:5px 10px;border-radius:7px;border:1px solid ${val==='nok'?'var(--red)':'var(--border)'};background:${val==='nok'?'#EF444418':'transparent'};color:${val==='nok'?'var(--red)':'var(--text4)'};font-size:10px;font-weight:700;font-family:inherit;cursor:pointer">NOK</button>
+        </div>
+      </div>`;
+    }).join('')}
+  `).join('');
+  panel.innerHTML=`
+    <div style="background:#F59E0B08;border:1px solid #F59E0B40;border-radius:10px;padding:10px 12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-size:11px;font-weight:700;color:var(--amber)">🔍 Checklist de Avaria${nokCount?' · '+nokCount+' NOK':''}</span>
+        <button onclick="_confirmarChecklistAvaria()" style="padding:5px 12px;border-radius:8px;border:none;background:var(--green);color:#fff;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer">✅ OK</button>
+      </div>
+      ${corpo}
+    </div>`;
+  panel.style.display='block';
+  panel.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function _setAvaria(item,val){_rcAvariaItens[item]=val;_renderChecklistAvaria();}
+function _confirmarChecklistAvaria(){
+  const nokCount=Object.values(_rcAvariaItens).filter(v=>v==='nok').length;
+  const resumo=document.getElementById('rc-avaria-resumo');
+  if(resumo){
+    const nokItens=Object.entries(_rcAvariaItens).filter(([,v])=>v==='nok').map(([k])=>k);
+    resumo.textContent=nokCount?`⚠️ ${nokCount} itens NOK: ${nokItens.join(', ')}`:'✅ Sem danos adicionais';
+    resumo.style.color=nokCount?'var(--amber)':'var(--green)';
+  }
+  const panel=document.getElementById('rc-avaria-panel');
+  if(panel) panel.style.display='none';
+}
+
+async function salvarRecolha(horarioRef=''){
   const prefixo=document.getElementById('rc-prefixo')?.value?.trim().toUpperCase();
   const km=parseInt(document.getElementById('rc-km')?.value||'0')||null;
+  const linha=document.getElementById('rc-linha')?.value?.trim()||null;
+  const tabela=document.getElementById('rc-tabela')?.value?.trim()||null;
+  const motorista=document.getElementById('rc-motorista')?.value?.trim()||null;
   const externo=document.getElementById('rc-ext')?.value||'ok';
   const interno=document.getElementById('rc-int')?.value||'ok';
   const obs=document.getElementById('rc-obs')?.value?.trim()||null;
+  const avaria_itens=Object.keys(_rcAvariaItens).length>0?{..._rcAvariaItens}:null;
   const gid=getGid();
 
   if(!prefixo){toast('Informe o prefixo','err');return;}
@@ -3198,10 +3323,15 @@ async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
   const agora=new Date();
   const horarioReal=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   const status=externo==='avaria'||interno==='avaria'?'avaria':'recebido';
-  // Usa sempre _rcEscalaData como referência — data da escala que está sendo visualizada
-  // Isso garante consistência quando vários plantonistas usam o app ao mesmo tempo
   const dataGravar=window._diaRef||hoje();
   const dataSoltura=_diaSoltura();
+
+  // Dedup: evita duplo registro do mesmo veículo na mesma data
+  try{
+    const{data:exist}=await sb.from('recolha_checklist').select('id')
+      .eq('garagem_id',gid).eq('prefixo',prefixo).eq('data_recolha',dataGravar).limit(1);
+    if(exist?.length){toast(`⚠️ ${prefixo} já registrado nesta data`,'err');closeSheet(true);return;}
+  }catch(e){}
 
   // Busca veiculo_id
   let veiId=null;
@@ -3210,34 +3340,62 @@ async function salvarRecolha(linhaRef='',motoristaRef='',horarioRef=''){
     veiId=vei?.id||null;
   }catch(e){}
 
-  // Insere na recolha_checklist
-  const{error}=await sb.from('recolha_checklist').insert({
+  // Insere na recolha_checklist (retorna id para linkagem)
+  const{data:rcRows,error}=await sb.from('recolha_checklist').insert({
     garagem_id:gid,
     prefixo,
     veiculo_id:veiId,
     data_recolha:dataGravar,
     horario_real:horarioReal,
     horario_previsto:horarioRef||null,
-    motorista:motoristaRef||null,
-    linha:linhaRef||null,
+    motorista:motorista||null,
+    linha:linha||null,
+    tabela:tabela||null,
     km_hodometro:km||null,
     visual_externo:externo,
     visual_interno:interno,
     observacao:obs||null,
+    avaria_itens:avaria_itens||null,
     status,
     plantao_nome:S.perfil?.nome||null,
     plantao_id:S.perfil?.id||null,
-  });
+  }).select('id');
 
   if(error){toast('Erro: '+error.message,'err');return;}
+
+  // Se avaria, registra no dashboard de avarias
+  if(status==='avaria'){
+    const recolhaId=rcRows?.[0]?.id||null;
+    const itensNok=avaria_itens?Object.entries(avaria_itens).filter(([,v])=>v==='nok').map(([k])=>k):[];
+    try{
+      await sb.from('avarias_recolha').insert({
+        garagem_id:gid,
+        recolha_id:recolhaId,
+        prefixo,
+        data_recolha:dataGravar,
+        horario_real:horarioReal,
+        motorista:motorista||null,
+        linha:linha||null,
+        tabela:tabela||null,
+        visual_externo:externo,
+        visual_interno:interno,
+        itens_nok:itensNok.length>0?itensNok:null,
+        observacao:obs||null,
+        status:'aberto',
+        plantao_nome:S.perfil?.nome||null,
+      });
+    }catch(e){console.error('[avarias_recolha insert]',e);}
+  }
+
+  _rcAvariaItens={};
 
   // Marca frota disponível se OK
   if(status==='recebido'&&veiId){
     await sb.from('frota').update({status:'disponivel'}).eq('id',veiId);
   }
 
-  // Marca recolhido na soltura_2_10 da data da escala selecionada
-  if(dataGravar&&status==='recebido'){
+  // Marca recolhido na soltura_2_10 da data de soltura
+  if(dataGravar){
     await sb.from('soltura_2_10').update({
       recolhido:true,
       recolhido_em:agora.toISOString(),
@@ -3566,7 +3724,7 @@ function selOpt(fieldId, val, btn, cor){
   const extVal=document.getElementById('rc-ext')?.value;
   const intVal=document.getElementById('rc-int')?.value;
   const obsWrap=document.getElementById('rc-obs-wrap');
-  if(obsWrap) obsWrap.style.display=(extVal==='avaria'||intVal==='avaria')?'block':'none';
+  if(obsWrap) obsWrap.style.display=(extVal==='avaria'||intVal==='avaria')?'flex':'none';
 }
 
 // Busca dados da escala ao digitar prefixo
@@ -3576,27 +3734,31 @@ async function buscarEscalaRecolha(prefixo){
   clearTimeout(_rcTimer);
   _rcTimer=setTimeout(async()=>{
     const gid=getGid();
-    const{data:esc}=await sb.from('soltura_2_10').select('*')
-      .eq('garagem_id',gid).eq('prefixo',prefixo).eq('data',hoje())
+    // Busca na escala do dia de soltura (D+1) — bug fix: antes buscava hoje()
+    const{data:esc}=await sb.from('soltura_2_10').select('prefixo,linha,posicao,horario_fim,horario_programado,motorista,saiu,horario_real')
+      .eq('garagem_id',gid).eq('prefixo',prefixo).eq('data',_diaSoltura())
       .order('horario_programado',{ascending:false}).limit(1);
-    const info=document.getElementById('rc-escala-info');
-    const body=document.getElementById('rc-escala-body');
-    if(!info||!body) return;
     if(esc?.length){
       const e=esc[0];
-      info.style.display='block';
-      body.innerHTML=`
-        <div style="display:flex;gap:12px;flex-wrap:wrap">
-          <span>🚌 ${e.linha||'—'}</span>
-          <span>👤 ${e.motorista?.split(' ').slice(0,2).join(' ')||'—'}</span>
-          <span>⏱ Prev. fim: ${e.horario_fim||e.horario_programado||'—'}</span>
-          ${e.saiu===true?`<span style="color:var(--green)">✅ Saiu às ${e.horario_real||'—'}</span>`:''}
-        </div>`;
-      // Pré-preenche dados da escala
-      window._rcEscala={motorista:e.motorista,linha:e.linha,horario_previsto:e.horario_fim||e.horario_programado};
+      // Pré-preenche campos do form se ainda vazios
+      const fLinha=document.getElementById('rc-linha');
+      const fMot=document.getElementById('rc-motorista');
+      if(fLinha&&!fLinha.value) fLinha.value=e.linha||'';
+      if(fMot&&!fMot.value) fMot.value=e.motorista?.split(' ').slice(0,2).join(' ')||'';
+      if(e.posicao){
+        const h=document.getElementById('rc-tabela');
+        if(h&&!h.value){
+          h.value=e.posicao;
+          document.querySelectorAll('[data-tab]').forEach(b=>{
+            const ativo=b.dataset.tab===e.posicao;
+            b.style.background=ativo?'#2563EB18':'transparent';
+            b.style.borderColor=ativo?'var(--blue)':'var(--border)';
+            b.style.color=ativo?'var(--blue)':'var(--text3)';
+          });
+        }
+      }
+      window._rcEscala={motorista:e.motorista,linha:e.linha,horario_previsto:e.horario_fim||e.horario_programado,tabela:e.posicao};
     } else {
-      info.style.display='block';
-      body.innerHTML='<span style="color:var(--text4)">Não encontrado na escala de hoje</span>';
       window._rcEscala=null;
     }
   },600);
@@ -6581,8 +6743,170 @@ async function salvarLubri(){
   if(error){toast('❌ Erro: '+error.message,'err');console.error('[salvarLubri]',error);return}
   closeSheet(true);toast('✅ Lubrificação registrada!');telaLubrificacao();
 }
+// ══════════════════════════════════════════════════════════
+// DASHBOARD DE AVARIAS (PCM / Supervisor / Coordenador)
+// ══════════════════════════════════════════════════════════
+let _avFiltro='aberto';
+
+async function telaAvariasDashboard(){
+  const gid=getGid();
+  render('<div class="loading"><div class="sp"></div></div>');
+
+  const{data:lista}=await sb.from('avarias_recolha')
+    .select('*')
+    .eq('garagem_id',gid)
+    .order('created_at',{ascending:false});
+
+  const all=lista||[];
+  const abertas=all.filter(a=>a.status==='aberto');
+  const analise=all.filter(a=>a.status==='em_analise');
+  const resolvidas=all.filter(a=>a.status==='resolvido');
+
+  const filtrada=_avFiltro==='todas'?all
+    :_avFiltro==='aberto'?abertas
+    :_avFiltro==='em_analise'?analise
+    :resolvidas;
+
+  const statusCor={aberto:'var(--red)',em_analise:'var(--amber)',resolvido:'var(--green)'};
+  const statusLabel={aberto:'🔴 Aberto',em_analise:'🟡 Em análise',resolvido:'✅ Resolvido'};
+
+  const cards=filtrada.map(a=>{
+    const nok=Array.isArray(a.itens_nok)?a.itens_nok:[];
+    const cor=statusCor[a.status]||'var(--text3)';
+    const dataBr=a.data_recolha?new Date(a.data_recolha+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):'—';
+    return`<div class="os-card" style="border-left-color:${cor};cursor:pointer" onclick="abrirDetalheAvaria(${a.id})">
+      <div class="os-hdr">
+        <div class="os-pre">${a.prefixo}</div>
+        <span class="badge" style="color:${cor};border-color:${cor}40;background:${cor}12">${statusLabel[a.status]||a.status}</span>
+      </div>
+      <div style="font-size:11px;color:var(--text3);display:flex;gap:10px;flex-wrap:wrap;margin-bottom:4px">
+        <span>📅 ${dataBr} · ${a.horario_real||'—'}</span>
+        ${a.linha?`<span>🚌 L.${a.linha}</span>`:''}
+        ${a.tabela?`<span>Tab ${a.tabela}</span>`:''}
+      </div>
+      ${a.motorista?`<div style="font-size:11px;color:var(--text3)">👤 ${a.motorista}</div>`:''}
+      ${nok.length?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">
+        ${nok.slice(0,4).map(it=>`<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:#EF444418;color:var(--red);border:1px solid #EF444430">${it}</span>`).join('')}
+        ${nok.length>4?`<span style="font-size:10px;color:var(--text4)">+${nok.length-4} itens</span>`:''}
+      </div>`:''}
+      ${a.tratativa?`<div style="margin-top:6px;font-size:11px;color:var(--green);background:#00C48C0A;border-radius:8px;padding:6px 8px">📝 ${a.tratativa.slice(0,80)}${a.tratativa.length>80?'…':''}</div>`:''}
+      <div style="font-size:10px;color:var(--text4);margin-top:6px">Plantão: ${a.plantao_nome||'—'} · ${a.created_at?new Date(a.created_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'}</div>
+    </div>`;
+  }).join('');
+
+  const filtTab=(id,label,count,cor)=>`<button onclick="_avFiltro='${id}';telaAvariasDashboard()"
+    style="flex:1;padding:8px 4px;border-radius:8px;border:1px solid ${_avFiltro===id?cor:'var(--border)'};background:${_avFiltro===id?cor+'18':'transparent'};color:${_avFiltro===id?cor:'var(--text3)'};font-size:11px;font-weight:700;font-family:inherit;cursor:pointer">
+    ${label}<br><span style="font-size:16px;font-weight:900">${count}</span>
+  </button>`;
+
+  render(`
+    <div style="padding:14px 14px 0">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div>
+          <div style="font-size:18px;font-weight:900">⚠️ Avarias</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${abertas.length} aberta${abertas.length!==1?'s':''} · ${all.length} total</div>
+        </div>
+        <button onclick="telaAvariasDashboard()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>
+      </div>
+      <!-- KPIs / Filtros -->
+      <div style="display:flex;gap:6px;margin-bottom:12px">
+        ${filtTab('aberto','🔴 Abertas',abertas.length,'var(--red)')}
+        ${filtTab('em_analise','🟡 Análise',analise.length,'var(--amber)')}
+        ${filtTab('resolvido','✅ Resolvidas',resolvidas.length,'var(--green)')}
+      </div>
+      <button onclick="_avFiltro='todas';telaAvariasDashboard()" style="width:100%;padding:6px;border-radius:8px;border:1px solid ${_avFiltro==='todas'?'var(--blue)':'var(--border)'};background:${_avFiltro==='todas'?'#2563EB18':'transparent'};color:${_avFiltro==='todas'?'var(--blue)':'var(--text3)'};font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;margin-bottom:10px">Ver todas (${all.length})</button>
+    </div>
+    ${filtrada.length?`<div class="sl">${filtrada.length} avaria(s)</div>${cards}`
+      :`<div class="empty"><div class="empty-ic">✅</div><div style="font-weight:700;font-size:16px;margin-bottom:8px">Nenhuma avaria${_avFiltro!=='todas'?' neste filtro':''}</div><div style="font-size:13px;color:var(--text3)">Avarias registradas na recolha aparecem aqui.</div></div>`}
+  `);
+}
+
+async function abrirDetalheAvaria(id){
+  const gid=getGid();
+  const{data:a}=await sb.from('avarias_recolha').select('*').eq('id',id).maybeSingle();
+  if(!a)return;
+
+  const nok=Array.isArray(a.itens_nok)?a.itens_nok:[];
+  const statusOpts=['aberto','em_analise','resolvido'];
+  const statusLabel={aberto:'🔴 Aberto',em_analise:'🟡 Em análise',resolvido:'✅ Resolvido'};
+  const dataBr=a.data_recolha?new Date(a.data_recolha+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'}):'—';
+
+  openSheet(`⚠️ ${a.prefixo} — Avaria`,`
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <!-- Info -->
+      <div style="background:var(--surface2);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:5px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <span style="font-size:12px;color:var(--text3)">📅 ${dataBr}</span>
+          <span style="font-size:12px;color:var(--text3)">🕐 ${a.horario_real||'—'}</span>
+          ${a.linha?`<span style="font-size:12px;color:var(--blue)">🚌 Linha ${a.linha}</span>`:''}
+          ${a.tabela?`<span style="font-size:12px;color:var(--blue)">Tab ${a.tabela}</span>`:''}
+        </div>
+        ${a.motorista?`<div style="font-size:12px;color:var(--text2)">👤 ${a.motorista}</div>`:''}
+        <div style="font-size:11px;color:var(--text4)">Plantão: ${a.plantao_nome||'—'}</div>
+      </div>
+      <!-- Visual -->
+      <div style="display:flex;gap:8px">
+        <div style="flex:1;background:${a.visual_externo==='avaria'?'#EF444412':'#00C48C0A'};border:1px solid ${a.visual_externo==='avaria'?'#EF444440':'#00C48C40'};border-radius:10px;padding:10px;text-align:center">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:3px">EXTERNO</div>
+          <div style="font-size:13px;font-weight:700;color:${a.visual_externo==='avaria'?'var(--red)':'var(--green)'}">${a.visual_externo==='avaria'?'⚠️ Avaria':'✅ OK'}</div>
+        </div>
+        <div style="flex:1;background:${a.visual_interno==='avaria'?'#EF444412':'#00C48C0A'};border:1px solid ${a.visual_interno==='avaria'?'#EF444440':'#00C48C40'};border-radius:10px;padding:10px;text-align:center">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:3px">INTERNO</div>
+          <div style="font-size:13px;font-weight:700;color:${a.visual_interno==='avaria'?'var(--red)':'var(--green)'}">${a.visual_interno==='avaria'?'⚠️ Avaria':'✅ OK'}</div>
+        </div>
+      </div>
+      <!-- Itens NOK -->
+      ${nok.length?`<div>
+        <div class="fl">Itens com Avaria (${nok.length})</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          ${nok.map(it=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#EF444408;border:1px solid #EF444430;border-radius:8px">
+            <span style="color:var(--red);font-size:12px">⚠️</span>
+            <span style="font-size:12px">${it}</span>
+          </div>`).join('')}
+        </div>
+      </div>`:''}
+      <!-- Observação do plantão -->
+      ${a.observacao?`<div>
+        <div class="fl">Obs. do Plantão</div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;font-size:12px;color:var(--text2)">${a.observacao}</div>
+      </div>`:''}
+      <!-- Status -->
+      <div>
+        <label class="fl">Status</label>
+        <select class="fi2" id="av-status">
+          ${statusOpts.map(s=>`<option value="${s}"${a.status===s?' selected':''}>${statusLabel[s]}</option>`).join('')}
+        </select>
+      </div>
+      <!-- Tratativa -->
+      <div>
+        <label class="fl">Tratativa / Encaminhamento</label>
+        <textarea class="fi2" id="av-tratativa" rows="3" placeholder="Descreva a ação tomada ou encaminhamento...">${a.tratativa||''}</textarea>
+      </div>
+      <button onclick="salvarAvaria(${a.id})" style="padding:14px;border-radius:12px;border:none;background:var(--green);color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer">💾 Salvar</button>
+    </div>
+  `);
+}
+
+async function salvarAvaria(id){
+  const status=document.getElementById('av-status')?.value||'aberto';
+  const tratativa=document.getElementById('av-tratativa')?.value?.trim()||null;
+  const agora=new Date().toISOString();
+  const payload={
+    status,
+    tratativa:tratativa||null,
+    responsavel_nome:S.perfil?.nome||null,
+    responsavel_id:S.perfil?.id||null,
+    resolvido_em:status==='resolvido'?agora:null,
+  };
+  const{error}=await sb.from('avarias_recolha').update(payload).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  closeSheet(true);
+  toast(status==='resolvido'?'✅ Avaria resolvida!':'💾 Salvo!');
+  telaAvariasDashboard();
+}
+
 // ─────────────────────────────────────────────────────────────────
-const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,prev26:telaPrev26,valet_oficina:telaValetOficina,prev_oficina:telaPrevOficina,valet_almox:telaValetAlmox,ronda33:telaRonda33,patio_man:telaPatioMan,recolha:telaRecolha,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip,sos218:telaSOS218,fech21:telaFech21,lubrificacao:telaLubrificacao,lubri_rel:telaLubriRel};
+const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,prev26:telaPrev26,valet_oficina:telaValetOficina,prev_oficina:telaPrevOficina,valet_almox:telaValetAlmox,ronda33:telaRonda33,patio_man:telaPatioMan,recolha:telaRecolha,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip,sos218:telaSOS218,fech21:telaFech21,lubrificacao:telaLubrificacao,lubri_rel:telaLubriRel,avarias:telaAvariasDashboard};
 
 // ── INIT ───────────────────────────────────────────────────
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login').style.display!=='none')doLogin()});
