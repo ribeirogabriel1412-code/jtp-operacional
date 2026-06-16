@@ -536,8 +536,24 @@ function escHtml(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<'
 function moeda(v){return 'R$ '+parseFloat(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});}
 
 // ── HOME ─────────────────────────────────────────────────
+let _homePanel=null;
+function _toggleHomePanel(id){
+  _homePanel=_homePanel===id?null:id;
+  ['rec','av','rel'].forEach(p=>{
+    const b=document.getElementById('hp-'+p+'-body');
+    const a=document.getElementById('hp-arr-'+p);
+    if(b)b.style.display=_homePanel===p?'block':'none';
+    if(a)a.textContent=_homePanel===p?'▲':'▼';
+  });
+}
+
 async function telaHome(){
   const gid=getGid();const agora=new Date();const data=hoje();
+  const c=cargo();
+  const temPainel=['lider_patio','supervisor','coordenador','lider_pcm','lider_operacional'].includes(c);
+  const dRef=window._diaRef||_diaRefDefault();
+
+  // Queries base
   const[{data:fr},{data:oc},{data:sol},{data:lav}]=await Promise.all([
     sb.from('frota').select('status').eq('garagem_id',gid),
     sb.from('ocorrencias_22').select('id').eq('garagem_id',gid).neq('status','liberado'),
@@ -549,6 +565,89 @@ async function telaHome(){
   const saiu=(sol||[]).filter(r=>r.saiu===true).length,sTot=(sol||[]).length;
   const pctS=sTot>0?((saiu/sTot)*100).toFixed(0):null;
   const lavE=(lav||[]).filter(l=>l.status==='executado').length,lavT=(lav||[]).length;
+
+  // Queries dos Pontos de Controle
+  let recList=[],abList=[],escalaD1=[],avariasList=[];
+  if(temPainel){
+    const dSol=opAddDays(dRef,1);
+    [recList,abList,escalaD1,avariasList]=await Promise.all([
+      sb.from('recolha_checklist').select('prefixo,horario_real,status,linha,tabela,motorista').eq('garagem_id',gid).eq('data_recolha',dRef).then(r=>r.data||[]),
+      sb.from('abastecimento_checklist').select('prefixo,horario').eq('garagem_id',gid).eq('data',dRef).then(r=>r.data||[]),
+      sb.from('soltura_2_10').select('prefixo,linha,horario_programado').eq('garagem_id',gid).eq('data',dSol).then(r=>r.data||[]),
+      sb.from('avarias_recolha').select('id,prefixo,status,itens_nok,data_recolha,plantao_nome,horario_real').eq('garagem_id',gid).neq('status','resolvido').order('created_at',{ascending:false}).then(r=>r.data||[]),
+    ]);
+  }
+
+  const recMap={};recList.forEach(r=>{recMap[r.prefixo]=r;});
+  const abMap={};abList.forEach(a=>{abMap[a.prefixo]=a;});
+  const vehicleSet=new Set([...escalaD1.map(e=>e.prefixo),...recList.map(r=>r.prefixo)]);
+  const totRec=recList.length,totAb=abList.length,totAv=avariasList.length;
+
+  // Cards Recolha & Abast
+  const recCards=[...vehicleSet].sort().map(p=>{
+    const rec=recMap[p],ab=abMap[p];
+    const icon=rec&&ab?'✅':rec?'🔑':ab?'⛽':'⬜';
+    const cor=rec&&ab?'var(--green)':rec?'var(--amber)':ab?'var(--blue)':'var(--text4)';
+    const recInfo=rec?rec.horario_real:'—';
+    const abInfo=ab?'⛽ '+ab.horario:'⛽ pendente';
+    const avaria=rec?.status==='avaria'?'<span style="color:var(--red);font-size:9px"> ⚠️</span>':'';
+    return`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border2)">
+      <div style="font-family:'DM Mono',monospace;font-weight:700;font-size:13px">${p}${avaria}</div>
+      <div style="font-size:11px;color:${cor};text-align:right">${icon} ${rec?'🔑 '+recInfo:''} ${ab?abInfo:rec?'⛽ pend.':''}</div>
+    </div>`;
+  }).join('');
+
+  // Cards Avarias
+  const avCards=avariasList.map(a=>{
+    const cor=a.status==='em_analise'?'var(--amber)':'var(--red)';
+    const nok=(a.itens_nok||[]);
+    const nokPreview=nok.slice(0,3).join(', ')+(nok.length>3?` +${nok.length-3}`:'');
+    return`<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:8px;border-left:3px solid ${cor}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+        <span style="font-family:'DM Mono',monospace;font-weight:800;font-size:13px">${a.prefixo}</span>
+        <span style="font-size:10px;font-weight:700;color:${cor};background:${cor}20;padding:2px 8px;border-radius:20px">${a.status.replace('_',' ').toUpperCase()}</span>
+      </div>
+      ${nokPreview?`<div style="font-size:10px;color:var(--text3);margin-bottom:4px">${nokPreview}</div>`:''}
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:10px;color:var(--text4)">${a.plantao_nome||''} · ${a.data_recolha||''} ${a.horario_real?'· '+a.horario_real:''}</div>
+        <button onclick="abrirDetalheAvaria(${a.id})" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:11px;font-weight:700;font-family:inherit;cursor:pointer">Ver →</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Header accordion
+  const hdr=(id,icon,label,badge,cor)=>`
+    <div onclick="_toggleHomePanel('${id}')" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;cursor:pointer;${id!=='rec'?'border-top:1px solid var(--border2)':''}">
+      <div style="font-size:13px;font-weight:700">${icon} ${label}</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        ${badge?`<span style="font-size:10px;font-weight:700;color:${cor};background:${cor}20;padding:2px 8px;border-radius:20px">${badge}</span>`:''}
+        <span id="hp-arr-${id}" style="color:var(--text4);font-size:11px">▼</span>
+      </div>
+    </div>
+    <div id="hp-${id}-body" style="display:none;padding:0 14px 12px">`;
+
+  const painelCtrl=temPainel?`
+    <div style="margin:0 14px 14px;border:1px solid var(--border);border-radius:12px;overflow:hidden">
+      <div style="padding:7px 14px;background:var(--surface2);font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px">📍 Pontos de Controle</div>
+      ${hdr('rec','🔑','Recolha & Abastecimento',totRec+' rec · '+totAb+' abast','var(--green)')}
+        ${recCards||'<div style="font-size:12px;color:var(--text4);text-align:center;padding:8px 0">Nenhuma recolha registrada</div>'}
+      </div>
+      ${hdr('av','⚠️','Avarias',totAv?totAv+' em aberto':null,'var(--red)')}
+        ${avCards||'<div style="font-size:12px;color:var(--green);text-align:center;padding:8px 0">✅ Nenhuma avaria em aberto</div>'}
+      </div>
+      ${hdr('rel','📋','Relatórios',null,null)}
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button onclick="abrirRelatorioManual()" style="width:100%;padding:12px;border-radius:10px;border:1px solid #2563EB40;background:#2563EB10;color:var(--blue);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">📄 Recolha & Abastecimento</button>
+          <button onclick="abrirRelatorioSoltura()" style="width:100%;padding:12px;border-radius:10px;border:1px solid #8B5CF640;background:#8B5CF610;color:#8B5CF6;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">🚌 Relatório de Soltura</button>
+        </div>
+      </div>
+    </div>`
+  :`<div style="padding:0 14px 14px;display:flex;flex-direction:column;gap:8px">
+      <button onclick="abrirRelatorioManual()" style="width:100%;padding:13px;border-radius:12px;border:1px solid #2563EB40;background:#2563EB10;color:var(--blue);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">📄 Relatório Recolha & Abastecimento</button>
+      <button onclick="abrirRelatorioSoltura()" style="width:100%;padding:13px;border-radius:12px;border:1px solid #8B5CF640;background:#8B5CF610;color:#8B5CF6;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">🚌 Relatório de Soltura</button>
+    </div>`;
+
+  const tz=opTimezone();
   render(`
     <div class="sl">📊 Painel do Dia</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 14px;margin-bottom:8px">
@@ -558,22 +657,13 @@ async function telaHome(){
       <div class="kpi2"><div class="kpi2-v" style="color:${lavE===lavT&&lavT>0?'var(--green)':'var(--blue)'}">${lavT>0?lavE+'/'+lavT:'—'}</div><div class="kpi2-l">Lavagem</div></div>
     </div>
     <div class="card">
-      <div style="font-size:12px;color:var(--text3)">${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'})} · ${agora.toLocaleDateString('pt-BR',{weekday:'long',timeZone:'America/Manaus'})}</div>
-    <div class="card">
-      <div style="font-size:12px;color:var(--text3)">${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'})} · ${agora.toLocaleDateString('pt-BR',{weekday:'long',timeZone:'America/Manaus'})}</div>
+      <div style="font-size:12px;color:var(--text3)">${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:tz})} · ${agora.toLocaleDateString('pt-BR',{weekday:'long',timeZone:tz})}</div>
       <div style="margin-top:10px;display:flex;gap:8px">
         <button onclick="S.turno='dia';telaHome()" style="flex:1;padding:8px;border-radius:8px;border:1px solid ${S.turno==='dia'?'var(--blue)':'var(--border)'};background:${S.turno==='dia'?'#2563EB18':'transparent'};color:${S.turno==='dia'?'var(--blue)':'var(--text3)'};font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">☀️ Dia</button>
         <button onclick="S.turno='noite';telaHome()" style="flex:1;padding:8px;border-radius:8px;border:1px solid ${S.turno==='noite'?'var(--blue)':'var(--border)'};background:${S.turno==='noite'?'#2563EB18':'transparent'};color:${S.turno==='noite'?'var(--blue)':'var(--text3)'};font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">🌙 Noite</button>
       </div>
     </div>
-    <div style="padding:0 14px 14px;display:flex;flex-direction:column;gap:8px">
-      <button onclick="abrirRelatorioManual()" style="width:100%;padding:13px;border-radius:12px;border:1px solid #2563EB40;background:#2563EB10;color:var(--blue);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
-        📄 Relatório Recolha & Abastecimento
-      </button>
-      <button onclick="abrirRelatorioSoltura()" style="width:100%;padding:13px;border-radius:12px;border:1px solid #8B5CF640;background:#8B5CF610;color:#8B5CF6;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
-        🚌 Relatório de Soltura
-      </button>
-    </div>`);
+    ${painelCtrl}`);
 }
 
 // ── LAVAGEM (Lavador) ─────────────────────────────────────
@@ -781,6 +871,19 @@ async function telaSoltura(dataFiltro=null){
     const{data:a}=await sb.from('abastecimento_checklist').select('prefixo,horario,data')
       .eq('garagem_id',gid).in('data',[_sdata,dAnteriorStr]);
     if(a){a.forEach(x=>{abSet.add(x.prefixo);if(x.horario&&!abHoraMap.has(x.prefixo))abHoraMap.set(x.prefixo,x.horario);});}
+  }catch(e){}
+  // Cruzamento direto com recolha_checklist — corrige dessincronização de data
+  // (plantonista pode gravar com _diaRef diferente do _sdata que o líder visualiza)
+  try{
+    const dMenos1=opAddDays(_sdata,-1);
+    const{data:recDireto}=await sb.from('recolha_checklist')
+      .select('prefixo,horario_real,created_at')
+      .eq('garagem_id',gid)
+      .in('data_recolha',[_sdata,dMenos1]);
+    (recDireto||[]).forEach(r=>{
+      recSet.add(r.prefixo);
+      if(r.horario_real&&!recHoraMap.has(r.prefixo))recHoraMap.set(r.prefixo,r.horario_real);
+    });
   }catch(e){}
   window._recMap=recSet;
   window._abMap=abSet;
