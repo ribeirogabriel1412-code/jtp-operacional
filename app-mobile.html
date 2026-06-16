@@ -539,7 +539,7 @@ function moeda(v){return 'R$ '+parseFloat(v||0).toLocaleString('pt-BR',{minimumF
 let _homePanel=null;
 function _toggleHomePanel(id){
   _homePanel=_homePanel===id?null:id;
-  ['rec','av','rel'].forEach(p=>{
+  ['rec','av','lav','rel'].forEach(p=>{
     const b=document.getElementById('hp-'+p+'-body');
     const a=document.getElementById('hp-arr-'+p);
     if(b)b.style.display=_homePanel===p?'block':'none';
@@ -558,13 +558,22 @@ async function telaHome(){
     sb.from('frota').select('status').eq('garagem_id',gid),
     sb.from('ocorrencias_22').select('id').eq('garagem_id',gid).neq('status','liberado'),
     sb.from('soltura_2_10').select('saiu').eq('garagem_id',gid).eq('data',data),
-    sb.from('checklist_lavagem').select('status').eq('garagem_id',gid).eq('data',data),
+    sb.from('checklist_lavagem').select('status,tipo_lavagem,prefixo,validado_patio').eq('garagem_id',gid).eq('data',data).not('status','in','("cancelado","arquivado")'),
   ]);
   const tot=(fr||[]).length,ind=(oc||[]).length;
   const pctD=tot>0?(((tot-ind)/tot)*100).toFixed(0):100;
   const saiu=(sol||[]).filter(r=>r.saiu===true).length,sTot=(sol||[]).length;
   const pctS=sTot>0?((saiu/sTot)*100).toFixed(0):null;
-  const lavE=(lav||[]).filter(l=>l.status==='executado').length,lavT=(lav||[]).length;
+  const lavList=lav||[];
+  const lavE=lavList.filter(l=>l.status==='executado').length,lavT=lavList.length;
+  // Breakdown por tipo
+  const lavP=lavList.filter(l=>l.tipo_lavagem==='pesada'||l.tipo_lavagem==='preventiva');
+  const lavM=lavList.filter(l=>l.tipo_lavagem==='media'||l.tipo_lavagem==='simples');
+  const lavL=lavList.filter(l=>l.tipo_lavagem==='leve');
+  const lavPok=lavP.filter(l=>l.status==='executado').length;
+  const lavMok=lavM.filter(l=>l.status==='executado').length;
+  const lavLok=lavL.filter(l=>l.status==='executado').length;
+  const lavPend=lavList.filter(l=>l.status!=='executado'&&l.tipo_lavagem!=='leve');
 
   // Queries dos Pontos de Controle
   let recList=[],abList=[],escalaD1=[],avariasList=[];
@@ -634,6 +643,43 @@ async function telaHome(){
       </div>
       ${hdr('av','⚠️','Avarias',totAv?totAv+' em aberto':null,'var(--red)')}
         ${avCards||'<div style="font-size:12px;color:var(--green);text-align:center;padding:8px 0">✅ Nenhuma avaria em aberto</div>'}
+      </div>
+      ${hdr('lav','🚿','Lavagem',lavT?lavE+'/'+lavT+(lavE===lavT&&lavT>0?' ✅':''):null,lavE===lavT&&lavT>0?'var(--green)':'var(--blue)')}
+        ${lavT===0
+          ? '<div style="font-size:12px;color:var(--text4);text-align:center;padding:8px 0">Sem plano de lavagem hoje</div>'
+          : `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px">
+              <div style="background:#F59E0B10;border:1px solid #F59E0B30;border-radius:10px;padding:8px;text-align:center">
+                <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:800;color:var(--amber)">${lavPok}/${lavP.length}</div>
+                <div style="font-size:9px;color:var(--amber);font-weight:700">🟡 PESADA</div>
+              </div>
+              <div style="background:#2563EB10;border:1px solid #2563EB30;border-radius:10px;padding:8px;text-align:center">
+                <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:800;color:var(--blue)">${lavMok}/${lavM.length}</div>
+                <div style="font-size:9px;color:var(--blue);font-weight:700">🔵 MÉDIA</div>
+              </div>
+              <div style="background:#10B98110;border:1px solid #10B98130;border-radius:10px;padding:8px;text-align:center">
+                <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:800;color:#10B981">${lavLok}/${lavL.length}</div>
+                <div style="font-size:9px;color:#10B981;font-weight:700">🟢 LEVE</div>
+              </div>
+            </div>
+            <div style="height:5px;background:var(--border);border-radius:99px;overflow:hidden;margin-bottom:4px">
+              <div style="height:100%;width:${lavT?Math.round(lavE/lavT*100):0}%;background:${lavE===lavT&&lavT>0?'var(--green)':'var(--blue)'}"></div>
+            </div>
+            <div style="font-size:10px;color:var(--text3);margin-bottom:10px">${lavE}/${lavT} executados · ${lavT?Math.round(lavE/lavT*100):0}%</div>
+            ${lavPend.length
+              ? '<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">⏳ Pesada/Média pendentes</div>'
+                + lavPend.slice(0,6).map(v=>{
+                    const cor=v.tipo_lavagem==='pesada'?'var(--amber)':'var(--blue)';
+                    const lbl=v.tipo_lavagem==='pesada'?'🟡':'🔵';
+                    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border2)">
+                      <span style="font-family:'DM Mono',monospace;font-weight:700;font-size:12px">${v.prefixo}</span>
+                      <span style="font-size:10px;color:${cor};font-weight:700">${lbl} ${v.tipo_lavagem==='pesada'?'Pesada':'Média'}</span>
+                    </div>`;
+                  }).join('')
+                + (lavPend.length>6?`<div style="font-size:11px;color:var(--text3);text-align:center;padding:6px 0">+${lavPend.length-6} pendentes</div>`:'')
+              : '<div style="font-size:12px;color:var(--green);text-align:center;padding:4px 0">✅ Pesada e Média concluídas</div>'
+            }
+            <button onclick="setTela('lav_pesada')" style="width:100%;margin-top:10px;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">📋 Abrir gestão de lavagem →</button>`
+        }
       </div>
       ${hdr('rel','📋','Relatórios',null,null)}
         <div style="display:flex;flex-direction:column;gap:8px">
