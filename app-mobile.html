@@ -3371,7 +3371,12 @@ async function salvarRecolha(horarioRef=''){
     }).select('id');
     rcRows=rcRows2; error=e2;
   }
-  if(error){toast('Erro ao salvar: '+error.message,'err',6000);return;}
+  if(error){
+    toast('Erro ao salvar: '+error.message,'err',8000);
+    const btn=document.querySelector('#shbody button[onclick*="salvarRecolha"]');
+    if(btn){btn.textContent='❌ '+error.message;btn.style.background='var(--red)';}
+    return;
+  }
 
   // Se avaria, registra no dashboard de avarias
   if(status==='avaria'){
