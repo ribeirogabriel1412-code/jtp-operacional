@@ -769,11 +769,15 @@ tr:hover td{background:#1F293780}
 <div id="print-210"></div>
 
 <script type="module">
-import { SUPABASE_URL, SUPABASE_PK, sb, S, getAuthKey } from './core/base.js';
+const {createClient}=window.supabase;
+const SUPABASE_URL='https://yxwxcxdegkvjvwchemsm.supabase.co';
+// Publishable Key para auth + Anon Key JWT para operações RLS
+const SUPABASE_PK='sb_publishable_SvC1D0cMk94sZ_9kYv41QQ_RJVrSuUV';
+const sb=createClient(SUPABASE_URL,SUPABASE_PK);
+const S={user:null,perfil:null,tela:'painel',subtela:null,turno:'dia',garagens:[],frota:[],soltura210:[],filtroFrota:'todos',editVId:null,editSaidaId:null,editUserId:null,data210:null};
+function getAuthKey(){return S?.accessToken||SUPABASE_PK;}
 
-window.sb = sb;
-window.S = S;
-window.getAuthKey = getAuthKey;
+window.sb=sb; window.S=S; window.getAuthKey=getAuthKey;
 
 if(window.pdfjsLib&&pdfjsLib.GlobalWorkerOptions){
   pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
