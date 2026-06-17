@@ -383,7 +383,7 @@ tr:hover td{background:#1F293780}
         <input type="checkbox" id="ev-garantia" style="width:16px;height:16px;accent-color:var(--blue)" onchange="document.getElementById('ev-garantia-wrap').style.display=this.checked?'block':'none'">
         Veículo em garantia
       </label>
-      <div id="ev-garantia-wrap" style="display:none"><label class="fl">Válida até</label><input class="fi" id="ev-garantia-ate" type="date" style="margin-bottom:0"></div>
+      <div id="ev-garantia-wrap" style="display:none"><label class="fl">KM de entrada em garantia</label><div style="display:flex;gap:6px;align-items:center"><input class="fi" id="ev-garantia-km" type="number" placeholder="Ex: 12500" style="margin-bottom:0;flex:1"><button type="button" style="padding:8px 10px;background:var(--surface3);border:1px solid var(--border);border-radius:8px;color:var(--text2);cursor:pointer;font-size:13px" onclick="document.getElementById('ev-garantia-km').focus()" title="Campo de KM">km</button></div></div>
     </div>
     <div id="ev-mover-wrap" style="display:none">
       <div style="color:var(--text3);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Mover para Garagem</div>
@@ -1427,7 +1427,7 @@ async function renderFrota(){
             <span style="font-size:9px;color:var(--text4)">${new Date(ult.data+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</span>
           </div>`
         :`<div style="margin-top:4px;font-size:9px;color:var(--text4)">🚿 Sem registro</div>`;
-      const garantiaH=v.garantia?`<div style="margin-top:4px;font-size:9px;font-weight:700;color:#10B981">✓ Garantia${v.garantia_ate?' até '+new Date(v.garantia_ate+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit'}):''}</div>`:'';
+      const garantiaH=v.garantia?`<div style="margin-top:4px;font-size:9px;font-weight:700;color:#10B981">✓ Garantia${v.garantia_km?' desde '+Number(v.garantia_km).toLocaleString('pt-BR')+'km':''}</div>`:'';
       return`<div class="frota-card" onclick="openModalEditV('${v.id}')">
         <div>
           <div class="fp">${v.prefixo}</div>
@@ -10422,6 +10422,57 @@ function prevCarregarKmMediasLocal(){
 function prevSalvarKmMediasLocal(){
   try{ localStorage.setItem(prevKmStorageKey(),JSON.stringify(_prevKmMedias||{})); }catch(e){}
 }
+async function prevSalvarKmMediasSupabase(){
+  try{
+    const gid=getGid()||null;
+    const registros=Object.values(_prevKmMedias||{}).map(m=>({
+      prefixo:m.prefixo,
+      garagem_id:gid,
+      leituras:m.leituras||0,
+      dias_periodo:m.diasPeriodo||0,
+      dias_com_movimento:m.diasComMovimento||0,
+      km_total:m.kmTotal||0,
+      ultimo_odometro:m.ultimoOdometro||0,
+      ultima_data:m.ultimaData||null,
+      media_dia:m.mediaDia||0,
+      media_semana:m.mediaSemana||0,
+      origem:m.origem||null,
+      updated_at:new Date().toISOString()
+    }));
+    if(!registros.length) return;
+    const{error}=await sb.from('km_base').upsert(registros,{onConflict:'prefixo'});
+    if(error) console.warn('[KM BASE Supabase save]',error.message);
+    else toast(`Base KM salva no servidor: ${registros.length} carro(s)`);
+  }catch(e){ console.warn('[KM BASE Supabase save]',e); }
+}
+async function prevCarregarKmMediasSupabase(){
+  try{
+    const gid=getGid()||null;
+    let q=sb.from('km_base').select('*');
+    if(gid) q=q.eq('garagem_id',gid); else q=q.is('garagem_id',null);
+    const{data,error}=await q;
+    if(error||!data?.length) return false;
+    const medias={};
+    data.forEach(r=>{
+      medias[r.prefixo]={
+        prefixo:r.prefixo,
+        leituras:r.leituras,
+        diasPeriodo:r.dias_periodo,
+        diasComMovimento:r.dias_com_movimento,
+        kmTotal:r.km_total,
+        ultimoOdometro:r.ultimo_odometro,
+        ultimaData:r.ultima_data||'',
+        mediaDia:r.media_dia,
+        mediaSemana:r.media_semana,
+        origem:r.origem||'Servidor'
+      };
+    });
+    _prevKmMedias=medias;
+    prevSalvarKmMediasLocal();
+    return true;
+  }catch(e){ console.warn('[KM BASE Supabase load]',e); return false; }
+}
+let _prevKmSupabaseTentado=false;
 function prevPrefixoKey(v){
   const d=String(v??'').replace(/\D/g,'');
   if(!d)return '';
@@ -10582,8 +10633,10 @@ async function processarPrevKmBase(input){
     }
     _prevKmMedias=medias;
     prevSalvarKmMediasLocal();
+    _prevKmSupabaseTentado=true;
     const dias=Object.values(medias)[0]?.diasPeriodo||0;
     toast(`Base KM carregada: ${Object.keys(medias).length} carro(s) • ${dias} dia(s) únicos`);
+    prevSalvarKmMediasSupabase();
     renderFerrPrev();
   }catch(e){
     console.error('[PREV KM BASE]',e);
@@ -10885,6 +10938,10 @@ function prevExcluirImportacaoHist(id){
 }
 function renderFerrPrev(){
   prevCarregarKmMediasLocal();
+  if(!Object.keys(_prevKmMedias||{}).length && !_prevKmSupabaseTentado){
+    _prevKmSupabaseTentado=true;
+    prevCarregarKmMediasSupabase().then(ok=>{ if(ok) renderFerrPrev(); });
+  }
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
   const total=_prevDados.length;
   const importado=_prevImportadoEm?new Date(_prevImportadoEm).toLocaleString('pt-BR'):'Nenhum PDF importado';
@@ -15233,7 +15290,7 @@ async function openModalEditV(id){
   document.getElementById('ev-cor').value=v.cor||'';
   const gChecked=v.garantia===true;
   document.getElementById('ev-garantia').checked=gChecked;
-  document.getElementById('ev-garantia-ate').value=v.garantia_ate||'';
+  document.getElementById('ev-garantia-km').value=v.garantia_km||'';
   document.getElementById('ev-garantia-wrap').style.display=gChecked?'block':'none';
   const isAdmin=S.perfil?.is_admin;
   const moverWrap=document.getElementById('ev-mover-wrap');
@@ -15265,7 +15322,7 @@ async function salvarVeiculoEdit(){
     capacidade:parseInt(document.getElementById('ev-capacidade').value)||null,
     cor:document.getElementById('ev-cor').value.trim()||null,
     garantia:document.getElementById('ev-garantia').checked,
-    garantia_ate:document.getElementById('ev-garantia-ate').value||null,
+    garantia_km:parseInt(document.getElementById('ev-garantia-km').value)||null,
   };
   if(S.perfil?.is_admin) updates.garagem_id=document.getElementById('ev-garagem').value;
   const{error}=await sb.from('frota').update(updates).eq('id',S.editVId);
@@ -15317,8 +15374,7 @@ function processExcelFile(event){
         'km':'km','quilometragem':'km','odometro':'km','kilometragem':'km',
         'capacidade':'capacidade','passageiros':'capacidade','lotacao':'capacidade',
         'garantia':'garantia','emgarantia':'garantia',
-        'garantiaate':'garantia_ate','validadedagarantia':'garantia_ate','fimgarantia':'garantia_ate',
-        'garantiaaté':'garantia_ate','datadevencimento':'garantia_ate','datavencimento':'garantia_ate',
+        'garantiakm':'garantia_km','kmgarantia':'garantia_km','kmentrada':'garantia_km','kmdeentrada':'garantia_km','kmdegarantia':'garantia_km',
         'cor':'cor',
         'garagem':'_garagem_nome','nomegaragem':'_garagem_nome','garagemdooficial':'_garagem_nome',
       };
@@ -15338,10 +15394,7 @@ function processExcelFile(event){
         if(!out.prefixo) return null;
         out.status=statusMap[norm(String(out.status||'disponivel'))]||'disponivel';
         if(out.garantia!==undefined){const g=norm(String(out.garantia));out.garantia=['sim','yes','true','1','s'].includes(g);}
-        if(out.garantia_ate){
-          if(out.garantia_ate instanceof Date) out.garantia_ate=out.garantia_ate.toISOString().split('T')[0];
-          else{const m=String(out.garantia_ate).trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);if(m) out.garantia_ate=`${m[3]}-${m[2]}-${m[1]}`;}
-        }
+        if(out.garantia_km) out.garantia_km=parseInt(String(out.garantia_km).replace(/\D/g,''))||null;
         if(out.ano) out.ano=String(out.ano).replace(/\D/g,'').slice(0,4)||null;
         if(out.km) out.km=parseFloat(String(out.km).replace('.','').replace(',','.'))||null;
         if(out.capacidade) out.capacidade=parseInt(out.capacidade)||null;
@@ -15351,8 +15404,8 @@ function processExcelFile(event){
       if(!parsed.length){toast('Nenhuma linha com Prefixo encontrada!','err');return;}
       _excelRows=parsed;
 
-      const cols=['prefixo','modelo','placa','ano','status','chassi','garantia','garantia_ate'];
-      const lbl={prefixo:'Prefixo',modelo:'Modelo',placa:'Placa',ano:'Ano',status:'Status',chassi:'Chassi',garantia:'Garantia',garantia_ate:'Até'};
+      const cols=['prefixo','modelo','placa','ano','status','chassi','garantia','garantia_km'];
+      const lbl={prefixo:'Prefixo',modelo:'Modelo',placa:'Placa',ano:'Ano',status:'Status',chassi:'Chassi',garantia:'Garantia',garantia_km:'KM Entrada'};
       const thead=`<thead style="position:sticky;top:0;background:var(--surface2)"><tr>${cols.map(c=>`<th style="padding:6px 10px;text-align:left;font-size:11px;color:var(--text3);white-space:nowrap;border-bottom:1px solid var(--border)">${lbl[c]||c}</th>`).join('')}</tr></thead>`;
       const tbody=`<tbody>${parsed.slice(0,25).map(r=>`<tr>${cols.map(c=>`<td style="padding:5px 10px;font-size:12px;border-bottom:1px solid var(--border);white-space:nowrap${c==='prefixo'?";font-family:'DM Mono',monospace;font-weight:700":''}">${r[c]!==undefined?(c==='garantia'?(r[c]?'Sim':'—'):(r[c]||'—')):'—'}</td>`).join('')}</tr>`).join('')}</tbody>`;
       document.getElementById('imp-table').innerHTML=thead+tbody;
