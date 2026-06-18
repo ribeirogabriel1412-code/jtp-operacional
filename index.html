@@ -14814,12 +14814,13 @@ async function renderFerrOsTurno(dataRef=null,backArg='',tabsArg=''){
   const isFechada=o=>{const c=(o.condicao_os||'').toUpperCase();return c.includes('FECHAD')||c.includes('CANCELAD');};
 
   // Filtra OS dentro de um período
+  // hora_os vem do Oracle (fuso SP = UTC-3); Porto Velho é UTC-4 → +1h nos limites
   const osEmPeriodo=(periodo,arr)=>arr.filter(o=>{
     const d=dataOS(o), h=horaOS(o);
-    if(periodo.tipo==='dia')  return d===periodo.dData && h>='08:00' && h<='19:59';
-    // noite: dData 20:00-23:59 + nData 00:00-07:59
-    if(d===periodo.dData && h>='20:00') return true;
-    if(periodo.nData && d===periodo.nData && h<='07:59') return true;
+    if(periodo.tipo==='dia')  return d===periodo.dData && h>='09:00' && h<='20:59';
+    // noite: dData 21:00-23:59 (SP) + nData 00:00-08:59 (SP)
+    if(d===periodo.dData && h>='21:00') return true;
+    if(periodo.nData && d===periodo.nData && h<='08:59') return true;
     return false;
   });
 
