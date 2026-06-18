@@ -8630,7 +8630,7 @@ async function renderFerrPCM(aba='painel'){
     .gte('hora_liberacao',inicioFluxo);
 
   // OS herdadas de turno anterior (abertas antes do inicioFluxo)
-  const{data:herdadasRaw}=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado').lt('hora_entrada',inicioFluxo).order('hora_entrada',{ascending:true});
+  const{data:herdadasRaw}=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado').lt('hora_entrada',inicioFluxo).order('hora_entrada',{ascending:false});
   const herdadas=(herdadasRaw||[]).filter(o=>{try{return localStorage.getItem('oc22_ign_'+o.id+'_'+hoje())!=='1'}catch(e){return true}});
 
   // Valetamento de preventivas — próximo sábado
