@@ -539,7 +539,7 @@ function moeda(v){return 'R$ '+parseFloat(v||0).toLocaleString('pt-BR',{minimumF
 let _homePanel=null;
 function _toggleHomePanel(id){
   _homePanel=_homePanel===id?null:id;
-  ['rec','av','lav','rel'].forEach(p=>{
+  ['rec','av','lav','lubri','rel'].forEach(p=>{
     const b=document.getElementById('hp-'+p+'-body');
     const a=document.getElementById('hp-arr-'+p);
     if(b)b.style.display=_homePanel===p?'block':'none';
@@ -550,15 +550,16 @@ function _toggleHomePanel(id){
 async function telaHome(){
   const gid=getGid();const agora=new Date();const data=hoje();
   const c=cargo();
-  const temPainel=['lider_patio','supervisor','coordenador','lider_pcm','lider_operacional'].includes(c);
+  const temPainel=['lider_patio','supervisor','coordenador','lider_pcm','lider_operacional','gerente_garagem'].includes(c);
   const dRef=window._diaRef||_diaRefDefault();
 
   // Queries base
-  const[{data:fr},{data:oc},{data:sol},{data:lav}]=await Promise.all([
+  const[{data:fr},{data:oc},{data:sol},{data:lav},{data:lubriHoje}]=await Promise.all([
     sb.from('frota').select('status').eq('garagem_id',gid),
     sb.from('ocorrencias_22').select('id').eq('garagem_id',gid).neq('status','liberado'),
     sb.from('soltura_2_10').select('saiu').eq('garagem_id',gid).eq('data',data),
     sb.from('checklist_lavagem').select('status,tipo_lavagem,prefixo,validado_patio').eq('garagem_id',gid).eq('data',data).not('status','in','("cancelado","arquivado")'),
+    sb.from('checklist_lubrificacao').select('is_vw').eq('garagem_id',gid).eq('data',data),
   ]);
   const tot=(fr||[]).length,ind=(oc||[]).length;
   const pctD=tot>0?(((tot-ind)/tot)*100).toFixed(0):100;
@@ -566,6 +567,9 @@ async function telaHome(){
   const pctS=sTot>0?((saiu/sTot)*100).toFixed(0):null;
   const lavList=lav||[];
   const lavE=lavList.filter(l=>l.status==='executado').length,lavT=lavList.length;
+  const lubriVWok=(lubriHoje||[]).filter(r=>r.is_vw).length;
+  const lubriRotOk=(lubriHoje||[]).filter(r=>!r.is_vw).length;
+  const lubriTot=lubriVWok+lubriRotOk;
   // Breakdown por tipo
   const lavP=lavList.filter(l=>l.tipo_lavagem==='pesada'||l.tipo_lavagem==='preventiva');
   const lavM=lavList.filter(l=>l.tipo_lavagem==='media'||l.tipo_lavagem==='simples');
@@ -680,6 +684,21 @@ async function telaHome(){
             }
             <button onclick="setTela('lav_pesada')" style="width:100%;margin-top:10px;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">📋 Abrir gestão de lavagem →</button>`
         }
+      </div>
+      ${hdr('lubri','🛢️','Lubrificação',lubriTot>0?`${lubriTot} feito${lubriTot!==1?'s':''}`:null,lubriTot>0?'var(--green)':'var(--text3)')}
+        ${lubriTot===0
+          ?'<div style="font-size:12px;color:var(--text4);text-align:center;padding:8px 0">Nenhuma lubrificação registrada hoje</div>'
+          :`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+              <div style="background:#2563EB10;border:1px solid #2563EB30;border-radius:10px;padding:10px;text-align:center">
+                <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:800;color:var(--blue)">${lubriVWok}</div>
+                <div style="font-size:10px;color:var(--blue);font-weight:700">🔵 VW</div>
+              </div>
+              <div style="background:#10B98110;border:1px solid #10B98130;border-radius:10px;padding:10px;text-align:center">
+                <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:800;color:#10B981">${lubriRotOk}</div>
+                <div style="font-size:10px;color:#10B981;font-weight:700">📅 Rotação</div>
+              </div>
+            </div>`}
+        <button onclick="setTela('lubri_rel')" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">📋 Ver relatório de lubrificação →</button>
       </div>
       ${hdr('rel','📋','Relatórios',null,null)}
         <div style="display:flex;flex-direction:column;gap:8px">
@@ -6847,7 +6866,7 @@ async function telaLubrificacao(){
   const gid=getGid();
   const{data:frota}=await sb.from('frota').select('prefixo,modelo').eq('garagem_id',gid).neq('status','sinistro').order('prefixo');
   if(!frota?.length){render(`<div class="empty"><div class="empty-ic">🛢️</div><div style="font-weight:700;font-size:16px;margin-bottom:8px">Frota não encontrada</div></div>`);return}
-  const isVW=m=>(m||'').toUpperCase().includes('VOLKSWAGEN');
+  const isVW=m=>{const u=(m||'').toUpperCase();return u.includes('VOLKSWAGEN')||u.includes('VOLKSBUS')||u.startsWith('VW ');};
   const vw=frota.filter(v=>isVW(v.modelo));
   const outros=frota.filter(v=>!isVW(v.modelo));
   const tam=Math.ceil(outros.length/5);
