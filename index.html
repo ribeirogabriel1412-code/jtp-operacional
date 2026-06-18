@@ -302,6 +302,7 @@ tr:hover td{background:#1F293780}
         <button class="sub-btn" onclick="navToSub('ferr-ctrl')">✅ Controle Soltura</button>
         <button class="sub-btn" onclick="navToSub('ferr-almox')">📦 Almoxarifado / Valetamento</button>
         <button class="sub-btn" onclick="navToSub('ferr-lubri')">🛢️ Relatório Lubrificação</button>
+        <button class="sub-btn" onclick="navToSub('ferr-os-turno')">🔄 OS por Turno — PRAXIO</button>
       </div>
       <button class="nav-btn" onclick="toggleSub('sub-rel','arr-rel',this)"><span>📋</span> Relatórios <span id="arr-rel" style="margin-left:auto;font-size:10px;color:var(--text4)">▶</span></button>
       <div class="submenu" id="sub-rel">
@@ -895,6 +896,11 @@ const FERRAMENTAS_DEF=[
     valida:   [],
     visualiza:['gerente_garagem','diretoria','coordenador','supervisor','lider_operacional','lider_pcm'],
   },
+  {id:'ferr-os-turno', icon:'🔄', nome:'OS por Turno — PRAXIO',
+    executa:  [],
+    valida:   [],
+    visualiza:['lider_pcm','assistente_pcm','lider_oficina','gerente_garagem','diretoria'],
+  },
 ];
 
 const PAPEIS=['executa','valida','visualiza'];
@@ -1197,7 +1203,7 @@ function navToSub(sub){
   S.subtela=sub;
   document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes(sub))b.classList.add('active')});
-  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-218':renderFerr218,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios,'ferr-lubri':renderFerrLubri};
+  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-218':renderFerr218,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios,'ferr-lubri':renderFerrLubri,'ferr-os-turno':renderFerrOsTurno};
   if(map[sub]) map[sub]();
 }
 
@@ -3184,6 +3190,7 @@ function renderFerramentas(){
     'ferr-almox':'Cestos de valetamento agrupados por carro. Almoxarifado codifica, separa, nega ou atualiza chegada.',
     'ferr-211':'Todos os veículos parados com tempo, status e previsão. Alerta automático de vencimento.',
     'ferr-212':'Disponibilidade, MTTR, OS por tipo e ranking de mecânicos. Atualizado em tempo real.',
+    'ferr-os-turno':'OS abertas no PRAXIO por turno (Dia/Noite). Mostra o turno atual e o anterior ainda em aberto.',
   };
 
   const tools=FERRAMENTAS_DEF.filter(f=>temAcessoFerr(f.id)&&f.id!=='ferr-lav-lavador'||isLavador()&&f.id==='ferr-lav-lavador');
@@ -9404,10 +9411,15 @@ async function renderConsolidado(gid,back,tabs){
   var ontemStr=opAddDays(hoje_,-1);
   var ini=ontemStr+'T08:00', fim=hoje_+'T08:00';
   var labelPeriodo=ontemStr.split('-').reverse().join('/')+' 08:00 → '+hoje_.split('-').reverse().join('/')+' 08:00';
-  var r1=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).gte('hora_entrada',new Date(ini).toISOString()).lte('hora_entrada',new Date(fim).toISOString()).order('prefixo');
-  var r2=await sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).gte('criado_em',new Date(ini).toISOString());
-  var r3=await sb.from('pcm_orcamento').select('valor_disponivel').eq('garagem_id',gid).eq('data',hoje_).limit(1);
-  var ocs=r1.data||[], reqs=r2.data||[];
+  var iniISO=new Date(ini).toISOString(), fimISO=new Date(fim).toISOString();
+  var [r1a,r1b,r2,r3]=await Promise.all([
+    sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).gte('hora_entrada',iniISO).lte('hora_entrada',fimISO),
+    sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).eq('status','liberado').gte('hora_liberacao',iniISO).lte('hora_liberacao',fimISO),
+    sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).gte('criado_em',iniISO),
+    sb.from('pcm_orcamento').select('valor_disponivel').eq('garagem_id',gid).eq('data',hoje_).limit(1),
+  ]);
+  var ocMap={};[...(r1a.data||[]),...(r1b.data||[])].forEach(function(o){ocMap[o.id]=o;});
+  var ocs=Object.values(ocMap).sort(function(a,b){return a.prefixo.localeCompare(b.prefixo);}), reqs=r2.data||[];
   var orcamento=parseFloat((r3.data&&r3.data[0]&&r3.data[0].valor_disponivel)||0);
   var reqMap={};
   reqs.forEach(function(r){var k=r.ocorrencia_id||'avulso';if(!reqMap[k])reqMap[k]=[];reqMap[k].push(r);});
@@ -14733,6 +14745,185 @@ async function renderFerrLubri(dataFiltro=null){
     </table></div>
   </div>`:`<div class="empty"><div style="font-size:40px">🛢️</div><div style="color:var(--text2);font-weight:600;margin:12px 0">Nenhuma lubrificação registrada nesta data</div></div>`;
   setMain(`${back}<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div style="font-size:18px;font-weight:800">🛢️ Relatório de Lubrificação</div></div>${filtroData}${kpis}${secAlerta}${tabela}`);
+}
+
+async function renderFerrOsTurno(dataRef=null){
+  const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  const gid=getGid();
+
+  // ── Detectar turno atual ─────────────────────────────────────────
+  const now=new Date();
+  const hMin=now.getHours()*60+now.getMinutes();
+  let turnoAtual,isMadrugada=false;
+
+  // 00:00–07:59 = madrugada → extensão da Noite do dia anterior
+  if(hMin<8*60){
+    isMadrugada=true; turnoAtual='noite';
+  } else if(hMin<20*60){
+    turnoAtual='dia';
+  } else {
+    turnoAtual='noite';
+  }
+
+  // Data de referência do turno atual
+  if(!dataRef){
+    if(isMadrugada){
+      const d=new Date(now); d.setDate(d.getDate()-1);
+      dataRef=d.toISOString().split('T')[0];
+    } else {
+      dataRef=hoje();
+    }
+  }
+
+  // Datas adjacentes
+  const addDias=(iso,n)=>{const d=new Date(iso+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().split('T')[0];};
+  const dataAntes=addDias(dataRef,-1);
+  const dataDepois=addDias(dataRef,1);
+
+  // ── Períodos ────────────────────────────────────────────────────
+  // Turno Dia   = dataRef 08:00 – 19:59
+  // Turno Noite = dataRef 20:00 – dataRef+1 07:59
+  const periodoAtual = turnoAtual==='dia'
+    ? {tipo:'dia',  dData:dataRef,   nData:null,      label:'☀️ Turno Dia',   cor:'var(--amber)'}
+    : {tipo:'noite',dData:dataRef,   nData:dataDepois, label:'🌙 Turno Noite', cor:'#818CF8'};
+
+  const periodoAnt  = turnoAtual==='dia'
+    ? {tipo:'noite',dData:dataAntes, nData:dataRef,    label:'🌙 Turno Noite (anterior)', cor:'var(--text3)'}
+    : {tipo:'dia',  dData:dataRef,   nData:null,       label:'☀️ Turno Dia (anterior)',   cor:'var(--text3)'};
+
+  setMain(`${back}<div class="loading"><div class="spinner"></div></div>`);
+
+  // ── Buscar OS no PRAXIO ─────────────────────────────────────────
+  // Precisa cobrir no máximo dataAntes até dataDepois
+  const {data:osLista}=await sb.from('praxio_os')
+    .select('numero_os,prefixo_veic,defeito,hora_os,data_os,condicao_os,tipoos,tipo_servico,usuario_abertura,garagem,grupo_defeito,sincronizado_em')
+    .gte('data_os',dataAntes+'T00:00:00')
+    .lte('data_os',dataDepois+'T23:59:59')
+    .order('hora_os');
+
+  // Filtrar pela garagem do usuário (mesmo padrão existente no app)
+  const garNome=(S.garagens.find(g=>g.id===gid)?.nome||'').toUpperCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const todas=(osLista||[]).filter(o=>{
+    const og=(o.garagem||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    return garNome.split(' ').filter(t=>t.length>3).some(t=>og.includes(t));
+  });
+
+  // ── Helpers ──────────────────────────────────────────────────────
+  const dataOS=o=>(o.data_os||'').substring(0,10);
+  const horaOS=o=>(o.hora_os||'').trim().substring(0,5); // "HH:MM"
+  const isFechada=o=>{const c=(o.condicao_os||'').toUpperCase();return c.includes('FECHAD')||c.includes('CANCELAD');};
+
+  // Filtra OS dentro de um período
+  const osEmPeriodo=(periodo,arr)=>arr.filter(o=>{
+    const d=dataOS(o), h=horaOS(o);
+    if(periodo.tipo==='dia')  return d===periodo.dData && h>='08:00' && h<='19:59';
+    // noite: dData 20:00-23:59 + nData 00:00-07:59
+    if(d===periodo.dData && h>='20:00') return true;
+    if(periodo.nData && d===periodo.nData && h<='07:59') return true;
+    return false;
+  });
+
+  // Agrupar por numero_os (PI_MAN tem 1 linha por peça)
+  const agrupar=arr=>{
+    const m={};
+    arr.forEach(o=>{if(!m[o.numero_os])m[o.numero_os]={...o};});
+    return Object.values(m).sort((a,b)=>horaOS(a).localeCompare(horaOS(b)));
+  };
+
+  const osAtual   = agrupar(osEmPeriodo(periodoAtual, todas));
+  const osAntAbrt = agrupar(osEmPeriodo(periodoAnt,   todas).filter(o=>!isFechada(o)));
+  const osAntFech = agrupar(osEmPeriodo(periodoAnt,   todas).filter(o=>isFechada(o)));
+
+  // Badge de condição
+  const condBadge=o=>{
+    const c=(o.condicao_os||'—').replace(/_/g,' ');
+    const cor=isFechada(o)?'var(--text3)':'var(--red)';
+    return`<span style="font-size:10px;font-weight:700;color:${cor}">${c}</span>`;
+  };
+
+  // Normaliza prefixo "0002190" → "02.190"
+  const fmtPref=s=>{
+    const n=(s||'').replace(/\D/g,'');
+    if(n.length>=5) return n.slice(-5,n.length-3).padStart(2,'0')+'.'+n.slice(-3);
+    return s||'—';
+  };
+
+  // Render linha OS
+  const renderLinha=o=>`
+    <div style="display:grid;grid-template-columns:80px 64px 1fr 44px auto;gap:8px;align-items:center;padding:9px 0;border-top:1px solid var(--border)">
+      <span style="font-family:'DM Mono',monospace;font-weight:700;font-size:12px;color:var(--blue)">${o.numero_os||'—'}</span>
+      <span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700">${fmtPref(o.prefixo_veic)}</span>
+      <span style="font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(o.defeito||'').replace(/"/g,'&quot;')}">${o.defeito||o.grupo_defeito||'—'}</span>
+      <span style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace">${horaOS(o)}</span>
+      ${condBadge(o)}
+    </div>`;
+
+  // Render seção
+  const renderSecao=(label,cor,os,destaque=false)=>{
+    const alertaBadge=destaque&&os.length?`<span style="background:#EF444420;border:1px solid #EF444440;color:#EF4444;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;margin-left:8px">EM ABERTO</span>`:'';
+    return`<div style="border:1px solid ${destaque&&os.length?'#EF444440':'var(--border)'};border-radius:12px;padding:16px;margin-bottom:14px;background:var(--surface)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:13px;font-weight:800;color:${cor}">${label}${alertaBadge}</div>
+        <div style="font-size:12px;color:var(--text3)">${os.length} OS</div>
+      </div>
+      ${os.length
+        ?`<div style="display:grid;grid-template-columns:80px 64px 1fr 44px auto;gap:8px;padding:4px 0;font-size:10px;font-weight:700;color:var(--text4);text-transform:uppercase;letter-spacing:.5px">
+            <span>Nº OS</span><span>Prefixo</span><span>Defeito</span><span>Hora</span><span>Status</span>
+          </div>${os.map(renderLinha).join('')}`
+        :`<div style="font-size:13px;color:var(--text3);text-align:center;padding:14px 0">Nenhuma OS neste período</div>`
+      }
+    </div>`;
+  };
+
+  // ── Sync badge ───────────────────────────────────────────────────
+  const ultimoSync=(todas.reduce((mx,r)=>r.sincronizado_em>mx?r.sincronizado_em:mx,''));
+  const minSync=ultimoSync?Math.round((Date.now()-new Date(ultimoSync))/60000):null;
+  const syncBadge=minSync===null
+    ?`<span style="color:var(--red);font-size:11px">⚠️ Sem dados</span>`
+    :minSync<90
+      ?`<span style="color:var(--green);font-size:11px">✅ Sync há ${minSync} min</span>`
+      :`<span style="color:var(--amber);font-size:11px">⚠️ Sync há ${minSync} min</span>`;
+
+  // ── KPIs ─────────────────────────────────────────────────────────
+  const kpis=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px">
+    <div class="kpi ${osAntAbrt.length?'nok':'ok'}">
+      <div class="kpi-label">Herdadas abertas</div>
+      <div class="kpi-val" style="color:${osAntAbrt.length?'var(--red)':'var(--green)'}">${osAntAbrt.length}</div>
+    </div>
+    <div class="kpi ${osAtual.filter(o=>!isFechada(o)).length?'nok':'ok'}">
+      <div class="kpi-label">Abertas turno atual</div>
+      <div class="kpi-val" style="color:${osAtual.filter(o=>!isFechada(o)).length?'var(--amber)':'var(--green)'}">${osAtual.filter(o=>!isFechada(o)).length}</div>
+    </div>
+    <div class="kpi neu">
+      <div class="kpi-label">Fechadas turno atual</div>
+      <div class="kpi-val" style="color:var(--text2)">${osAtual.filter(o=>isFechada(o)).length}</div>
+    </div>
+  </div>`;
+
+  // ── Filtro de data ───────────────────────────────────────────────
+  const dtLabel=new Date(dataRef+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
+  const turnoLabel=turnoAtual==='dia'?'☀️ Dia (08:00–19:59)':'🌙 Noite (20:00–07:59)';
+  const filtro=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+    <span style="font-size:13px;font-weight:600;color:var(--text2)">Referência:</span>
+    <input id="osturno-data" class="fi" type="date" value="${dataRef}" onchange="renderFerrOsTurno(this.value)" style="margin-bottom:0;width:auto">
+    <button title="Abrir calendário" onclick="const el=document.getElementById('osturno-data');if(el?.showPicker)el.showPicker();else el?.focus();" style="width:38px;height:38px;border-radius:9px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:16px;cursor:pointer">📅</button>
+    <span style="font-size:12px;color:var(--text3);text-transform:capitalize">${dtLabel}</span>
+    ${isMadrugada?`<span style="font-size:11px;background:#8B5CF620;color:#8B5CF6;padding:2px 8px;border-radius:6px;font-weight:700">🌑 Madrugada → Noite de ${new Date(dataRef+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</span>`:''}
+    <span style="margin-left:auto">${syncBadge}</span>
+  </div>`;
+
+  setMain(`${back}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div style="font-size:18px;font-weight:800">🔄 OS por Turno — PRAXIO</div>
+      <span style="font-size:12px;background:var(--surface2);border:1px solid var(--border);padding:4px 10px;border-radius:8px;color:var(--text2)">${turnoLabel}</span>
+    </div>
+    ${filtro}${kpis}
+    ${osAntAbrt.length ? renderSecao(periodoAnt.label+' — ainda abertas','var(--red)',osAntAbrt,true) : ''}
+    ${renderSecao(periodoAtual.label,periodoAtual.cor,osAtual)}
+    ${osAntFech.length ? renderSecao(periodoAnt.label+' — fechadas','var(--text4)',osAntFech) : ''}
+    <div class="info-blue info-banner" style="margin-top:4px">ℹ️ Dados do Oracle PRAXIO • Sincronização automática a cada 1h</div>
+  `);
 }
 
 function renderRelatorios(){
