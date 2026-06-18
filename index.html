@@ -302,7 +302,6 @@ tr:hover td{background:#1F293780}
         <button class="sub-btn" onclick="navToSub('ferr-ctrl')">✅ Controle Soltura</button>
         <button class="sub-btn" onclick="navToSub('ferr-almox')">📦 Almoxarifado / Valetamento</button>
         <button class="sub-btn" onclick="navToSub('ferr-lubri')">🛢️ Relatório Lubrificação</button>
-        <button class="sub-btn" onclick="navToSub('ferr-os-turno')">🔄 OS por Turno — PRAXIO</button>
       </div>
       <button class="nav-btn" onclick="toggleSub('sub-rel','arr-rel',this)"><span>📋</span> Relatórios <span id="arr-rel" style="margin-left:auto;font-size:10px;color:var(--text4)">▶</span></button>
       <div class="submenu" id="sub-rel">
@@ -896,11 +895,6 @@ const FERRAMENTAS_DEF=[
     valida:   [],
     visualiza:['gerente_garagem','diretoria','coordenador','supervisor','lider_operacional','lider_pcm'],
   },
-  {id:'ferr-os-turno', icon:'🔄', nome:'OS por Turno — PRAXIO',
-    executa:  [],
-    valida:   [],
-    visualiza:['lider_pcm','assistente_pcm','lider_oficina','gerente_garagem','diretoria'],
-  },
 ];
 
 const PAPEIS=['executa','valida','visualiza'];
@@ -1203,7 +1197,7 @@ function navToSub(sub){
   S.subtela=sub;
   document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes(sub))b.classList.add('active')});
-  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-218':renderFerr218,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios,'ferr-lubri':renderFerrLubri,'ferr-os-turno':renderFerrOsTurno};
+  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-218':renderFerr218,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios,'ferr-lubri':renderFerrLubri};
   if(map[sub]) map[sub]();
 }
 
@@ -3190,7 +3184,6 @@ function renderFerramentas(){
     'ferr-almox':'Cestos de valetamento agrupados por carro. Almoxarifado codifica, separa, nega ou atualiza chegada.',
     'ferr-211':'Todos os veículos parados com tempo, status e previsão. Alerta automático de vencimento.',
     'ferr-212':'Disponibilidade, MTTR, OS por tipo e ranking de mecânicos. Atualizado em tempo real.',
-    'ferr-os-turno':'OS abertas no PRAXIO por turno (Dia/Noite). Mostra o turno atual e o anterior ainda em aberto.',
   };
 
   const tools=FERRAMENTAS_DEF.filter(f=>temAcessoFerr(f.id)&&f.id!=='ferr-lav-lavador'||isLavador()&&f.id==='ferr-lav-lavador');
@@ -7870,6 +7863,7 @@ async function renderFerrPCM(aba='painel'){
     <button class="filtro-btn${aba==='sap_precos'?' active':''}" onclick="renderFerrPCM('sap_precos')">💲 Preços SAP</button>
     <button class="filtro-btn${aba==='historico'?' active':''}" onclick="renderFerrPCM('historico')">🗂️ Histórico</button>
     <button class="filtro-btn${aba==='mao_obra'?' active':''}" onclick="renderFerrPCM('mao_obra')">⏱️ Mão de Obra</button>
+    <button class="filtro-btn${aba==='os_turno'?' active':''}" onclick="renderFerrPCM('os_turno')">🔄 OS Turno</button>
   </div>`;
 
   setMain(`<div class="loading"><div class="spinner"></div></div>`);
@@ -7879,6 +7873,9 @@ async function renderFerrPCM(aba='painel'){
   }
   if(aba==='ind212'){
     return await renderFerr212(back,tabs);
+  }
+  if(aba==='os_turno'){
+    return await renderFerrOsTurno(S._osTurnoData||null,back,tabs);
   }
 
   // ── ABA 3.7 SUPERVISÃO ──────────────────────────────────────────────────
@@ -14747,8 +14744,10 @@ async function renderFerrLubri(dataFiltro=null){
   setMain(`${back}<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div style="font-size:18px;font-weight:800">🛢️ Relatório de Lubrificação</div></div>${filtroData}${kpis}${secAlerta}${tabela}`);
 }
 
-async function renderFerrOsTurno(dataRef=null){
-  const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+async function renderFerrOsTurno(dataRef=null,backArg='',tabsArg=''){
+  const dentroPCM=!!tabsArg;
+  const back=backArg||`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  const tabs=tabsArg||'';
   const gid=getGid();
 
   // ── Detectar turno atual ─────────────────────────────────────────
@@ -14904,16 +14903,17 @@ async function renderFerrOsTurno(dataRef=null){
   // ── Filtro de data ───────────────────────────────────────────────
   const dtLabel=new Date(dataRef+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
   const turnoLabel=turnoAtual==='dia'?'☀️ Dia (08:00–19:59)':'🌙 Noite (20:00–07:59)';
+  const onchangeData=dentroPCM?`S._osTurnoData=this.value;renderFerrPCM('os_turno')`:`renderFerrOsTurno(this.value)`;
   const filtro=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px">
     <span style="font-size:13px;font-weight:600;color:var(--text2)">Referência:</span>
-    <input id="osturno-data" class="fi" type="date" value="${dataRef}" onchange="renderFerrOsTurno(this.value)" style="margin-bottom:0;width:auto">
+    <input id="osturno-data" class="fi" type="date" value="${dataRef}" onchange="${onchangeData}" style="margin-bottom:0;width:auto">
     <button title="Abrir calendário" onclick="const el=document.getElementById('osturno-data');if(el?.showPicker)el.showPicker();else el?.focus();" style="width:38px;height:38px;border-radius:9px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:16px;cursor:pointer">📅</button>
     <span style="font-size:12px;color:var(--text3);text-transform:capitalize">${dtLabel}</span>
     ${isMadrugada?`<span style="font-size:11px;background:#8B5CF620;color:#8B5CF6;padding:2px 8px;border-radius:6px;font-weight:700">🌑 Madrugada → Noite de ${new Date(dataRef+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</span>`:''}
     <span style="margin-left:auto">${syncBadge}</span>
   </div>`;
 
-  setMain(`${back}
+  setMain(`${back}${tabs}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
       <div style="font-size:18px;font-weight:800">🔄 OS por Turno — PRAXIO</div>
       <span style="font-size:12px;background:var(--surface2);border:1px solid var(--border);padding:4px 10px;border-radius:8px;color:var(--text2)">${turnoLabel}</span>
