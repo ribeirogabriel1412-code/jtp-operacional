@@ -14795,7 +14795,7 @@ async function renderFerrOsTurno(dataRef=null,backArg='',tabsArg=''){
   // ── Buscar OS no PRAXIO ─────────────────────────────────────────
   // Precisa cobrir no máximo dataAntes até dataDepois
   const {data:osLista}=await sb.from('praxio_os')
-    .select('numero_os,prefixo_veic,defeito,hora_os,data_os,condicao_os,tipoos,tipo_servico,usuario_abertura,garagem,grupo_defeito,sincronizado_em')
+    .select('numero_os,prefixo_veic,defeito,hora_os,data_os,condicao_os,tipoos,tipo_servico,revisao,usuario_abertura,garagem,grupo_defeito,sincronizado_em,origem')
     .gte('data_os',dataAntes+'T00:00:00')
     .lte('data_os',dataDepois+'T23:59:59')
     .order('hora_os');
@@ -14807,6 +14807,21 @@ async function renderFerrOsTurno(dataRef=null,backArg='',tabsArg=''){
     const og=(o.garagem||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
     return garNome.split(' ').filter(t=>t.length>3).some(t=>og.includes(t));
   });
+
+  // Cache para abrirOsPraxioNoApp acessar os dados
+  S._osTurnoCache={};
+  todas.forEach(o=>{if(o.numero_os)S._osTurnoCache[o.numero_os]=o;});
+
+  // Busca vínculos já existentes em ocorrencias_22
+  const numeros=Object.keys(S._osTurnoCache);
+  let jaNoApp=new Set();
+  if(numeros.length){
+    const {data:vincs}=await sb.from('ocorrencias_22')
+      .select('praxio_os_id')
+      .in('praxio_os_id',numeros)
+      .eq('garagem_id',gid);
+    (vincs||[]).forEach(v=>{if(v.praxio_os_id)jaNoApp.add(String(v.praxio_os_id));});
+  }
 
   // ── Helpers ──────────────────────────────────────────────────────
   const dataOS=o=>(o.data_os||'').substring(0,10);
@@ -14850,14 +14865,20 @@ async function renderFerrOsTurno(dataRef=null,backArg='',tabsArg=''){
   };
 
   // Render linha OS
-  const renderLinha=o=>`
-    <div style="display:grid;grid-template-columns:80px 64px 1fr 44px auto;gap:8px;align-items:center;padding:9px 0;border-top:1px solid var(--border)">
+  const renderLinha=o=>{
+    const noApp=jaNoApp.has(String(o.numero_os));
+    const btnAcao=noApp
+      ?`<span style="font-size:10px;font-weight:700;color:var(--green);white-space:nowrap">✅ No App</span>`
+      :`<button onclick="abrirOsPraxioNoApp('${o.numero_os}')" style="padding:3px 10px;border-radius:6px;border:none;background:var(--blue);color:#fff;cursor:pointer;font-size:11px;font-weight:700;white-space:nowrap">📥 Abrir</button>`;
+    return`<div style="display:grid;grid-template-columns:80px 64px 1fr 44px auto 90px;gap:8px;align-items:center;padding:9px 0;border-top:1px solid var(--border)">
       <span style="font-family:'DM Mono',monospace;font-weight:700;font-size:12px;color:var(--blue)">${o.numero_os||'—'}</span>
       <span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700">${fmtPref(o.prefixo_veic)}</span>
       <span style="font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(o.defeito||'').replace(/"/g,'&quot;')}">${o.defeito||o.grupo_defeito||'—'}</span>
       <span style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace">${horaOS(o)}</span>
       ${condBadge(o)}
+      <div style="text-align:right">${btnAcao}</div>
     </div>`;
+  };
 
   // Render seção
   const renderSecao=(label,cor,os,destaque=false)=>{
@@ -14868,8 +14889,8 @@ async function renderFerrOsTurno(dataRef=null,backArg='',tabsArg=''){
         <div style="font-size:12px;color:var(--text3)">${os.length} OS</div>
       </div>
       ${os.length
-        ?`<div style="display:grid;grid-template-columns:80px 64px 1fr 44px auto;gap:8px;padding:4px 0;font-size:10px;font-weight:700;color:var(--text4);text-transform:uppercase;letter-spacing:.5px">
-            <span>Nº OS</span><span>Prefixo</span><span>Defeito</span><span>Hora</span><span>Status</span>
+        ?`<div style="display:grid;grid-template-columns:80px 64px 1fr 44px auto 90px;gap:8px;padding:4px 0;font-size:10px;font-weight:700;color:var(--text4);text-transform:uppercase;letter-spacing:.5px">
+            <span>Nº OS</span><span>Prefixo</span><span>Defeito</span><span>Hora</span><span>Status</span><span></span>
           </div>${os.map(renderLinha).join('')}`
         :`<div style="font-size:13px;color:var(--text3);text-align:center;padding:14px 0">Nenhuma OS neste período</div>`
       }
@@ -14925,6 +14946,65 @@ async function renderFerrOsTurno(dataRef=null,backArg='',tabsArg=''){
     ${osAntFech.length ? renderSecao(periodoAnt.label+' — fechadas','var(--text4)',osAntFech) : ''}
     <div class="info-blue info-banner" style="margin-top:4px">ℹ️ Dados do Oracle PRAXIO • Sincronização automática a cada 1h</div>
   `);
+}
+
+async function abrirOsPraxioNoApp(numeroOs){
+  const o=S._osTurnoCache?.[numeroOs];
+  if(!o){alert('OS não encontrada no cache. Recarregue a tela.');return;}
+  const gid=getGid();
+
+  // Verifica se já existe vínculo
+  const {data:exist}=await sb.from('ocorrencias_22').select('id').eq('praxio_os_id',numeroOs).eq('garagem_id',gid).limit(1);
+  if(exist&&exist.length){
+    alert('Esta OS já está aberta no app.');
+    renderFerrPCM('os_turno');
+    return;
+  }
+
+  // Tipo da OS (mesma lógica da Fase 2 do sync)
+  const getTipoOS=(rev,tip)=>{
+    const s=((rev||'')+' '+(tip||'')).toUpperCase();
+    if(s.includes('PREVENTIVA LEVE')||s.includes('PREV LEVE')) return 'preventiva_leve';
+    if(s.includes('PREVENTIVA PESADA')||s.includes('PREV PESADA')) return 'preventiva_pesada';
+    if(s.includes('PREVENTIVA')) return 'preventiva_leve';
+    return 'corretiva';
+  };
+
+  // Prefixo formatado → busca veículo
+  const fmtP=s=>{const n=(s||'').replace(/\D/g,'');if(n.length<5)return null;return n.slice(-5,-3).padStart(2,'0')+'.'+n.slice(-3);};
+  const prefApp=fmtP(o.prefixo_veic);
+  const veiculo=prefApp?(S.frota||[]).find(v=>v.prefixo===prefApp&&v.garagem_id===gid):null;
+
+  // hora_entrada: data_os + hora_os formatada
+  const dataBase=(o.data_os||'').substring(0,10);
+  const horaRaw=(o.hora_os||'').trim();
+  const horaStr=horaRaw.length>=5?horaRaw.substring(0,5):horaRaw.padStart(2,'0')+':00';
+  const horaEntrada=dataBase?`${dataBase}T${horaStr}:00`:(new Date().toISOString().substring(0,19));
+
+  const body={
+    garagem_id:     gid,
+    prefixo:        prefApp,
+    numero:         `PRAXIO-${numeroOs}`,
+    tipo:           getTipoOS(o.revisao,o.tipoos),
+    status:         'em_manutencao',
+    prioridade:     'normal',
+    praxio_os_id:   numeroOs,
+    descricao:      o.defeito||o.grupo_defeito||'OS PRAXIO',
+    hora_entrada:   horaEntrada,
+    aberto_por_nome:'PRAXIO (manual)',
+  };
+  if(veiculo?.id) body.veiculo_id=veiculo.id;
+
+  const {error}=await sb.from('ocorrencias_22').insert(body);
+  if(error){alert('Erro ao abrir OS: '+error.message);return;}
+
+  // Atualiza frota para manutenção
+  if(veiculo?.id){
+    await sb.from('frota').update({status:'manutencao',updated_at:new Date().toISOString()}).eq('id',veiculo.id);
+    await loadFrota();
+  }
+
+  renderFerrPCM('os_turno');
 }
 
 function renderRelatorios(){
