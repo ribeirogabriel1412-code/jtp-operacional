@@ -715,6 +715,22 @@ tr:hover td{background:#1F293780}
       </div>
     </div>
 
+    <!-- HC — Headcount & Horas (Líder de Oficina) -->
+    <div id="hc-oficina-wrap" style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:12px;display:none">
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">👷 HC — Headcount na OS</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px">
+        <div><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px">MEC</label><input type="number" id="hc-mec" min="0" value="0" class="fi" style="margin-bottom:0;text-align:center;padding:6px 4px;font-family:'DM Mono',monospace"></div>
+        <div><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px">AUX MEC</label><input type="number" id="hc-aux-mec" min="0" value="0" class="fi" style="margin-bottom:0;text-align:center;padding:6px 4px;font-family:'DM Mono',monospace"></div>
+        <div><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px">ELETRIC.</label><input type="number" id="hc-eletricista" min="0" value="0" class="fi" style="margin-bottom:0;text-align:center;padding:6px 4px;font-family:'DM Mono',monospace"></div>
+        <div><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px">AUX ELET.</label><input type="number" id="hc-aux-eletricista" min="0" value="0" class="fi" style="margin-bottom:0;text-align:center;padding:6px 4px;font-family:'DM Mono',monospace"></div>
+        <div><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px">FUNILEIRO</label><input type="number" id="hc-funileiro" min="0" value="0" class="fi" style="margin-bottom:0;text-align:center;padding:6px 4px;font-family:'DM Mono',monospace"></div>
+        <div><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px">AUX FUN.</label><input type="number" id="hc-aux-funileiro" min="0" value="0" class="fi" style="margin-bottom:0;text-align:center;padding:6px 4px;font-family:'DM Mono',monospace"></div>
+        <div><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px">BORRACHEIRO</label><input type="number" id="hc-borracheiro" min="0" value="0" class="fi" style="margin-bottom:0;text-align:center;padding:6px 4px;font-family:'DM Mono',monospace"></div>
+        <div><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px">AUX BORR.</label><input type="number" id="hc-aux-borracheiro" min="0" value="0" class="fi" style="margin-bottom:0;text-align:center;padding:6px 4px;font-family:'DM Mono',monospace"></div>
+      </div>
+      <div><label style="font-size:10px;color:var(--amber);font-weight:700;display:block;margin-bottom:3px;text-transform:uppercase;letter-spacing:1px">⏱ Horas Trabalhadas na OS</label><input type="number" id="hc-horas" min="0" step="0.5" placeholder="Ex: 4.5" class="fi" style="margin-bottom:0;font-family:'DM Mono',monospace"></div>
+    </div>
+
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
       <button class="btn-sec" onclick="closeM('modal-22-status')">Cancelar</button>
       <button class="btn-success" onclick="atualizarStatus22()">✓ Confirmar</button>
@@ -5464,6 +5480,16 @@ async function salvarNovaOcorrencia(gid){
   renderFerrPCM('painel');
 }
 
+async function _carregarHC(ocId){
+  const cols=['mec','aux-mec','eletricista','aux-eletricista','funileiro','aux-funileiro','borracheiro','aux-borracheiro'];
+  cols.forEach(c=>{const el=document.getElementById('hc-'+c);if(el)el.value=0;});
+  const hoEl=document.getElementById('hc-horas');if(hoEl)hoEl.value='';
+  const{data}=await sb.from('os_hc').select('*').eq('ocorrencia_id',ocId).maybeSingle();
+  if(!data)return;
+  cols.forEach(c=>{const el=document.getElementById('hc-'+c);if(el)el.value=data[c.replace(/-/g,'_')]||0;});
+  if(hoEl)hoEl.value=data.horas_trabalhadas||'';
+}
+
 function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
   S.editId22=id;
   _sapUpdItens=[];
@@ -5507,6 +5533,12 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
     if(pnEl) pnEl.value=oc.pecas_necessarias||'';
     _sapUpdRender();
   });
+
+  // Mostra/oculta seção HC conforme cargo
+  const _hcWrap=document.getElementById('hc-oficina-wrap');
+  if(_hcWrap) _hcWrap.style.display=['lider_oficina','lider_pcm','assistente_pcm','gerente_garagem','diretoria'].includes(S.perfil?.cargo)?'block':'none';
+  // Carrega HC existente
+  _carregarHC(id);
 
   // Carrega checklist de liberação para mostrar progresso e botões
   sb.from('checklist_liberacao').select('verificado,trocado,nao_se_aplica,submetido,aprovado')
@@ -6181,6 +6213,26 @@ async function atualizarStatus22(){
   const{error}=await sb.from('ocorrencias_22').update(payload).eq('id',S.editId22);
   if(btnConfirmar){btnConfirmar.textContent='✓ Confirmar';btnConfirmar.disabled=false;}
   if(error){toast('Erro ao salvar: '+error.message,'err');console.error('atualizarStatus22 error:',error);return;}
+
+  // Salva HC se seção visível
+  const _hcEl=document.getElementById('hc-oficina-wrap');
+  if(_hcEl&&_hcEl.style.display!=='none'){
+    const hcPayload={
+      ocorrencia_id:S.editId22,
+      mec:parseInt(document.getElementById('hc-mec')?.value||0)||0,
+      aux_mec:parseInt(document.getElementById('hc-aux-mec')?.value||0)||0,
+      eletricista:parseInt(document.getElementById('hc-eletricista')?.value||0)||0,
+      aux_eletricista:parseInt(document.getElementById('hc-aux-eletricista')?.value||0)||0,
+      funileiro:parseInt(document.getElementById('hc-funileiro')?.value||0)||0,
+      aux_funileiro:parseInt(document.getElementById('hc-aux-funileiro')?.value||0)||0,
+      borracheiro:parseInt(document.getElementById('hc-borracheiro')?.value||0)||0,
+      aux_borracheiro:parseInt(document.getElementById('hc-aux-borracheiro')?.value||0)||0,
+      horas_trabalhadas:parseFloat(document.getElementById('hc-horas')?.value||0)||0,
+      registrado_por:S.perfil?.nome||null,
+      updated_at:new Date().toISOString()
+    };
+    await sb.from('os_hc').upsert(hcPayload,{onConflict:'ocorrencia_id'});
+  }
 
   // Confirma que o banco realmente atualizou
   const{data:verificacao}=await sb.from('ocorrencias_22').select('status').eq('id',S.editId22).single();
