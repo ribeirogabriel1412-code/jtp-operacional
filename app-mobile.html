@@ -1802,7 +1802,8 @@ async function abrirOS38Oficina(ocId){
   var jan=janelaTurnoOficina();
   var r2=await sb.from('checklist_38').select('id,dados').eq('garagem_id',gid).eq('prefixo',oc.prefixo).gte('criado_em',jan.ini.toISOString()).lt('criado_em',jan.fim.toISOString()).order('criado_em',{ascending:false}).limit(1);
   var lib=r2.data&&r2.data[0];
-  _OS38={oc:oc,dados:(lib&&lib.dados)||{},qual:null,qualDirty:{},libId:(lib&&lib.id)||null};
+  var hcResp=await sb.from('os_hc').select('*').eq('ocorrencia_id',ocId).maybeSingle();
+  _OS38={oc:oc,dados:(lib&&lib.dados)||{},qual:null,qualDirty:{},libId:(lib&&lib.id)||null,hc:hcResp.data||{}};
   renderOS38Oficina();
 }
 
@@ -1851,7 +1852,16 @@ function renderOS38Oficina(){
   '</div>'+
   '<div style="background:var(--border);border-radius:99px;height:6px;overflow:hidden;margin-bottom:12px"><div style="height:100%;width:'+pct+'%;background:'+(pct===100?'var(--green)':'var(--blue)')+'"></div></div>'+
   '<button onclick="abrirQual38Oficina()" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;font-weight:800;font-family:inherit;margin-bottom:12px">🔧 Qualificação da OS</button>';
-  openSheet(oc.prefixo+' — Checklist 3.8',status+secoes+
+  var hc=_OS38.hc||{};
+  var hcCols=[['mec','MEC'],['aux_mec','AUX MEC'],['eletricista','ELETRICISTA'],['aux_eletricista','AUX ELET.'],['funileiro','FUNILEIRO'],['aux_funileiro','AUX FUN.'],['borracheiro','BORRACHEIRO'],['aux_borracheiro','AUX BORR.']];
+  var hcInputs=hcCols.map(function(c){return '<div><div style="font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;margin-bottom:3px">'+c[1]+'</div><input type="number" id="mob-hc-'+c[0].replace(/_/g,'-')+'" min="0" inputmode="numeric" value="'+(hc[c[0]]||0)+'" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:20px;font-family:\'DM Mono\',monospace;outline:none;text-align:center"></div>';}).join('');
+  var hcCard='<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px">'+
+    '<div style="font-size:11px;font-weight:900;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">👷 HC — Headcount na OS</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">'+hcInputs+'</div>'+
+    '<div style="font-size:9px;font-weight:800;color:var(--amber);text-transform:uppercase;margin-bottom:3px">⏱ Horas Trabalhadas na OS</div>'+
+    '<input type="number" id="mob-hc-horas" min="0" step="0.5" inputmode="decimal" placeholder="Ex: 4.5" value="'+(hc.horas_trabalhadas||'')+'" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:20px;font-family:\'DM Mono\',monospace;outline:none;text-align:center">'+
+  '</div>';
+  openSheet(oc.prefixo+' — Checklist 3.8',hcCard+status+secoes+
     '<button onclick="salvarOS38Oficina()" style="width:100%;padding:15px;border-radius:12px;border:none;background:'+(pct===100?'var(--green)':'var(--blue)')+';color:#fff;font-size:15px;font-weight:800;font-family:inherit;margin-top:4px">'+(pct===100?'Salvar e exportar PDF':'Salvar checklist 3.8 ('+pct+'%)')+'</button>');
 }
 
@@ -1995,6 +2005,20 @@ async function salvarOS38Oficina(){
     if(res.data&&res.data.id)_OS38.libId=res.data.id;
   }
   if(res.error){toast('Erro ao salvar 3.8: '+res.error.message,'err');return;}
+  // Salva HC
+  var hcPayload={ocorrencia_id:oc.id,
+    mec:parseInt(document.getElementById('mob-hc-mec')?.value||0)||0,
+    aux_mec:parseInt(document.getElementById('mob-hc-aux-mec')?.value||0)||0,
+    eletricista:parseInt(document.getElementById('mob-hc-eletricista')?.value||0)||0,
+    aux_eletricista:parseInt(document.getElementById('mob-hc-aux-eletricista')?.value||0)||0,
+    funileiro:parseInt(document.getElementById('mob-hc-funileiro')?.value||0)||0,
+    aux_funileiro:parseInt(document.getElementById('mob-hc-aux-funileiro')?.value||0)||0,
+    borracheiro:parseInt(document.getElementById('mob-hc-borracheiro')?.value||0)||0,
+    aux_borracheiro:parseInt(document.getElementById('mob-hc-aux-borracheiro')?.value||0)||0,
+    horas_trabalhadas:parseFloat(document.getElementById('mob-hc-horas')?.value||0)||0,
+    registrado_por:S.perfil&&S.perfil.nome||null,
+    updated_at:new Date().toISOString()};
+  await sb.from('os_hc').upsert(hcPayload,{onConflict:'ocorrencia_id'});
   if(_OS38.qual&&Object.keys(_OS38.qualDirty||{}).length){
     var okQual=await salvarQual38Oficina(true);
     if(!okQual) return;
