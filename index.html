@@ -1677,14 +1677,16 @@ function praxioRenderConteudo(){
   const diasFiltro=S._praxioDias||'__todos';
   const _hoje=new Date();_hoje.setHours(0,0,0,0);
   const _calcDias=r=>{if(!r.data_os)return 0;try{const d=new Date(r.data_os.includes('T')?r.data_os:r.data_os+'T00:00:00');return Math.floor((_hoje-d)/86400000)}catch(e){return 0}};
-  const porDias=diasFiltro==='__todos'?porTipo:diasFiltro==='1'?porTipo.filter(r=>_calcDias(r)<=1):diasFiltro==='2'?porTipo.filter(r=>_calcDias(r)===2):diasFiltro==='3'?porTipo.filter(r=>_calcDias(r)===3):diasFiltro==='5+'?porTipo.filter(r=>_calcDias(r)>=5):porTipo;
-  const total=dedup.length,ab=dedup.filter(r=>praxioAberta(r)).length,fc=total-ab;
-  const lv=dedup.filter(r=>praxioTipo(r)==='leve').length,ps=dedup.filter(r=>praxioTipo(r)==='pesada').length,co=dedup.filter(r=>praxioTipo(r)==='corretiva').length;
+  const _filtDias=arr=>diasFiltro==='__todos'?arr:diasFiltro==='1'?arr.filter(r=>_calcDias(r)<=1):diasFiltro==='2'?arr.filter(r=>_calcDias(r)===2):diasFiltro==='3'?arr.filter(r=>_calcDias(r)===3):diasFiltro==='5+'?arr.filter(r=>_calcDias(r)>=5):arr;
+  const porDiasBase=_filtDias(dedup);
+  const porDias=_filtDias(porTipo);
+  const total=porDiasBase.length,ab=porDiasBase.filter(r=>praxioAberta(r)).length,fc=total-ab;
+  const lv=porDiasBase.filter(r=>praxioTipo(r)==='leve').length,ps=porDiasBase.filter(r=>praxioTipo(r)==='pesada').length,co=porDiasBase.filter(r=>praxioTipo(r)==='corretiva').length;
   const tabRows=porDias.slice(0,200);
   const tipoBadge=t=>({leve:'🟡 Prev. Leve',pesada:'🟣 Prev. Pesada',prev:'🔵 Preventiva',corretiva:'🔴 Corretiva',outro:'⚪ Outro'})[t]||'⚪';
   const stBadge=r=>praxioAberta(r)?'<span style="background:#ef444420;color:#ef4444;padding:2px 8px;border-radius:20px;font-size:11px">Aberta</span>':'<span style="background:#22c55e20;color:#22c55e;padding:2px 8px;border-radius:20px;font-size:11px">Fechada</span>';
   const fmtDt=s=>{if(!s)return'—';try{const d=s.includes('T')?new Date(s):new Date(s+'T00:00:00');return isNaN(d)?s:d.toLocaleDateString('pt-BR')}catch(e){return s}};
-  const kc=(l,v,c)=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;min-width:90px;text-align:center"><div style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${l}</div><div style="font-size:26px;font-weight:700;color:${c||'var(--text)'}">${v.toLocaleString('pt-BR')}</div></div>`;
+  const kc=(l,v,c,fn)=>`<div onclick="${fn?fn+';praxioRenderConteudo()':''}" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;min-width:90px;text-align:center${fn?';cursor:pointer;transition:border-color .15s':''}" ${fn?'onmouseover="this.style.borderColor=\'var(--blue)\'" onmouseout="this.style.borderColor=\'var(--border)\'"':''}><div style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${l}</div><div style="font-size:26px;font-weight:700;color:${c||'var(--text)'}">${v.toLocaleString('pt-BR')}</div></div>`;
   const tipos=[{id:'__todos',l:'Todos'},{id:'leve',l:'🟡 Prev. Leve'},{id:'pesada',l:'🟣 Prev. Pesada'},{id:'corretiva',l:'🔴 Corretiva'},{id:'outro',l:'⚪ Outros'}];
   const diasOpts=[{id:'__todos',l:'Todos os dias'},{id:'1',l:'⚡ Hoje/Ontem'},{id:'2',l:'📅 2 dias'},{id:'3',l:'📅 3 dias'},{id:'5+',l:'🔴 +5 dias'}];
   el.innerHTML=tabsHtml+`
@@ -1701,7 +1703,7 @@ function praxioRenderConteudo(){
       </div>
     </div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
-      ${kc('Total OS',total,'var(--blue)')}${kc('Abertas',ab,'#ef4444')}${kc('Fechadas',fc,'#22c55e')}${kc('Prev. Leve',lv,'#a855f7')}${kc('Prev. Pesada',ps,'#7c3aed')}${kc('Corretiva',co,'#f97316')}
+      ${kc('Total OS',total,'var(--blue)',"S._praxioTipo='__todos'")}${kc('Abertas',ab,'#ef4444')}${kc('Fechadas',fc,'#22c55e')}${kc('Prev. Leve',lv,'#a855f7',"S._praxioTipo='leve'")}${kc('Prev. Pesada',ps,'#7c3aed',"S._praxioTipo='pesada'")}${kc('Corretiva',co,'#f97316',"S._praxioTipo='corretiva'")}
     </div>
     <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Exibindo ${Math.min(porDias.length,200).toLocaleString('pt-BR')} de ${porDias.length.toLocaleString('pt-BR')} OS${tipoFiltro!=='__todos'||diasFiltro!=='__todos'?' (filtrado)':''}</div>
     <div style="overflow-x:auto">
