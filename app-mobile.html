@@ -6857,9 +6857,13 @@ let _lbrOm={st:'',lt:''},_lbrAd={st:'',lt:''},_lbrOd={st:'',lt:''};
 let _lbrTab='hoje',_lbrDiasAbertos=new Set();
 
 function lbrSemanaAtual(){
-  const h=new Date(),dow=h.getDay();
-  const seg=new Date(h);seg.setDate(h.getDate()-(dow===0?6:dow-1));
-  return Array.from({length:5},(_,i)=>{const d=new Date(seg);d.setDate(seg.getDate()+i);return d.toISOString().slice(0,10)});
+  const tz=opTimezone();
+  const p=opParts(new Date(),tz);
+  // Usa data local (Manaus/PV) para calcular dia da semana
+  const loc=new Date(Date.UTC(p.y,p.m-1,p.d,12));
+  const dow=loc.getUTCDay();
+  const seg=new Date(loc);seg.setUTCDate(loc.getUTCDate()-(dow===0?6:dow-1));
+  return Array.from({length:5},(_,i)=>{const d=new Date(seg);d.setUTCDate(seg.getUTCDate()+i);return d.toISOString().slice(0,10)});
 }
 
 async function telaLubrificacao(){
@@ -6872,10 +6876,14 @@ async function telaLubrificacao(){
   const tam=Math.ceil(outros.length/5);
   const grupos=Array.from({length:5},(_,gi)=>outros.slice(gi*tam,Math.min(gi*tam+tam,outros.length)));
   const semana=lbrSemanaAtual();
-  const hojeStr=hoje();
+  // dataOperacionalAtual: trata 00:00-04:20 como extensão do dia anterior
+  const hojeStr=dataOperacionalAtual();
   const{data:feitosSem}=await sb.from('checklist_lubrificacao').select('prefixo,data').eq('garagem_id',gid).gte('data',semana[0]).lte('data',hojeStr);
   const porDia={};(feitosSem||[]).forEach(f=>{if(!porDia[f.data])porDia[f.data]=new Set();porDia[f.data].add(f.prefixo);});
-  const dow=new Date().getDay();
+  // Dia da semana no fuso operacional (Manaus/PV)
+  const _p=opParts(new Date(),opTimezone());
+  const _loc=new Date(Date.UTC(_p.y,_p.m-1,_p.d,12));
+  const dow=_loc.getUTCDay();
   const fds=dow===0||dow===6;
   const vwSet=new Set(vw.map(v=>v.prefixo));
   const diasNome=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
@@ -6890,7 +6898,7 @@ async function telaLubrificacao(){
   const execHoje=[...fs].filter(p=>vwSet.has(p)||rotSet.has(p)).length;
   const pct=totalHoje>0?Math.round(execHoje/totalHoje*100):0;
   const tabs=`<div style="display:flex;gap:8px;margin:10px 0"><button onclick="_lbrTab='hoje';telaLubrificacao()" style="flex:1;padding:9px;border-radius:10px;border:none;background:${_lbrTab==='hoje'?'var(--blue)':'var(--surface2)'};color:${_lbrTab==='hoje'?'white':'var(--text)'};font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">Hoje</button><button onclick="_lbrTab='semana';telaLubrificacao()" style="flex:1;padding:9px;border-radius:10px;border:none;background:${_lbrTab==='semana'?'var(--blue)':'var(--surface2)'};color:${_lbrTab==='semana'?'white':'var(--text)'};font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">📅 Semana</button></div>`;
-  const header=`<div style="padding:14px 14px 0"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="font-weight:800;font-size:17px">🛢️ Lubrificação</div><div style="font-family:'DM Mono',monospace;font-weight:700;color:${pct===100?'var(--green)':'var(--blue)'}">${execHoje}/${totalHoje}</div></div><div class="prog"><div class="prog-f" style="width:${pct}%;background:${pct===100?'var(--green)':'var(--blue)'}"></div></div>${tabs}</div>`;
+  const header=`<div style="padding:14px 14px 0"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="font-weight:800;font-size:17px">🛢️ Lubrificação</div><div style="display:flex;align-items:center;gap:10px"><div style="font-family:'DM Mono',monospace;font-weight:700;color:${pct===100?'var(--green)':'var(--blue)'}">${execHoje}/${totalHoje}</div><button onclick="abrirLubriExtra()" style="width:32px;height:32px;border-radius:50%;border:none;background:var(--blue);color:#fff;font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1">+</button></div></div><div class="prog"><div class="prog-f" style="width:${pct}%;background:${pct===100?'var(--green)':'var(--blue)'}"></div></div>${tabs}</div>`;
   if(_lbrTab==='semana'){
     const diasLabel=['Segunda','Terça','Quarta','Quinta','Sexta'];
     const diasCurto=['Seg','Ter','Qua','Qui','Sex'];
@@ -6926,6 +6934,29 @@ async function telaLubrificacao(){
   render(header+`<div class="sl">🔵 VW — Todo dia (${vw.length})</div>${vw.map(mk).join('')}<div class="sl">📅 Rotação ${diasNome[dow]} (${rotHoje.length} veículos)</div>${rotHoje.map(mk).join('')}`);
 }
 function toggleLubrDia(gi){if(_lbrDiasAbertos.has(gi))_lbrDiasAbertos.delete(gi);else _lbrDiasAbertos.add(gi);telaLubrificacao()}
+async function abrirLubriExtra(){
+  const gid=getGid();
+  const{data:frota}=await sb.from('frota').select('prefixo,modelo').eq('garagem_id',gid).neq('status','sinistro').order('prefixo');
+  const hojeStr=dataOperacionalAtual();
+  const{data:feitos}=await sb.from('checklist_lubrificacao').select('prefixo').eq('garagem_id',gid).eq('data',hojeStr);
+  const feitosSet=new Set((feitos||[]).map(f=>f.prefixo));
+  const pendentes=(frota||[]).filter(v=>!feitosSet.has(v.prefixo));
+  const isVW=m=>{const u=(m||'').toUpperCase();return u.includes('VOLKSWAGEN')||u.includes('VOLKSBUS')||u.startsWith('VW ')||/^\d/.test(u);};
+  if(!pendentes.length){openSheet('➕ Adicionar Veículo','<div style="text-align:center;padding:20px;color:var(--green);font-weight:700">✅ Todos os veículos já foram lubrificados hoje!</div>');return;}
+  const busca=`<input id="lubri-extra-busca" type="text" placeholder="Buscar prefixo ou modelo..." oninput="filtrarLubriExtra()" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;margin-bottom:10px">`;
+  const lista=pendentes.map(v=>{
+    const mdl=(v.modelo||'').replace(/'/g,'').replace(/"/g,'');
+    return`<div class="vcard" data-pref="${v.prefixo}" data-mdl="${mdl}" onclick="closeSheet();abrirLubri('${v.prefixo}','${mdl}',${isVW(v.modelo)})"><div style="flex:1"><div class="prefixo">${v.prefixo}</div><div class="vcard-sub">${v.modelo||'—'}</div></div><div style="font-size:20px;color:var(--blue)">›</div></div>`;
+  }).join('');
+  openSheet(`➕ Adicionar Veículo (${pendentes.length} disponíveis)`,`${busca}<div id="lubri-extra-lista">${lista}</div>`);
+}
+function filtrarLubriExtra(){
+  const q=(document.getElementById('lubri-extra-busca')?.value||'').toLowerCase();
+  document.querySelectorAll('#lubri-extra-lista .vcard').forEach(el=>{
+    const pref=(el.dataset.pref||'').toLowerCase(),mdl=(el.dataset.mdl||'').toLowerCase();
+    el.style.display=(pref.includes(q)||mdl.includes(q))?'':'none';
+  });
+}
 function abrirLubri(prefixo,modelo,isVW){
   _lbrPrefixo=prefixo;_lbrModelo=modelo;_lbrIsVW=isVW;
   _lbrOm={st:'',lt:''};_lbrAd={st:'',lt:''};_lbrOd={st:'',lt:''};
