@@ -1,0 +1,24 @@
+# Scripts administrativos (não são parte do app)
+Archive.py
+analise_cta.py
+backup_sheets.ps1
+criar_usuarios.ps1
+criar_usuarios.sql
+criar_banco_novo.sql
+
+# Pastas de sincronização e dados brutos
+sync _ Servidor/
+tabelas - Base/
+
+# Documentos de planejamento
+Arquitetura - Pensado.docx
+Consolidado_tela interativa.xlsx
+
+# BOK original binário (mantemos só o BOK-master.md)
+docs/BOK/Base/
+
+# IDE Claude Code (não é código da aplicação)
+.claude/
+
+# Node
+node_modules/
