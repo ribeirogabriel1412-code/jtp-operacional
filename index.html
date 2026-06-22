@@ -1942,6 +1942,7 @@ async function renderAlmoxPainelLider(){
     </div>`;
   }).join('');
   // ── Quadro de Turnos ─────────────────────────────────────────────
+  const safe=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   const quadroRows=(quadro||[]).map(q=>{
     const nome=q.perfis?.nome||'—';
     const cargo=q.perfis?.cargo||'';
@@ -2170,6 +2171,7 @@ async function almoxEncerrarDiv(id){
 
 // ── Quadro de Turnos ─────────────────────────────────────────────────────────
 function almoxNovoTurnoModal(){
+  const safe=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   const gid=getGid();
   const perfisOpts=(window._almoxPerfisCache||[]).map(p=>`<option value="${p.id}">${safe(p.nome)} — ${p.cargo||''}</option>`).join('');
   const html=`<div style="padding:16px;display:grid;gap:14px">
@@ -2197,6 +2199,7 @@ function almoxNovoTurnoModal(){
 }
 
 function almoxEditarTurno(id,perfilId,horaEntrada,horaSaida){
+  const safe=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   const perfisOpts=(window._almoxPerfisCache||[]).map(p=>`<option value="${p.id}" ${p.id===perfilId?'selected':''}>${safe(p.nome)} — ${p.cargo||''}</option>`).join('');
   const html=`<div style="padding:16px;display:grid;gap:14px">
     <div>
