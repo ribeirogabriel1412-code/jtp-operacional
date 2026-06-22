@@ -5699,6 +5699,7 @@ async function _carregarHC(ocId){
 
 function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
   S.editId22=id;
+  S.editPrefixo22=prefixo;
   _sapUpdItens=[];
   _sapUpdBasePrev=0;
   _sapUpdBasePecas='';
@@ -9364,6 +9365,7 @@ function _sapUpdRender(){
         '<button data-action="upd-qtd" data-cod="'+it.cod+'" data-delta="1" style="width:22px;height:22px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-size:14px">+</button>'+
       '</div>'+
       '<span style="font-family:monospace;font-size:13px;font-weight:700;color:var(--green);min-width:80px;text-align:right">R$\u00a0'+sub.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</span>'+
+      '<button data-action="upd-alm" data-cod="'+it.cod+'" title="Solicitar ao Almoxarifado" style="width:28px;height:22px;border-radius:5px;border:1px solid var(--green);background:#00C48C18;color:var(--green);cursor:pointer;font-size:12px">📦</button>'+
       '<button data-action="upd-rem" data-cod="'+it.cod+'" style="width:22px;height:22px;border-radius:5px;border:none;background:transparent;color:var(--text3);cursor:pointer;font-size:14px">✕</button>'+
     '</div>';
   }).join('');
@@ -9376,11 +9378,39 @@ function _sapUpdRender(){
   if(necEl) necEl.value=_sapUpdTextoFinal();
   _renderConfirmacaoFechamento22();
   lista.onclick=function(e){
-    var bQ=e.target.closest('[data-action="upd-qtd"]'),bR=e.target.closest('[data-action="upd-rem"]');
+    var bQ=e.target.closest('[data-action="upd-qtd"]'),bR=e.target.closest('[data-action="upd-rem"]'),bA=e.target.closest('[data-action="upd-alm"]');
     if(bQ) _sapUpdQtd(bQ.dataset.cod,bQ.dataset.delta);
     if(bR) _sapUpdRem(bR.dataset.cod);
+    if(bA) _sapUpdSolicAlmox(bA.dataset.cod);
   };
 }
+async function _sapUpdSolicAlmox(cod){
+  var item=(_sapUpdItens||[]).find(function(i){return i.cod===cod;});
+  if(!item){toast('Item não encontrado na lista','err');return;}
+  var gid=getGid();
+  var hojeISO=hoje();
+  var osNum=(document.getElementById('m22s-os')?.value||'').trim()||
+             (document.getElementById('m22s-os-atual')?.textContent||'').trim()||'';
+  var prefixo=S.editPrefixo22||document.getElementById('m22s-info')?.textContent||'';
+  var{error}=await sb.from('requisicoes_compra').insert({
+    garagem_id:gid,
+    prefixo:prefixo||null,
+    peca:item.desc,
+    cod_sap:item.cod,
+    quantidade:item.qtd,
+    valor_estimado:item.preco||null,
+    status:'solicitado_pcm',
+    os_numero:osNum||null,
+    data:hojeISO,
+    justificativa:'Solicitado via OS '+(osNum||'s/n')+' pelo PCM'
+  });
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('📦 Peça solicitada ao almoxarifado');
+  // Marca visualmente o botão como solicitado
+  var btn=document.querySelector('[data-action="upd-alm"][data-cod="'+cod+'"]');
+  if(btn){btn.textContent='✔';btn.style.background='#00C48C';btn.style.color='#fff';btn.style.border='none';btn.disabled=true;}
+}
+
 document.addEventListener('click',function(e){
   var d1=document.getElementById('sap-os-drop'), d2=document.getElementById('sap-upd-drop');
   if(d1&&e.target.id!=='sap-os-busca'&&!d1.contains(e.target)) d1.style.display='none';
