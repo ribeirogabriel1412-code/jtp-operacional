@@ -2378,6 +2378,7 @@ function almoxMobAbrirConfEntrega(id){
   setTimeout(()=>document.getElementById('conf-item-qtd')?.focus&&null,100);
 }
 
+window._confSapMap={};
 async function almoxConfBuscarSap(q,itemId){
   if(_solConfTimer)clearTimeout(_solConfTimer);
   const drop=document.getElementById('conf-sap-drop-'+itemId);
@@ -2388,15 +2389,19 @@ async function almoxConfBuscarSap(q,itemId){
     const{data}=await sb.from('sap_precos').select('cod_sap,descricao').eq('garagem_id',gid)
       .or('cod_sap.ilike.%'+q+'%,descricao.ilike.%'+q+'%').limit(8);
     if(!(data||[]).length){drop.style.display='none';return;}
-    drop.innerHTML=(data||[]).map(r=>`<div onclick="almoxConfSelecionarItem(${JSON.stringify(r.cod_sap)},${JSON.stringify(r.descricao)},'${itemId}')" style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border2);font-size:12px">
+    // Armazena no mapa global para evitar escaping em onclick
+    (data||[]).forEach(r=>{window._confSapMap[r.cod_sap]=r;});
+    drop.innerHTML=(data||[]).map(r=>`<div onclick="almoxConfSelecionarItem('${r.cod_sap}','${itemId}')" style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border2);font-size:12px;active-background:var(--surface2)">
       <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber)">${escHtml(r.cod_sap)}</div>
-      <div>${escHtml(r.descricao)}</div>
+      <div style="font-size:13px">${escHtml(r.descricao)}</div>
     </div>`).join('');
     drop.style.display='block';
   },250);
 }
 
-function almoxConfSelecionarItem(cod,desc,itemId){
+function almoxConfSelecionarItem(cod,itemId){
+  const r=window._confSapMap[cod]||{cod_sap:cod,descricao:cod};
+  const desc=r.descricao||cod;
   // Atualiza campos hidden (usados no save)
   const inp=document.getElementById('conf-item-nome');
   const codInp=document.getElementById('conf-item-cod');
