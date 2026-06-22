@@ -1,7 +1,7 @@
 # BOK 1 — Corpo do Conhecimento Operacional — Grupo JTP
 > **Versão viva** — mantida pelo agente `/jtp-bok`. Não editar manualmente.
 > Documento original: `docs/BOK/Base/BOK_1.docx`
-> Última atualização automática: 21/06/2026
+> Última atualização automática: 22/06/2026
 
 ---
 
@@ -98,6 +98,22 @@ Manutenções, Almoxarifes, Assistentes de PCM, Plantão, Sinistros, Motoristas,
 
 ---
 
+### Assistente de PCM
+- **Horário:** Turno A 08:00 ~ 16:20 (6x1) | Turno B 20:00 ~ 04:20 (6x1)
+- **Superior:** Líder de PCM
+- **Telas mobile:** `oficina` (OS) + `checklist_equip` (3.4) + `sos218` (2.18) + `prev26` (2.6)
+- **Missão:** Garantir rastreabilidade técnica das OS no PRAXIO e suporte operacional ao Líder PCM.
+- **Atribuições:**
+  - Abertura e fechamento de OS no PRAXIO (nunca pelo app — sistema de referência)
+  - Controle de KM/hodômetro e consistência de dados no sistema
+  - Acompanhar OS abertas sem baixa > 24h e acionar Líder PCM
+  - Executar checklist de equipamentos de segurança (ferramenta 3.4)
+  - Registrar e acompanhar SOS (ferramenta 2.18)
+  - Apoiar previsibilidade de custo (ferramenta 2.6)
+  - Garantir conformidade RJNP (relatório de irregularidades)
+
+---
+
 ### Líder de Suprimentos
 - **Horário:** 07:00 ~ 17:00 (5x2)
 - **Superior:** Líder de Garagem (linha funcional: Supply Chain)
@@ -111,7 +127,36 @@ Manutenções, Almoxarifes, Assistentes de PCM, Plantão, Sinistros, Motoristas,
   - Planejamento semanal de compras (mínimo/máximo)
   - Preparação dos cestos de preventiva
   - WMS e 5S no almoxarifado
+  - **Configurar Quadro de Turnos dos Almoxarifes** no Painel do Líder (desktop) — define horário de entrada e saída de cada almoxarife; dado usado pelo app mobile para calcular T-1 na Conferência de Turno
   - Gestão de pessoas do almoxarifado
+
+---
+
+### Almoxarife
+- **Horário:** Conforme escala (turnos rotativos — Quadro de Turnos configurado pelo Líder de Suprimentos)
+- **Superior:** Líder de Suprimentos
+- **Tela mobile:** `valet_almox` (4 abas)
+- **Tabelas Supabase:** `requisicoes_compra`, `almoxo_quadro_turno`
+- **Missão:** Garantir disponibilidade de peças e materiais, atender solicitações do PCM com agilidade e manter acuracidade do estoque.
+- **Atribuições:**
+  - Preparar cestos de preventiva (Kits) conforme programação semanal
+  - Atender solicitações de peças oriundas de OS (aba Solicitações)
+  - Confirmar e registrar o que foi efetivamente entregue (com ou sem substituição de item)
+  - Conferir movimentações do turno anterior e atual (aba Conferência)
+  - Executar inventário da rua sob sua responsabilidade (aba Inv. Rua)
+  - Receber e conferir materiais contra NF e PO
+  - Comunicar divergências ao Líder de Suprimentos imediatamente
+
+**Rotina no app — 4 abas do `valet_almox`:**
+
+| Aba | Quando usar | O que faz |
+|-----|-------------|-----------|
+| **Kits** | Início do turno / tarde | Cestos de preventiva por data; verificar separação por veículo |
+| **Solicitações** | Ao receber pedido do PCM | Ver itens solicitados via OS; confirmar entrega registrando item real + código SAP |
+| **Conferência** | Virada de turno | Ver T-1 (turno anterior) e Turno Atual — só itens entregues — para passagem de bastão |
+| **Inv. Rua** | Conforme escala de inventário | Contar itens físicos na rua atribuída e registrar no app |
+
+**Gatilho de escalada:** Item entregue diferente do pedido → registrar na confirmação + comunicar Líder PCM. Falta de item em estoque → acionar Líder de Suprimentos para pedido de compra emergencial.
 
 ---
 
@@ -331,6 +376,9 @@ O sucesso da execução depende da capacidade de reagir rapidamente. **Regra de 
 | 3.1 | Checklist Lavagem (app mobile) | Lavador, Líder Pátio |
 | 3.3 | Ronda Operacional | Coordenador, Supervisor, Líder Operacional |
 | 3.4 | Checklist Equipamentos | Líder PCM, Assistente PCM |
+| SOL | Solicitações OS (aba mobile `valet_almox`) | Almoxarife — atender pedidos de peça originados de OS do PCM |
+| CONF | Conferência de Turno (aba mobile `valet_almox`) | Almoxarife — passagem de bastão T-1 e Turno Atual |
+| SAP-P | Preços SAP (desktop — catálogo importado via CSV) | Líder Suprimentos — referência de código e preço unitário por item |
 | BOK | Rotina Operacional (este documento) | Todos os líderes |
 
 ---
@@ -345,13 +393,39 @@ O sucesso da execução depende da capacidade de reagir rapidamente. **Regra de 
 | Assistente PCM | Erro KM/hodômetro no sistema; OS aberta sem baixa >24h; divergência RJNP | 2.4 Fechamento PCM / 3.4 Checklist / 2.8 RJNP | Nível 1: Líder PCM + Líder Oficina |
 | Líder de Oficina | Retrabalho >3% no turno; falta MO técnica; falta ferramenta crítica para valeta | 3.2 Checklist Liberação / 2.7 Fechamento Oficina / BI MKBF | Nível 1: Líder PCM + Supervisor (Noite) |
 | Líder de Almoxarifado | Divergência inventário rotativo >0%; divergência Diesel >0,5%; RECON paradas >72h | 2.9 Inventário / 2.12 Performance / Checklist Diesel | Nível 1: Coordenador + Auditoria/Supply Chain (Matriz) |
-| Almoxarifes | Falta carcaça velha para troca; divergência recebimento pedidos críticos; baixas pendentes | 2.3 Fechamento Almox / 2.9 Inventário / Balcão | Nível 1: Líder Almoxarifado + Líder PCM |
+| Almoxarife | Falta de item em estoque para atender OS (→ Compra); item entregue diferente do pedido sem registro; baixas pendentes; divergência de recebimento | 2.3 Fechamento Almox / 2.9 Inventário / Aba Solicitações / Aba Conferência | Nível 1: Líder Suprimentos (falta de estoque/compra) + Líder PCM (divergência pedido × entregue em OS crítica) |
 | Líder Operacional | Falta motorista para linha; veículo escalado não liberado; sinistro sem abertura de processo | 2.10 Soltura / BI Escala vs. Frota / Registro Sinistro | Nível 1: Coordenador + Supervisor (Madrugada) |
 | Líder de Pátio | Lavagem <80% do planejado; gargalo abastecimento/manobra; vagas críticas bloqueadas | 3.1 Lavagem Diária / 2.10 Soltura / 3.3 Ronda | Nível 1: Supervisor + Líder Operacional |
 
 ---
 
-### 4.4 Protocolo de Nemoto — Regras de Ouro da Cadeia de Ajuda
+### 4.4 Fluxo Solicitação de Peça via OS (PCM → Almoxarifado)
+
+> Implementado em 22/06/2026. Substitui o processo verbal/manual de pedido de peça para OS corretivas.
+
+**Atores:** Líder PCM / Assistente PCM (solicitante) + Almoxarife (atendente)
+
+**Passo a passo:**
+
+| Etapa | Quem | Onde | Ação |
+|-------|------|------|------|
+| 1 | PCM | Desktop `index.html` → OS ativa | Clica no botão 📦 ao lado do item SAP desejado |
+| 2 | App | Automático | Cria registro em `requisicoes_compra` com `os_numero`, `prefixo`, `cod_sap`, quantidade e status `solicitado_pcm` |
+| 3 | Almoxarife | Mobile `valet_almox` → aba **Solicitações** | Vê o pedido agrupado por OS; verifica item solicitado |
+| 4 | Almoxarife | Mobile → botão **Separar** | Abre confirmação: pesquisa item real no catálogo SAP, registra código e quantidade entregues |
+| 5 | App | Automático | Salva `item_entregue`, `cod_sap_entregue`, `qtd_entregue`; status → `separado` |
+| 6 | PCM | Desktop ou mobile | Card exibe comparativo **Pedido × Entregue** — se houve substituição, aparece ✏️ |
+
+**Regras do processo:**
+- OS nunca é aberta/fechada pelo app — sempre no PRAXIO
+- A solicitação de peça (📦) é feita dentro do app, vinculando ao número da OS
+- Almoxarife **deve** registrar o que foi efetivamente entregue, mesmo que seja o mesmo item
+- Se item pedido não existe em estoque → clicar **Compra** (status `pedido_compra`) → acionar Líder de Suprimentos
+- Se item chegou após pedido de compra → clicar **Chegou**
+
+---
+
+### 4.6 Protocolo de Nemoto — Regras de Ouro da Cadeia de Ajuda
 
 **Regra dos 40 Minutos (Oficina):** O Líder de Oficina monitora cada veículo em manutenção a cada 40 minutos. Se um veículo não avançou de estágio (diagnóstico → execução), acionar PCM imediatamente.
 
@@ -367,7 +441,7 @@ O sucesso da execução depende da capacidade de reagir rapidamente. **Regra de 
 
 ---
 
-### 4.5 FAQ — Guia de Contingências
+### 4.7 FAQ — Guia de Contingências
 
 **Q: O Escalante precisa de um carro, mas o Líder de Oficina diz que faltam 20 minutos. Quem decide?**
 R: Segurança e integridade técnica prevalecem. Líder de Oficina mantém o veículo até concluir. Escalante aciona plano de contingência (veículo reserva/"coringa"). Se o atraso impactar a partida → Supervisor verifica se houve falha na Regra dos 40 Minutos.
@@ -387,6 +461,12 @@ R: A operação não para, mas o rastro não se perde. Almoxarife entrega a peç
 
 | Data | Versão | O que mudou | Autor |
 |------|--------|------------|-------|
+| 22/06/2026 | 1.2 | Almoxarife: seção de papel + rotina das 4 abas (Kits, Solicitações, Conferência, Inv. Rua) | /jtp-bok |
+| 22/06/2026 | 1.2 | Assistente de PCM: seção de papel e atribuições adicionada | /jtp-bok |
+| 22/06/2026 | 1.2 | Líder de Suprimentos: atribuição Quadro de Turnos incluída | /jtp-bok |
+| 22/06/2026 | 1.2 | Novo fluxo documentado: Solicitação de Peça via OS (PCM → Almoxarifado) — seção 4.4 | /jtp-bok |
+| 22/06/2026 | 1.2 | Seção 4.2 Ferramentas: SOL, CONF e SAP-P adicionados | /jtp-bok |
+| 22/06/2026 | 1.2 | Seção 4.3 Cadeia de Ajuda: linha do Almoxarife atualizada com fluxo OS | /jtp-bok |
 | 21/06/2026 | 1.1 | Lubrificador: seção completa (papel, lógica de rotação, rotina no app) | /jtp-bok sync |
 | 21/06/2026 | 1.1 | Membros da ponta: rotinas de Lavador, Manobrista, Frentista e Plantão geradas a partir do app | /jtp-bok sync |
 | 21/06/2026 | 1.0 | Conversão inicial do BOK_1.docx para markdown | /jtp-bok (setup) |
