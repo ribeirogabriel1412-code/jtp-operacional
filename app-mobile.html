@@ -2168,13 +2168,14 @@ async function telaValetAlmox(){
   const _tab=(typeof _almoxMobTab!=='undefined'?_almoxMobTab:'kits');
   if(_tab==='inv-t1'){await telaAlmoxMobInvT1();return;}
   if(_tab==='inv-rua'){await telaAlmoxMobInvRua();return;}
+  if(_tab==='sol'){await telaAlmoxMobSolicitacoes();return;}
   const gid=getGid(),data=await resolverDataValetMobile(getGid(),_valetMobData||proximoSabadoISO(),!!_valetMobData);
   const cdHabilitado=fluxoCdMobileHabilitado(gid);
   const{data:reqs}=await sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).eq('data',data).order('prefixo',{ascending:true}).order('criado_em',{ascending:true});
   const statusPermitidos=cdHabilitado
     ?['solicitado_pcm','aprovado','separado','pedido_compra','comprado','pendente','cd_solicitado','cd_disponivel','cd_negativo']
     :['solicitado_pcm','aprovado','separado','pedido_compra','comprado','pendente'];
-  const lista=(reqs||[]).filter(r=>r.cod_sap!=='__PROG_PREV__'&&!String(r.peca||'').includes('Programação preventiva')&&statusPermitidos.includes(r.status||''));
+  const lista=(reqs||[]).filter(r=>r.cod_sap!=='__PROG_PREV__'&&!String(r.peca||'').includes('Programação preventiva')&&statusPermitidos.includes(r.status||'')&&!r.os_numero);
   const grupos={};
   lista.forEach(r=>{const k=r.prefixo||'Sem prefixo';if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
   const cards=Object.entries(grupos).map(([pref,itens])=>{
@@ -2234,9 +2235,90 @@ function almoxMobTabNav(tab){
   const b=(t,ic,lb)=>`<button onclick="_almoxMobTab='${t}';telaValetAlmox()" style="${s(t)}">${ic} ${lb}</button>`;
   return`<div style="display:flex;gap:6px;padding:4px 14px 10px;overflow-x:auto">
     ${b('kits','📦','Kits')}
+    ${b('sol','🔧','Solicitações')}
     ${b('inv-t1','📋','Inv. T-1')}
     ${b('inv-rua','🏠','Inv. Rua')}
   </div>`;
+}
+
+async function telaAlmoxMobSolicitacoes(){
+  const gid=getGid();
+  render(`<div style="padding:30px;text-align:center;color:var(--text3)">Carregando...</div>`);
+  const{data:reqs}=await sb.from('requisicoes_compra')
+    .select('*').eq('garagem_id',gid)
+    .not('os_numero','is',null)
+    .neq('status','cancelado')
+    .order('criado_em',{ascending:false})
+    .limit(100);
+  const lista=(reqs||[]).filter(r=>r.os_numero&&String(r.os_numero).trim());
+  // Agrupa por OS
+  const grupos={};
+  lista.forEach(r=>{const k=r.os_numero;if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
+  const statusCor=s=>s==='separado'||s==='comprado'?'var(--green)':s==='pedido_compra'?'var(--red)':'var(--amber)';
+  const statusLabel=s=>({solicitado_pcm:'Aguardando',aprovado:'Aprovado',separado:'Separado',pedido_compra:'Compra',comprado:'Chegou',pendente:'Pendente'}[s]||s);
+  const cards=Object.entries(grupos).map(([os,itens])=>{
+    const pref=itens[0]?.prefixo||'—';
+    const ok=itens.filter(i=>['separado','comprado'].includes(i.status||'')).length;
+    const total=itens.length;
+    return`<div class="card" style="margin-bottom:10px;border-left:4px solid ${ok===total?'var(--green)':'var(--amber)'}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+        <div>
+          <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">OS</div>
+          <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:800;color:var(--blue)">${escHtml(os)}</div>
+          <div style="font-size:12px;color:var(--text3)">Prefixo: ${escHtml(pref)}</div>
+        </div>
+        <div style="font-size:11px;font-weight:900;color:${ok===total?'var(--green)':'var(--amber)'}">${ok}/${total} sep.</div>
+      </div>
+      ${itens.map(i=>`<div style="padding:9px 0;border-top:1px solid var(--border2)">
+        <div style="display:grid;grid-template-columns:34px 1fr;gap:8px;font-size:13px;color:var(--text)">
+          <b style="font-family:'DM Mono',monospace;color:var(--amber)">${i.quantidade||1}x</b>
+          <span>${escHtml(i.peca)}${i.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-top:2px">${escHtml(i.cod_sap)}</div>`:''}</span>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px;align-items:center;justify-content:space-between">
+          <span style="font-size:10px;font-weight:800;color:${statusCor(i.status||'')}">${statusLabel(i.status||'solicitado_pcm')}</span>
+          <span style="white-space:nowrap;display:flex;gap:4px">
+            ${['separado','comprado'].includes(i.status||'')?'':`<button onclick="almoxMobSepSol('${i.id}')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;font-family:inherit">Separar</button>`}
+            ${['separado','comprado'].includes(i.status||'')?'':`<button onclick="almoxMobCompraSol('${i.id}')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:800;font-family:inherit">Compra</button>`}
+            <button onclick="almoxMobChegarSol('${i.id}')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:800;font-family:inherit">Chegou</button>
+          </span>
+        </div>
+      </div>`).join('')}
+    </div>`;
+  }).join('');
+  const pendentes=lista.filter(r=>r.status==='solicitado_pcm').length;
+  const separados=lista.filter(r=>['separado','comprado'].includes(r.status||'')).length;
+  render(`
+    <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div style="font-weight:800;font-size:17px">🔧 Solicitações de OS</div>
+      <button onclick="_almoxMobTab='sol';telaValetAlmox()" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">🔄</button>
+    </div>
+    ${almoxMobTabNav('sol')}
+    <div style="display:flex;gap:8px;padding:0 14px 10px">
+      <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--amber);border-radius:10px;padding:10px;text-align:center"><b style="color:var(--amber);font-family:'DM Mono',monospace">${pendentes}</b><div style="font-size:10px;color:var(--text3)">Pendentes</div></div>
+      <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--green);border-radius:10px;padding:10px;text-align:center"><b style="color:var(--green);font-family:'DM Mono',monospace">${separados}</b><div style="font-size:10px;color:var(--text3)">Separados</div></div>
+    </div>
+    <div class="sl">${lista.length} solicitação(ões)</div>
+    ${cards||'<div class="empty"><div class="empty-ic">🔧</div><div style="font-weight:700">Nenhuma solicitação de OS</div></div>'}
+  `);
+}
+
+async function almoxMobSepSol(id){
+  const{error}=await sb.from('requisicoes_compra').update({status:'separado'}).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('✅ Marcado como separado');
+  _almoxMobTab='sol';telaValetAlmox();
+}
+async function almoxMobCompraSol(id){
+  const{error}=await sb.from('requisicoes_compra').update({status:'pedido_compra'}).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('🛒 Pedido de compra registrado');
+  _almoxMobTab='sol';telaValetAlmox();
+}
+async function almoxMobChegarSol(id){
+  const{error}=await sb.from('requisicoes_compra').update({status:'comprado'}).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('📦 Peça marcada como chegou');
+  _almoxMobTab='sol';telaValetAlmox();
 }
 
 async function telaAlmoxMobInvT1(){

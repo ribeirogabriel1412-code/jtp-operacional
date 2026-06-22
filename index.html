@@ -8865,7 +8865,7 @@ async function renderFerrPCM(aba='painel'){
   let orcamento=[];
   try{
     const{data:orc}=await sb.from('pcm_orcamento').select('*').eq('garagem_id',gid).eq('data',data).eq('turno',S.turno||'dia')
-      .order('created_at',{ascending:false}).limit(1);
+      .order('id',{ascending:false}).limit(1);
     orcamento=orc||[];
   }catch(e){}
 
