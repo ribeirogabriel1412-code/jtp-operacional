@@ -2349,11 +2349,17 @@ function almoxMobAbrirConfEntrega(id){
       <div style="background:var(--surface2);border:1px solid var(--border);border-left:4px solid var(--green);border-radius:10px;padding:12px 14px;margin-bottom:16px">
         <div style="font-size:10px;font-weight:900;color:var(--green);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">✅ O que foi entregue</div>
         <div style="margin-bottom:8px">
-          <label style="font-size:11px;font-weight:700;color:var(--text3)">Item entregue</label>
-          <input id="conf-item-nome" placeholder="Buscar no catálogo SAP ou digitar..." value="${escHtml(item.peca||'')}" oninput="almoxConfBuscarSap(this.value,'${id}')" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 11px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
-          <div id="conf-sap-drop-${id}" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-top:2px;max-height:160px;overflow-y:auto"></div>
+          <label style="font-size:11px;font-weight:700;color:var(--text3)">Buscar item (nome ou código SAP)</label>
+          <input id="conf-item-busca" placeholder="Digite para buscar no catálogo..." oninput="almoxConfBuscarSap(this.value,'${id}')" autocomplete="off" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--blue);border-radius:8px;color:var(--text);padding:9px 11px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+          <div id="conf-sap-drop-${id}" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-top:2px;max-height:180px;overflow-y:auto;z-index:10;position:relative"></div>
         </div>
-        <div style="margin-bottom:8px">
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+          <div style="font-size:10px;font-weight:700;color:var(--text3);margin-bottom:4px">ITEM SELECIONADO</div>
+          <div id="conf-item-preview" style="font-size:13px;font-weight:700;color:var(--text)">${escHtml(item.peca||'—')}</div>
+          <div id="conf-item-cod-preview" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--amber);margin-top:2px">${escHtml(item.cod_sap||'')}</div>
+        </div>
+        <input type="hidden" id="conf-item-nome" value="${escHtml(item.peca||'')}">
+        <div style="margin-bottom:8px;display:none">
           <label style="font-size:11px;font-weight:700;color:var(--text3)">Código SAP</label>
           <input id="conf-item-cod" placeholder="Código SAP (opcional)" value="${escHtml(item.cod_sap||'')}" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 11px;font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
         </div>
@@ -2391,11 +2397,20 @@ async function almoxConfBuscarSap(q,itemId){
 }
 
 function almoxConfSelecionarItem(cod,desc,itemId){
+  // Atualiza campos hidden (usados no save)
   const inp=document.getElementById('conf-item-nome');
   const codInp=document.getElementById('conf-item-cod');
-  const drop=document.getElementById('conf-sap-drop-'+itemId);
   if(inp)inp.value=desc;
   if(codInp)codInp.value=cod;
+  // Atualiza preview visual
+  const prev=document.getElementById('conf-item-preview');
+  const codPrev=document.getElementById('conf-item-cod-preview');
+  const busca=document.getElementById('conf-item-busca');
+  if(prev)prev.textContent=desc;
+  if(codPrev)codPrev.textContent=cod||'';
+  if(busca)busca.value='';
+  // Fecha dropdown
+  const drop=document.getElementById('conf-sap-drop-'+itemId);
   if(drop)drop.style.display='none';
 }
 
