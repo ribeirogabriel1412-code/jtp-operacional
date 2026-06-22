@@ -2354,21 +2354,23 @@ async function telaAlmoxMobConferencia(){
   const durMs=durMin*60*1000;
   const windowFim=new Date(entradaHoje);
   const windowIni=new Date(entradaHoje.getTime()-durMs);
-  // Busca itens do período anterior
-  const{data:itens}=await sb.from('requisicoes_compra')
-    .select('*').eq('garagem_id',gid)
-    .gte('criado_em',windowIni.toISOString())
-    .lte('criado_em',windowFim.toISOString())
-    .neq('status','cancelado')
-    .order('criado_em',{ascending:true});
-  const lista=itens||[];
+  // Busca T-1 (turno anterior) e turno atual em paralelo
+  const agora2=new Date();
+  const[{data:itensT1},{data:itensAtual}]=await Promise.all([
+    sb.from('requisicoes_compra').select('*').eq('garagem_id',gid)
+      .gte('criado_em',windowIni.toISOString()).lte('criado_em',windowFim.toISOString())
+      .neq('status','cancelado').order('criado_em',{ascending:true}),
+    sb.from('requisicoes_compra').select('*').eq('garagem_id',gid)
+      .gte('criado_em',windowFim.toISOString()).lte('criado_em',agora2.toISOString())
+      .neq('status','cancelado').order('criado_em',{ascending:true})
+  ]);
+  const listaT1=itensT1||[];
+  const listaAtual=itensAtual||[];
   const fmtHora=d=>{try{return new Date(d).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}catch(e){return''}};
   const fmtDt=d=>{try{return new Date(d).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' '+fmtHora(d)}catch(e){return''}};
   const statusCor=s=>s==='separado'||s==='comprado'?'var(--green)':s==='pedido_compra'?'var(--red)':'var(--amber)';
   const statusLabel=s=>({solicitado_pcm:'Aguardando',aprovado:'Aprovado',separado:'Separado',pedido_compra:'Compra',comprado:'Chegou',pendente:'Pendente'}[s]||s);
-  const separados=lista.filter(r=>['separado','comprado'].includes(r.status||'')).length;
-  const pendentes=lista.filter(r=>!['separado','comprado'].includes(r.status||'')).length;
-  const cards=lista.map(i=>`
+  const renderCard=i=>`
     <div class="card" style="margin-bottom:8px;border-left:4px solid ${statusCor(i.status||'')}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px">
         <div style="flex:1;min-width:0">
@@ -2385,9 +2387,16 @@ async function telaAlmoxMobConferencia(){
         </div>
         <span style="font-size:11px;font-weight:800;color:${statusCor(i.status||'')}">${statusLabel(i.status||'')}</span>
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  const cardsT1=listaT1.map(renderCard).join('');
+  const cardsAtual=listaAtual.map(renderCard).join('');
   const fmtH=t=>t||'—';
+  const secaoHeader=(titulo,cor,qtd)=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 14px 6px">
+      <div style="width:4px;height:18px;background:${cor};border-radius:2px"></div>
+      <div style="font-weight:900;font-size:13px;color:${cor};text-transform:uppercase;letter-spacing:.5px">${titulo}</div>
+      <div style="background:${cor}22;color:${cor};border-radius:99px;padding:2px 8px;font-size:11px;font-weight:800">${qtd}</div>
+    </div>`;
   render(`
     <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
       <div style="font-weight:800;font-size:17px">📋 Conferência do Turno</div>
@@ -2395,18 +2404,19 @@ async function telaAlmoxMobConferencia(){
     </div>
     ${almoxMobTabNav('conf')}
     <div style="padding:0 14px 10px">
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:12px">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 14px">
         <div style="color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;margin-bottom:4px">Seu turno</div>
         <div style="font-family:'DM Mono',monospace;font-weight:800"><span style="color:var(--green)">${fmtH(turno.hora_entrada)}</span> <span style="color:var(--text3)">→</span> <span style="color:var(--amber)">${fmtH(turno.hora_saida)}</span></div>
-        <div style="color:var(--text3);font-size:10px;margin-top:4px">Conferindo: ${fmtHora(windowIni.toISOString())} → ${fmtHora(windowFim.toISOString())} (${windowIni.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})})</div>
       </div>
     </div>
-    <div style="display:flex;gap:8px;padding:0 14px 10px">
-      <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--amber);border-radius:10px;padding:10px;text-align:center"><b style="color:var(--amber);font-family:'DM Mono',monospace">${pendentes}</b><div style="font-size:10px;color:var(--text3)">Pendentes</div></div>
-      <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--green);border-radius:10px;padding:10px;text-align:center"><b style="color:var(--green);font-family:'DM Mono',monospace">${separados}</b><div style="font-size:10px;color:var(--text3)">OK</div></div>
+    ${secaoHeader('T-1 — Turno Anterior','var(--purple)',listaT1.length)}
+    <div style="padding:0 14px">
+      ${cardsT1||'<div style="padding:16px;text-align:center;color:var(--text3);font-size:12px">Nenhum item no turno anterior</div>'}
     </div>
-    <div class="sl">${lista.length} item(ns) no turno anterior</div>
-    ${cards||'<div class="empty"><div class="empty-ic">✅</div><div style="font-weight:700">Nenhum item no período</div></div>'}
+    ${secaoHeader('Turno Atual','var(--blue)',listaAtual.length)}
+    <div style="padding:0 14px 80px">
+      ${cardsAtual||'<div style="padding:16px;text-align:center;color:var(--text3);font-size:12px">Nenhum item no turno atual ainda</div>'}
+    </div>
   `);
 }
 
