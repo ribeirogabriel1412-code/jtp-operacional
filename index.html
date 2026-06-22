@@ -2004,50 +2004,77 @@ async function renderAlmoxCompras(){
   setMain(`<div class="loading"><div class="spinner"></div></div>`);
   const isLider=['lider_suprimentos','lider_almoxarifado'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
   if(!isLider){setMain(`<div class="empty">Acesso restrito ao Líder de Suprimentos</div>`);return;}
-  const subTab=S._almoxComprasTab||'pendente';
   const{data:pedidos}=await sb.from('almoxo_pedidos_compra').select('*').eq('garagem_id',gid).order('criado_em',{ascending:false});
   const all=pedidos||[];
-  const grp={pendente:all.filter(p=>p.status==='pendente'),enviado_matriz:all.filter(p=>p.status==='enviado_matriz'),aguardando_entrega:all.filter(p=>p.status==='aguardando_entrega'),recebido:all.filter(p=>p.status==='recebido')};
-  const safe=v=>escHtml(String(v||'—'));
-  const fmtD=s=>{if(!s)return'—';try{return new Date(s).toLocaleDateString('pt-BR');}catch{return s;}};
-  const fmtDate=s=>{if(!s)return'—';const[a,m,d]=s.split('-');return`${d}/${m}/${a}`;};
+  const filtroStatus=S._almoxComprasStatus||'aberto';
+  const hoje=new Date();hoje.setHours(0,0,0,0);
+  const isVencido=p=>p.data_previsao_entrega&&new Date(p.data_previsao_entrega+'T12:00:00')<hoje&&p.status!=='recebido';
+  const filtrados=filtroStatus==='aberto'?all.filter(p=>['pendente','enviado_matriz','aguardando_entrega'].includes(p.status)):filtroStatus==='todos'?all:all.filter(p=>p.status===filtroStatus);
   const corStatus={pendente:'var(--red)',enviado_matriz:'var(--blue)',aguardando_entrega:'var(--amber)',recebido:'var(--green)'};
-  const labelStatus={pendente:'⏳ Pendente',enviado_matriz:'📤 Enviado p/ Matriz',aguardando_entrega:'🕐 Aguardando Entrega',recebido:'✅ Recebido'};
-  const tabs=[{id:'pendente',lb:'⏳ Pendente'},{id:'enviado_matriz',lb:'📤 Enviado'},{id:'aguardando_entrega',lb:'🕐 Aguardando'},{id:'recebido',lb:'✅ Recebido'}];
-  const tabNav=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
-    ${tabs.map(t=>{const a=subTab===t.id,cnt=grp[t.id].length;return`<button onclick="S._almoxComprasTab='${t.id}';renderAlmoxCompras()" style="cursor:pointer;padding:8px 16px;border-radius:8px;font-family:'DM Sans',sans-serif;font-weight:800;font-size:13px;border:1px solid ${a?corStatus[t.id]:'var(--border)'};${a?`background:${corStatus[t.id]};color:${t.id==='aguardando_entrega'?'#06131f':'#fff'}`:'background:var(--surface2);color:var(--text3)'}">${t.lb}${cnt>0?` <span style="background:rgba(0,0,0,.2);border-radius:99px;padding:1px 7px;font-size:11px">${cnt}</span>`:''}</button>`;}).join('')}
+  const labelStatus={pendente:'Pendente',enviado_matriz:'Enviado',aguardando_entrega:'Aguardando',recebido:'Recebido'};
+  const fmtDate=s=>{if(!s)return'—';const[a,m,d]=String(s).split('-');return`${d}/${m}/${a}`;};
+  const fmtD=s=>{if(!s)return'—';try{return new Date(s).toLocaleDateString('pt-BR');}catch{return s;}};
+  const pendCnt=all.filter(p=>p.status==='pendente').length;
+  const envCnt=all.filter(p=>p.status==='enviado_matriz').length;
+  const agCnt=all.filter(p=>p.status==='aguardando_entrega').length;
+  const recCnt=all.filter(p=>p.status==='recebido').length;
+  const vencCnt=all.filter(isVencido).length;
+  // Agrupa por prefixo
+  const grupos={};
+  filtrados.forEach(p=>{const k=p.prefixo||'S/PREFIXO';if(!grupos[k])grupos[k]=[];grupos[k].push(p);});
+  const prefixos=Object.keys(grupos).sort();
+  // KPIs
+  const kpis=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px">
+    ${[{l:'Pendentes',v:pendCnt,c:'var(--red)',f:'pendente'},{l:'Enviados',v:envCnt,c:'var(--blue)',f:'enviado_matriz'},{l:'Aguardando',v:agCnt,c:'var(--amber)',f:'aguardando_entrega'},{l:'Recebidos',v:recCnt,c:'var(--green)',f:'recebido'}].map(k=>`<div onclick="S._almoxComprasStatus='${k.f}';renderAlmoxCompras()" style="background:var(--surface);border:1px solid ${filtroStatus===k.f?k.c:'var(--border)'};border-radius:10px;padding:12px 14px;text-align:center;cursor:pointer"><div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">${k.l}</div><div style="font-size:26px;font-weight:900;color:${k.c}">${k.v}</div></div>`).join('')}
   </div>`;
-  const renderFup=logs=>{if(!logs||!logs.length)return'';return`<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px"><div style="font-size:10px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Histórico FUP</div>${logs.map(l=>`<div style="font-size:11px;color:var(--text3);margin-bottom:4px;display:flex;gap:6px"><span style="color:var(--text2);font-family:'DM Mono',monospace;white-space:nowrap">${fmtD(l.data)}</span><span style="color:var(--blue)">${escHtml(l.responsavel||'')}</span><span>·</span><span>${escHtml(l.nota||'')}</span></div>`).join('')}</div>`;};
-  const lista=grp[subTab]||[];
-  const cards=lista.map(p=>{
-    let actions='';
-    if(p.status==='pendente')actions=`<button onclick="almoxComprasEnviarMatriz('${p.id}')" style="padding:7px 16px;border-radius:8px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:12px;font-weight:800;font-family:'DM Sans',sans-serif;cursor:pointer">📤 Enviado p/ Matriz</button>`;
-    else if(p.status==='enviado_matriz')actions=`<button onclick="almoxComprasRegistrarPrazo('${p.id}')" style="padding:7px 16px;border-radius:8px;border:1px solid var(--amber);background:#C8A24A18;color:var(--amber);font-size:12px;font-weight:800;font-family:'DM Sans',sans-serif;cursor:pointer">📅 Registrar Prazo</button><button onclick="almoxComprasFup('${p.id}')" style="padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:12px;font-weight:800;font-family:'DM Sans',sans-serif;cursor:pointer;margin-left:8px">💬 FUP</button>`;
-    else if(p.status==='aguardando_entrega')actions=`<button onclick="almoxComprasFup('${p.id}')" style="padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:12px;font-weight:800;font-family:'DM Sans',sans-serif;cursor:pointer">💬 FUP</button><button onclick="almoxComprasRecebido('${p.id}')" style="padding:7px 16px;border-radius:8px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:12px;font-weight:800;font-family:'DM Sans',sans-serif;cursor:pointer;margin-left:8px">✅ Chegou</button>`;
-    return`<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${corStatus[p.status]||'var(--border)'};border-radius:12px;padding:16px 18px;margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:900;font-size:15px;margin-bottom:3px">${safe(p.item)}</div>
-          ${p.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--amber)">${safe(p.cod_sap)}</div>`:''}
-          ${p.justificativa?`<div style="font-size:11px;color:var(--text3);margin-top:4px;font-style:italic">"${safe(p.justificativa)}"</div>`:''}
-        </div>
-        <div style="text-align:right;margin-left:16px;flex-shrink:0">
-          <div style="font-size:13px;font-weight:900">${p.quantidade||1}x</div>
-          ${p.os_numero?`<div style="font-size:10px;color:var(--blue);font-family:'DM Mono',monospace">OS ${safe(p.os_numero)}</div>`:''}
-          ${p.prefixo?`<div style="font-size:10px;color:var(--text3)">Pref. ${safe(p.prefixo)}</div>`:''}
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
-        <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center"><div style="font-size:9px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:.3px">Solicitado</div><div style="font-size:12px;font-weight:700;margin-top:3px">${fmtD(p.criado_em)}</div>${p.solicitado_por?`<div style="font-size:10px;color:var(--text3);margin-top:1px">${safe(p.solicitado_por)}</div>`:''}</div>
-        <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center"><div style="font-size:9px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:.3px">Enviado</div><div style="font-size:12px;font-weight:700;margin-top:3px;color:${p.data_envio_matriz?'var(--blue)':'var(--text3)'}">${fmtD(p.data_envio_matriz)}</div></div>
-        <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center"><div style="font-size:9px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:.3px">Prazo</div><div style="font-size:12px;font-weight:700;margin-top:3px;color:${p.data_previsao_entrega?'var(--amber)':'var(--text3)'}">${fmtDate(p.data_previsao_entrega)}</div></div>
-      </div>
-      ${actions?`<div style="margin-bottom:8px">${actions}</div>`:''}
-      ${renderFup(p.fup_logs||[])}
-    </div>`;
-  }).join('');
-  const emAberto=grp.pendente.length+grp.enviado_matriz.length+grp.aguardando_entrega.length;
-  setMain(`<div style="padding:24px">${almoxTabNav('compras',isLider)}<div style="margin-bottom:20px"><h2 style="margin:0 0 4px;font-size:20px;font-weight:900">🛒 Pedidos de Compra</h2><div style="font-size:13px;color:var(--text3)">${all.length} pedido(s) total · <span style="color:var(--red);font-weight:700">${emAberto} em aberto</span></div></div>${tabNav}${lista.length?cards:`<div class="empty" style="margin-top:20px"><div style="font-size:32px;margin-bottom:12px">🛒</div><div style="font-weight:700;font-size:16px">Nenhum pedido ${subTab==='pendente'?'pendente':subTab==='enviado_matriz'?'enviado':subTab==='aguardando_entrega'?'aguardando':'recebido'}</div></div>`}</div>`);
+  // Filtros
+  const filtros=[{id:'aberto',lb:`Em aberto (${pendCnt+envCnt+agCnt})`},{id:'todos',lb:`Todos (${all.length})`}];
+  const filtrNav=`<div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+    ${filtros.map(f=>{const a=filtroStatus===f.id;return`<button onclick="S._almoxComprasStatus='${f.id}';renderAlmoxCompras()" style="cursor:pointer;padding:6px 14px;border-radius:20px;font-family:inherit;font-weight:700;font-size:12px;border:1px solid ${a?'var(--blue)':'var(--border)'};background:${a?'var(--blue)':'var(--surface2)'};color:${a?'#fff':'var(--text3)'}">${f.lb}</button>`;}).join('')}
+    ${vencCnt>0?`<span style="color:var(--red);font-size:12px;font-weight:800">⚠️ ${vencCnt} com prazo vencido</span>`:''}
+    <button onclick="renderAlmoxCompras()" style="margin-left:auto;padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text3);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">🔄</button>
+  </div>`;
+  // Tabela por prefixo
+  let tRows='';
+  if(!filtrados.length){tRows=`<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text3);font-weight:600">Nenhum pedido encontrado</td></tr>`;}
+  else{
+    prefixos.forEach(pref=>{
+      const items=grupos[pref];
+      items.forEach((p,idx)=>{
+        const vencido=isVencido(p);
+        const lastFup=p.fup_logs?.length?p.fup_logs[0]:null;
+        let btns='';
+        if(p.status==='pendente')btns=`<button onclick="almoxComprasEnviarMatriz('${p.id}')" title="Enviar para Matriz" style="padding:4px 8px;border-radius:6px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:800;font-family:inherit;cursor:pointer">📤 Enviar</button>`;
+        else if(p.status==='enviado_matriz')btns=`<button onclick="almoxComprasRegistrarPrazo('${p.id}')" title="Prazo" style="padding:4px 8px;border-radius:6px;border:1px solid var(--amber);background:#C8A24A18;color:var(--amber);font-size:11px;font-weight:800;font-family:inherit;cursor:pointer">📅</button> <button onclick="almoxComprasFup('${p.id}')" title="FUP" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:11px;font-weight:800;font-family:inherit;cursor:pointer">💬 FUP</button>`;
+        else if(p.status==='aguardando_entrega')btns=`<button onclick="almoxComprasFup('${p.id}')" title="FUP" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:11px;font-weight:800;font-family:inherit;cursor:pointer">💬 FUP</button> <button onclick="almoxComprasRecebido('${p.id}')" title="Chegou" style="padding:4px 8px;border-radius:6px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;font-family:inherit;cursor:pointer">✅ Chegou</button>`;
+        tRows+=`<tr style="border-top:1px solid var(--border);${vencido?'background:#EF444408':''}" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='${vencido?'#EF444408':''}'">
+          <td style="padding:10px 12px;font-family:'DM Mono',monospace;font-weight:900;font-size:13px;color:var(--blue);white-space:nowrap">${idx===0?escHtml(pref):''}</td>
+          <td style="padding:10px 12px"><div style="font-weight:700;font-size:13px;line-height:1.3">${escHtml(p.item||'—')}</div>${p.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-top:2px">${escHtml(p.cod_sap)}</div>`:''}</td>
+          <td style="padding:10px 12px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text3);white-space:nowrap">${escHtml(p.os_numero||'—')}</td>
+          <td style="padding:10px 12px;text-align:center;font-weight:800;font-family:'DM Mono',monospace">${p.quantidade||1}</td>
+          <td style="padding:10px 12px;white-space:nowrap"><span style="background:${corStatus[p.status]||'var(--border)'}20;color:${corStatus[p.status]||'var(--text3)'};border:1px solid ${corStatus[p.status]||'var(--border)'}50;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:800">${labelStatus[p.status]||p.status}</span></td>
+          <td style="padding:10px 12px;white-space:nowrap;font-size:12px;font-weight:${vencido?'900':'600'};color:${vencido?'var(--red)':p.data_previsao_entrega?'var(--amber)':'var(--text3)'}">${fmtDate(p.data_previsao_entrega)}${vencido?' ⚠️':''}</td>
+          <td style="padding:10px 12px;min-width:220px">
+            ${lastFup?`<div style="font-size:11px;color:var(--text3);margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px" title="${escHtml(lastFup.nota)}"><span style="color:var(--blue);font-weight:700">${fmtD(lastFup.data)}</span> · ${escHtml(lastFup.nota)}</div>`:''}
+            <div style="display:flex;gap:4px;flex-wrap:wrap">${btns}</div>
+          </td>
+        </tr>`;
+      });
+    });
+  }
+  const tabela=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="background:var(--surface2)">
+      <th style="padding:10px 12px;color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;text-align:left">Prefixo</th>
+      <th style="padding:10px 12px;color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;text-align:left">Item</th>
+      <th style="padding:10px 12px;color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;text-align:left">OS</th>
+      <th style="padding:10px 12px;color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;text-align:center">Qtd</th>
+      <th style="padding:10px 12px;color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;text-align:left">Status</th>
+      <th style="padding:10px 12px;color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;text-align:left">Prazo</th>
+      <th style="padding:10px 12px;color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;text-align:left">Últ. FUP / Ações</th>
+    </tr></thead>
+    <tbody>${tRows}</tbody>
+  </table></div>`;
+  setMain(`<div style="padding:24px">${almoxTabNav('compras',isLider)}<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><h2 style="margin:0;font-size:20px;font-weight:900">🛒 Pedidos de Compra</h2></div>${kpis}${filtrNav}${tabela}</div>`);
 }
 
 function almoxComprasAbrirModal(titulo,html,onConfirm){
