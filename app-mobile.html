@@ -2493,10 +2493,10 @@ async function telaAlmoxMobConferencia(){
   const[{data:itensT1},{data:itensAtual}]=await Promise.all([
     sb.from('requisicoes_compra').select('*').eq('garagem_id',gid)
       .gte('criado_em',windowIni.toISOString()).lte('criado_em',windowFim.toISOString())
-      .neq('status','cancelado').order('criado_em',{ascending:true}),
+      .not('item_entregue','is',null).order('criado_em',{ascending:true}),
     sb.from('requisicoes_compra').select('*').eq('garagem_id',gid)
       .gte('criado_em',windowFim.toISOString()).lte('criado_em',agora2.toISOString())
-      .neq('status','cancelado').order('criado_em',{ascending:true})
+      .not('item_entregue','is',null).order('criado_em',{ascending:true})
   ]);
   const listaT1=itensT1||[];
   const listaAtual=itensAtual||[];
