@@ -2166,7 +2166,7 @@ async function telaPrevOficina(){
 }
 async function telaValetAlmox(){
   const _tab=(typeof _almoxMobTab!=='undefined'?_almoxMobTab:'kits');
-  if(_tab==='inv-t1'){await telaAlmoxMobInvT1();return;}
+  if(_tab==='conf'){await telaAlmoxMobConferencia();return;}
   if(_tab==='inv-rua'){await telaAlmoxMobInvRua();return;}
   if(_tab==='sol'){await telaAlmoxMobSolicitacoes();return;}
   const gid=getGid(),data=await resolverDataValetMobile(getGid(),_valetMobData||proximoSabadoISO(),!!_valetMobData);
@@ -2236,7 +2236,7 @@ function almoxMobTabNav(tab){
   return`<div style="display:flex;gap:6px;padding:4px 14px 10px;overflow-x:auto">
     ${b('kits','📦','Kits')}
     ${b('sol','🔧','Solicitações')}
-    ${b('inv-t1','📋','Inv. T-1')}
+    ${b('conf','📋','Conferência')}
     ${b('inv-rua','🏠','Inv. Rua')}
   </div>`;
 }
@@ -2319,6 +2319,95 @@ async function almoxMobChegarSol(id){
   if(error){toast('Erro: '+error.message,'err');return;}
   toast('📦 Peça marcada como chegou');
   _almoxMobTab='sol';telaValetAlmox();
+}
+
+async function telaAlmoxMobConferencia(){
+  const gid=getGid();
+  render(`<div style="padding:30px;text-align:center;color:var(--text3)">Carregando quadro...</div>`);
+  // Busca o turno do usuário logado
+  const{data:turno}=await sb.from('almoxo_quadro_turno')
+    .select('*').eq('garagem_id',gid).eq('perfil_id',S.user?.id).maybeSingle();
+  if(!turno){
+    render(`
+      <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div style="font-weight:800;font-size:17px">📋 Conferência do Turno</div>
+      </div>
+      ${almoxMobTabNav('conf')}
+      <div class="empty" style="margin:40px 14px">
+        <div class="empty-ic">📋</div>
+        <div style="font-weight:700;margin-bottom:8px">Você não está no quadro</div>
+        <div style="font-size:12px;color:var(--text3)">Peça ao Líder de Suprimentos para cadastrar seu horário no Painel do Líder</div>
+      </div>
+    `);
+    return;
+  }
+  // Calcula janela do turno anterior
+  const [hE,mE]=turno.hora_entrada.split(':').map(Number);
+  const [hS,mS]=turno.hora_saida.split(':').map(Number);
+  const agora=new Date();
+  const entradaHoje=new Date(agora);
+  entradaHoje.setHours(hE,mE,0,0);
+  // Se a hora de entrada já passou hoje, usamos hoje; senão, ontem
+  if(entradaHoje>agora) entradaHoje.setDate(entradaHoje.getDate()-1);
+  let durMin=(hS*60+mS)-(hE*60+mE);
+  if(durMin<=0) durMin+=24*60; // turno que vira a noite
+  const durMs=durMin*60*1000;
+  const windowFim=new Date(entradaHoje);
+  const windowIni=new Date(entradaHoje.getTime()-durMs);
+  // Busca itens do período anterior
+  const{data:itens}=await sb.from('requisicoes_compra')
+    .select('*').eq('garagem_id',gid)
+    .gte('criado_em',windowIni.toISOString())
+    .lte('criado_em',windowFim.toISOString())
+    .neq('status','cancelado')
+    .order('criado_em',{ascending:true});
+  const lista=itens||[];
+  const fmtHora=d=>{try{return new Date(d).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}catch(e){return''}};
+  const fmtDt=d=>{try{return new Date(d).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' '+fmtHora(d)}catch(e){return''}};
+  const statusCor=s=>s==='separado'||s==='comprado'?'var(--green)':s==='pedido_compra'?'var(--red)':'var(--amber)';
+  const statusLabel=s=>({solicitado_pcm:'Aguardando',aprovado:'Aprovado',separado:'Separado',pedido_compra:'Compra',comprado:'Chegou',pendente:'Pendente'}[s]||s);
+  const separados=lista.filter(r=>['separado','comprado'].includes(r.status||'')).length;
+  const pendentes=lista.filter(r=>!['separado','comprado'].includes(r.status||'')).length;
+  const cards=lista.map(i=>`
+    <div class="card" style="margin-bottom:8px;border-left:4px solid ${statusCor(i.status||'')}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;word-break:break-word">${escHtml(i.peca||'—')}</div>
+          ${i.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber)">${escHtml(i.cod_sap)}</div>`:''}
+        </div>
+        <div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:800;color:var(--blue);flex-shrink:0">${i.quantidade||1}x</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+        <div>
+          ${i.prefixo?`<span style="font-size:11px;color:var(--text3)">Prefixo: <b>${escHtml(i.prefixo)}</b></span>`:''}
+          ${i.os_numero?`<span style="font-size:11px;color:var(--text3);margin-left:8px">OS: <b>${escHtml(i.os_numero)}</b></span>`:''}
+          <div style="font-size:10px;color:var(--text4);margin-top:2px">${fmtDt(i.criado_em)}</div>
+        </div>
+        <span style="font-size:11px;font-weight:800;color:${statusCor(i.status||'')}">${statusLabel(i.status||'')}</span>
+      </div>
+    </div>
+  `).join('');
+  const fmtH=t=>t||'—';
+  render(`
+    <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div style="font-weight:800;font-size:17px">📋 Conferência do Turno</div>
+      <button onclick="_almoxMobTab='conf';telaValetAlmox()" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">🔄</button>
+    </div>
+    ${almoxMobTabNav('conf')}
+    <div style="padding:0 14px 10px">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:12px">
+        <div style="color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;margin-bottom:4px">Seu turno</div>
+        <div style="font-family:'DM Mono',monospace;font-weight:800"><span style="color:var(--green)">${fmtH(turno.hora_entrada)}</span> <span style="color:var(--text3)">→</span> <span style="color:var(--amber)">${fmtH(turno.hora_saida)}</span></div>
+        <div style="color:var(--text3);font-size:10px;margin-top:4px">Conferindo: ${fmtHora(windowIni.toISOString())} → ${fmtHora(windowFim.toISOString())} (${windowIni.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})})</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;padding:0 14px 10px">
+      <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--amber);border-radius:10px;padding:10px;text-align:center"><b style="color:var(--amber);font-family:'DM Mono',monospace">${pendentes}</b><div style="font-size:10px;color:var(--text3)">Pendentes</div></div>
+      <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--green);border-radius:10px;padding:10px;text-align:center"><b style="color:var(--green);font-family:'DM Mono',monospace">${separados}</b><div style="font-size:10px;color:var(--text3)">OK</div></div>
+    </div>
+    <div class="sl">${lista.length} item(ns) no turno anterior</div>
+    ${cards||'<div class="empty"><div class="empty-ic">✅</div><div style="font-weight:700">Nenhum item no período</div></div>'}
+  `);
 }
 
 async function telaAlmoxMobInvT1(){

@@ -1899,12 +1899,15 @@ async function renderAlmoxPainelLider(){
   const isLider=['lider_suprimentos','lider_almoxarifado'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
   if(!isLider){setMain(`<div class="empty">Acesso restrito ao Líder</div>`);return;}
   const hojeIso=hoje();
-  const[{data:ruas},{data:divs},{data:ultInvT1},{data:ultInvRua}]=await Promise.all([
+  const[{data:ruas},{data:divs},{data:ultInvT1},{data:ultInvRua},{data:quadro},{data:perfisAlmox}]=await Promise.all([
     sb.from('almoxo_ruas').select('*').eq('garagem_id',gid).eq('ativo',true).order('nome'),
     sb.from('almoxo_divergencias').select('*').eq('garagem_id',gid).eq('status','aberta').order('detectado_em',{ascending:false}),
     sb.from('almoxo_inventario_t1').select('*').eq('garagem_id',gid).order('conferido_em',{ascending:false}).limit(60),
-    sb.from('almoxo_inventario_rua').select('*,almoxo_ruas(nome)').eq('garagem_id',gid).order('conferido_em',{ascending:false}).limit(60)
+    sb.from('almoxo_inventario_rua').select('*,almoxo_ruas(nome)').eq('garagem_id',gid).order('conferido_em',{ascending:false}).limit(60),
+    sb.from('almoxo_quadro_turno').select('*,perfis(nome,cargo)').eq('garagem_id',gid).order('hora_entrada'),
+    sb.from('perfis').select('id,nome,cargo').eq('garagem_id',gid).in('cargo',['almoxarifado','lider_almoxarifado','lider_suprimentos']).order('nome')
   ]);
+  window._almoxPerfisCache=perfisAlmox||[];
   const tabs=almoxTabNav('painel',true);
   const divAberta=(divs||[]).length;
   const t1Hoje=(ultInvT1||[]).filter(i=>i.turno_data===hojeIso);
@@ -1938,13 +1941,40 @@ async function renderAlmoxPainelLider(){
       <div style="text-align:right"><button onclick="almoxEncerrarDiv('${d.id}')" style="border:1px solid var(--green);background:#00C48C18;color:var(--green);border-radius:6px;padding:4px 8px;font-size:10px;font-weight:800;cursor:pointer">Encerrar</button></div>
     </div>`;
   }).join('');
+  // ── Quadro de Turnos ─────────────────────────────────────────────
+  const quadroRows=(quadro||[]).map(q=>{
+    const nome=q.perfis?.nome||'—';
+    const cargo=q.perfis?.cargo||'';
+    const cargoLabel={'almoxarifado':'Almoxarife','lider_almoxarifado':'Líder Almox','lider_suprimentos':'Líder Sup.'}[cargo]||cargo;
+    return`<div style="display:grid;grid-template-columns:1fr 120px 90px 90px 80px;gap:10px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border2);font-size:13px">
+      <div><div style="font-weight:700">${safe(nome)}</div><div style="font-size:11px;color:var(--text3)">${cargoLabel}</div></div>
+      <div style="font-family:'DM Mono',monospace;text-align:center;font-size:12px;color:var(--text3)">${safe(cargo)}</div>
+      <div style="font-family:'DM Mono',monospace;font-weight:800;color:var(--green);text-align:center">${q.hora_entrada||'—'}</div>
+      <div style="font-family:'DM Mono',monospace;font-weight:800;color:var(--amber);text-align:center">${q.hora_saida||'—'}</div>
+      <div style="text-align:right;display:flex;gap:4px;justify-content:flex-end">
+        <button onclick="almoxEditarTurno('${q.id}','${q.perfil_id}','${q.hora_entrada}','${q.hora_saida}')" style="border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer">✏️</button>
+        <button onclick="almoxRemoverTurno('${q.id}','${safe(nome)}')" style="border:1px solid var(--red);background:#EF444418;color:var(--red);border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer">✕</button>
+      </div>
+    </div>`;
+  }).join('');
   setMain(`
-    ${secTitle('📊','Painel do Líder — Acurácia')}
+    ${secTitle('📊','Painel do Líder — Almoxarifado')}
     ${tabs}
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
       ${kpi('Divergências abertas',divAberta,0,'',divAberta>0,0)}
       ${acurT1!=null?kpi('Acurácia T-1 hoje',acurT1+'%',null,'',acurT1<95,0):kpi('Acurácia T-1 hoje','—',null,'',false,0)}
       ${acurRua!=null?kpi('Acurácia ruas hoje',acurRua+'%',null,'',acurRua<95,0):kpi('Acurácia ruas hoje','—',null,'',false,0)}
+    </div>
+    ${secTitle('🗓️','Quadro de Turnos')}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:20px">
+      ${quadroRows?`
+        <div style="display:grid;grid-template-columns:1fr 120px 90px 90px 80px;gap:10px;background:var(--surface2);border-bottom:1px solid var(--border);padding:9px 16px;font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)">
+          <div>Almoxarife</div><div style="text-align:center">Cargo</div><div style="text-align:center">Entrada</div><div style="text-align:center">Saída</div><div></div>
+        </div>${quadroRows}`
+        :'<div style="padding:20px;text-align:center;color:var(--text3);font-size:13px">Nenhum turno cadastrado</div>'}
+      <div style="padding:10px 16px;border-top:1px solid var(--border2)">
+        <button onclick="almoxNovoTurnoModal()" style="background:var(--blue);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer">+ Adicionar ao Quadro</button>
+      </div>
     </div>
     ${ruaKpis?`${secTitle('📦','Histórico por Rua')}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:20px">${ruaKpis}</div>`:''}
     ${secTitle('⚠️','Divergências Abertas')}
@@ -2136,6 +2166,86 @@ async function almoxEncerrarDiv(id){
   const{error}=await sb.from('almoxo_divergencias').update({status:'encerrada',encerrado_por:S.user?.id,encerrado_em:new Date().toISOString(),obs_resolucao:obs||null}).eq('id',id);
   if(error){toast('Erro: '+error.message,'error');return;}
   toast('Divergência encerrada');S._almoxTab='painel';renderAlmoxarifado();
+}
+
+// ── Quadro de Turnos ─────────────────────────────────────────────────────────
+function almoxNovoTurnoModal(){
+  const gid=getGid();
+  const perfisOpts=(window._almoxPerfisCache||[]).map(p=>`<option value="${p.id}">${safe(p.nome)} — ${p.cargo||''}</option>`).join('');
+  const html=`<div style="padding:16px;display:grid;gap:14px">
+    <div>
+      <label style="font-size:12px;font-weight:800;color:var(--text3)">Almoxarife</label>
+      <select id="qt-perfil" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+        <option value="">Selecione…</option>${perfisOpts}
+      </select>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div>
+        <label style="font-size:12px;font-weight:800;color:var(--text3)">Entrada</label>
+        <input id="qt-entrada" type="time" value="07:00" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:14px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:800;color:var(--text3)">Saída</label>
+        <input id="qt-saida" type="time" value="19:00" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:14px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+      </div>
+    </div>
+    <button onclick="almoxSalvarTurno(null)" style="background:var(--blue);color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">Salvar</button>
+  </div>`;
+  document.getElementById('modal-alm-title').textContent='Adicionar ao Quadro';
+  document.getElementById('modal-alm-body').innerHTML=html;
+  document.getElementById('modal-alm').style.display='flex';
+}
+
+function almoxEditarTurno(id,perfilId,horaEntrada,horaSaida){
+  const perfisOpts=(window._almoxPerfisCache||[]).map(p=>`<option value="${p.id}" ${p.id===perfilId?'selected':''}>${safe(p.nome)} — ${p.cargo||''}</option>`).join('');
+  const html=`<div style="padding:16px;display:grid;gap:14px">
+    <div>
+      <label style="font-size:12px;font-weight:800;color:var(--text3)">Almoxarife</label>
+      <select id="qt-perfil" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+        <option value="">Selecione…</option>${perfisOpts}
+      </select>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div>
+        <label style="font-size:12px;font-weight:800;color:var(--text3)">Entrada</label>
+        <input id="qt-entrada" type="time" value="${horaEntrada||'07:00'}" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:14px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:800;color:var(--text3)">Saída</label>
+        <input id="qt-saida" type="time" value="${horaSaida||'19:00'}" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:14px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+      </div>
+    </div>
+    <button onclick="almoxSalvarTurno('${id}')" style="background:var(--blue);color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">Salvar alterações</button>
+  </div>`;
+  document.getElementById('modal-alm-title').textContent='Editar Turno';
+  document.getElementById('modal-alm-body').innerHTML=html;
+  document.getElementById('modal-alm').style.display='flex';
+}
+
+async function almoxSalvarTurno(id){
+  const perfilId=document.getElementById('qt-perfil')?.value;
+  const entrada=document.getElementById('qt-entrada')?.value;
+  const saida=document.getElementById('qt-saida')?.value;
+  if(!perfilId){toast('Selecione o almoxarife','warning');return;}
+  if(!entrada||!saida){toast('Informe entrada e saída','warning');return;}
+  const gid=getGid();
+  const payload={garagem_id:gid,perfil_id:perfilId,hora_entrada:entrada,hora_saida:saida,atualizado_em:new Date().toISOString(),atualizado_por:S.perfil?.nome||null};
+  let error;
+  if(id){
+    ({error}=await sb.from('almoxo_quadro_turno').update(payload).eq('id',id));
+  } else {
+    ({error}=await sb.from('almoxo_quadro_turno').upsert(payload,{onConflict:'garagem_id,perfil_id'}));
+  }
+  if(error){toast('Erro: '+error.message,'error');return;}
+  closeM('modal-alm');toast('Quadro atualizado');
+  S._almoxTab='painel';renderAlmoxarifado();
+}
+
+async function almoxRemoverTurno(id,nome){
+  if(!confirm('Remover '+nome+' do quadro de turnos?'))return;
+  const{error}=await sb.from('almoxo_quadro_turno').delete().eq('id',id);
+  if(error){toast('Erro: '+error.message,'error');return;}
+  toast('Removido do quadro');S._almoxTab='painel';renderAlmoxarifado();
 }
 
 // ── fim Almoxarifado ─────────────────────────────────────────────────────────
