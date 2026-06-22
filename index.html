@@ -304,7 +304,11 @@ tr:hover td{background:#1F293780}
         <button class="sub-btn" onclick="navToSub('ferr-21')">📋 2.1 Fechamento Garagem</button>
         <button class="sub-btn" onclick="navToSub('ferr-26')">💰 2.6 Previsibilidade</button>
         <button class="sub-btn" onclick="navToSub('ferr-ctrl')">✅ Controle Soltura</button>
-        <button class="sub-btn" onclick="navToSub('ferr-almox')">📦 Almoxarifado / Valetamento</button>
+        <button class="sub-btn" onclick="navToSub('ferr-almox')">📦 Kits / Valetamento</button>
+        <button class="sub-btn" onclick="navToSub('ferr-almox-inv')">📋 Inventários</button>
+        <button class="sub-btn" onclick="navToSub('ferr-almox-wms')">🗂️ WMS — Catálogo</button>
+        <button class="sub-btn" onclick="navToSub('ferr-almox-painel')">📊 Painel do Líder</button>
+        <button class="sub-btn" onclick="navToSub('ferr-almox-compras')">🛒 Pedidos de Compra</button>
         <button class="sub-btn" onclick="navToSub('ferr-lubri')">🛢️ Relatório Lubrificação</button>
         <button class="sub-btn" onclick="navToSub('ferr-pecas')">🔩 Peças & Compras</button>
       </div>
@@ -981,7 +985,7 @@ function navToSub(sub){
   S.subtela=sub;
   document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes(sub))b.classList.add('active')});
-  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-218':renderFerr218,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios,'ferr-lubri':renderFerrLubri,'ferr-pecas':renderFerrPecas};
+  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-218':renderFerr218,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-almox-inv':renderAlmoxInventario,'ferr-almox-wms':renderAlmoxWMS,'ferr-almox-painel':renderAlmoxPainelLider,'ferr-almox-compras':renderAlmoxCompras,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios,'ferr-lubri':renderFerrLubri,'ferr-pecas':renderFerrPecas};
   if(map[sub]) map[sub]();
 }
 
@@ -1709,7 +1713,6 @@ async function renderAlmoxarifado(){
   }).join(''):`<div class="empty">Nenhum valetamento para este sábado</div>`;
   setMain(`
     ${secTitle('📦','Almoxarifado - Valetamento',seletorSemana)}
-    ${almoxTabNav('kits',isLider)}
     <div style="display:grid;grid-template-columns:repeat(${cdHabilitado?5:4},minmax(0,1fr));gap:10px;margin-bottom:16px">
       ${kpi('Itens solicitados',lista.length,undefined,'',false,0)}
       ${kpi('Separados',qtdSep,undefined,'',false,0)}
@@ -1790,9 +1793,9 @@ async function renderAlmoxWMS(){
       ${itensHtml}
     </div>`;
   }).join('');
-  setMain(`
+  const backWms=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  setMain(`${backWms}
     ${secTitle('🗂️','WMS — Catálogo por Rua',`<button onclick="almoxAddRuaModal()" style="border:1px solid var(--green);background:#00C48C18;color:var(--green);border-radius:8px;padding:7px 14px;font-size:12px;font-weight:800;cursor:pointer">+ Nova Rua</button>`)}
-    ${almoxTabNav('wms',true)}
     ${ruaCards||`<div class="empty">Nenhuma rua cadastrada. Clique em "+ Nova Rua" para começar.</div>`}
   `);
 }
@@ -1808,7 +1811,7 @@ async function renderAlmoxInventario(){
     sb.from('almoxo_ruas').select('*').eq('garagem_id',gid).eq('ativo',true).order('nome')
   ]);
   const minhaRua=minhaRuaResp?.almoxo_ruas;
-  const tabs=almoxTabNav('inventario',isLider);
+  const tabs=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
   const subTabs=`<div style="display:flex;gap:8px;margin-bottom:16px">
     ${['t1','rua'].map(t=>`<button onclick="S._almoxInvTab='${t}';renderAlmoxarifado()" style="cursor:pointer;padding:7px 14px;border-radius:7px;font-size:12px;font-weight:800;font-family:'DM Sans',sans-serif;border:1px solid ${subTab===t?'var(--amber)':'var(--border)'};${subTab===t?'background:var(--amber);color:#fff':'background:var(--surface2);color:var(--text3)'}">${t==='t1'?'📋 Inventário T-1':'📦 Inventário da Rua'}</button>`).join('')}
   </div>`;
@@ -1919,7 +1922,7 @@ async function renderAlmoxPainelLider(){
     sb.from('perfis').select('id,nome,cargo').eq('garagem_id',gid).in('cargo',['almoxarifado','lider_almoxarifado','lider_suprimentos']).order('nome')
   ]);
   window._almoxPerfisCache=perfisAlmox||[];
-  const tabs=almoxTabNav('painel',true);
+  const tabs=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
   const divAberta=(divs||[]).length;
   const t1Hoje=(ultInvT1||[]).filter(i=>i.turno_data===hojeIso);
   const acurT1=t1Hoje.length?Math.round(t1Hoje.reduce((s,i)=>s+(parseFloat(i.acuracia)||100),0)/t1Hoje.length):null;
@@ -2076,7 +2079,8 @@ async function renderAlmoxCompras(){
     </tr></thead>
     <tbody>${tRows}</tbody>
   </table></div>`;
-  setMain(`<div style="padding:24px">${almoxTabNav('compras',isLider)}<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><h2 style="margin:0;font-size:20px;font-weight:900">🛒 Pedidos de Compra</h2></div>${kpis}${filtrNav}${tabela}</div>`);
+  const backCompras=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  setMain(`<div style="padding:24px">${backCompras}<div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 16px"><h2 style="margin:0;font-size:20px;font-weight:900">🛒 Pedidos de Compra</h2></div>${kpis}${filtrNav}${tabela}</div>`);
 }
 
 function almoxComprasAbrirModal(titulo,html,onConfirm){
@@ -3707,6 +3711,10 @@ function renderFerramentas(){
     'ferr-lav-lavador':'Sua lista de lavagem do dia. Marque cada carro ao concluir.',
     'ferr-ctrl':'Status consolidado da oficina e do pátio. Liberado = pronto para soltura.',
     'ferr-almox':'Cestos de valetamento agrupados por carro. Almoxarifado codifica, separa, nega ou atualiza chegada.',
+    'ferr-almox-inv':'Inventário do estoque de peças. Contagem, ajustes e divergências por item.',
+    'ferr-almox-wms':'Catálogo SAP de peças. Busca por código ou descrição, preços e disponibilidade.',
+    'ferr-almox-painel':'Visão consolidada do Líder de Almoxarifado: solicitações, metas e performance do turno.',
+    'ferr-almox-compras':'Acompanhamento de pedidos de compra: status, FUP com a Matriz e prazo de entrega.',
     'ferr-211':'Todos os veículos parados com tempo, status e previsão. Alerta automático de vencimento.',
     'ferr-212':'Disponibilidade, MTTR, OS por tipo e ranking de mecânicos. Atualizado em tempo real.',
     'ferr-pecas':'Visão unificada de todas as peças por prefixo: estoque, em compra, prazo e FUP. Compartilhado entre Almox e PCM.',
@@ -3752,7 +3760,11 @@ function atualizarSubmenuFerramentas(){
     'ferr-lav':'🧼 3.2 Checklist Lavagem',
     'ferr-33':'👣 3.3 Ronda Operacional',
     'ferr-ctrl':'✅ Controle Soltura',
-    'ferr-almox':'📦 Almoxarifado / Valetamento',
+    'ferr-almox':'📦 Kits / Valetamento',
+    'ferr-almox-inv':'📋 Inventários',
+    'ferr-almox-wms':'🗂️ WMS — Catálogo',
+    'ferr-almox-painel':'📊 Painel do Líder',
+    'ferr-almox-compras':'🛒 Pedidos de Compra',
     'ferr-pecas':'🔩 Peças & Compras',
   };
   const subFerr=document.getElementById('sub-ferr');
