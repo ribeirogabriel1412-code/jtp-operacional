@@ -1548,7 +1548,7 @@ async function praxioRenderCustos(el,tabsHtml){
 async function renderManutencao(){
   setMain(`${secTitle('🔧','OS PRAXIO')}<div class="loading"><div class="spinner"></div></div>`);
   const d12=new Date();d12.setFullYear(d12.getFullYear()-1);const d12s=d12.toISOString().substring(0,10);
-  const isDiretoriaOS=S.perfil?.cargo==='diretoria'||S.perfil?.is_admin;const gidOS=getGid();const garNomeOS=(S.garagens.find(g=>g.id===gidOS)?.nome||'').replace(/garagem\s*/i,'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().trim();let qOS=sb.from('praxio_os').select('numero_os,codigoveic,prefixo_veic,tipoos,revisao,condicao_os,data_os,garagem,filial,defeito,sincronizado_em').gte('data_os',d12s).order('data_os',{ascending:false}).limit(2000);if(!isDiretoriaOS&&garNomeOS)qOS=qOS.ilike('garagem','%'+garNomeOS+'%');const{data:rows,error}=await qOS;
+  const isDiretoriaOS=S.perfil?.cargo==='diretoria'||S.perfil?.is_admin;const gidOS=getGid();const garNomeOS=(S.garagens.find(g=>g.id===gidOS)?.nome||'').replace(/garagem\s*/i,'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().trim();let qOS=sb.from('praxio_os').select('numero_os,codigoveic,prefixo_veic,tipoos,revisao,condicao_os,data_os,garagem,filial,defeito,sincronizado_em').gte('data_os',d12s).not('condicao_os','ilike','%FECHAD%').not('condicao_os','ilike','%CANCELAD%').order('data_os',{ascending:false}).limit(2000);if(!isDiretoriaOS&&garNomeOS)qOS=qOS.ilike('garagem','%'+garNomeOS+'%');const{data:rows,error}=await qOS;
   if(error||!rows){setMain(`${secTitle('🔧','OS PRAXIO')}<div class="info-blue info-banner">❌ Erro ao carregar dados do PRAXIO: ${error?.message||'verifique a conexão'}</div>`);return}
   _praxioCache=rows;
   _praxioCostCache=null;
