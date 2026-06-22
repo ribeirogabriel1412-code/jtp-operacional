@@ -1576,6 +1576,10 @@ async function renderManutencao(){
 async function renderAlmoxarifado(){
   const gid=getGid();
   const cdHabilitado=fluxoCdHabilitado(gid);
+  const isLider=['lider_suprimentos','lider_almoxarifado'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
+  if(S._almoxTab==='wms'){await renderAlmoxWMS();return;}
+  if(S._almoxTab==='inventario'){await renderAlmoxInventario();return;}
+  if(S._almoxTab==='painel'){await renderAlmoxPainelLider();return;}
   let data=await resolverDataValetComDados(gid,S._valetData||proximoSabadoISO(),!!S._valetData);
   setMain(`<div class="loading"><div class="spinner"></div></div>`);
   const[{data:reqsRaw},{data:datasValet}]=await Promise.all([
@@ -1695,6 +1699,7 @@ async function renderAlmoxarifado(){
   }).join(''):`<div class="empty">Nenhum valetamento para este sábado</div>`;
   setMain(`
     ${secTitle('📦','Almoxarifado - Valetamento',seletorSemana)}
+    ${almoxTabNav('kits',isLider)}
     <div style="display:grid;grid-template-columns:repeat(${cdHabilitado?5:4},minmax(0,1fr));gap:10px;margin-bottom:16px">
       ${kpi('Itens solicitados',lista.length,undefined,'',false,0)}
       ${kpi('Separados',qtdSep,undefined,'',false,0)}
@@ -1709,6 +1714,431 @@ async function renderAlmoxarifado(){
     <div>${cards}</div>
   `);
 }
+
+// ── ALMOXARIFADO: helpers e novas telas ──────────────────────────────────────
+
+function almoxTabNav(tab,isLider){
+  const s=t=>`cursor:pointer;padding:8px 16px;border-radius:8px;font-family:'DM Sans',sans-serif;font-weight:800;font-size:13px;border:1px solid ${tab===t?'var(--blue)':'var(--border)'};${tab===t?'background:var(--blue);color:#fff':'background:var(--surface2);color:var(--text3)'}`;
+  const b=(t,ic,lb)=>`<button onclick="S._almoxTab='${t}';renderAlmoxarifado()" style="${s(t)}">${ic} ${lb}</button>`;
+  return`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">
+    ${b('kits','📦','Kits / Valetamento')}
+    ${b('inventario','📋','Inventários')}
+    ${isLider?b('wms','🗂️','WMS — Catálogo'):''}
+    ${isLider?b('painel','📊','Painel do Líder'):''}
+  </div>`;
+}
+
+async function renderAlmoxWMS(){
+  const gid=getGid();
+  setMain(`<div class="loading"><div class="spinner"></div></div>`);
+  const isLider=['lider_suprimentos','lider_almoxarifado'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
+  if(!isLider){setMain(`<div class="empty">Acesso restrito ao Líder de Suprimentos</div>`);return;}
+  const[{data:ruas},{data:resps},{data:itens},{data:perfisLista}]=await Promise.all([
+    sb.from('almoxo_ruas').select('*').eq('garagem_id',gid).eq('ativo',true).order('nome'),
+    sb.from('almoxo_rua_responsavel').select('*,perfis(id,nome)').eq('garagem_id',gid),
+    sb.from('almoxo_itens').select('*').eq('garagem_id',gid).eq('ativo',true).order('nome'),
+    sb.from('perfis').select('id,nome,cargo').in('cargo',['almoxarifado','lider_almoxarifado']).order('nome')
+  ]);
+  const safe=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const respPorRua={};
+  (resps||[]).forEach(r=>{if(r.rua_id)respPorRua[r.rua_id]={nome:r.perfis?.nome||'—',uid:r.usuario_id};});
+  const itensPorRua={};
+  (itens||[]).forEach(i=>{if(!itensPorRua[i.rua_id])itensPorRua[i.rua_id]=[];itensPorRua[i.rua_id].push(i);});
+  const perfisOpts=(perfisLista||[]).map(p=>`<option value="${safe(p.id)}">${safe(p.nome)}</option>`).join('');
+  const ruaCards=(ruas||[]).map(r=>{
+    const itensRua=itensPorRua[r.id]||[];
+    const resp=respPorRua[r.id];
+    const itensHtml=itensRua.length?`<div>
+        <div style="display:grid;grid-template-columns:1fr 70px 80px 80px 60px 60px;gap:6px;background:var(--surface2);padding:7px 14px;font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)">
+          <div>Item</div><div style="text-align:center">Und</div><div style="text-align:center">SAP</div><div style="text-align:center">Mínimo</div><div style="text-align:center">✏️</div><div style="text-align:center">🗑</div>
+        </div>
+        ${itensRua.map(it=>`<div style="display:grid;grid-template-columns:1fr 70px 80px 80px 60px 60px;gap:6px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--border2);font-size:12px">
+          <div style="font-weight:700;color:var(--text)">${safe(it.nome)}</div>
+          <div style="text-align:center;color:var(--text3)">${safe(it.unidade||'un')}</div>
+          <div style="text-align:center;font-family:'DM Mono',monospace;color:var(--text3)">${safe(it.cod_sap||'—')}</div>
+          <div style="text-align:center;font-family:'DM Mono',monospace;color:var(--amber);font-weight:800">${safe(it.estoque_minimo||0)}</div>
+          <div style="text-align:center"><button onclick="almoxEditarItem('${safe(it.id)}')" style="border:1px solid var(--border);background:transparent;color:var(--text3);border-radius:5px;padding:3px 7px;font-size:11px;cursor:pointer">✏️</button></div>
+          <div style="text-align:center"><button onclick="almoxRemoverItem('${safe(it.id)}','${safe(it.nome)}')" style="border:1px solid var(--red);background:#EF444412;color:var(--red);border-radius:5px;padding:3px 7px;font-size:11px;cursor:pointer">🗑</button></div>
+        </div>`).join('')}
+      </div>`:`<div style="padding:10px 14px;font-size:12px;color:var(--text3)">Nenhum item cadastrado nessa rua</div>`;
+    return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-weight:900;font-size:16px;color:var(--blue)">${safe(r.nome)}</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px">Responsável: <b style="color:var(--text2)">${resp?.nome||'—'}</b> · ${itensRua.length} item(ns)</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select onchange="almoxAtribuirResp('${safe(r.id)}',this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 10px;font-size:12px;font-family:'DM Sans',sans-serif">
+            <option value="">— Atribuir almoxarife —</option>
+            ${perfisOpts}
+          </select>
+          <button onclick="almoxAddItemModal('${safe(r.id)}','${safe(r.nome)}')" style="border:1px solid var(--green);background:#00C48C18;color:var(--green);border-radius:7px;padding:6px 12px;font-size:12px;font-weight:800;cursor:pointer">+ Item</button>
+          <button onclick="almoxRemoverRua('${safe(r.id)}','${safe(r.nome)}')" style="border:1px solid var(--red);background:#EF444412;color:var(--red);border-radius:7px;padding:6px 10px;font-size:12px;cursor:pointer">🗑</button>
+        </div>
+      </div>
+      ${itensHtml}
+    </div>`;
+  }).join('');
+  setMain(`
+    ${secTitle('🗂️','WMS — Catálogo por Rua',`<button onclick="almoxAddRuaModal()" style="border:1px solid var(--green);background:#00C48C18;color:var(--green);border-radius:8px;padding:7px 14px;font-size:12px;font-weight:800;cursor:pointer">+ Nova Rua</button>`)}
+    ${almoxTabNav('wms',true)}
+    ${ruaCards||`<div class="empty">Nenhuma rua cadastrada. Clique em "+ Nova Rua" para começar.</div>`}
+  `);
+}
+
+async function renderAlmoxInventario(){
+  const gid=getGid();
+  setMain(`<div class="loading"><div class="spinner"></div></div>`);
+  const isLider=['lider_suprimentos','lider_almoxarifado'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
+  const subTab=S._almoxInvTab||'t1';
+  const hojeIso=hoje();
+  const[{data:minhaRuaResp},{data:todasRuas}]=await Promise.all([
+    sb.from('almoxo_rua_responsavel').select('*,almoxo_ruas(*)').eq('garagem_id',gid).eq('usuario_id',S.user?.id).maybeSingle(),
+    sb.from('almoxo_ruas').select('*').eq('garagem_id',gid).eq('ativo',true).order('nome')
+  ]);
+  const minhaRua=minhaRuaResp?.almoxo_ruas;
+  const tabs=almoxTabNav('inventario',isLider);
+  const subTabs=`<div style="display:flex;gap:8px;margin-bottom:16px">
+    ${['t1','rua'].map(t=>`<button onclick="S._almoxInvTab='${t}';renderAlmoxarifado()" style="cursor:pointer;padding:7px 14px;border-radius:7px;font-size:12px;font-weight:800;font-family:'DM Sans',sans-serif;border:1px solid ${subTab===t?'var(--amber)':'var(--border)'};${subTab===t?'background:var(--amber);color:#fff':'background:var(--surface2);color:var(--text3)'}">${t==='t1'?'📋 Inventário T-1':'📦 Inventário da Rua'}</button>`).join('')}
+  </div>`;
+  if(subTab==='t1'){
+    const[{data:saidas},{data:invExist}]=await Promise.all([
+      sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).in('status',['separado','comprado']).eq('data',hojeIso).order('prefixo'),
+      sb.from('almoxo_inventario_t1').select('*').eq('garagem_id',gid).eq('turno_data',hojeIso)
+    ]);
+    const invMap={};
+    (invExist||[]).forEach(i=>{const k=(i.cod_sap||'')+':'+(i.nome_item||'');invMap[k]=i;});
+    const itensMapa={};
+    (saidas||[]).forEach(r=>{
+      const k=(r.cod_sap||'')+'_'+(r.peca||r.id);
+      if(!itensMapa[k])itensMapa[k]={cod_sap:r.cod_sap,nome:r.peca,qtd:0,prefixos:[]};
+      itensMapa[k].qtd+=parseFloat(r.quantidade||1);
+      if(r.prefixo)itensMapa[k].prefixos.push(r.prefixo);
+    });
+    const itensUni=Object.values(itensMapa);
+    const linhas=itensUni.length?itensUni.map((it,idx)=>{
+      const mk=(it.cod_sap||'')+':'+(it.nome||'');
+      const inv=invMap[mk]||null;
+      const idRow=`inv-t1-${idx}`;
+      const acur=inv?.acuracia!=null?parseFloat(inv.acuracia):null;
+      const corA=acur==null?'var(--text3)':acur>=95?'var(--green)':acur>=80?'var(--amber)':'var(--red)';
+      const nomeSafe=(it.nome||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      return`<div style="display:grid;grid-template-columns:1fr 70px 90px 90px 90px 70px;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border2)">
+        <div>
+          <div style="font-weight:800;font-size:13px;color:var(--text)">${it.nome||'—'}</div>
+          <div style="font-size:10px;color:var(--text3)">${it.cod_sap?`SAP: ${it.cod_sap} · `:''}Saiu para: ${it.prefixos.join(', ')||'—'}</div>
+        </div>
+        <div style="text-align:center;font-family:'DM Mono',monospace;font-weight:900;color:var(--amber)">${it.qtd}</div>
+        <div><input id="${idRow}-sap" type="number" value="${inv?.qtd_sap||''}" placeholder="SAP" step="0.01" min="0" style="width:80px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px;text-align:center;font-family:'DM Mono',monospace;font-weight:800"></div>
+        <div><input id="${idRow}-fis" type="number" value="${inv?.qtd_fisica||''}" placeholder="Físico" step="0.01" min="0" style="width:80px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px;text-align:center;font-family:'DM Mono',monospace;font-weight:800"></div>
+        <div><button onclick="almoxSalvarInvT1('${idRow}','${it.cod_sap||''}','${nomeSafe}')" style="border:1px solid var(--green);background:#00C48C18;color:var(--green);border-radius:7px;padding:5px 10px;font-size:11px;font-weight:800;cursor:pointer">✔ Salvar</button></div>
+        <div style="text-align:center;font-family:'DM Mono',monospace;font-weight:900;font-size:13px;color:${corA}">${acur!=null?acur+'%':'—'}</div>
+      </div>`;
+    }).join(''):`<div class="empty">Nenhum item separado hoje para conferir no T-1</div>`;
+    setMain(`
+      ${secTitle('📋','Inventário T-1',hojeIso)}
+      ${tabs}${subTabs}
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:14px">
+        <div style="display:grid;grid-template-columns:1fr 70px 90px 90px 90px 70px;gap:8px;background:var(--surface2);border-bottom:1px solid var(--border);padding:9px 14px;font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)">
+          <div>Item</div><div style="text-align:center">Saiu</div><div style="text-align:center">SAP</div><div style="text-align:center">Físico</div><div style="text-align:center">Ação</div><div style="text-align:center">Acurácia</div>
+        </div>
+        ${linhas}
+      </div>
+    `);
+  } else {
+    const ruaId=isLider?(S._almoxRuaSel||null):(minhaRua?.id||null);
+    const ruaAlvo=(todasRuas||[]).find(r=>r.id===ruaId)||(isLider?null:minhaRua)||null;
+    let itensRua=[];let invExistRua=[];
+    if(ruaAlvo){
+      const[{data:ir},{data:inve}]=await Promise.all([
+        sb.from('almoxo_itens').select('*').eq('garagem_id',gid).eq('rua_id',ruaAlvo.id).eq('ativo',true).order('nome'),
+        sb.from('almoxo_inventario_rua').select('*').eq('garagem_id',gid).eq('rua_id',ruaAlvo.id).eq('data_inventario',hojeIso)
+      ]);
+      itensRua=ir||[];invExistRua=inve||[];
+    }
+    const invMapRua={};(invExistRua||[]).forEach(i=>{if(i.item_id)invMapRua[i.item_id]=i;});
+    const seletorRua=`<div style="margin-bottom:16px"><select onchange="S._almoxRuaSel=this.value;renderAlmoxarifado()" style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 10px;font-size:12px;font-family:'DM Sans',sans-serif">
+      <option value="">— Selecione a rua —</option>
+      ${(todasRuas||[]).map(r=>`<option value="${r.id}" ${ruaId===r.id?'selected':''}>${r.nome}</option>`).join('')}
+    </select></div>`;
+    const linhasRua=ruaAlvo&&itensRua.length?itensRua.map((it,idx)=>{
+      const inv=invMapRua[it.id]||null;
+      const acur=inv?.acuracia!=null?parseFloat(inv.acuracia):null;
+      const corA=acur==null?'var(--text3)':acur>=95?'var(--green)':acur>=80?'var(--amber)':'var(--red)';
+      const idRow=`inv-rua-${idx}`;
+      const nomeSafe=(it.nome||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      return`<div style="display:grid;grid-template-columns:1fr 80px 90px 90px 70px 80px;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border2)">
+        <div>
+          <div style="font-weight:800;font-size:13px;color:var(--text)">${it.nome||'—'}</div>
+          <div style="font-size:10px;color:var(--text3)">${it.cod_sap?`SAP: ${it.cod_sap} · `:''}Mín: ${it.estoque_minimo||0} ${it.unidade||'un'}</div>
+        </div>
+        <div style="text-align:center;font-family:'DM Mono',monospace;font-weight:800;color:var(--text3)">${it.estoque_minimo||0}</div>
+        <div><input id="${idRow}-sap" type="number" value="${inv?.qtd_sap||''}" placeholder="SAP" step="0.01" min="0" style="width:80px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px;text-align:center;font-family:'DM Mono',monospace;font-weight:800"></div>
+        <div><input id="${idRow}-fis" type="number" value="${inv?.qtd_fisica||''}" placeholder="Físico" step="0.01" min="0" style="width:80px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px;text-align:center;font-family:'DM Mono',monospace;font-weight:800"></div>
+        <div><button onclick="almoxSalvarInvRua('${idRow}','${it.id}','${it.cod_sap||''}','${nomeSafe}')" style="border:1px solid var(--green);background:#00C48C18;color:var(--green);border-radius:7px;padding:5px 10px;font-size:11px;font-weight:800;cursor:pointer">✔</button></div>
+        <div style="text-align:center;font-family:'DM Mono',monospace;font-weight:900;font-size:13px;color:${corA}">${acur!=null?acur+'%':'—'}</div>
+      </div>`;
+    }).join(''):ruaAlvo?`<div class="empty">Nenhum item nessa rua. Cadastre no WMS.</div>`:`<div class="empty">${isLider?'Selecione uma rua acima':'Você não está atribuído a nenhuma rua. Fale com o Líder.'}</div>`;
+    setMain(`
+      ${secTitle('📦','Inventário da Rua',ruaAlvo?ruaAlvo.nome:'—')}
+      ${tabs}${subTabs}
+      ${isLider||!minhaRua?seletorRua:''}
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:14px">
+        ${ruaAlvo?`<div style="display:grid;grid-template-columns:1fr 80px 90px 90px 70px 80px;gap:8px;background:var(--surface2);border-bottom:1px solid var(--border);padding:9px 14px;font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)">
+          <div>Item</div><div style="text-align:center">Mínimo</div><div style="text-align:center">SAP</div><div style="text-align:center">Físico</div><div style="text-align:center">✔</div><div style="text-align:center">Acurácia</div>
+        </div>`:''}
+        ${linhasRua}
+      </div>
+    `);
+  }
+}
+
+async function renderAlmoxPainelLider(){
+  const gid=getGid();
+  setMain(`<div class="loading"><div class="spinner"></div></div>`);
+  const isLider=['lider_suprimentos','lider_almoxarifado'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
+  if(!isLider){setMain(`<div class="empty">Acesso restrito ao Líder</div>`);return;}
+  const hojeIso=hoje();
+  const[{data:ruas},{data:divs},{data:ultInvT1},{data:ultInvRua}]=await Promise.all([
+    sb.from('almoxo_ruas').select('*').eq('garagem_id',gid).eq('ativo',true).order('nome'),
+    sb.from('almoxo_divergencias').select('*').eq('garagem_id',gid).eq('status','aberta').order('detectado_em',{ascending:false}),
+    sb.from('almoxo_inventario_t1').select('*').eq('garagem_id',gid).order('conferido_em',{ascending:false}).limit(60),
+    sb.from('almoxo_inventario_rua').select('*,almoxo_ruas(nome)').eq('garagem_id',gid).order('conferido_em',{ascending:false}).limit(60)
+  ]);
+  const tabs=almoxTabNav('painel',true);
+  const divAberta=(divs||[]).length;
+  const t1Hoje=(ultInvT1||[]).filter(i=>i.turno_data===hojeIso);
+  const acurT1=t1Hoje.length?Math.round(t1Hoje.reduce((s,i)=>s+(parseFloat(i.acuracia)||100),0)/t1Hoje.length):null;
+  const ruaHoje=(ultInvRua||[]).filter(i=>i.data_inventario===hojeIso);
+  const acurRua=ruaHoje.length?Math.round(ruaHoje.reduce((s,i)=>s+(parseFloat(i.acuracia)||100),0)/ruaHoje.length):null;
+  const acurPorRua={};
+  (ultInvRua||[]).forEach(i=>{
+    const nome=i.almoxo_ruas?.nome||i.rua_id||'—';
+    if(!acurPorRua[nome])acurPorRua[nome]={nome,vals:[]};
+    acurPorRua[nome].vals.push(parseFloat(i.acuracia)||100);
+  });
+  const ruaKpis=Object.values(acurPorRua).map(r=>{
+    const med=Math.round(r.vals.reduce((s,v)=>s+v,0)/r.vals.length);
+    const cor=med>=95?'var(--green)':med>=80?'var(--amber)':'var(--red)';
+    return`<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${cor};border-radius:10px;padding:14px 18px">
+      <div style="font-weight:900;font-size:14px;color:var(--blue)">${r.nome}</div>
+      <div style="font-family:'DM Mono',monospace;font-size:26px;font-weight:900;color:${cor};margin:4px 0">${med}%</div>
+      <div style="font-size:11px;color:var(--text3)">${r.vals.length} contagem(ns)</div>
+    </div>`;
+  }).join('');
+  const divRows=(divs||[]).slice(0,15).map(d=>{
+    const acur=d.acuracia!=null?parseFloat(d.acuracia):null;
+    const cor=acur==null?'var(--text3)':acur>=95?'var(--green)':acur>=80?'var(--amber)':'var(--red)';
+    return`<div style="display:grid;grid-template-columns:80px 1fr 80px 80px 80px 120px;gap:8px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--border2);font-size:12px">
+      <div style="font-weight:800;color:var(--text3)">${d.origem==='t1'?'T-1':'Rua'}</div>
+      <div style="color:var(--text);font-weight:700">${d.nome_item||d.cod_sap||'—'}</div>
+      <div style="text-align:center;font-family:'DM Mono',monospace">${d.qtd_sap!=null?d.qtd_sap:'—'}</div>
+      <div style="text-align:center;font-family:'DM Mono',monospace">${d.qtd_fisica!=null?d.qtd_fisica:'—'}</div>
+      <div style="text-align:center;font-family:'DM Mono',monospace;color:${cor};font-weight:900">${acur!=null?acur+'%':'—'}</div>
+      <div style="text-align:right"><button onclick="almoxEncerrarDiv('${d.id}')" style="border:1px solid var(--green);background:#00C48C18;color:var(--green);border-radius:6px;padding:4px 8px;font-size:10px;font-weight:800;cursor:pointer">Encerrar</button></div>
+    </div>`;
+  }).join('');
+  setMain(`
+    ${secTitle('📊','Painel do Líder — Acurácia')}
+    ${tabs}
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
+      ${kpi('Divergências abertas',divAberta,0,'',divAberta>0,0)}
+      ${acurT1!=null?kpi('Acurácia T-1 hoje',acurT1+'%',null,'',acurT1<95,0):kpi('Acurácia T-1 hoje','—',null,'',false,0)}
+      ${acurRua!=null?kpi('Acurácia ruas hoje',acurRua+'%',null,'',acurRua<95,0):kpi('Acurácia ruas hoje','—',null,'',false,0)}
+    </div>
+    ${ruaKpis?`${secTitle('📦','Histórico por Rua')}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:20px">${ruaKpis}</div>`:''}
+    ${secTitle('⚠️','Divergências Abertas')}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:14px">
+      ${divRows?`<div style="display:grid;grid-template-columns:80px 1fr 80px 80px 80px 120px;gap:8px;background:var(--surface2);border-bottom:1px solid var(--border);padding:9px 14px;font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)">
+        <div>Origem</div><div>Item</div><div style="text-align:center">SAP</div><div style="text-align:center">Físico</div><div style="text-align:center">Acurácia</div><div></div>
+      </div>${divRows}`:`<div class="empty">Nenhuma divergência aberta 🎉</div>`}
+    </div>
+  `);
+}
+
+async function almoxAddRuaModal(){
+  const html=`<div style="padding:16px;display:grid;gap:12px">
+    <div>
+      <label style="font-size:12px;font-weight:800;color:var(--text3)">Nome da Rua</label>
+      <input id="nova-rua-nome" placeholder="Ex: Rua A, Rua B, Setor 01…" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+    </div>
+    <div>
+      <label style="font-size:12px;font-weight:800;color:var(--text3)">Descrição (opcional)</label>
+      <input id="nova-rua-desc" placeholder="Descrição…" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+    </div>
+    <button onclick="almoxSalvarNovaRua()" style="background:var(--blue);color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">Salvar Rua</button>
+  </div>`;
+  document.getElementById('modal-alm-title').textContent='Nova Rua';
+  document.getElementById('modal-alm-body').innerHTML=html;
+  document.getElementById('modal-alm').style.display='flex';
+  setTimeout(()=>document.getElementById('nova-rua-nome')?.focus(),100);
+}
+
+async function almoxSalvarNovaRua(){
+  const nome=document.getElementById('nova-rua-nome')?.value?.trim();
+  const desc=document.getElementById('nova-rua-desc')?.value?.trim();
+  if(!nome){toast('Informe o nome da rua','warning');return;}
+  const{error}=await sb.from('almoxo_ruas').insert({garagem_id:getGid(),nome,descricao:desc||null});
+  if(error){toast('Erro: '+error.message,'error');return;}
+  closeM('modal-alm');toast('Rua criada');
+  S._almoxTab='wms';renderAlmoxarifado();
+}
+
+async function almoxAtribuirResp(ruaId,userId){
+  if(!userId)return;
+  const gid=getGid();
+  await sb.from('almoxo_rua_responsavel').delete().eq('rua_id',ruaId).eq('garagem_id',gid);
+  await sb.from('almoxo_rua_responsavel').insert({rua_id:ruaId,usuario_id:userId,garagem_id:gid,atribuido_por:S.user?.id});
+  toast('Responsável atribuído');renderAlmoxarifado();
+}
+
+async function almoxRemoverRua(ruaId,nome){
+  if(!confirm(`Remover a rua "${nome}"? Os itens cadastrados serão desativados.`))return;
+  await sb.from('almoxo_itens').update({ativo:false}).eq('rua_id',ruaId);
+  await sb.from('almoxo_ruas').update({ativo:false}).eq('id',ruaId);
+  toast('Rua removida');renderAlmoxarifado();
+}
+
+function almoxAddItemModal(ruaId,ruaNome){
+  const safe=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const html=`<div style="padding:16px;display:grid;gap:12px">
+    <div style="font-size:12px;color:var(--text3)">Rua: <b style="color:var(--blue)">${safe(ruaNome)}</b></div>
+    <div>
+      <label style="font-size:12px;font-weight:800;color:var(--text3)">Nome do Item</label>
+      <input id="item-nome" placeholder="Ex: Filtro de óleo 15W40…" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <div>
+        <label style="font-size:12px;font-weight:800;color:var(--text3)">Código SAP</label>
+        <input id="item-sap" placeholder="1234567" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:800;color:var(--text3)">Unidade</label>
+        <input id="item-und" value="un" placeholder="un, m, kg…" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:800;color:var(--text3)">Estoque Mínimo</label>
+        <input id="item-min" type="number" min="0" value="0" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+      </div>
+    </div>
+    <button onclick="almoxSalvarNovoItem('${safe(ruaId)}')" style="background:var(--blue);color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">Salvar Item</button>
+  </div>`;
+  document.getElementById('modal-alm-title').textContent='Novo Item — '+ruaNome;
+  document.getElementById('modal-alm-body').innerHTML=html;
+  document.getElementById('modal-alm').style.display='flex';
+  setTimeout(()=>document.getElementById('item-nome')?.focus(),100);
+}
+
+async function almoxSalvarNovoItem(ruaId){
+  const nome=document.getElementById('item-nome')?.value?.trim();
+  const sap=document.getElementById('item-sap')?.value?.trim();
+  const und=document.getElementById('item-und')?.value?.trim()||'un';
+  const min=parseFloat(document.getElementById('item-min')?.value||0);
+  if(!nome){toast('Informe o nome do item','warning');return;}
+  const{error}=await sb.from('almoxo_itens').insert({garagem_id:getGid(),rua_id:ruaId,nome,cod_sap:sap||null,unidade:und,estoque_minimo:min||0});
+  if(error){toast('Erro: '+error.message,'error');return;}
+  closeM('modal-alm');toast('Item cadastrado');renderAlmoxarifado();
+}
+
+async function almoxEditarItem(id){
+  const{data:it}=await sb.from('almoxo_itens').select('*').eq('id',id).single();
+  if(!it){toast('Item não encontrado','error');return;}
+  const safe=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const html=`<div style="padding:16px;display:grid;gap:12px">
+    <div>
+      <label style="font-size:12px;font-weight:800;color:var(--text3)">Nome do Item</label>
+      <input id="edit-item-nome" value="${safe(it.nome||'')}" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <div>
+        <label style="font-size:12px;font-weight:800;color:var(--text3)">Código SAP</label>
+        <input id="edit-item-sap" value="${safe(it.cod_sap||'')}" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:800;color:var(--text3)">Unidade</label>
+        <input id="edit-item-und" value="${safe(it.unidade||'un')}" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:800;color:var(--text3)">Estoque Mínimo</label>
+        <input id="edit-item-min" type="number" min="0" value="${safe(it.estoque_minimo||0)}" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+      </div>
+    </div>
+    <button onclick="almoxAtualizarItem('${safe(id)}')" style="background:var(--blue);color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">Atualizar</button>
+  </div>`;
+  document.getElementById('modal-alm-title').textContent='Editar Item';
+  document.getElementById('modal-alm-body').innerHTML=html;
+  document.getElementById('modal-alm').style.display='flex';
+}
+
+async function almoxAtualizarItem(id){
+  const nome=document.getElementById('edit-item-nome')?.value?.trim();
+  const sap=document.getElementById('edit-item-sap')?.value?.trim();
+  const und=document.getElementById('edit-item-und')?.value?.trim()||'un';
+  const min=parseFloat(document.getElementById('edit-item-min')?.value||0);
+  if(!nome){toast('Informe o nome','warning');return;}
+  const{error}=await sb.from('almoxo_itens').update({nome,cod_sap:sap||null,unidade:und,estoque_minimo:min||0}).eq('id',id);
+  if(error){toast('Erro: '+error.message,'error');return;}
+  closeM('modal-alm');toast('Item atualizado');renderAlmoxarifado();
+}
+
+async function almoxRemoverItem(id,nome){
+  if(!confirm(`Remover "${nome}"?`))return;
+  const{error}=await sb.from('almoxo_itens').update({ativo:false}).eq('id',id);
+  if(error){toast('Erro: '+error.message,'error');return;}
+  toast('Item removido');renderAlmoxarifado();
+}
+
+async function almoxSalvarInvT1(idRow,codSap,nomeItem){
+  const sap=parseFloat(document.getElementById(idRow+'-sap')?.value??'');
+  const fis=parseFloat(document.getElementById(idRow+'-fis')?.value??'');
+  if(isNaN(sap)||isNaN(fis)){toast('Informe os valores SAP e Físico','warning');return;}
+  const gid=getGid();const hojeIso=hoje();
+  const{error}=await sb.from('almoxo_inventario_t1').insert({
+    garagem_id:gid,turno_data:hojeIso,
+    cod_sap:codSap||null,nome_item:nomeItem||null,
+    qtd_sap:sap,qtd_fisica:fis,
+    conferido_por:S.user?.id
+  });
+  if(error){toast('Erro: '+error.message,'error');return;}
+  if(Math.abs(sap-fis)>0.001){
+    const acur=sap>0?Math.round((fis/sap)*1000)/10:0;
+    await sb.from('almoxo_divergencias').insert({garagem_id:gid,origem:'t1',cod_sap:codSap||null,nome_item:nomeItem||null,qtd_sap:sap,qtd_fisica:fis,acuracia:acur});
+    toast('Salvo — divergência registrada ⚠️','warning');
+  } else {toast('T-1 conferido ✔');}
+  S._almoxTab='inventario';S._almoxInvTab='t1';renderAlmoxarifado();
+}
+
+async function almoxSalvarInvRua(idRow,itemId,codSap,nomeItem){
+  const sap=parseFloat(document.getElementById(idRow+'-sap')?.value??'');
+  const fis=parseFloat(document.getElementById(idRow+'-fis')?.value??'');
+  if(isNaN(sap)||isNaN(fis)){toast('Informe os valores SAP e Físico','warning');return;}
+  const gid=getGid();const hojeIso=hoje();
+  const{data:resp}=await sb.from('almoxo_rua_responsavel').select('rua_id').eq('garagem_id',gid).eq('usuario_id',S.user?.id).maybeSingle();
+  const ruaId=resp?.rua_id||(S._almoxRuaSel||null);
+  const{error}=await sb.from('almoxo_inventario_rua').insert({
+    garagem_id:gid,rua_id:ruaId,data_inventario:hojeIso,
+    item_id:itemId||null,cod_sap:codSap||null,nome_item:nomeItem||null,
+    qtd_sap:sap,qtd_fisica:fis,
+    conferido_por:S.user?.id
+  });
+  if(error){toast('Erro: '+error.message,'error');return;}
+  if(Math.abs(sap-fis)>0.001){
+    const acur=sap>0?Math.round((fis/sap)*1000)/10:0;
+    await sb.from('almoxo_divergencias').insert({garagem_id:gid,rua_id:ruaId,origem:'rua',item_id:itemId||null,cod_sap:codSap||null,nome_item:nomeItem||null,qtd_sap:sap,qtd_fisica:fis,acuracia:acur});
+    toast('Salvo — divergência registrada ⚠️','warning');
+  } else {toast('Rua conferida ✔');}
+  S._almoxTab='inventario';S._almoxInvTab='rua';renderAlmoxarifado();
+}
+
+async function almoxEncerrarDiv(id){
+  const obs=prompt('Observação de encerramento (opcional):');
+  if(obs===null)return;
+  const{error}=await sb.from('almoxo_divergencias').update({status:'encerrada',encerrado_por:S.user?.id,encerrado_em:new Date().toISOString(),obs_resolucao:obs||null}).eq('id',id);
+  if(error){toast('Erro: '+error.message,'error');return;}
+  toast('Divergência encerrada');S._almoxTab='painel';renderAlmoxarifado();
+}
+
+// ── fim Almoxarifado ─────────────────────────────────────────────────────────
 
 function renderPainelComprasSuprimentosValet(data,lista,safe,rowId,fmtMoney){
   const isSup=S.perfil?.cargo==='lider_suprimentos'||S.perfil?.is_admin;

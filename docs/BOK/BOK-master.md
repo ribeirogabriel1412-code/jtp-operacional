@@ -145,24 +145,93 @@ Manutenções, Almoxarifes, Assistentes de PCM, Plantão, Sinistros, Motoristas,
 
 ---
 
-### 🆕 Lubrificador *(cargo no app — pendente inclusão formal no BOK)*
-- **Horário:** A definir
-- **Tela mobile:** `lubrificacao` + `lubri_rel`
-- **Missão:** Controle e execução de lubrificação da frota.
-- **Status:** Cargo ativo no app. Rotina formal ainda não documentada neste BOK.
+### Lubrificador
+- **Horário:** Turno noturno (junto com o pátio)
+- **Superior:** Líder de Pátio / Supervisor de Garagem
+- **Telas mobile:** `lubrificacao` + `lubri_rel`
+- **Tabela Supabase:** `checklist_lubrificacao`
+- **Missão:** Executar a lubrificação sistemática de toda a frota seguindo o plano de rotação semanal, garantindo 100% de cobertura antes da soltura.
+
+**Lógica de rotação:**
+- **Frota VW** (Volkswagen/Volksbus): lubrificada **todos os dias**
+- **Demais veículos**: divididos em **5 grupos** rotacionados de Seg a Sex
+- **Fim de semana**: pendências da semana que não foram executadas
+
+**Rotina no app:**
+
+| Momento | Ação | Resultado |
+|---------|------|-----------|
+| Início do turno | Abre tela `lubrificacao` | Vê lista de hoje: VW + grupo do dia |
+| Para cada veículo | Toca no card do prefixo | Abre confirmação de execução |
+| Após executar | Marca ✅ | Registra em `checklist_lubrificacao` |
+| Veículo extra | Botão `+` no topo | Registra fora da rotina |
+| Fim do turno | Aba `Semana` | Verifica pendências e % de cobertura |
+
+**Gatilho de escalada:** Produto em falta → Líder Almoxarifado. Defeito no sistema → Líder Oficina. % < 100% ao fechar → registrar no fechamento e comunicar ao Supervisor.
 
 ---
 
-### Membros da Ponta *(rotinas pendentes de formalização)*
+### Membros da Ponta
 
-| Cargo | Tela App | Status Rotina BOK |
-|-------|---------|-------------------|
-| Lavador | `lavagem` | ⏳ Pendente |
-| Manobrista | `patio_man` | ⏳ Pendente |
-| Frentista | `abastecimento` | ⏳ Pendente |
-| Plantão | `recolha` | ⏳ Pendente |
+#### Lavador
+- **Horário:** Turno noturno (22:00 ~ 06:00 aprox.)
+- **Superior:** Líder de Pátio
+- **Tela mobile:** `lavagem` | **Tabela:** `checklist_lavagem`
 
-> Usar `/jtp-bok rotinas-ponta` para gerar as rotinas com base no código do app.
+| Momento | Ação | Resultado |
+|---------|------|-----------|
+| Início do turno | Abre tela `lavagem` | Vê lista: Pesada / Média / Leve |
+| Para cada veículo | Toca no card | Abre checklist de lavagem |
+| Executa lavagem | Preenche e confirma | Status → `executado` |
+| Lavagem pesada | Acessa `lav_pesada` | Gestão específica preventiva |
+
+**Gatilho:** Meta < 80% do planejado → acionar Líder de Pátio imediatamente.
+
+---
+
+#### Manobrista
+- **Horário:** Turno noturno / madrugada
+- **Superior:** Líder de Pátio
+- **Tela mobile:** `patio_man` | **Tabela:** `posicionamento_patio`
+
+| Momento | Ação | Resultado |
+|---------|------|-----------|
+| Início do turno | Abre tela `patio_man` | Vê mapa do pátio por zona |
+| Ao posicionar veículo | Seleciona zona e registra | Salva prefixo + zona + vaga |
+| Verificação | Toca na zona | Vê veículos e quem registrou |
+
+**Gatilho:** Vaga crítica bloqueada por veículo "morto" → acionar Líder de Pátio.
+
+---
+
+#### Frentista
+- **Horário:** Turno noturno / madrugada (antes da soltura)
+- **Superior:** Líder de Pátio
+- **Tela mobile:** `abastecimento` | **Tabela:** `abastecimento_checklist`
+
+| Momento | Ação | Resultado |
+|---------|------|-----------|
+| Início do turno | Abre tela `abastecimento` | Vê frota: ✅ abastecidos / ○ pendentes |
+| Para cada veículo | Toca no card | Registra litros Diesel + ARLA 32 + horário |
+| Controle | Barra de progresso | Mostra % da frota abastecida |
+
+**Gatilho:** Divergência volume vs. NF → Líder Almoxarifado + Coordenador (Tolerância Zero para diesel).
+
+---
+
+#### Plantão
+- **Horário:** Turno noturno / madrugada (recolha)
+- **Superior:** Líder Operacional / Supervisor
+- **Tela mobile:** `recolha` | **Tabelas:** `recolha_checklist`, `avarias_recolha`
+
+| Momento | Ação | Resultado |
+|---------|------|-----------|
+| Ao receber veículo | Abre tela `recolha` | Vê lista de frota com status |
+| Para cada recolha | Toca no prefixo | Registra hora real, linha, motorista, tabela |
+| Avaria detectada | Registra avaria | Cria registro com itens NOK |
+| Fim do turno | Acompanha % | Garante todos os veículos registrados |
+
+**Gatilho:** Sinistro em rua → acionar Líder Operacional imediatamente. Avaria crítica → Líder PCM/Oficina.
 
 ---
 
@@ -318,6 +387,6 @@ R: A operação não para, mas o rastro não se perde. Almoxarife entrega a peç
 
 | Data | Versão | O que mudou | Autor |
 |------|--------|------------|-------|
+| 21/06/2026 | 1.1 | Lubrificador: seção completa (papel, lógica de rotação, rotina no app) | /jtp-bok sync |
+| 21/06/2026 | 1.1 | Membros da ponta: rotinas de Lavador, Manobrista, Frentista e Plantão geradas a partir do app | /jtp-bok sync |
 | 21/06/2026 | 1.0 | Conversão inicial do BOK_1.docx para markdown | /jtp-bok (setup) |
-| — | — | Sinalizado: cargo Lubrificador sem rotina formal | /jtp-bok |
-| — | — | Sinalizado: rotinas dos membros da ponta pendentes | /jtp-bok |
