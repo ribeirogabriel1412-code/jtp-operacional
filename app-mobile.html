@@ -2252,6 +2252,10 @@ async function telaAlmoxMobSolicitacoes(){
     .limit(100);
   const lista=(reqs||[]).filter(r=>r.os_numero&&String(r.os_numero).trim());
   window._solItemsMap={};lista.forEach(i=>{window._solItemsMap[i.id]=i;});
+  // Carrega pedidos de compra para exibir prazo/FUP no card
+  const _compraIds=lista.filter(r=>r.status==='pedido_compra').map(r=>r.id);
+  let pedidosMap={};
+  if(_compraIds.length){const{data:_ped}=await sb.from('almoxo_pedidos_compra').select('requisicao_id,status,data_previsao_entrega,fup_logs').in('requisicao_id',_compraIds);(_ped||[]).forEach(p=>{pedidosMap[p.requisicao_id]=p;});}
   // Agrupa por OS
   const grupos={};
   lista.forEach(r=>{const k=r.os_numero;if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
@@ -2290,13 +2294,13 @@ async function telaAlmoxMobSolicitacoes(){
         return`<div style="padding:9px 0;border-top:1px solid var(--border2)">
           ${i.item_entregue?entregaBlock:`<div style="display:grid;grid-template-columns:34px 1fr;gap:8px;font-size:13px;color:var(--text)">
             <b style="font-family:'DM Mono',monospace;color:var(--amber)">${i.quantidade||1}x</b>
-            <span>${escHtml(i.peca)}${i.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-top:2px">${escHtml(i.cod_sap)}</div>`:''}</span>
+            <span>${escHtml(i.peca)}${i.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-top:2px">${escHtml(i.cod_sap)}</div>`:''}${i.status==='pedido_compra'?`<div style="font-size:10px;color:var(--red);font-weight:800;margin-top:4px">🛒 ${pedidosMap[i.id]?.data_previsao_entrega?`Prazo: ${pedidosMap[i.id].data_previsao_entrega.split('-').reverse().join('/')}`:'Aguardando suprimentos'}${pedidosMap[i.id]?.fup_logs?.length?` · ${pedidosMap[i.id].fup_logs[0].nota}`:''}</div>`:''}</span>
           </div>`}
           <div style="display:flex;gap:6px;margin-top:8px;align-items:center;justify-content:space-between">
             <span style="font-size:10px;font-weight:800;color:${statusCor(i.status||'')}">${statusLabel(i.status||'solicitado_pcm')}</span>
             <span style="white-space:nowrap;display:flex;gap:4px">
               ${['separado','comprado'].includes(i.status||'')?'':`<button onclick="almoxMobAbrirConfEntrega('${i.id}')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;font-family:inherit">Separar</button>`}
-              ${['separado','comprado'].includes(i.status||'')?'':`<button onclick="almoxMobCompraSol('${i.id}')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:800;font-family:inherit">Compra</button>`}
+              ${['separado','comprado','pedido_compra'].includes(i.status||'')?'':`<button onclick="almoxMobCompraSol('${i.id}')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:800;font-family:inherit">Compra</button>`}
               <button onclick="almoxMobChegarSol('${i.id}')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:800;font-family:inherit">Chegou</button>
             </span>
           </div>
@@ -2328,15 +2332,36 @@ async function almoxMobSepSol(id){
   _almoxMobTab='sol';telaValetAlmox();
 }
 async function almoxMobCompraSol(id){
+  const{data:req}=await sb.from('requisicoes_compra').select('*').eq('id',id).single();
+  if(!req){toast('Item não encontrado','err');return;}
   const{error}=await sb.from('requisicoes_compra').update({status:'pedido_compra'}).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
-  toast('🛒 Pedido de compra registrado');
+  const now=new Date().toISOString();
+  await sb.from('almoxo_pedidos_compra').insert({
+    requisicao_id:id,
+    garagem_id:getGid(),
+    item:req.peca||req.item||'—',
+    cod_sap:req.cod_sap||null,
+    quantidade:req.quantidade||1,
+    os_numero:req.os_numero||null,
+    prefixo:req.prefixo||null,
+    status:'pendente',
+    solicitado_por:S.perfil?.nome||null,
+    fup_logs:[{data:now,responsavel:S.perfil?.nome||'Almoxarife',nota:'Pedido de compra aberto pelo almoxarife'}]
+  });
+  toast('🛒 Pedido enviado ao Líder de Suprimentos');
   _almoxMobTab='sol';telaValetAlmox();
 }
 async function almoxMobChegarSol(id){
   const{error}=await sb.from('requisicoes_compra').update({status:'comprado'}).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
-  toast('📦 Peça marcada como chegou');
+  const now=new Date().toISOString();
+  const{data:p}=await sb.from('almoxo_pedidos_compra').select('id,fup_logs').eq('requisicao_id',id).maybeSingle();
+  if(p){
+    const logs=[{data:now,responsavel:S.perfil?.nome||'Almoxarife',nota:'Item recebido — confirmado pelo almoxarife'},...(p.fup_logs||[])];
+    await sb.from('almoxo_pedidos_compra').update({status:'recebido',data_recebimento:now,fup_logs:logs,atualizado_em:now}).eq('id',p.id);
+  }
+  toast('📦 Peça chegou — estoque atualizado');
   _almoxMobTab='sol';telaValetAlmox();
 }
 

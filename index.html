@@ -1580,6 +1580,7 @@ async function renderAlmoxarifado(){
   if(S._almoxTab==='wms'){await renderAlmoxWMS();return;}
   if(S._almoxTab==='inventario'){await renderAlmoxInventario();return;}
   if(S._almoxTab==='painel'){await renderAlmoxPainelLider();return;}
+  if(S._almoxTab==='compras'){await renderAlmoxCompras();return;}
   let data=await resolverDataValetComDados(gid,S._valetData||proximoSabadoISO(),!!S._valetData);
   setMain(`<div class="loading"><div class="spinner"></div></div>`);
   const[{data:reqsRaw},{data:datasValet}]=await Promise.all([
@@ -1725,6 +1726,7 @@ function almoxTabNav(tab,isLider){
     ${b('inventario','📋','Inventários')}
     ${isLider?b('wms','🗂️','WMS — Catálogo'):''}
     ${isLider?b('painel','📊','Painel do Líder'):''}
+    ${isLider?b('compras','🛒','Pedidos de Compra'):''}
   </div>`;
 }
 
@@ -1985,6 +1987,156 @@ async function renderAlmoxPainelLider(){
       </div>${divRows}`:`<div class="empty">Nenhuma divergência aberta 🎉</div>`}
     </div>
   `);
+}
+
+// ── ALMOXARIFADO: Pedidos de Compra + FUP ────────────────────────────────────
+
+async function renderAlmoxCompras(){
+  const gid=getGid();
+  setMain(`<div class="loading"><div class="spinner"></div></div>`);
+  const isLider=['lider_suprimentos','lider_almoxarifado'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
+  if(!isLider){setMain(`<div class="empty">Acesso restrito ao Líder de Suprimentos</div>`);return;}
+  const subTab=S._almoxComprasTab||'pendente';
+  const{data:pedidos}=await sb.from('almoxo_pedidos_compra').select('*').eq('garagem_id',gid).order('criado_em',{ascending:false});
+  const all=pedidos||[];
+  const grp={pendente:all.filter(p=>p.status==='pendente'),enviado_matriz:all.filter(p=>p.status==='enviado_matriz'),aguardando_entrega:all.filter(p=>p.status==='aguardando_entrega'),recebido:all.filter(p=>p.status==='recebido')};
+  const safe=v=>escHtml(String(v||'—'));
+  const fmtD=s=>{if(!s)return'—';try{return new Date(s).toLocaleDateString('pt-BR');}catch{return s;}};
+  const fmtDate=s=>{if(!s)return'—';const[a,m,d]=s.split('-');return`${d}/${m}/${a}`;};
+  const corStatus={pendente:'var(--red)',enviado_matriz:'var(--blue)',aguardando_entrega:'var(--amber)',recebido:'var(--green)'};
+  const labelStatus={pendente:'⏳ Pendente',enviado_matriz:'📤 Enviado p/ Matriz',aguardando_entrega:'🕐 Aguardando Entrega',recebido:'✅ Recebido'};
+  const tabs=[{id:'pendente',lb:'⏳ Pendente'},{id:'enviado_matriz',lb:'📤 Enviado'},{id:'aguardando_entrega',lb:'🕐 Aguardando'},{id:'recebido',lb:'✅ Recebido'}];
+  const tabNav=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
+    ${tabs.map(t=>{const a=subTab===t.id,cnt=grp[t.id].length;return`<button onclick="S._almoxComprasTab='${t.id}';renderAlmoxCompras()" style="cursor:pointer;padding:8px 16px;border-radius:8px;font-family:'DM Sans',sans-serif;font-weight:800;font-size:13px;border:1px solid ${a?corStatus[t.id]:'var(--border)'};${a?`background:${corStatus[t.id]};color:${t.id==='aguardando_entrega'?'#06131f':'#fff'}`:'background:var(--surface2);color:var(--text3)'}">${t.lb}${cnt>0?` <span style="background:rgba(0,0,0,.2);border-radius:99px;padding:1px 7px;font-size:11px">${cnt}</span>`:''}</button>`;}).join('')}
+  </div>`;
+  const renderFup=logs=>{if(!logs||!logs.length)return'';return`<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px"><div style="font-size:10px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Histórico FUP</div>${logs.map(l=>`<div style="font-size:11px;color:var(--text3);margin-bottom:4px;display:flex;gap:6px"><span style="color:var(--text2);font-family:'DM Mono',monospace;white-space:nowrap">${fmtD(l.data)}</span><span style="color:var(--blue)">${escHtml(l.responsavel||'')}</span><span>·</span><span>${escHtml(l.nota||'')}</span></div>`).join('')}</div>`;};
+  const lista=grp[subTab]||[];
+  const cards=lista.map(p=>{
+    let actions='';
+    if(p.status==='pendente')actions=`<button onclick="almoxComprasEnviarMatriz('${p.id}')" style="padding:7px 16px;border-radius:8px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:12px;font-weight:800;font-family:'DM Sans',sans-serif;cursor:pointer">📤 Enviado p/ Matriz</button>`;
+    else if(p.status==='enviado_matriz')actions=`<button onclick="almoxComprasRegistrarPrazo('${p.id}')" style="padding:7px 16px;border-radius:8px;border:1px solid var(--amber);background:#C8A24A18;color:var(--amber);font-size:12px;font-weight:800;font-family:'DM Sans',sans-serif;cursor:pointer">📅 Registrar Prazo</button><button onclick="almoxComprasFup('${p.id}')" style="padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:12px;font-weight:800;font-family:'DM Sans',sans-serif;cursor:pointer;margin-left:8px">💬 FUP</button>`;
+    else if(p.status==='aguardando_entrega')actions=`<button onclick="almoxComprasFup('${p.id}')" style="padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:12px;font-weight:800;font-family:'DM Sans',sans-serif;cursor:pointer">💬 FUP</button><button onclick="almoxComprasRecebido('${p.id}')" style="padding:7px 16px;border-radius:8px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:12px;font-weight:800;font-family:'DM Sans',sans-serif;cursor:pointer;margin-left:8px">✅ Chegou</button>`;
+    return`<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${corStatus[p.status]||'var(--border)'};border-radius:12px;padding:16px 18px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:900;font-size:15px;margin-bottom:3px">${safe(p.item)}</div>
+          ${p.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--amber)">${safe(p.cod_sap)}</div>`:''}
+          ${p.justificativa?`<div style="font-size:11px;color:var(--text3);margin-top:4px;font-style:italic">"${safe(p.justificativa)}"</div>`:''}
+        </div>
+        <div style="text-align:right;margin-left:16px;flex-shrink:0">
+          <div style="font-size:13px;font-weight:900">${p.quantidade||1}x</div>
+          ${p.os_numero?`<div style="font-size:10px;color:var(--blue);font-family:'DM Mono',monospace">OS ${safe(p.os_numero)}</div>`:''}
+          ${p.prefixo?`<div style="font-size:10px;color:var(--text3)">Pref. ${safe(p.prefixo)}</div>`:''}
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
+        <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center"><div style="font-size:9px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:.3px">Solicitado</div><div style="font-size:12px;font-weight:700;margin-top:3px">${fmtD(p.criado_em)}</div>${p.solicitado_por?`<div style="font-size:10px;color:var(--text3);margin-top:1px">${safe(p.solicitado_por)}</div>`:''}</div>
+        <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center"><div style="font-size:9px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:.3px">Enviado</div><div style="font-size:12px;font-weight:700;margin-top:3px;color:${p.data_envio_matriz?'var(--blue)':'var(--text3)'}">${fmtD(p.data_envio_matriz)}</div></div>
+        <div style="background:var(--surface2);border-radius:8px;padding:8px;text-align:center"><div style="font-size:9px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:.3px">Prazo</div><div style="font-size:12px;font-weight:700;margin-top:3px;color:${p.data_previsao_entrega?'var(--amber)':'var(--text3)'}">${fmtDate(p.data_previsao_entrega)}</div></div>
+      </div>
+      ${actions?`<div style="margin-bottom:8px">${actions}</div>`:''}
+      ${renderFup(p.fup_logs||[])}
+    </div>`;
+  }).join('');
+  const emAberto=grp.pendente.length+grp.enviado_matriz.length+grp.aguardando_entrega.length;
+  setMain(`<div style="padding:24px">${almoxTabNav('compras',isLider)}<div style="margin-bottom:20px"><h2 style="margin:0 0 4px;font-size:20px;font-weight:900">🛒 Pedidos de Compra</h2><div style="font-size:13px;color:var(--text3)">${all.length} pedido(s) total · <span style="color:var(--red);font-weight:700">${emAberto} em aberto</span></div></div>${tabNav}${lista.length?cards:`<div class="empty" style="margin-top:20px"><div style="font-size:32px;margin-bottom:12px">🛒</div><div style="font-weight:700;font-size:16px">Nenhum pedido ${subTab==='pendente'?'pendente':subTab==='enviado_matriz'?'enviado':subTab==='aguardando_entrega'?'aguardando':'recebido'}</div></div>`}</div>`);
+}
+
+function almoxComprasAbrirModal(titulo,html,onConfirm){
+  document.getElementById('ac-modal-overlay')?.remove();
+  const ov=document.createElement('div');ov.id='ac-modal-overlay';
+  ov.style.cssText='position:fixed;inset:0;background:#000a;z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px';
+  ov.innerHTML=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto">
+    <div style="font-weight:900;font-size:17px;margin-bottom:18px">${titulo}</div>
+    ${html}
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button onclick="document.getElementById('ac-modal-overlay').remove()" style="flex:1;padding:11px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:14px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer">Cancelar</button>
+      <button id="ac-modal-confirm" onclick="window._acModalConfirm&&window._acModalConfirm()" style="flex:1;padding:11px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:800;font-family:'DM Sans',sans-serif;cursor:pointer">Confirmar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  window._acModalConfirm=onConfirm;
+}
+
+async function almoxComprasEnviarMatriz(id){
+  almoxComprasAbrirModal('📤 Enviar para a Matriz',
+    `<div><label style="font-size:12px;font-weight:800;color:var(--text3)">Observação (opcional)</label>
+    <textarea id="ac-obs" placeholder="Ex: Urgente — veículo parado. Fornecedor: XYZ." rows="3" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;resize:vertical;box-sizing:border-box"></textarea></div>`,
+    async()=>{
+      const obs=document.getElementById('ac-obs')?.value?.trim()||'Enviado para a Matriz';
+      document.getElementById('ac-modal-overlay')?.remove();
+      const now=new Date().toISOString();
+      const{data:p}=await sb.from('almoxo_pedidos_compra').select('fup_logs').eq('id',id).single();
+      const logs=[{data:now,responsavel:S.perfil?.nome||'Líder Suprimentos',nota:obs},...(p?.fup_logs||[])];
+      const{error}=await sb.from('almoxo_pedidos_compra').update({status:'enviado_matriz',data_envio_matriz:now,fup_logs:logs,atualizado_em:now}).eq('id',id);
+      if(error){toast('Erro: '+error.message,'err');return;}
+      toast('📤 Enviado para a Matriz');renderAlmoxCompras();
+    }
+  );
+}
+
+async function almoxComprasRegistrarPrazo(id){
+  almoxComprasAbrirModal('📅 Registrar Prazo de Entrega',
+    `<div style="display:grid;gap:14px">
+      <div><label style="font-size:12px;font-weight:800;color:var(--text3)">Data prevista de entrega</label>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <input type="date" id="ac-prazo" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Mono',monospace;outline:none">
+          <button onclick="document.getElementById('ac-prazo').showPicker()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:14px;cursor:pointer">📅</button>
+        </div>
+      </div>
+      <div><label style="font-size:12px;font-weight:800;color:var(--text3)">Observação (opcional)</label>
+        <input id="ac-obs2" placeholder="Ex: Aguardando NF do fornecedor." style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+      </div>
+    </div>`,
+    async()=>{
+      const prazo=document.getElementById('ac-prazo')?.value;
+      if(!prazo){toast('Informe a data prevista','err');return;}
+      const obs=document.getElementById('ac-obs2')?.value?.trim()||`Prazo registrado: ${prazo.split('-').reverse().join('/')}`;
+      document.getElementById('ac-modal-overlay')?.remove();
+      const now=new Date().toISOString();
+      const{data:p}=await sb.from('almoxo_pedidos_compra').select('fup_logs').eq('id',id).single();
+      const logs=[{data:now,responsavel:S.perfil?.nome||'Líder Suprimentos',nota:obs},...(p?.fup_logs||[])];
+      const{error}=await sb.from('almoxo_pedidos_compra').update({status:'aguardando_entrega',data_previsao_entrega:prazo,fup_logs:logs,atualizado_em:now}).eq('id',id);
+      if(error){toast('Erro: '+error.message,'err');return;}
+      toast('📅 Prazo registrado');renderAlmoxCompras();
+    }
+  );
+}
+
+async function almoxComprasFup(id){
+  almoxComprasAbrirModal('💬 Registrar FUP',
+    `<div><label style="font-size:12px;font-weight:800;color:var(--text3)">Nota de acompanhamento</label>
+    <textarea id="ac-fup" placeholder="Ex: Contato com fornecedor — previsão mantida para 25/06." rows="3" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;resize:vertical;box-sizing:border-box"></textarea></div>`,
+    async()=>{
+      const nota=document.getElementById('ac-fup')?.value?.trim();
+      if(!nota){toast('Informe uma nota','err');return;}
+      document.getElementById('ac-modal-overlay')?.remove();
+      const now=new Date().toISOString();
+      const{data:p}=await sb.from('almoxo_pedidos_compra').select('fup_logs').eq('id',id).single();
+      const logs=[{data:now,responsavel:S.perfil?.nome||'Líder Suprimentos',nota},...(p?.fup_logs||[])];
+      const{error}=await sb.from('almoxo_pedidos_compra').update({fup_logs:logs,atualizado_em:now}).eq('id',id);
+      if(error){toast('Erro: '+error.message,'err');return;}
+      toast('💬 FUP registrado');renderAlmoxCompras();
+    }
+  );
+}
+
+async function almoxComprasRecebido(id){
+  almoxComprasAbrirModal('✅ Confirmar Recebimento',
+    `<div><label style="font-size:12px;font-weight:800;color:var(--text3)">Observação (opcional)</label>
+    <textarea id="ac-rec" placeholder="Ex: Item recebido conforme NF. Encaminhado para estoque." rows="3" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;resize:vertical;box-sizing:border-box"></textarea></div>`,
+    async()=>{
+      const obs=document.getElementById('ac-rec')?.value?.trim()||'Item recebido na garagem';
+      document.getElementById('ac-modal-overlay')?.remove();
+      const now=new Date().toISOString();
+      const{data:p}=await sb.from('almoxo_pedidos_compra').select('fup_logs,requisicao_id').eq('id',id).single();
+      const logs=[{data:now,responsavel:S.perfil?.nome||'Líder Suprimentos',nota:obs},...(p?.fup_logs||[])];
+      const{error}=await sb.from('almoxo_pedidos_compra').update({status:'recebido',data_recebimento:now,fup_logs:logs,atualizado_em:now}).eq('id',id);
+      if(error){toast('Erro: '+error.message,'err');return;}
+      if(p?.requisicao_id)await sb.from('requisicoes_compra').update({status:'comprado'}).eq('id',p.requisicao_id);
+      toast('✅ Recebimento confirmado');renderAlmoxCompras();
+    }
+  );
 }
 
 async function almoxAddRuaModal(){
