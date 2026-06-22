@@ -306,6 +306,7 @@ tr:hover td{background:#1F293780}
         <button class="sub-btn" onclick="navToSub('ferr-ctrl')">✅ Controle Soltura</button>
         <button class="sub-btn" onclick="navToSub('ferr-almox')">📦 Almoxarifado / Valetamento</button>
         <button class="sub-btn" onclick="navToSub('ferr-lubri')">🛢️ Relatório Lubrificação</button>
+        <button class="sub-btn" onclick="navToSub('ferr-pecas')">🔩 Peças & Compras</button>
       </div>
       <button class="nav-btn" onclick="toggleSub('sub-rel','arr-rel',this)"><span>📋</span> Relatórios <span id="arr-rel" style="margin-left:auto;font-size:10px;color:var(--text4)">▶</span></button>
       <div class="submenu" id="sub-rel">
@@ -980,7 +981,7 @@ function navToSub(sub){
   S.subtela=sub;
   document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes(sub))b.classList.add('active')});
-  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-218':renderFerr218,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios,'ferr-lubri':renderFerrLubri};
+  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-218':renderFerr218,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios,'ferr-lubri':renderFerrLubri,'ferr-pecas':renderFerrPecas};
   if(map[sub]) map[sub]();
 }
 
@@ -2000,6 +2001,7 @@ async function renderAlmoxPainelLider(){
 // ── ALMOXARIFADO: Pedidos de Compra + FUP ────────────────────────────────────
 
 async function renderAlmoxCompras(){
+  S._comprasCtx='almox';
   const gid=getGid();
   setMain(`<div class="loading"><div class="spinner"></div></div>`);
   const isLider=['lider_suprimentos','lider_almoxarifado'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
@@ -2105,7 +2107,7 @@ async function almoxComprasEnviarMatriz(id){
       const logs=[{data:now,responsavel:S.perfil?.nome||'Líder Suprimentos',nota:obs},...(p?.fup_logs||[])];
       const{error}=await sb.from('almoxo_pedidos_compra').update({status:'enviado_matriz',data_envio_matriz:now,fup_logs:logs,atualizado_em:now}).eq('id',id);
       if(error){toast('Erro: '+error.message,'err');return;}
-      toast('📤 Enviado para a Matriz');renderAlmoxCompras();
+      toast('📤 Enviado para a Matriz');S._comprasCtx==='pecas'?renderFerrPecas():renderAlmoxCompras();
     }
   );
 }
@@ -2133,7 +2135,7 @@ async function almoxComprasRegistrarPrazo(id){
       const logs=[{data:now,responsavel:S.perfil?.nome||'Líder Suprimentos',nota:obs},...(p?.fup_logs||[])];
       const{error}=await sb.from('almoxo_pedidos_compra').update({status:'aguardando_entrega',data_previsao_entrega:prazo,fup_logs:logs,atualizado_em:now}).eq('id',id);
       if(error){toast('Erro: '+error.message,'err');return;}
-      toast('📅 Prazo registrado');renderAlmoxCompras();
+      toast('📅 Prazo registrado');S._comprasCtx==='pecas'?renderFerrPecas():renderAlmoxCompras();
     }
   );
 }
@@ -2151,7 +2153,7 @@ async function almoxComprasFup(id){
       const logs=[{data:now,responsavel:S.perfil?.nome||'Líder Suprimentos',nota},...(p?.fup_logs||[])];
       const{error}=await sb.from('almoxo_pedidos_compra').update({fup_logs:logs,atualizado_em:now}).eq('id',id);
       if(error){toast('Erro: '+error.message,'err');return;}
-      toast('💬 FUP registrado');renderAlmoxCompras();
+      toast('💬 FUP registrado');S._comprasCtx==='pecas'?renderFerrPecas():renderAlmoxCompras();
     }
   );
 }
@@ -2169,7 +2171,7 @@ async function almoxComprasRecebido(id){
       const{error}=await sb.from('almoxo_pedidos_compra').update({status:'recebido',data_recebimento:now,fup_logs:logs,atualizado_em:now}).eq('id',id);
       if(error){toast('Erro: '+error.message,'err');return;}
       if(p?.requisicao_id)await sb.from('requisicoes_compra').update({status:'comprado'}).eq('id',p.requisicao_id);
-      toast('✅ Recebimento confirmado');renderAlmoxCompras();
+      toast('✅ Recebimento confirmado');S._comprasCtx==='pecas'?renderFerrPecas():renderAlmoxCompras();
     }
   );
 }
@@ -3707,6 +3709,7 @@ function renderFerramentas(){
     'ferr-almox':'Cestos de valetamento agrupados por carro. Almoxarifado codifica, separa, nega ou atualiza chegada.',
     'ferr-211':'Todos os veículos parados com tempo, status e previsão. Alerta automático de vencimento.',
     'ferr-212':'Disponibilidade, MTTR, OS por tipo e ranking de mecânicos. Atualizado em tempo real.',
+    'ferr-pecas':'Visão unificada de todas as peças por prefixo: estoque, em compra, prazo e FUP. Compartilhado entre Almox e PCM.',
   };
 
   const tools=FERRAMENTAS_DEF.filter(f=>temAcessoFerr(f.id)&&f.id!=='ferr-lav-lavador'||isLavador()&&f.id==='ferr-lav-lavador');
@@ -3750,6 +3753,7 @@ function atualizarSubmenuFerramentas(){
     'ferr-33':'👣 3.3 Ronda Operacional',
     'ferr-ctrl':'✅ Controle Soltura',
     'ferr-almox':'📦 Almoxarifado / Valetamento',
+    'ferr-pecas':'🔩 Peças & Compras',
   };
   const subFerr=document.getElementById('sub-ferr');
   if(!subFerr) return;
@@ -3759,6 +3763,103 @@ function atualizarSubmenuFerramentas(){
     const match=onclick.match(/'(ferr-[^']+)'/);
     if(match) btn.style.display=temAcessoFerr(match[1])?'':'none';
   });
+}
+
+// ── PEÇAS & COMPRAS — painel compartilhado Almox + PCM ──────
+async function renderFerrPecas(){
+  S._comprasCtx='pecas';
+  const gid=getGid();
+  setMain(`<div class="loading"><div class="spinner"></div></div>`);
+  const cargo=S.perfil?.cargo;
+  const isAlmox=['almoxarifado','lider_almoxarifado','lider_suprimentos'].includes(cargo)||S.perfil?.is_admin;
+  const filtro=S._pecasStatus||'aberto';
+  const buscaPref=(S._pecasBusca||'').toLowerCase().trim();
+  const[{data:reqs},{data:pedidos}]=await Promise.all([
+    sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).order('created_at',{ascending:false}),
+    sb.from('almoxo_pedidos_compra').select('*').eq('garagem_id',gid)
+  ]);
+  const allReqs=reqs||[];
+  const allPeds=pedidos||[];
+  const pedMap={};allPeds.forEach(p=>{if(p.requisicao_id)pedMap[String(p.requisicao_id)]=p;});
+  const compCnt=allReqs.filter(r=>r.status==='pedido_compra').length;
+  const sepCnt=allReqs.filter(r=>r.status==='separado').length;
+  const recCnt=allReqs.filter(r=>r.status==='comprado').length;
+  const hoje=new Date();hoje.setHours(0,0,0,0);
+  let filtered=allReqs;
+  if(filtro==='aberto')filtered=allReqs.filter(r=>!['comprado','negado'].includes(r.status||''));
+  else if(filtro==='em_compra')filtered=allReqs.filter(r=>r.status==='pedido_compra');
+  else if(filtro==='concluido')filtered=allReqs.filter(r=>['comprado','negado'].includes(r.status||''));
+  if(buscaPref)filtered=filtered.filter(r=>(r.prefixo||r.os_prefixo||'').toLowerCase().includes(buscaPref));
+  const grupos={};
+  filtered.forEach(r=>{const k=r.prefixo||r.os_prefixo||'S/PREFIXO';if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
+  const prefixos=Object.keys(grupos).sort();
+  const COR={separado:'var(--green)',pedido_compra:'var(--amber)',comprado:'#6B7280',negado:'var(--red)',no_estoque:'var(--blue)',em_separacao:'#3B82F6',pendente:'var(--text3)'};
+  const LABEL={separado:'Separado',pedido_compra:'Em Compra',comprado:'Recebido',negado:'Negado',no_estoque:'No Estoque',em_separacao:'Separando',pendente:'Pendente'};
+  const PEDLABEL={pendente:'Pendente',enviado_matriz:'Enviado',aguardando_entrega:'Aguardando',recebido:'Recebido'};
+  const PEDCOR={pendente:'var(--red)',enviado_matriz:'var(--blue)',aguardando_entrega:'var(--amber)',recebido:'var(--green)'};
+  const fmtDate=s=>{if(!s)return'—';const[a,m,d]=String(s).split('-');return`${d}/${m}/${a}`;};
+  const fmtD=s=>{if(!s)return'—';try{return new Date(s).toLocaleDateString('pt-BR');}catch{return s;}};
+  let tRows='';
+  if(!filtered.length){
+    tRows=`<tr><td colspan="${isAlmox?8:7}" style="text-align:center;padding:40px;color:var(--text3);font-weight:600">Nenhum item encontrado</td></tr>`;
+  }else{
+    prefixos.forEach(pref=>{
+      const items=grupos[pref];
+      items.forEach((r,idx)=>{
+        const ped=pedMap[String(r.id)];
+        const pedSt=ped?.status;
+        const cor=COR[r.status]||'var(--text3)';
+        const vencido=ped?.data_previsao_entrega&&new Date(ped.data_previsao_entrega+'T12:00:00')<hoje&&r.status!=='comprado';
+        const lastFup=ped?.fup_logs?.length?ped.fup_logs[0]:null;
+        let btns='';
+        if(isAlmox&&r.status==='pedido_compra'&&ped){
+          if(pedSt==='pendente')btns=`<button onclick="almoxComprasEnviarMatriz('${ped.id}')" style="padding:3px 8px;border-radius:5px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:800;font-family:inherit;cursor:pointer">📤 Enviar</button>`;
+          else if(pedSt==='enviado_matriz')btns=`<button onclick="almoxComprasRegistrarPrazo('${ped.id}')" style="padding:3px 7px;border-radius:5px;border:1px solid var(--amber);background:#C8A24A18;color:var(--amber);font-size:11px;font-weight:800;font-family:inherit;cursor:pointer">📅</button> <button onclick="almoxComprasFup('${ped.id}')" style="padding:3px 7px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:11px;font-weight:800;font-family:inherit;cursor:pointer">💬 FUP</button>`;
+          else if(pedSt==='aguardando_entrega')btns=`<button onclick="almoxComprasFup('${ped.id}')" style="padding:3px 7px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:11px;font-weight:800;font-family:inherit;cursor:pointer">💬 FUP</button> <button onclick="almoxComprasRecebido('${ped.id}')" style="padding:3px 7px;border-radius:5px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;font-family:inherit;cursor:pointer">✅ Chegou</button>`;
+        }
+        tRows+=`<tr style="border-top:1px solid var(--border);${vencido?'background:#EF444408':''}" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='${vencido?'#EF444408':''}'">
+          <td style="padding:10px 12px;font-family:'DM Mono',monospace;font-weight:900;font-size:13px;color:var(--blue);white-space:nowrap">${idx===0?escHtml(pref):''}</td>
+          <td style="padding:10px 12px"><div style="font-weight:700;font-size:13px">${escHtml(r.descricao||r.item||'—')}</div>${(r.cod_sap||r.sap)?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-top:2px">${escHtml(r.cod_sap||r.sap)}</div>`:''}</td>
+          <td style="padding:10px 12px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text3);white-space:nowrap">${escHtml(r.os_numero||'—')}</td>
+          <td style="padding:10px 12px;text-align:center;font-family:'DM Mono',monospace;font-weight:800">${r.quantidade||1}</td>
+          <td style="padding:10px 12px">
+            <span style="background:${cor}20;color:${cor};border:1px solid ${cor}40;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:800">${LABEL[r.status]||r.status||'—'}</span>
+            ${r.status==='pedido_compra'&&ped?`<div style="font-size:10px;color:${PEDCOR[pedSt]||'var(--amber)'};font-weight:700;margin-top:3px">${PEDLABEL[pedSt]||pedSt}</div>`:''}
+          </td>
+          <td style="padding:10px 12px;white-space:nowrap;font-size:12px;font-weight:${vencido?'800':'600'};color:${vencido?'var(--red)':ped?.data_previsao_entrega?'var(--amber)':'var(--text4)'}">${fmtDate(ped?.data_previsao_entrega)}${vencido?' ⚠️':''}</td>
+          <td style="padding:10px 12px;font-size:11px;color:var(--text3);max-width:180px">${lastFup?`<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px" title="${escHtml(lastFup.nota)}"><span style="color:var(--blue);font-weight:700">${fmtD(lastFup.data)}</span> · ${escHtml(lastFup.nota)}</div>`:''}</td>
+          ${isAlmox?`<td style="padding:10px 12px;white-space:nowrap">${btns}</td>`:''}
+        </tr>`;
+      });
+    });
+  }
+  const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  const kpis=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px">
+    ${[{l:'Em Compra',v:compCnt,c:'var(--amber)',f:'em_compra'},{l:'Separados',v:sepCnt,c:'var(--green)',f:'separado'},{l:'Recebidos',v:recCnt,c:'#6B7280',f:'concluido'},{l:'Total',v:allReqs.length,c:'var(--blue)',f:'todos'}].map(k=>`<div onclick="S._pecasStatus='${k.f}';renderFerrPecas()" style="background:var(--surface);border:1px solid ${filtro===k.f?k.c:'var(--border)'};border-radius:10px;padding:12px 14px;text-align:center;cursor:pointer"><div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">${k.l}</div><div style="font-size:26px;font-weight:900;color:${k.c}">${k.v}</div></div>`).join('')}
+  </div>`;
+  const filtrosBar=`<div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+    ${[{id:'aberto',lb:'Em aberto'},{id:'em_compra',lb:'Em Compra'},{id:'concluido',lb:'Concluídos'},{id:'todos',lb:'Todos'}].map(f=>{const a=filtro===f.id;return`<button onclick="S._pecasStatus='${f.id}';renderFerrPecas()" style="cursor:pointer;padding:6px 14px;border-radius:20px;font-family:inherit;font-weight:700;font-size:12px;border:1px solid ${a?'var(--blue)':'var(--border)'};background:${a?'var(--blue)':'var(--surface2)'};color:${a?'#fff':'var(--text3)'}">${f.lb}</button>`;}).join('')}
+    <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+      <input id="pecas-busca-pref" value="${escHtml(S._pecasBusca||'')}" placeholder="🔍 Filtrar por prefixo..." oninput="S._pecasBusca=this.value;S._pecasBuscaCur=this.selectionStart;renderFerrPecas()" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit;outline:none;width:180px">
+      <button onclick="renderFerrPecas()" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text3);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">🔄</button>
+    </div>
+  </div>`;
+  const tabela=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="background:var(--surface2)">
+      <th style="padding:10px 12px;color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;text-align:left">Prefixo</th>
+      <th style="padding:10px 12px;color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;text-align:left">Item</th>
+      <th style="padding:10px 12px;color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;text-align:left">OS</th>
+      <th style="padding:10px 12px;color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;text-align:center">Qtd</th>
+      <th style="padding:10px 12px;color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;text-align:left">Status</th>
+      <th style="padding:10px 12px;color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;text-align:left">Prazo</th>
+      <th style="padding:10px 12px;color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;text-align:left">Últ. FUP</th>
+      ${isAlmox?`<th style="padding:10px 12px;color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;text-align:left">Ações</th>`:''}
+    </tr></thead>
+    <tbody>${tRows}</tbody>
+  </table></div>`;
+  setMain(`<div style="padding:24px">${back}<div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 16px"><div><h2 style="margin:0 0 2px;font-size:20px;font-weight:900">🔩 Peças & Compras</h2><div style="font-size:12px;color:var(--text3)">${allReqs.length} item(ns) total · ${filtered.length} exibido(s) · ${isAlmox?'visão Almox':'visão PCM'}</div></div></div>${kpis}${filtrosBar}${tabela}</div>`);
+  const inp=document.getElementById('pecas-busca-pref');
+  if(inp&&S._pecasBusca){inp.focus();const cp=S._pecasBuscaCur??inp.value.length;inp.setSelectionRange(cp,cp);}
 }
 
 // ── HELPERS 2.10 ────────────────────────────────────────────

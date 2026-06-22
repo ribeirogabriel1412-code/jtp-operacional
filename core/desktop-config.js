@@ -79,6 +79,11 @@ const FERRAMENTAS_DEF=[
     valida:   [],
     visualiza:['gerente_garagem','diretoria','coordenador','supervisor','lider_operacional','lider_pcm'],
   },
+  {id:'ferr-pecas', icon:'🔩', nome:'Peças & Compras',
+    executa:  ['almoxarifado','lider_almoxarifado','lider_suprimentos'],
+    valida:   ['lider_suprimentos'],
+    visualiza:['lider_pcm','assistente_pcm','lider_oficina','gerente_garagem','diretoria'],
+  },
 ];
 
 const PAPEIS=['executa','valida','visualiza'];
