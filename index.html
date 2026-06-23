@@ -1634,7 +1634,6 @@ async function renderAlmoxarifado(){
   const seletorSemana=renderSeletorSemanaValet(data,(datasValet||[]).map(r=>r.data),'renderAlmoxarifado()');
   const preventivasSemana=renderAlmoxPreventivasProgramadas(data,grupos);
   const relatorioCestos=renderAlmoxRelatorioCestosDia(data);
-  const painelCompras=renderPainelComprasSuprimentosValet(data,lista,safe,rowId,fmtMoney);
   const acoesItem=r=>{
     const st=r.status||'';
     const isSup=S.perfil?.cargo==='lider_suprimentos'||S.perfil?.is_admin;
@@ -1720,7 +1719,6 @@ async function renderAlmoxarifado(){
       ${kpi('Pedido compra',qtdCompra,0,'',true,0)}
       ${kpi('Cestos disponíveis',qtdCestosDisp,undefined,'',false,0)}
     </div>
-    ${painelCompras}
     ${relatorioCestos}
     ${preventivasSemana}
     <div id="almox-itens-valet">${secTitle('🛒','Itens do Valetamento',`${cestos.length} cesto(s) · ${lista.length} item(ns) · ${qtdSep} separados · ${qtdCompra} compras · ${fmtMoney(totalValor)}`)}</div>
