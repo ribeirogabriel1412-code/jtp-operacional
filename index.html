@@ -700,8 +700,8 @@ tr:hover td{background:#1F293780}
           <input class="fi" id="m22s-custo-prev" type="number" placeholder="0,00" step="0.01" min="0" style="margin-bottom:0;font-family:'DM Mono',monospace">
         </div>
         <div>
-          <label class="fl" style="color:var(--blue)">Custo Real (R$)</label>
-          <input class="fi" id="m22s-custo-real" type="number" placeholder="0,00" step="0.01" min="0" style="margin-bottom:0;font-family:'DM Mono',monospace">
+          <label class="fl" style="color:var(--blue)">Custo Real (R$) — atualizado pelo PRAXIO</label>
+          <input class="fi" id="m22s-custo-real" type="number" placeholder="0,00" step="0.01" min="0" style="margin-bottom:0;font-family:'DM Mono',monospace;opacity:0.6;cursor:not-allowed" readonly>
         </div>
       </div>
       <div style="margin-bottom:8px">
@@ -5648,15 +5648,6 @@ async function avancarStatusOS(id, prefixo, statusAtual){
   if(novoStatus==='liberado'){
     extra.hora_liberacao=new Date().toISOString();
     extra.liberado_por=S.perfil?.nome||null;
-    // Pedir custo real se não preenchido
-    const{data:oc}=await sb.from('ocorrencias_22').select('custo_real,custo_previsto').eq('id',id).single();
-    if(!oc?.custo_real&&oc?.custo_previsto){
-      const custoReal=prompt(`Custo real da OS (previsto: R$ ${Number(oc.custo_previsto).toLocaleString('pt-BR',{minimumFractionDigits:2})})
-Deixe em branco para usar o previsto:`);
-      if(custoReal!==null){
-        extra.custo_real=parseFloat(custoReal.replace(',','.'))||oc.custo_previsto;
-      }
-    }
     // Liberar frota
     const{data:vei}=await sb.from('frota').select('id').eq('garagem_id',gid).eq('prefixo',prefixo).maybeSingle();
     if(vei?.id) await sb.from('frota').update({status:'disponivel',updated_at:new Date().toISOString()}).eq('id',vei.id);
@@ -6817,7 +6808,6 @@ async function atualizarStatus22(){
     ...(os&&{praxio_os_id:os}),
     ...(previsao&&{hora_previsao:new Date(previsao).toISOString()}),
     ...(custoPrev!==null&&{custo_previsto:custoPrev}),
-    ...(custoReal!==null&&{custo_real:custoReal}),
     ...(pecasNec&&{pecas_necessarias:pecasNec}),
     ...(pecasUtil&&{pecas_utilizadas:pecasUtil}),
     ...(isLib&&{
@@ -9290,7 +9280,7 @@ async function renderFerrPCM(aba='painel'){
 
   const[{data:ocs},{data:frota}]=await Promise.all([
     sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado')
-      .gte('hora_entrada',inicioFluxo)
+      .or(`hora_entrada.gte.${inicioFluxo},praxio_os_id.not.is.null`)
       .order('hora_entrada',{ascending:true}),
     sb.from('frota').select('*').eq('garagem_id',gid),
   ]);
@@ -9301,7 +9291,7 @@ async function renderFerrPCM(aba='painel'){
     .gte('hora_liberacao',inicioFluxo);
 
   // OS herdadas de turno anterior (abertas antes do inicioFluxo)
-  const{data:herdadasRaw}=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado').lt('hora_entrada',inicioFluxo).order('hora_entrada',{ascending:false});
+  const{data:herdadasRaw}=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado').is('praxio_os_id',null).lt('hora_entrada',inicioFluxo).order('hora_entrada',{ascending:false});
   const herdadas=(herdadasRaw||[]).filter(o=>{try{return localStorage.getItem('oc22_ign_'+o.id+'_'+hoje())!=='1'}catch(e){return true}});
 
   // Valetamento de preventivas — próximo sábado
