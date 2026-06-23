@@ -1363,7 +1363,7 @@ let _praxioCache=null;
 let _praxioCostCache=null;
 function praxioDedupOS(rows){const m=new Map();rows.forEach(r=>{const k=`${r.filial}|${r.numero_os}`;if(!m.has(k))m.set(k,r)});return Array.from(m.values())}
 function praxioTipo(r){const s=(r.revisao||r.tipoos||'').toUpperCase();if(s.includes('PREVENTIVA LEVE')||s.includes('PREV LEVE'))return'leve';if(s.includes('PREVENTIVA PESADA')||s.includes('PREV PESADA'))return'pesada';if(s.includes('PREVENTIVA'))return'prev';if(s.includes('CORRETIVA'))return'corretiva';return'outro'}
-function praxioAberta(r){const s=(r.condicao_os||'').toUpperCase();return!s.includes('FECHAD')&&!s.includes('CANCELAD')}
+function praxioAberta(r){const s=(r.condicao_os||'').toUpperCase().trim();return!s.includes('FECHAD')&&!s.includes('CANCELAD')&&s!=='CA'}
 function praxioCustos(rows,garFiltro,mes,tipoFiltro){
   let filtered=rows.filter(r=>{
     if(garFiltro!=='__todos'&&r.garagem!==garFiltro)return false;
@@ -15526,7 +15526,7 @@ async function renderFerrOsTurno(dataRef=null,backArg='',tabsArg=''){
   // ── Helpers ──────────────────────────────────────────────────────
   const dataOS=o=>(o.data_os||'').substring(0,10);
   const horaOS=o=>(o.hora_os||'').trim().substring(0,5); // "HH:MM"
-  const isFechada=o=>{const c=(o.condicao_os||'').toUpperCase();return c.includes('FECHAD')||c.includes('CANCELAD');};
+  const isFechada=o=>{const c=(o.condicao_os||'').toUpperCase().trim();return c.includes('FECHAD')||c.includes('CANCELAD')||c==='CA';};
 
   // Filtra OS dentro de um período
   // hora_os vem do Oracle (fuso SP = UTC-3); Porto Velho é UTC-4 → +1h nos limites
