@@ -9280,7 +9280,7 @@ async function renderFerrPCM(aba='painel'){
 
   const[{data:ocs},{data:frota}]=await Promise.all([
     sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado')
-      .or(`hora_entrada.gte.${inicioFluxo},praxio_os_id.not.is.null`)
+      .gte('hora_entrada',inicioFluxo)
       .order('hora_entrada',{ascending:true}),
     sb.from('frota').select('*').eq('garagem_id',gid),
   ]);
@@ -9291,7 +9291,7 @@ async function renderFerrPCM(aba='painel'){
     .gte('hora_liberacao',inicioFluxo);
 
   // OS herdadas de turno anterior (abertas antes do inicioFluxo)
-  const{data:herdadasRaw}=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado').is('praxio_os_id',null).lt('hora_entrada',inicioFluxo).order('hora_entrada',{ascending:false});
+  const{data:herdadasRaw}=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado').lt('hora_entrada',inicioFluxo).order('hora_entrada',{ascending:false});
   const herdadas=(herdadasRaw||[]).filter(o=>{try{return localStorage.getItem('oc22_ign_'+o.id+'_'+hoje())!=='1'}catch(e){return true}});
 
   // Valetamento de preventivas — próximo sábado
@@ -9439,7 +9439,7 @@ async function renderFerrPCM(aba='painel'){
     <!-- Validação de Turno -->
     ${herdadas.length?`<div id="validacao-turno-section" style="margin-bottom:20px;border:1px solid var(--yellow);border-radius:10px;padding:16px;background:var(--surface)">
       <div style="font-size:13px;font-weight:700;color:var(--yellow);margin-bottom:12px">⚠️ Validação de Turno — ${herdadas.length} OS aberta${herdadas.length>1?'s':''} do turno anterior</div>
-      ${herdadas.map(o=>{const tBadge={corretiva:'🔴',preventiva_leve:'🟡',preventiva_pesada:'🟣',eletrica:'⚡',pneu:'⭕',sinistro:'⚠️'}[o.tipo]||'⚪';const fmtDt=s=>{try{return new Date(s).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}catch(e){return s||'—'}};return`<div id="herdada-card-${o.id}" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--border)"><span style="font-family:monospace;font-weight:700;min-width:72px">${o.prefixo||'—'}</span><span style="white-space:nowrap;font-size:12px">${tBadge} ${(o.tipo||'').replace(/_/g,' ')}</span><span style="color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px" title="${(o.descricao||'').replace(/"/g,'&quot;')}">${o.descricao||'—'}</span><span style="color:var(--text3);font-size:11px;white-space:nowrap">${fmtDt(o.hora_entrada)}</span><div style="display:flex;gap:6px"><button onclick="herdarOSParaTurno('${o.id}','${inicioFluxo}')" style="padding:4px 12px;border-radius:6px;border:none;background:var(--green);color:#fff;cursor:pointer;font-size:12px;font-weight:600">✅ Herdar</button><button onclick="ignorarOSHerdada('${o.id}')" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;font-size:12px">⏭ Ignorar hoje</button></div></div>`}).join('')}
+      ${herdadas.map(o=>{const tBadge={corretiva:'🔴',preventiva_leve:'🟡',preventiva_pesada:'🟣',eletrica:'⚡',pneu:'⭕',sinistro:'⚠️'}[o.tipo]||'⚪';const fmtDt=s=>{try{return new Date(s).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}catch(e){return s||'—'}};const diasAberta=Math.floor((Date.now()-new Date(o.hora_entrada))/86400000);const isPraxio=!!o.praxio_os_id;const acoes=isPraxio?`<span style="font-size:10px;font-weight:700;color:var(--blue);white-space:nowrap">🔧 PRAXIO · há ${diasAberta}d</span><button onclick="ignorarOSHerdada('${o.id}')" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;font-size:12px">⏭ Ignorar hoje</button>`:`<button onclick="herdarOSParaTurno('${o.id}','${inicioFluxo}')" style="padding:4px 12px;border-radius:6px;border:none;background:var(--green);color:#fff;cursor:pointer;font-size:12px;font-weight:600">✅ Herdar</button><button onclick="ignorarOSHerdada('${o.id}')" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;font-size:12px">⏭ Ignorar hoje</button>`;return`<div id="herdada-card-${o.id}" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--border)"><span style="font-family:monospace;font-weight:700;min-width:72px">${o.prefixo||'—'}</span><span style="white-space:nowrap;font-size:12px">${tBadge} ${(o.tipo||'').replace(/_/g,' ')}</span><span style="color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px" title="${(o.descricao||'').replace(/"/g,'&quot;')}">${o.descricao||'—'}</span><span style="color:var(--text3);font-size:11px;white-space:nowrap">${fmtDt(o.hora_entrada)}</span><div style="display:flex;gap:6px;align-items:center">${acoes}</div></div>`}).join('')}
     </div>`:''}
     <!-- 4. OS EM ABERTO -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
