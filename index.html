@@ -2642,9 +2642,9 @@ function supJanelaAuditoria(data,turno,gid=getGid()){
   const tz=opTimezone(gid);
   if(turno==='noite'){
     const fim=opAddDays(data,1);
-    return {data,turno,ini:opDateTimeISO(data,'20:00',tz),fim:opDateTimeISO(fim,'07:20',tz),dtIni:new Date(opDateTimeISO(data,'20:00',tz)),dtFim:new Date(opDateTimeISO(fim,'07:20',tz)),label:'Noite 20:00-07:20'};
+    return {data,turno,ini:opDateTimeISO(data,'20:00',tz),fim:opDateTimeISO(fim,'08:00',tz),dtIni:new Date(opDateTimeISO(data,'20:00',tz)),dtFim:new Date(opDateTimeISO(fim,'08:00',tz)),label:'Noite 20:00-08:00'};
   }
-  return {data,turno:'dia',ini:opDateTimeISO(data,'08:00',tz),fim:opDateTimeISO(data,'18:00',tz),dtIni:new Date(opDateTimeISO(data,'08:00',tz)),dtFim:new Date(opDateTimeISO(data,'18:00',tz)),label:'Dia 08:00-18:00'};
+  return {data,turno:'dia',ini:opDateTimeISO(data,'08:00',tz),fim:opDateTimeISO(data,'20:00',tz),dtIni:new Date(opDateTimeISO(data,'08:00',tz)),dtFim:new Date(opDateTimeISO(data,'20:00',tz)),label:'Dia 08:00-20:00'};
 }
 function supDueDateAuditoria(data,hora,turno,gid=getGid()){
   const tz=opTimezone(gid);
@@ -9272,7 +9272,7 @@ async function renderFerrPCM(aba='painel'){
 
   const turnoPainel=S.turno||'dia';
   const fluxoLocal=pcmReadLocal(pcmFluxoKey(gid,data,turnoPainel));
-  const periodoPainel=pcmPeriodoTurno(data,turnoPainel==='dia'?'07:00':'21:00',turnoPainel==='dia'?'17:00':'07:20');
+  const periodoPainel=pcmPeriodoTurno(data,turnoPainel==='dia'?'08:00':'20:00',turnoPainel==='dia'?'20:00':'08:00');
   const inicioFluxo=fluxoLocal.reset_em||periodoPainel.ini;
 
   // OS do PRAXIO agora são criadas/fechadas pelo sync_praxio.ps1 (fase 2, roda de hora em hora).
@@ -9823,8 +9823,8 @@ async function fazerConferenciaOrc(){
   var gid=getGid(), agora=new Date(), tz=opTimezone(gid), hoje_=opISODate(agora,tz);
   var turno=S.turno||'dia';
   var ontemStr=opAddDays(hoje_,-1);
-  var ini=turno==='dia'?(hoje_+'T07:00'):(ontemStr+'T21:00');
-  var fim=turno==='dia'?(hoje_+'T17:00'):(hoje_+'T07:20');
+  var ini=turno==='dia'?(hoje_+'T08:00'):(ontemStr+'T20:00');
+  var fim=turno==='dia'?(hoje_+'T20:00'):(hoje_+'T08:00');
   var r1=await sb.from('pcm_orcamento').select('*').eq('garagem_id',gid).eq('data',hoje_).eq('turno',turno).limit(1);
   var r2=await sb.from('ocorrencias_22').select('custo_previsto,custo_real,status,prefixo').eq('garagem_id',gid).gte('hora_entrada',new Date(ini).toISOString()).lte('hora_entrada',new Date(fim).toISOString());
   var r3=await sb.from('garagens').select('nome').eq('id',gid).single();
@@ -9874,8 +9874,8 @@ async function renderConfOrc(gid,back,tabs){
   setMain(back+tabs+'<div class="loading"><div class="spinner"></div></div>');
   var agora=new Date(), tz=opTimezone(gid), hoje_=opISODate(agora,tz), turno=S.turno||'dia';
   var ontemStr=opAddDays(hoje_,-1);
-  var ini=turno==='dia'?(hoje_+'T07:00'):(ontemStr+'T21:00');
-  var fim=turno==='dia'?(hoje_+'T17:00'):(hoje_+'T07:20');
+  var ini=turno==='dia'?(hoje_+'T08:00'):(ontemStr+'T20:00');
+  var fim=turno==='dia'?(hoje_+'T20:00'):(hoje_+'T08:00');
   var r1=await sb.from('pcm_orcamento').select('*').eq('garagem_id',gid).eq('data',hoje_).eq('turno',turno).limit(1);
   var r2=await sb.from('ocorrencias_22').select('custo_previsto,custo_real,status').eq('garagem_id',gid).gte('hora_entrada',new Date(ini).toISOString()).lte('hora_entrada',new Date(fim).toISOString());
   var r3=await sb.from('pcm_conferencias').select('*').eq('garagem_id',gid).eq('data',hoje_).eq('turno',turno).order('conferido_em',{ascending:false}).limit(10);
@@ -9956,9 +9956,9 @@ async function renderCustoTurno(gid,back,tabs){
   setMain(back+tabs+'<div class="loading"><div class="spinner"></div></div>');
   var agora=new Date(), tz=opTimezone(gid), hoje_=opISODate(agora,tz), turno=S.turno||'dia';
   var ontemStr=opAddDays(hoje_,-1);
-  var ini=turno==='dia'?(hoje_+'T07:00'):(ontemStr+'T21:00');
-  var fim=turno==='dia'?(hoje_+'T17:00'):(hoje_+'T07:20');
-  var tLabel=turno==='dia'?'☀️ Diurno — 07:00 a 17:00':'🌙 Noturno — 21:00 a 07:20';
+  var ini=turno==='dia'?(hoje_+'T08:00'):(ontemStr+'T20:00');
+  var fim=turno==='dia'?(hoje_+'T20:00'):(hoje_+'T08:00');
+  var tLabel=turno==='dia'?'☀️ Diurno — 08:00 a 20:00':'🌙 Noturno — 20:00 a 08:00';
   var res=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).gte('hora_entrada',new Date(ini).toISOString()).lte('hora_entrada',new Date(fim).toISOString()).order('hora_entrada');
   var lista=res.data||[];
   var totalPrev=lista.reduce(function(s,o){return s+parseFloat(o.custo_previsto||0);},0);
@@ -10408,8 +10408,8 @@ async function resetarFluxoCustoPCM(gid,data){var turno=S.turno||'dia';if(!confi
 function pcmFechLiderKey(gid,data,fluxo){return 'jtp_pcm_fech_lider_'+gid+'_'+data+'_'+fluxo;}
 function pcmFluxoLiderDef(fluxo,dataRef){
   var defs={
-    manha:{id:'manha',label:'Parcial manhã',ini:'08:00',fim:'18:00',cor:'var(--amber)'},
-    noite:{id:'noite',label:'Parcial noite',ini:'20:00',fim:'04:20',cor:'var(--blue)'},
+    manha:{id:'manha',label:'Parcial manhã',ini:'08:00',fim:'20:00',cor:'var(--amber)'},
+    noite:{id:'noite',label:'Parcial noite',ini:'20:00',fim:'08:00',cor:'var(--blue)'},
     dia:{id:'dia',label:'Dia completo',ini:'08:00',fim:'08:00',cor:'var(--green)',diaAnterior:true}
   };
   var d=defs[fluxo]||defs.manha;
@@ -10542,8 +10542,8 @@ async function renderFech24(gid,back,tabs){
   var agora=new Date(), tz=opTimezone(gid), hoje_=opISODate(agora,tz);
   var turno=S._fech24Turno||S.turno||'dia';
   var dataRef=S._fech24Data||dataOperacionalAtual(turno,tz);
-  var horaIni=S._fech24HoraIni||(turno==='dia'?'07:00':'21:00');
-  var horaFim=S._fech24HoraFim||(turno==='dia'?'17:00':'07:20');
+  var horaIni=S._fech24HoraIni||(turno==='dia'?'08:00':'20:00');
+  var horaFim=S._fech24HoraFim||(turno==='dia'?'20:00':'08:00');
   var periodo=pcmPeriodoTurno(dataRef,horaIni,horaFim);
   var ini=periodo.ini, fim=periodo.fim;
   var tLabel=(turno==='dia'?'Dia':'Noite')+' '+horaIni+'-'+horaFim;
@@ -15614,7 +15614,7 @@ async function renderFerrOsTurno(dataRef=null,backArg='',tabsArg=''){
 
   // ── Filtro de data ───────────────────────────────────────────────
   const dtLabel=new Date(dataRef+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
-  const turnoLabel=turnoAtual==='dia'?'☀️ Dia (08:00–19:59)':'🌙 Noite (20:00–07:59)';
+  const turnoLabel=turnoAtual==='dia'?'☀️ Dia (08:00–20:00)':'🌙 Noite (20:00–08:00)';
   const onchangeData=dentroPCM?`S._osTurnoData=this.value;renderFerrPCM('os_turno')`:`renderFerrOsTurno(this.value)`;
   const filtro=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px">
     <span style="font-size:13px;font-weight:600;color:var(--text2)">Referência:</span>

@@ -41,18 +41,18 @@ function opDateTimeISO(data,hora,tz=opTimezone()){
 
 function turnoOperacionalAtual(tz=opTimezone()){
   const p=opParts(new Date(),tz),min=p.H*60+p.M;
-  return (min>=20*60||min<4*60+20)?'noite':'dia';
+  return (min>=20*60||min<8*60)?'noite':'dia';
 }
 
 function dataOperacionalAtual(turno=turnoOperacionalAtual(),tz=opTimezone()){
   const data=opISODate(new Date(),tz),p=opParts(new Date(),tz),min=p.H*60+p.M;
-  return turno==='noite'&&min<4*60+20?opAddDays(data,-1):data;
+  return turno==='noite'&&min<8*60?opAddDays(data,-1):data;
 }
 
 function janelaOperacional(turno=turnoOperacionalAtual(),dataRef=dataOperacionalAtual(turno),tz=opTimezone()){
   const defs={
-    dia:          {ini:'08:00',fim:'18:00',label:'Dia 08:00-18:00'},
-    noite:        {ini:'20:00',fim:'04:20',label:'Noite 20:00-04:20'},
+    dia:          {ini:'08:00',fim:'20:00',label:'Dia 08:00-20:00'},
+    noite:        {ini:'20:00',fim:'08:00',label:'Noite 20:00-08:00'},
     dia_completo: {ini:'08:00',fim:'08:00',label:'Dia completo 08:00-08:00',diaAnterior:true}
   };
   const d=defs[turno]||defs.dia;
