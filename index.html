@@ -309,6 +309,8 @@ tr:hover td{background:#1F293780}
         <button class="sub-btn" onclick="navToSub('ferr-almox-wms')">🗂️ WMS — Catálogo</button>
         <button class="sub-btn" onclick="navToSub('ferr-almox-painel')">📊 Painel do Líder</button>
         <button class="sub-btn" onclick="navToSub('ferr-almox-compras')">🛒 Pedidos de Compra</button>
+        <button class="sub-btn" onclick="navToSub('ferr-almox-iup')">💰 IUP</button>
+        <button class="sub-btn" onclick="navToSub('ferr-almox-dev')">↩️ Devolução</button>
         <button class="sub-btn" onclick="navToSub('ferr-lubri')">🛢️ Relatório Lubrificação</button>
         <button class="sub-btn" onclick="navToSub('ferr-pecas')">🔩 Peças & Compras</button>
       </div>
@@ -985,7 +987,7 @@ function navToSub(sub){
   S.subtela=sub;
   document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes(sub))b.classList.add('active')});
-  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-218':renderFerr218,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-almox-inv':renderAlmoxInventario,'ferr-almox-wms':renderAlmoxWMS,'ferr-almox-painel':renderAlmoxPainelLider,'ferr-almox-compras':renderAlmoxCompras,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios,'ferr-lubri':renderFerrLubri,'ferr-pecas':renderFerrPecas};
+  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-218':renderFerr218,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-almox-inv':renderAlmoxInventario,'ferr-almox-wms':renderAlmoxWMS,'ferr-almox-painel':renderAlmoxPainelLider,'ferr-almox-compras':renderAlmoxCompras,'ferr-almox-iup':renderAlmoxIUP,'ferr-almox-dev':renderAlmoxDevolucao,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios,'ferr-lubri':renderFerrLubri,'ferr-pecas':renderFerrPecas};
   if(map[sub]) map[sub]();
 }
 
@@ -2442,6 +2444,232 @@ async function almoxRemoverTurno(id,nome){
   toast('Removido do quadro');S._almoxTab='painel';renderAlmoxarifado();
 }
 
+// ── IUP — Indicador de Usos e Peças ─────────────────────────────────────────
+async function renderAlmoxIUP(){
+  const gid=getGid();
+  setMain(`<div class="loading"><div class="spinner"></div></div>`);
+  const isLider=['lider_suprimentos','lider_almoxarifado'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
+  if(!isLider){setMain(`<div class="empty">Acesso restrito ao Líder</div>`);return;}
+  const hojeIso=hoje();
+  const mesRef=S._iupMes||(hojeIso.substring(0,7));
+  const [my,mm]=mesRef.split('-').map(Number);
+  const ultimoDia=new Date(my,mm,0).getDate();
+  const dataIni=`${mesRef}-01`;
+  const dataFim=`${mesRef}-${String(ultimoDia).padStart(2,'0')}`;
+  const meses=[];
+  for(let i=0;i<6;i++){const d=new Date(my,mm-1-i,1);meses.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);}
+  const mesLabel=m=>{const[y,mo]=m.split('-').map(Number);return['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][mo-1]+'/'+y;};
+  const fmtMoney=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+  const toNum=v=>parseFloat(String(v||0).replace(',','.'))||0;
+  const[{data:ocsRaw},{data:posRaw}]=await Promise.all([
+    sb.from('ocorrencias_22').select('praxio_os_id,prefixo,tipo,custo_real,hora_entrada').eq('garagem_id',gid).not('praxio_os_id','is',null).gte('hora_entrada',dataIni+'T00:00:00').lte('hora_entrada',dataFim+'T23:59:59').limit(500),
+    sb.from('praxio_os').select('numero_os,vlr_mobra,vlr_mobra_terc,vlr_peca_terc,custo_pecas_req').gte('data_os',dataIni).lte('data_os',dataFim).limit(500)
+  ]);
+  const ocs=ocsRaw||[];
+  const posMap={};(posRaw||[]).forEach(p=>{posMap[p.numero_os]=p;});
+  let totalPecas=0,totalMobra=0;
+  const porPrefixo={},tipoTotais={};
+  ocs.forEach(o=>{
+    const p=posMap[o.praxio_os_id]||{};
+    const vP=toNum(p.custo_pecas_req)+toNum(p.vlr_peca_terc);
+    const vM=toNum(p.vlr_mobra)+toNum(p.vlr_mobra_terc);
+    totalPecas+=vP;totalMobra+=vM;
+    const pref=o.prefixo||'—';
+    if(!porPrefixo[pref])porPrefixo[pref]={pecas:0,mobra:0,nrOS:0};
+    porPrefixo[pref].pecas+=vP;porPrefixo[pref].mobra+=vM;porPrefixo[pref].nrOS++;
+    const tipo=o.tipo||'corretiva';
+    if(!tipoTotais[tipo])tipoTotais[tipo]={pecas:0,mobra:0,nrOS:0};
+    tipoTotais[tipo].pecas+=vP;tipoTotais[tipo].mobra+=vM;tipoTotais[tipo].nrOS++;
+  });
+  const totalGeral=totalPecas+totalMobra;
+  const topVeic=Object.entries(porPrefixo).sort(([,a],[,b])=>(b.pecas+b.mobra)-(a.pecas+a.mobra)).slice(0,10);
+  const TIPO_LABEL={'corretiva':'Corretiva','preventiva_leve':'Prev. Leve','preventiva_pesada':'Prev. Pesada','troca_oleo':'Troca Óleo'};
+  const hdrStyle='display:grid;grid-template-columns:90px 1fr 130px 130px 50px;gap:8px;align-items:center;background:var(--surface2);border-bottom:1px solid var(--border);padding:9px 14px;font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)';
+  const rowStyle='display:grid;grid-template-columns:90px 1fr 130px 130px 50px;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border2);font-size:12px';
+  const veicRows=topVeic.map(([pref,d])=>{
+    const tot=d.pecas+d.mobra;const pct=totalGeral>0?Math.round(tot/totalGeral*100):0;
+    return`<div style="${rowStyle}">
+      <div style="font-family:'DM Mono',monospace;font-weight:900;color:var(--blue)">${pref}</div>
+      <div><div style="height:6px;background:var(--border2);border-radius:4px"><div style="height:100%;background:var(--blue);border-radius:4px;width:${pct}%"></div></div></div>
+      <div style="text-align:right;font-family:'DM Mono',monospace;color:var(--amber)">${fmtMoney(d.pecas)}</div>
+      <div style="text-align:right;font-family:'DM Mono',monospace;font-weight:800">${fmtMoney(tot)}</div>
+      <div style="text-align:center;color:var(--text3)">${d.nrOS}</div>
+    </div>`;
+  }).join('');
+  const tipoRows=Object.entries(tipoTotais).sort(([,a],[,b])=>(b.pecas+b.mobra)-(a.pecas+a.mobra)).map(([tipo,d])=>{
+    const tot=d.pecas+d.mobra;const pct=totalGeral>0?Math.round(tot/totalGeral*100):0;
+    return`<div style="${rowStyle}">
+      <div style="font-weight:800;color:var(--text)">${TIPO_LABEL[tipo]||tipo}</div>
+      <div><div style="height:6px;background:var(--border2);border-radius:4px"><div style="height:100%;background:var(--green);border-radius:4px;width:${pct}%"></div></div></div>
+      <div style="text-align:right;font-family:'DM Mono',monospace;color:var(--amber)">${fmtMoney(d.pecas)}</div>
+      <div style="text-align:right;font-family:'DM Mono',monospace;font-weight:800">${fmtMoney(tot)}</div>
+      <div style="text-align:center;color:var(--text3)">${d.nrOS}</div>
+    </div>`;
+  }).join('');
+  const seletorMes=`<div style="display:flex;gap:8px;align-items:center;margin-bottom:20px;flex-wrap:wrap">
+    <span style="font-size:12px;font-weight:700;color:var(--text3)">Período:</span>
+    ${meses.map(m=>`<button onclick="S._iupMes='${m}';renderAlmoxIUP()" style="cursor:pointer;padding:7px 14px;border-radius:7px;font-size:12px;font-weight:800;font-family:'DM Sans',sans-serif;border:1px solid ${mesRef===m?'var(--blue)':'var(--border)'};${mesRef===m?'background:var(--blue);color:#fff':'background:var(--surface2);color:var(--text3)'}">${mesLabel(m)}</button>`).join('')}
+  </div>`;
+  const kpiCard=(label,val,sub='')=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 22px">
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">${label}</div>
+    <div style="font-family:'DM Mono',monospace;font-size:20px;font-weight:900;color:var(--text)">${val}</div>
+    ${sub?`<div style="font-size:11px;color:var(--text3);margin-top:4px">${sub}</div>`:''}
+  </div>`;
+  const hdrCols=(cols)=>`<div style="${hdrStyle}">${cols.map(c=>`<div${c.align?` style="text-align:${c.align}"`:''}>${c.label}</div>`).join('')}</div>`;
+  setMain(`
+    ${secTitle('💰','IUP — Indicador de Usos e Peças',mesLabel(mesRef))}
+    <button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>
+    ${seletorMes}
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
+      ${kpiCard('Peças (PRAXIO)',fmtMoney(totalPecas),'custo requisitado')}
+      ${kpiCard('Mão de Obra',fmtMoney(totalMobra),'interna + terceiros')}
+      ${kpiCard('Custo Total',fmtMoney(totalGeral),'peças + MO')}
+      ${kpiCard('OS no período',String(ocs.length),ocs.length===1?'ordem de serviço':'ordens de serviço')}
+    </div>
+    <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px;margin-bottom:20px">
+      <div>
+        ${secTitle('🚌','Top veículos — Custo total')}
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden">
+          ${topVeic.length?hdrCols([{label:'Prefixo'},{label:''},{label:'R$ Peças',align:'right'},{label:'R$ Total',align:'right'},{label:'OS',align:'center'}])+veicRows:`<div class="empty">Sem dados no período</div>`}
+        </div>
+      </div>
+      <div>
+        ${secTitle('🔧','Por tipo de OS')}
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden">
+          ${Object.keys(tipoTotais).length?hdrCols([{label:'Tipo'},{label:''},{label:'R$ Peças',align:'right'},{label:'R$ Total',align:'right'},{label:'OS',align:'center'}])+tipoRows:`<div class="empty">Sem dados</div>`}
+        </div>
+      </div>
+    </div>
+    ${ocs.length===0?`<div class="info-blue info-banner">💡 Dados vindos do PRAXIO via sync. Verifique se a sincronização está ativa e se há OS no período selecionado.</div>`:''}
+  `);
+}
+
+// ── Devolução de Peças ────────────────────────────────────────────────────────
+async function renderAlmoxDevolucao(){
+  const gid=getGid();
+  setMain(`<div class="loading"><div class="spinner"></div></div>`);
+  const{data:devs,error}=await sb.from('almox_devolucoes').select('*').eq('garagem_id',gid).order('registrado_em',{ascending:false}).limit(100);
+  if(error&&error.code==='42P01'){
+    setMain(`${secTitle('↩️','Devolução de Peças')}<div class="info-blue info-banner">⚠️ Tabela <b>almox_devolucoes</b> não existe ainda. Rode o SQL abaixo no Supabase SQL Editor:<br><br><code style="font-size:11px;display:block;margin-top:8px;white-space:pre-wrap">CREATE TABLE almox_devolucoes (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  garagem_id uuid,
+  numero_os text,
+  prefixo text,
+  cod_sap text,
+  nome_peca text NOT NULL,
+  quantidade numeric(10,3) NOT NULL DEFAULT 1,
+  unidade text DEFAULT 'un',
+  motivo text,
+  observacao text,
+  registrado_por uuid,
+  registrado_por_nome text,
+  registrado_em timestamptz DEFAULT now()
+);
+ALTER TABLE almox_devolucoes DISABLE ROW LEVEL SECURITY;
+ALTER TABLE almox_devolucoes NO FORCE ROW LEVEL SECURITY;
+GRANT ALL ON almox_devolucoes TO anon;
+GRANT ALL ON almox_devolucoes TO authenticated;</code></div>`);
+    return;
+  }
+  const lista=devs||[];
+  const fmtDate=iso=>iso?new Date(iso).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+  const MOTIVO_LABEL={nao_utilizado:'Não utilizado',troca_garantia:'Troca garantia',errado:'Peça errada',excesso:'Excesso de pedido',outro:'Outro'};
+  const rows=lista.map(d=>`
+    <div style="display:grid;grid-template-columns:130px 80px 1fr 80px 130px 150px;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border2);font-size:12px">
+      <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text3)">${fmtDate(d.registrado_em)}</div>
+      <div style="font-family:'DM Mono',monospace;font-weight:800;color:var(--blue)">${d.prefixo||'—'}</div>
+      <div>
+        <div style="font-weight:700;color:var(--text)">${d.nome_peca||'—'}</div>
+        ${d.numero_os?`<div style="font-size:10px;color:var(--text3)">OS: ${d.numero_os}</div>`:''}
+        ${d.cod_sap?`<div style="font-size:10px;color:var(--text3)">SAP: ${d.cod_sap}</div>`:''}
+      </div>
+      <div style="text-align:center;font-family:'DM Mono',monospace;font-weight:800;color:var(--amber)">${d.quantidade||1} ${d.unidade||'un'}</div>
+      <div style="font-size:11px;color:var(--text3)">${MOTIVO_LABEL[d.motivo]||d.motivo||'—'}</div>
+      <div style="font-size:11px;color:var(--text3)">${d.registrado_por_nome||'—'}</div>
+    </div>`).join('');
+  setMain(`
+    ${secTitle('↩️','Devolução de Peças',`<button onclick="almoxNovaDevolucaoModal()" style="border:1px solid var(--green);background:#00C48C18;color:var(--green);border-radius:8px;padding:7px 14px;font-size:12px;font-weight:800;cursor:pointer">+ Registrar Devolução</button>`)}
+    <button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:14px">
+      ${lista.length?`
+        <div style="display:grid;grid-template-columns:130px 80px 1fr 80px 130px 150px;gap:8px;background:var(--surface2);border-bottom:1px solid var(--border);padding:9px 14px;font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)">
+          <div>Data</div><div>Prefixo</div><div>Peça</div><div style="text-align:center">Qtd</div><div>Motivo</div><div>Registrado por</div>
+        </div>${rows}`:`<div class="empty">Nenhuma devolução registrada</div>`}
+    </div>
+  `);
+}
+
+async function almoxNovaDevolucaoModal(){
+  const html=`<div style="padding:16px;display:grid;gap:12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <label style="font-size:12px;font-weight:800;color:var(--text3)">Prefixo do veículo</label>
+        <input id="dev-prefixo" placeholder="Ex: 02.190" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:800;color:var(--text3)">Nº OS (opcional)</label>
+        <input id="dev-os" placeholder="Ex: PRAXIO-12345" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+      </div>
+    </div>
+    <div>
+      <label style="font-size:12px;font-weight:800;color:var(--text3)">Nome da Peça *</label>
+      <input id="dev-peca" placeholder="Ex: Correia dentada, Filtro de óleo…" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 100px;gap:12px">
+      <div>
+        <label style="font-size:12px;font-weight:800;color:var(--text3)">Cód. SAP (opcional)</label>
+        <input id="dev-sap" placeholder="Ex: 1000123" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:800;color:var(--text3)">Quantidade</label>
+        <input id="dev-qtd" type="number" value="1" min="0.001" step="0.001" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box;text-align:center">
+      </div>
+    </div>
+    <div>
+      <label style="font-size:12px;font-weight:800;color:var(--text3)">Motivo *</label>
+      <select id="dev-motivo" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none">
+        <option value="">— Selecione —</option>
+        <option value="nao_utilizado">Não utilizado</option>
+        <option value="troca_garantia">Troca garantia</option>
+        <option value="errado">Peça errada</option>
+        <option value="excesso">Excesso de pedido</option>
+        <option value="outro">Outro</option>
+      </select>
+    </div>
+    <div>
+      <label style="font-size:12px;font-weight:800;color:var(--text3)">Observação (opcional)</label>
+      <input id="dev-obs" placeholder="Detalhes adicionais…" style="width:100%;margin-top:4px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+    </div>
+    <button onclick="almoxSalvarDevolucao()" style="background:var(--blue);color:#fff;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">Salvar Devolução</button>
+  </div>`;
+  document.getElementById('modal-alm-title').textContent='Registrar Devolução de Peça';
+  document.getElementById('modal-alm-body').innerHTML=html;
+  document.getElementById('modal-alm').style.display='flex';
+  setTimeout(()=>document.getElementById('dev-prefixo')?.focus(),100);
+}
+
+async function almoxSalvarDevolucao(){
+  const peca=document.getElementById('dev-peca')?.value?.trim();
+  const motivo=document.getElementById('dev-motivo')?.value;
+  if(!peca){toast('Informe o nome da peça','warning');return;}
+  if(!motivo){toast('Selecione o motivo','warning');return;}
+  const qtd=parseFloat(document.getElementById('dev-qtd')?.value||1);
+  const payload={
+    garagem_id:getGid(),
+    prefixo:document.getElementById('dev-prefixo')?.value?.trim()||null,
+    numero_os:document.getElementById('dev-os')?.value?.trim()||null,
+    cod_sap:document.getElementById('dev-sap')?.value?.trim()||null,
+    nome_peca:peca,quantidade:qtd,motivo,
+    observacao:document.getElementById('dev-obs')?.value?.trim()||null,
+    registrado_por:S.user?.id||null,
+    registrado_por_nome:S.perfil?.nome||null
+  };
+  const{error}=await sb.from('almox_devolucoes').insert(payload);
+  if(error){toast('Erro: '+error.message,'error');return;}
+  closeM('modal-alm');toast('Devolução registrada');
+  renderAlmoxDevolucao();
+}
+
 // ── fim Almoxarifado ─────────────────────────────────────────────────────────
 
 function renderPainelComprasSuprimentosValet(data,lista,safe,rowId,fmtMoney){
@@ -3713,6 +3941,8 @@ function renderFerramentas(){
     'ferr-almox-wms':'Catálogo SAP de peças. Busca por código ou descrição, preços e disponibilidade.',
     'ferr-almox-painel':'Visão consolidada do Líder de Almoxarifado: solicitações, metas e performance do turno.',
     'ferr-almox-compras':'Acompanhamento de pedidos de compra: status, FUP com a Matriz e prazo de entrega.',
+    'ferr-almox-iup':'Dashboard financeiro de peças: custo total por veículo e tipo de OS. Fonte PRAXIO.',
+    'ferr-almox-dev':'Registro de devoluções de peças ao estoque com rastreabilidade completa.',
     'ferr-211':'Todos os veículos parados com tempo, status e previsão. Alerta automático de vencimento.',
     'ferr-212':'Disponibilidade, MTTR, OS por tipo e ranking de mecânicos. Atualizado em tempo real.',
     'ferr-pecas':'Visão unificada de todas as peças por prefixo: estoque, em compra, prazo e FUP. Compartilhado entre Almox e PCM.',
@@ -3763,6 +3993,8 @@ function atualizarSubmenuFerramentas(){
     'ferr-almox-wms':'🗂️ WMS — Catálogo',
     'ferr-almox-painel':'📊 Painel do Líder',
     'ferr-almox-compras':'🛒 Pedidos de Compra',
+    'ferr-almox-iup':'💰 IUP',
+    'ferr-almox-dev':'↩️ Devolução',
     'ferr-pecas':'🔩 Peças & Compras',
   };
   const subFerr=document.getElementById('sub-ferr');
