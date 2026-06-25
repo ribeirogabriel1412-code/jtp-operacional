@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>JTP — Plano Completo Operacional</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d1117;color:#e6edf3;font-family:'Segoe UI',sans-serif;font-size:12px;padding:24px}
+h1{font-size:18px;font-weight:900;color:#e6edf3;margin-bottom:6px}
+.sub{font-size:12px;color:#7d8590;margin-bottom:28px}
+.section{border:1px solid;border-radius:10px;padding:16px;margin-bottom:20px}
+.section-title{font-size:13px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.08)}
+.flow{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px}
+.flow-arrow{color:#484f58;font-size:16px;padding-top:10px;flex-shrink:0}
+.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:10px 12px;min-width:120px;flex:1}
+.card-title{font-weight:800;font-size:11px;color:#e6edf3;margin-bottom:4px}
+.card-sub{font-size:10px;color:#7d8590;line-height:1.5}
+.badge{display:inline-block;border-radius:4px;padding:2px 7px;font-size:9px;font-weight:800;margin-top:6px}
+.ok{background:#00c48c22;border:1px solid #00c48c55;color:#00c48c}
+.par{background:#f59e0b22;border:1px solid #f59e0b55;color:#f59e0b}
+.nok{background:#ef444422;border:1px solid #ef444455;color:#ef4444}
+.prx{background:#3b82f622;border:1px solid #3b82f655;color:#3b82f6}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px}
+.grid6{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:10px}
+.block{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:10px 12px}
+.block-title{font-weight:900;font-size:11px;margin-bottom:4px}
+.block-items{font-size:10px;color:#7d8590;line-height:1.6}
+.layer{background:#161b22;border-left:4px solid;border-radius:6px;padding:8px 12px;margin-bottom:6px;font-size:11px}
+.divider{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#484f58;margin:14px 0 8px}
+/* cores por seção */
+.s1{border-color:#2563eb40}.s1 .section-title{color:#60a5fa}
+.s2{border-color:#7c3aed40}.s2 .section-title{color:#a78bfa}
+.s3{border-color:#059669 40}.s3 .section-title{color:#34d399}
+.s4{border-color:#d9770640}.s4 .section-title{color:#fb923c}
+.s5{border-color:#dc262640}.s5 .section-title{color:#f87171}
+.s6{border-color:#0891b240}.s6 .section-title{color:#22d3ee}
+.s7{border-color:#65a30d40}.s7 .section-title{color:#a3e635}
+.s8{border-color:#c026d340}.s8 .section-title{color:#e879f9}
+</style>
+</head>
+<body>
+<h1>JTP Transportes — Plano Completo Operacional</h1>
+<p class="sub">Estado da arte do app · 8 processos mapeados · Atualizado em 24/06/2026 · <a href="fluxogramas.html" style="color:#58a6ff;font-weight:700">Ver Fluxogramas →</a></p>
+
+<!-- 01 MANUTENÇÃO -->
+<div class="section s1">
+  <div class="section-title">01 — Manutenção · Corretiva · Preventiva · Troca de Óleo · Liberação</div>
+  <div class="flow">
+    <div class="card"><div class="card-title">Abertura OS</div><div class="card-sub">Corretiva: avaria<br>Preventiva: plano KM<br>Troca óleo: agenda</div><span class="badge prx">PRAXIO auto</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="card"><div class="card-title">Execução PCM</div><div class="card-sub">Checklist V/T<br>Peças requisitadas<br>Mão de obra registrada</div><span class="badge ok">✅ existe</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="card"><div class="card-title">Almoxarifado</div><div class="card-sub">Recebe pedido<br>Separa cesto<br>Entrega PCM</div><span class="badge ok">✅ existe</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="card"><div class="card-title">Rel. Liberação</div><div class="card-sub">PCM fecha OS<br>Checklist + peças + MO<br>Pré-requisito histórico</div><span class="badge nok">❌ urgente</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="card"><div class="card-title">Liberação Frota</div><div class="card-sub">Status → disponível<br>Prazo retorno visível<br>Histórico carro</div><span class="badge par">⚠️ parcial</span></div>
+  </div>
+  <div class="divider">Valetamento preventiva pesada</div>
+  <div class="flow">
+    <div class="card"><div class="card-title">Plano Prev.</div><div class="card-sub">KM + data agendada<br>1 semana de antecedência</div><span class="badge ok">✅ existe</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="card"><div class="card-title">Cesto (Valet)</div><div class="card-sub">Peças separadas por OS<br>Agrupadas por prefixo</div><span class="badge ok">✅ existe</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="card"><div class="card-title">Confirmação PCM</div><div class="card-sub">PCM confirma entrega<br>Fecha ciclo requisição</div><span class="badge nok">❌ Fase 2</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="card"><div class="card-title">Troca Óleo</div><div class="card-sub">Cesto específico<br>Lubrificador executa</div><span class="badge nok">❌ Fase 3</span></div>
+  </div>
+</div>
+
+<!-- 02 SOLTURA -->
+<div class="section s2">
+  <div class="section-title">02 — Soltura Diurna · Carros · Motoristas · Pontualidade · Absenteísmo</div>
+  <div class="grid4">
+    <div class="block"><div class="block-title" style="color:#a78bfa">Painel Soltura</div><div class="block-items">Carros programados vs saídos<br>Horário previsto vs real<br>Motorista confirmado</div><span class="badge ok">✅ existe</span></div>
+    <div class="block"><div class="block-title" style="color:#a78bfa">Absenteísmo</div><div class="block-items">Falta registrada na soltura<br>Dobra vinculada<br>KPI diário automático</div><span class="badge nok">❌ Fase 2</span></div>
+    <div class="block"><div class="block-title" style="color:#a78bfa">Pontualidade</div><div class="block-items">Horário previsto saída<br>Horário real<br>Desvio em minutos</div><span class="badge nok">❌ Fase 2</span></div>
+    <div class="block"><div class="block-title" style="color:#a78bfa">Indisponível Pátio</div><div class="block-items">Carro em manutenção<br>Prazo retorno visível<br>Prev. agendada com data</div><span class="badge nok">❌ urgente</span></div>
+  </div>
+</div>
+
+<!-- 03 RECOLHA -->
+<div class="section s3">
+  <div class="section-title">03 — Recolha · Chegada · Avaria Mapeada · Estado da Frota · Conexão PCM</div>
+  <div class="flow">
+    <div class="card"><div class="card-title">Chegada</div><div class="card-sub">Horário previsto vs real<br>Motorista confirma<br>KM registrado</div><span class="badge ok">✅ existe</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="card"><div class="card-title">Avaria (estado)</div><div class="card-sub">Não bloqueia o carro<br>Informação de estado<br>PCM decide OS</div><span class="badge ok">✅ existe</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="card"><div class="card-title">Estado da Frota</div><div class="card-sub">Disponível<br>Avaria mapeada<br>Manutenção · Prev.<br>Lavagem pendente</div><span class="badge nok">❌ urgente</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="card"><div class="card-title">Conexão PCM</div><div class="card-sub">Avaria → OS automática?<br>PCM vê estado frota<br>Prioriza intervenção</div><span class="badge par">⚠️ parcial</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="card"><div class="card-title">Lavagem</div><div class="card-sub">Carro na recolha<br>→ agenda lavagem<br>Lavador confirma</div><span class="badge par">⚠️ parcial</span></div>
+  </div>
+</div>
+
+<!-- 04 ALMOXARIFADO -->
+<div class="section s4">
+  <div class="section-title">04 — Almoxarifado · Valetamento · Saída · Inventários · Acurácia · IUP · Devolução</div>
+  <div class="grid3">
+    <div class="block"><div class="block-title" style="color:#fb923c">Valetamento</div><div class="block-items">Cestos por OS/veículo<br>Status por item<br>Compra se negativo</div><span class="badge ok">✅ existe</span></div>
+    <div class="block"><div class="block-title" style="color:#fb923c">Inventário T-1</div><div class="block-items">Itens saídos vs físico<br>Acurácia por item<br>Divergências abertas</div><span class="badge ok">✅ existe</span></div>
+    <div class="block"><div class="block-title" style="color:#fb923c">Inventário Rua</div><div class="block-items">Por almoxarife<br>Por seção/rua<br>Acurácia histórica</div><span class="badge ok">✅ existe</span></div>
+    <div class="block"><div class="block-title" style="color:#fb923c">IUP</div><div class="block-items">R$ peças · R$ MO<br>Top veículos por custo<br>Por tipo OS · mensal</div><span class="badge ok">✅ novo</span></div>
+    <div class="block"><div class="block-title" style="color:#fb923c">Devolução</div><div class="block-items">Peça não usada<br>Motivo · OS origem<br>Rastreabilidade</div><span class="badge ok">✅ novo</span></div>
+    <div class="block"><div class="block-title" style="color:#fb923c">Acurácia PRAXIO/SAP</div><div class="block-items">Saldo PRAXIO vs SAP<br>Divergência por item<br>% acurácia geral</div><span class="badge nok">❌ Fase 3</span></div>
+    <div class="block"><div class="block-title" style="color:#fb923c">Garantia / RECON</div><div class="block-items">Peça defeituosa<br>Acionamento fornecedor<br>Rastreio devolução</div><span class="badge nok">❌ Fase 3</span></div>
+    <div class="block"><div class="block-title" style="color:#fb923c">Confirmação Entrega</div><div class="block-items">Almox entrega PCM<br>PCM confirma recebimento<br>Fecha ciclo requisição</div><span class="badge nok">❌ Fase 2</span></div>
+    <div class="block"><div class="block-title" style="color:#fb923c">Ponto Mínimo</div><div class="block-items">Alerta quando cai abaixo<br>Requisição automática<br>Suprimentos recebe</div><span class="badge nok">❌ Fase 3</span></div>
+  </div>
+  <div class="divider">Cadeia: Fase 4 sync (✅ 401 corrigido) → Itens por OS → Conferência PCM → Acurácia PRAXIO/SAP</div>
+</div>
+
+<!-- 05 ESCALA + PLANTÃO -->
+<div class="section s5">
+  <div class="section-title">05 — Escala + Plantão · Sistemático vs Reativo</div>
+  <div class="grid2">
+    <div>
+      <div class="divider">ESCALA — sistemático</div>
+      <div class="grid2">
+        <div class="block"><div class="block-title" style="color:#f87171">Painel Indicadores</div><div class="block-items">Absenteísmo · dobras<br>Cobertura · pontualidade<br>Similar L. PCM</div><span class="badge nok">❌ Fase 2</span></div>
+        <div class="block"><div class="block-title" style="color:#f87171">Dobras</div><div class="block-items">Motorista 2º turno<br>Autorização registrada<br>KPI acumulado</div><span class="badge nok">❌ Fase 2</span></div>
+        <div class="block"><div class="block-title" style="color:#f87171">Gool System</div><div class="block-items">Escala automática<br>GPS + escala no app<br>Hoje: manual</div><span class="badge nok">❌ Fase 4</span></div>
+        <div class="block"><div class="block-title" style="color:#f87171">VR Ponto</div><div class="block-items">Frequência real<br>vs escala programada<br>Base absenteísmo auto</div><span class="badge nok">❌ Fase 4</span></div>
+      </div>
+    </div>
+    <div>
+      <div class="divider">PLANTÃO — reativo</div>
+      <div class="grid2">
+        <div class="block"><div class="block-title" style="color:#f87171">SOS</div><div class="block-items">Disparo · notificação<br>Atendimento registrado<br>Histórico do carro</div><span class="badge ok">✅ existe</span></div>
+        <div class="block"><div class="block-title" style="color:#f87171">Histórico Carro SOS</div><div class="block-items">Últimas OS · avarias<br>KM · revisões<br>Depende: Rel. Liberação</div><span class="badge nok">❌ urgente</span></div>
+        <div class="block"><div class="block-title" style="color:#f87171">Troca de Carro</div><div class="block-items">Carro em linha → avaria<br>Troca registrada<br>Rastro completo</div><span class="badge nok">❌ Fase 2</span></div>
+        <div class="block"><div class="block-title" style="color:#f87171">Troca Motorista</div><div class="block-items">Evento imprevisto<br>Registro no app<br>Auditoria</div><span class="badge nok">❌ Fase 2</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 06 SUPERVISÃO -->
+<div class="section s6">
+  <div class="section-title">06 — Supervisão · Camadas e Entregas por Cargo</div>
+  <div class="grid6">
+    <div class="block"><div class="block-title" style="color:#22d3ee">L. Pátio</div><div class="block-items">Avarias · KM<br>Carros recolhidos<br>Estado frota</div><span class="badge par">⚠️ parcial</span></div>
+    <div class="block"><div class="block-title" style="color:#22d3ee">L. PCM</div><div class="block-items">OS abertas · fechadas<br>Custo real · prazo<br>Mão de obra</div><span class="badge par">⚠️ parcial</span></div>
+    <div class="block"><div class="block-title" style="color:#22d3ee">L. Almox</div><div class="block-items">Inv. rotativo<br>Saídas do dia<br>IUP · acurácia</div><span class="badge nok">❌ construir</span></div>
+    <div class="block"><div class="block-title" style="color:#22d3ee">L. Operacional</div><div class="block-items">Absenteísmo · dobras<br>Cobertura · linhas<br>SOS ocorridos</div><span class="badge nok">❌ construir</span></div>
+    <div class="block"><div class="block-title" style="color:#22d3ee">Supervisor</div><div class="block-items">Vê todos fechamentos<br>Decide pendências<br>Aprova</div><span class="badge nok">❌ painel unificado</span></div>
+    <div class="block"><div class="block-title" style="color:#22d3ee">Coordenador</div><div class="block-items">Frota · custo<br>Operação · desvios<br>Indicadores gerais</div><span class="badge nok">❌ dashboard geral</span></div>
+  </div>
+  <div class="divider">Entregas por turno</div>
+  <div class="grid4">
+    <div class="block"><div class="block-title">Turno Dia</div><div class="block-items">Conferência ORC · KPIs<br>Fechamento 20:00</div><span class="badge par">⚠️ ORC existe / resto ❌</span></div>
+    <div class="block"><div class="block-title">Turno Noite</div><div class="block-items">Recolha · avarias<br>Absenteísmo · fechamento 08:00</div><span class="badge par">⚠️ recolha existe / resto ❌</span></div>
+    <div class="block"><div class="block-title">Diário</div><div class="block-items">Inventário almox<br>Escala confirmada<br>OS pendentes</div><span class="badge nok">❌ a construir</span></div>
+    <div class="block"><div class="block-title">Semanal</div><div class="block-items">Acurácia PRAXIO/SAP<br>Plano prev. · lavagem cumprida</div><span class="badge nok">❌ a construir</span></div>
+  </div>
+  <div class="divider">Camadas de visibilidade</div>
+  <div style="margin-top:8px">
+    <div class="layer" style="border-color:#22d3ee">Coordenador — visão total operação + custos + indicadores</div>
+    <div class="layer" style="border-color:#60a5fa">Supervisor — vê fechamentos de todos os líderes</div>
+    <div class="layer" style="border-color:#a78bfa">Líderes — cada um fecha sua área por turno</div>
+    <div class="layer" style="border-color:#34d399">Ponta — executa e registra em tempo real</div>
+  </div>
+</div>
+
+<!-- 07 SUPRIMENTOS -->
+<div class="section s7">
+  <div class="section-title">07 — Suprimentos · FUP de Compras e Necessidade de Peças</div>
+  <div class="flow">
+    <div class="card"><div class="card-title">Gatilho</div><div class="card-sub">Necessidade identificada<br>Almox: sem estoque<br>PCM: peça crítica OS<br>Escalante: consumível</div><span class="badge nok">❌ solicitação formal</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="card"><div class="card-title">L. Suprimentos</div><div class="card-sub">Recebe + cotação<br>Analisa fornecedores<br>Cotação mínima 3<br>Prazo de entrega</div><span class="badge nok">❌ no app</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="card"><div class="card-title">Aprovação</div><div class="card-sub">Supervisor aprova<br>Valor · fornecedor · prazo<br>Urgente: aprovação gestão direta</div><span class="badge nok">❌ fluxo aprovação</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="card"><div class="card-title">FUP</div><div class="card-sub">Acompanhamento<br>Pedido emitido<br>Previsão entrega</div><span class="badge nok">❌ FUP no app</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="card"><div class="card-title">Recebimento</div><div class="card-sub">NF lançada SAP<br>Entrada física almox<br>Código material</div><span class="badge nok">❌ confirmação app</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="card"><div class="card-title">Entrega PCM</div><div class="card-sub">PCM recebe peça<br>Vincula à OS<br>PRAXIO registra</div><span class="badge prx">PRAXIO sync</span></div>
+  </div>
+  <div class="grid3" style="margin-top:14px">
+    <div class="block"><div class="block-title" style="color:#a3e635">Painel FUP</div><div class="block-items">Pedidos em aberto<br>Fornecedor · valor · prev. entrega<br>Dias em aberto · urgência</div><span class="badge nok">❌ painel no app</span></div>
+    <div class="block"><div class="block-title" style="color:#a3e635">Acurácia Compras</div><div class="block-items">Prazo vs entrega<br>% entregas no prazo<br>Atraso médio · fornecedores recorrentes</div><span class="badge nok">❌ KPI</span></div>
+    <div class="block"><div class="block-title" style="color:#a3e635">Conexão Almox</div><div class="block-items">Ponto mínimo de estoque<br>Quando almox cai abaixo do mínimo<br>→ req. automática suprimentos</div><span class="badge nok">❌ regra automática</span></div>
+  </div>
+</div>
+
+<!-- 08 LAVAGEM -->
+<div class="section s8">
+  <div class="section-title">08 — Lavagem · Controle Diário do Plano Semanal</div>
+  <div class="flow">
+    <div class="card"><div class="card-title">Plano Semanal</div><div class="card-sub">Por prefixo · dia programado<br>Responsável definido</div><span class="badge ok">✅ existe</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="card"><div class="card-title">Lavador</div><div class="card-sub">Confirma no app<br>Prefixo · horário<br>Lavador responsável</div><span class="badge ok">✅ existe</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="card"><div class="card-title">Painel Diário</div><div class="card-sub">Programado vs feito<br>Lavado hoje ✅ pendente ❌<br>Status atualizado</div><span class="badge nok">❌ painel controle</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="card"><div class="card-title">L. Pátio</div><div class="card-sub">Vê status hoje<br>Quantos carros programados<br>Confirmados · pendentes</div><span class="badge nok">❌ visibilidade</span></div>
+    <div class="flow-arrow">→</div>
+    <div class="card"><div class="card-title">Supervisor</div><div class="card-sub">% cumprimento<br>Programado semanal<br>Realizado · desvios · qualidade</div><span class="badge nok">❌ KPI semanal</span></div>
+  </div>
+</div>
+
+<!-- LEGENDA + FASES -->
+<div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:16px;margin-top:20px">
+  <div style="font-size:13px;font-weight:900;color:#e6edf3;margin-bottom:12px">Legenda e Fases</div>
+  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px">
+    <span class="badge ok">✅ existe — Fase 0 (produção)</span>
+    <span class="badge par">⚠️ parcial — em desenvolvimento</span>
+    <span class="badge nok">❌ a construir</span>
+    <span class="badge prx">PRAXIO sync automático</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+    <div class="block"><div class="block-title">Fase 0 — Produção</div><div class="block-items">8 itens ✅<br>Soltura · Recolha · SOS · Frota<br>PCM · Lavagem · Valetamento</div></div>
+    <div class="block"><div class="block-title">Fase 1 — Urgente</div><div class="block-items">6 itens ❌<br>Estado frota · Rel. Liberação<br>Histórico SOS · Lavagem diária<br>Indisponível pátio · OS itens</div></div>
+    <div class="block"><div class="block-title">Fase 2+3 — Alto/Médio</div><div class="block-items">16 itens ❌<br>Absenteísmo · Dobras · Escala<br>Acurácia · IUP · Devolução<br>Suprimentos · Supervisão</div></div>
+    <div class="block"><div class="block-title">Fase 4 — Integrações</div><div class="block-items">4 itens ❌<br>Gool System (escala)<br>VR Ponto (frequência)<br>SAP · Telemetria</div></div>
+  </div>
+</div>
+
+<p style="color:#484f58;font-size:10px;margin-top:16px;text-align:center">JTP Transportes · Plano Operacional App · 24/06/2026</p>
+</body>
+</html>

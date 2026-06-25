@@ -14227,6 +14227,8 @@ async function renderFerrLav(aba='painel'){
   }
 
   // ── PAINEL DO DIA (default) ───────────────────────────────────
+  if(window._lavPainelCh){sb.removeChannel(window._lavPainelCh);window._lavPainelCh=null;}
+
   const{data:lista}=await sb.from('checklist_lavagem').select('*')
     .eq('garagem_id',gid).eq('data',data).order('prefixo');
 
@@ -14239,22 +14241,14 @@ async function renderFerrLav(aba='painel'){
   const exec=(lista||[]).filter(r=>r.status==='executado').length;
   const valid=(lista||[]).filter(r=>r.validado_patio).length;
   const nReal=(lista||[]).filter(r=>r.status==='nao_realizado').length;
+  const pend=total-exec-nReal;
+  const pct=total>0?Math.round(exec/total*100):0;
 
-  const kpisTipo=TIPOS_LAV.map(t=>{
-    const tt=(lista||[]).filter(r=>r.tipo_lavagem===t.k);
-    const te=tt.filter(r=>r.status==='executado').length;
-    const pct=tt.length>0?Math.round(te/tt.length*100):0;
-    return`<div class="kpi ${te===tt.length&&tt.length>0?'ok':'neu'}">
-      <div class="kpi-label">${t.ic} ${t.l}</div>
-      <div class="kpi-val" style="color:${t.c}">${te}/${tt.length}</div>
-      <div style="background:var(--border);border-radius:99px;height:4px;overflow:hidden;margin-top:6px">
-        <div style="width:${pct}%;height:100%;background:${t.c}"></div>
-      </div>
-      <div class="kpi-meta">meta: ${t.meta}</div>
-    </div>`;
-  }).join('');
+  const pendentes=(lista||[]).filter(r=>r.status!=='executado'&&r.status!=='nao_realizado');
+  const executados=(lista||[]).filter(r=>r.status==='executado');
+  const naoReal=(lista||[]).filter(r=>r.status==='nao_realizado');
 
-  const veicRows=(lista||[]).map(r=>{
+  const veicRow=r=>{
     const tc=TIPOS_LAV.find(t=>t.k===r.tipo_lavagem)||{ic:'?',c:'var(--text4)'};
     const btnCls=r.status==='executado'?'sb-sim':r.status==='nao_realizado'?'sb-nao':'sb-pend';
     const btnTxt=r.status==='executado'?`✅ ${r.hora_executado?new Date(r.hora_executado).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'OK'}`:r.status==='nao_realizado'?'❌ N/R':'○ Marcar';
@@ -14270,7 +14264,28 @@ async function renderFerrLav(aba='painel'){
       <td>${validBadge}</td>
       <td style="color:var(--text4);font-size:11px">${r.executado_por||''}</td>
     </tr>`;
+  };
+
+  const pendTags=pendentes.length>0
+    ?pendentes.map(r=>{const tc=TIPOS_LAV.find(t=>t.k===r.tipo_lavagem)||{c:'var(--text4)'};return`<span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;background:${tc.c}15;border:1px solid ${tc.c}40;color:${tc.c};border-radius:6px;padding:4px 8px">${r.prefixo}</span>`;}).join('')
+    :`<span style="color:var(--green);font-weight:700">✅ Todos executados!</span>`;
+
+  const kpisTipo=TIPOS_LAV.map(t=>{
+    const tt=(lista||[]).filter(r=>r.tipo_lavagem===t.k);
+    const te=tt.filter(r=>r.status==='executado').length;
+    const tv=tt.filter(r=>r.validado_patio).length;
+    const p=tt.length>0?Math.round(te/tt.length*100):0;
+    return`<div class="kpi ${te===tt.length&&tt.length>0?'ok':'neu'}">
+      <div class="kpi-label">${t.ic} ${t.l}</div>
+      <div class="kpi-val" style="color:${t.c}">${te}/${tt.length}</div>
+      <div style="background:var(--border);border-radius:99px;height:4px;overflow:hidden;margin-top:6px">
+        <div style="width:${p}%;height:100%;background:${t.c}"></div>
+      </div>
+      <div class="kpi-meta">${tv} validados · meta: ${t.meta}</div>
+    </div>`;
   }).join('');
+
+  const barColor=pct===100?'var(--green)':pct>=70?'#3B82F6':'var(--amber)';
 
   setMain(`
     ${back}${tabs}
@@ -14278,26 +14293,52 @@ async function renderFerrLav(aba='painel'){
       <div style="font-size:18px;font-weight:800">🧼 Lavagem — ${new Date(data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'})}</div>
       ${podeProgramar&&!total?`<button onclick="renderFerrLav('programar')" class="btn-add">📝 Programar Hoje</button>`:''}
     </div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
-      <div class="kpi ${exec===total&&total>0?'ok':'neu'}"><div class="kpi-label">Total</div><div class="kpi-val">${total}</div><div class="kpi-meta">programados</div></div>
-      <div class="kpi ${exec===total&&total>0?'ok':'neu'}"><div class="kpi-label">Executados</div><div class="kpi-val" style="color:var(--green)">${exec}</div><div class="kpi-meta">${total>0?Math.round(exec/total*100):0}%</div></div>
-      <div class="kpi ${valid===exec&&exec>0?'ok':'neu'}"><div class="kpi-label">Validados</div><div class="kpi-val" style="color:var(--blue)">${valid}</div><div class="kpi-meta">pelo Líder de Pátio</div></div>
-      <div class="kpi ${nReal>0?'nok':'neu'}"><div class="kpi-label">Não Realiz.</div><div class="kpi-val" style="color:${nReal>0?'var(--red)':'var(--text3)'}">${nReal}</div></div>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">${kpisTipo}</div>
     ${total===0
       ?`<div class="empty"><div style="font-size:40px">🧼</div>
           <div style="color:var(--text2);font-weight:600;margin:12px 0">Nenhuma programação para hoje</div>
           ${podeProgramar?`<button class="btn-add" onclick="renderFerrLav('programar')">📝 Montar Programação</button>`:`<div style="color:var(--text3);font-size:13px">Aguardando o Líder Operacional programar o dia.</div>`}
         </div>`
-      :`<div class="tbl-wrap">
-          <div class="tbl-head"><div style="font-size:13px;font-weight:700">${total} veículos programados</div>${podeProgramar?`<button onclick="renderFerrLav('programar')" class="btn-sm">✏️ Editar</button>`:''}</div>
-          <div style="overflow-x:auto"><table>
-            <thead><tr><th>Prefixo</th><th>Tipo</th><th>Status</th><th>Validação</th><th>Por</th></tr></thead>
-            <tbody>${veicRows}</tbody>
-          </table></div>
-        </div>`}
+      :`
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div>
+          <span style="font-size:32px;font-weight:900;color:${barColor}">${pct}%</span>
+          <span style="font-size:13px;color:var(--text3);margin-left:8px">do dia executado</span>
+        </div>
+        <div style="text-align:right;font-size:12px;color:var(--text3);line-height:1.7">
+          <div><span style="color:var(--green);font-weight:700">${exec}</span> executados · <span style="color:var(--blue);font-weight:700">${valid}</span> validados</div>
+          <div><span style="color:var(--amber);font-weight:700">${pend}</span> pendentes${nReal>0?` · <span style="color:var(--red);font-weight:700">${nReal}</span> não realizados`:''}</div>
+        </div>
+      </div>
+      <div style="background:var(--border);border-radius:99px;height:10px;overflow:hidden;margin-bottom:${pend>0?'12':'0'}px">
+        <div style="width:${pct}%;height:100%;background:${barColor};border-radius:99px"></div>
+      </div>
+      ${pend>0?`<div>
+        <div style="font-size:10px;font-weight:700;color:var(--text4);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">⏳ Pendentes (${pend})</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px">${pendTags}</div>
+      </div>`:''}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">${kpisTipo}
+      <div class="kpi ${nReal>0?'nok':'neu'}"><div class="kpi-label">Não Realizados</div><div class="kpi-val" style="color:${nReal>0?'var(--red)':'var(--text3)'}">${nReal}</div><div class="kpi-meta">${nReal===0?'nenhum no momento':'—'}</div></div>
+    </div>
+    <div class="tbl-wrap">
+      <div class="tbl-head"><div style="font-size:13px;font-weight:700">${total} veículos programados</div>${podeProgramar?`<button onclick="renderFerrLav('programar')" class="btn-sm">✏️ Editar</button>`:''}</div>
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Prefixo</th><th>Tipo</th><th>Status</th><th>Validação</th><th>Por</th></tr></thead>
+        <tbody>
+          ${pendentes.length>0?`<tr><td colspan="5" style="padding:5px 12px;background:var(--border);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3)">⏳ Pendentes (${pendentes.length})</td></tr>${pendentes.map(veicRow).join('')}`:''}
+          ${executados.length>0?`<tr><td colspan="5" style="padding:5px 12px;background:var(--border);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3)">✅ Executados (${executados.length})</td></tr>${executados.map(veicRow).join('')}`:''}
+          ${naoReal.length>0?`<tr><td colspan="5" style="padding:5px 12px;background:var(--border);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3)">❌ Não Realizados (${naoReal.length})</td></tr>${naoReal.map(veicRow).join('')}`:''}
+        </tbody>
+      </table></div>
+    </div>`}
   `);
+
+  // Realtime: atualiza painel automaticamente quando lavador marca ou L.Pátio valida
+  window._lavPainelCh=sb.channel('lav-painel-rt')
+    .on('postgres_changes',{event:'*',schema:'public',table:'checklist_lavagem',filter:`garagem_id=eq.${gid}`},
+      ()=>{if(S.tela==='ferramentas')renderFerrLav('painel');})
+    .subscribe();
 }
 
 // Toggle tipo de lavagem na programação (escalante)

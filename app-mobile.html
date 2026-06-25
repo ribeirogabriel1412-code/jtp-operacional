@@ -2244,72 +2244,114 @@ function almoxMobTabNav(tab){
 async function telaAlmoxMobSolicitacoes(){
   const gid=getGid();
   render(`<div style="padding:30px;text-align:center;color:var(--text3)">Carregando...</div>`);
-  const{data:reqs}=await sb.from('requisicoes_compra')
+
+  // Calcular janelas de turno atual e anterior
+  const turnoAtual=turnoOperacionalAtual();
+  const dataAtual=dataOperacionalAtual(turnoAtual);
+  const janAtual=janelaOperacional(turnoAtual,dataAtual);
+  const turnoPrev=turnoAtual==='dia'?'noite':'dia';
+  const dataPrev=turnoAtual==='dia'?opAddDays(dataAtual,-1):dataAtual;
+  const janPrev=janelaOperacional(turnoPrev,dataPrev);
+
+  // Busca 1: itens dos dois últimos turnos (a partir do início do turno anterior)
+  const{data:recsRecentes}=await sb.from('requisicoes_compra')
     .select('*').eq('garagem_id',gid)
     .not('os_numero','is',null)
     .neq('status','cancelado')
+    .gte('criado_em',janPrev.ini)
     .order('criado_em',{ascending:false})
-    .limit(100);
-  const lista=(reqs||[]).filter(r=>r.os_numero&&String(r.os_numero).trim());
+    .limit(200);
+
+  // Busca 2: pendentes antigos (criados antes do turno anterior, ainda não resolvidos)
+  const{data:recsAntigos}=await sb.from('requisicoes_compra')
+    .select('*').eq('garagem_id',gid)
+    .not('os_numero','is',null)
+    .not('status','in','("separado","comprado","cancelado")')
+    .lt('criado_em',janPrev.ini)
+    .order('criado_em',{ascending:false})
+    .limit(50);
+
+  const lista=[...(recsRecentes||[]),...(recsAntigos||[])].filter(r=>r.os_numero&&String(r.os_numero).trim());
   window._solItemsMap={};lista.forEach(i=>{window._solItemsMap[i.id]=i;});
-  // Carrega pedidos de compra para exibir prazo/FUP no card
+
+  // Pedidos de compra para FUP
   const _compraIds=lista.filter(r=>r.status==='pedido_compra').map(r=>r.id);
   let pedidosMap={};
   if(_compraIds.length){const{data:_ped}=await sb.from('almoxo_pedidos_compra').select('requisicao_id,status,data_previsao_entrega,fup_logs').in('requisicao_id',_compraIds);(_ped||[]).forEach(p=>{pedidosMap[p.requisicao_id]=p;});}
-  // Agrupa por OS
-  const grupos={};
-  lista.forEach(r=>{const k=r.os_numero;if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
+
+  // Classificar itens por seção
+  const emJan=(r,jan)=>{const dt=new Date(r.criado_em);return dt>=new Date(jan.ini)&&dt<new Date(jan.fim);};
+  // T-1: criados no turno anterior E já resolvidos
+  const itensPrev=lista.filter(r=>emJan(r,janPrev)&&['separado','comprado'].includes(r.status||''));
+  const idsPrev=new Set(itensPrev.map(r=>r.id));
+  // Turno atual: todos os demais (pendentes de qualquer data + criados neste turno)
+  const itensAtual=lista.filter(r=>!idsPrev.has(r.id));
+
   const statusCor=s=>s==='separado'||s==='comprado'?'var(--green)':s==='pedido_compra'?'var(--red)':'var(--amber)';
   const statusLabel=s=>({solicitado_pcm:'Aguardando',aprovado:'Aprovado',separado:'Separado',pedido_compra:'Compra',comprado:'Chegou',pendente:'Pendente'}[s]||s);
-  const cards=Object.entries(grupos).map(([os,itens])=>{
-    const pref=itens[0]?.prefixo||'—';
-    const ok=itens.filter(i=>['separado','comprado'].includes(i.status||'')).length;
-    const total=itens.length;
-    return`<div class="card" style="margin-bottom:10px;border-left:4px solid ${ok===total?'var(--green)':'var(--amber)'}">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
-        <div>
-          <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">OS</div>
-          <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:800;color:var(--blue)">${escHtml(os)}</div>
-          <div style="font-size:12px;color:var(--text3)">Prefixo: ${escHtml(pref)}</div>
-        </div>
-        <div style="font-size:11px;font-weight:900;color:${ok===total?'var(--green)':'var(--amber)'}">${ok}/${total} sep.</div>
-      </div>
-      ${itens.map(i=>{
-        const entregaDif=i.item_entregue&&i.item_entregue!==i.peca;
-        const entregaBlock=i.item_entregue?`
-          <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:6px">
-            <div style="background:var(--surface2);border-left:3px solid var(--amber);border-radius:6px;padding:6px 8px">
-              <div style="font-size:9px;font-weight:900;color:var(--amber);text-transform:uppercase;margin-bottom:2px">Pedido</div>
-              <div style="font-size:11px;font-weight:600;line-height:1.3">${escHtml(i.peca||'—')}</div>
-              ${i.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--amber);margin-top:2px">${escHtml(i.cod_sap)}</div>`:''}
-              <div style="font-size:10px;color:var(--text3);margin-top:2px">${i.quantidade||1}x</div>
-            </div>
-            <div style="background:var(--surface2);border-left:3px solid ${entregaDif?'var(--blue)':'var(--green)'};border-radius:6px;padding:6px 8px">
-              <div style="font-size:9px;font-weight:900;color:${entregaDif?'var(--blue)':'var(--green)'};text-transform:uppercase;margin-bottom:2px">Entregue${entregaDif?' ✏️':' ✅'}</div>
-              <div style="font-size:11px;font-weight:600;line-height:1.3">${escHtml(i.item_entregue)}</div>
-              ${i.cod_sap_entregue?`<div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--amber);margin-top:2px">${escHtml(i.cod_sap_entregue)}</div>`:''}
-              <div style="font-size:10px;color:var(--text3);margin-top:2px">${i.qtd_entregue||i.quantidade||1}x</div>
-            </div>
-          </div>`:'';
-        return`<div style="padding:9px 0;border-top:1px solid var(--border2)">
-          ${i.item_entregue?entregaBlock:`<div style="display:grid;grid-template-columns:34px 1fr;gap:8px;font-size:13px;color:var(--text)">
-            <b style="font-family:'DM Mono',monospace;color:var(--amber)">${i.quantidade||1}x</b>
-            <span>${escHtml(i.peca)}${i.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-top:2px">${escHtml(i.cod_sap)}</div>`:''}${i.status==='pedido_compra'?`<div style="font-size:10px;color:var(--red);font-weight:800;margin-top:4px">🛒 ${pedidosMap[i.id]?.data_previsao_entrega?`Prazo: ${pedidosMap[i.id].data_previsao_entrega.split('-').reverse().join('/')}`:'Aguardando suprimentos'}${pedidosMap[i.id]?.fup_logs?.length?` · ${pedidosMap[i.id].fup_logs[0].nota}`:''}</div>`:''}</span>
-          </div>`}
-          <div style="display:flex;gap:6px;margin-top:8px;align-items:center;justify-content:space-between">
-            <span style="font-size:10px;font-weight:800;color:${statusCor(i.status||'')}">${statusLabel(i.status||'solicitado_pcm')}</span>
-            <span style="white-space:nowrap;display:flex;gap:4px">
-              ${['separado','comprado'].includes(i.status||'')?'':`<button onclick="almoxMobAbrirConfEntrega('${i.id}')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;font-family:inherit">Separar</button>`}
-              ${['separado','comprado','pedido_compra'].includes(i.status||'')?'':`<button onclick="almoxMobCompraSol('${i.id}')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:800;font-family:inherit">Compra</button>`}
-              <button onclick="almoxMobChegarSol('${i.id}')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:800;font-family:inherit">Chegou</button>
-            </span>
+
+  function renderCards(itens,somenteLeitura=false){
+    const grupos={};
+    itens.forEach(r=>{const k=r.os_numero;if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
+    if(!Object.keys(grupos).length)return'';
+    return Object.entries(grupos).map(([os,its])=>{
+      const pref=its[0]?.prefixo||'—';
+      const ok=its.filter(i=>['separado','comprado'].includes(i.status||'')).length;
+      const total=its.length;
+      return`<div class="card" style="margin-bottom:10px;border-left:4px solid ${ok===total?'var(--green)':'var(--amber)'}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+          <div>
+            <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">OS</div>
+            <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:800;color:var(--blue)">${escHtml(os)}</div>
+            <div style="font-size:12px;color:var(--text3)">Prefixo: ${escHtml(pref)}</div>
           </div>
-        </div>`;
-      }).join('')}
-    </div>`;
-  }).join('');
-  const pendentes=lista.filter(r=>r.status==='solicitado_pcm').length;
-  const separados=lista.filter(r=>['separado','comprado'].includes(r.status||'')).length;
+          <div style="font-size:11px;font-weight:900;color:${ok===total?'var(--green)':'var(--amber)'}">${ok}/${total} sep.</div>
+        </div>
+        ${its.map(i=>{
+          const entregaDif=i.item_entregue&&i.item_entregue!==i.peca;
+          const entregaBlock=i.item_entregue?`
+            <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:6px">
+              <div style="background:var(--surface2);border-left:3px solid var(--amber);border-radius:6px;padding:6px 8px">
+                <div style="font-size:9px;font-weight:900;color:var(--amber);text-transform:uppercase;margin-bottom:2px">Pedido</div>
+                <div style="font-size:11px;font-weight:600;line-height:1.3">${escHtml(i.peca||'—')}</div>
+                ${i.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--amber);margin-top:2px">${escHtml(i.cod_sap)}</div>`:''}
+                <div style="font-size:10px;color:var(--text3);margin-top:2px">${i.quantidade||1}x</div>
+              </div>
+              <div style="background:var(--surface2);border-left:3px solid ${entregaDif?'var(--blue)':'var(--green)'};border-radius:6px;padding:6px 8px">
+                <div style="font-size:9px;font-weight:900;color:${entregaDif?'var(--blue)':'var(--green)'};text-transform:uppercase;margin-bottom:2px">Entregue${entregaDif?' ✏️':' ✅'}</div>
+                <div style="font-size:11px;font-weight:600;line-height:1.3">${escHtml(i.item_entregue)}</div>
+                ${i.cod_sap_entregue?`<div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--amber);margin-top:2px">${escHtml(i.cod_sap_entregue)}</div>`:''}
+                <div style="font-size:10px;color:var(--text3);margin-top:2px">${i.qtd_entregue||i.quantidade||1}x</div>
+              </div>
+            </div>`:'';
+          return`<div style="padding:9px 0;border-top:1px solid var(--border2)">
+            ${i.item_entregue?entregaBlock:`<div style="display:grid;grid-template-columns:34px 1fr;gap:8px;font-size:13px;color:var(--text)">
+              <b style="font-family:'DM Mono',monospace;color:var(--amber)">${i.quantidade||1}x</b>
+              <span>${escHtml(i.peca)}${i.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-top:2px">${escHtml(i.cod_sap)}</div>`:''}${i.status==='pedido_compra'?`<div style="font-size:10px;color:var(--red);font-weight:800;margin-top:4px">🛒 ${pedidosMap[i.id]?.data_previsao_entrega?`Prazo: ${pedidosMap[i.id].data_previsao_entrega.split('-').reverse().join('/')}`:'Aguardando suprimentos'}${pedidosMap[i.id]?.fup_logs?.length?` · ${pedidosMap[i.id].fup_logs[0].nota}`:''}</div>`:''}</span>
+            </div>`}
+            ${somenteLeitura?'':`<div style="display:flex;gap:6px;margin-top:8px;align-items:center;justify-content:space-between">
+              <span style="font-size:10px;font-weight:800;color:${statusCor(i.status||'')}">${statusLabel(i.status||'solicitado_pcm')}</span>
+              <span style="white-space:nowrap;display:flex;gap:4px">
+                ${['separado','comprado'].includes(i.status||'')?'':`<button onclick="almoxMobAbrirConfEntrega('${i.id}')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;font-family:inherit">Separar</button>`}
+                ${['separado','comprado','pedido_compra'].includes(i.status||'')?'':`<button onclick="almoxMobCompraSol('${i.id}')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:800;font-family:inherit">Compra</button>`}
+                <button onclick="almoxMobChegarSol('${i.id}')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:800;font-family:inherit">Chegou</button>
+              </span>
+            </div>`}
+            ${somenteLeitura?`<div style="margin-top:6px"><span style="font-size:10px;font-weight:800;color:${statusCor(i.status||'')}">${statusLabel(i.status||'')}</span></div>`:''}
+          </div>`;
+        }).join('')}
+      </div>`;
+    }).join('');
+  }
+
+  const turnoIcon=t=>t==='dia'?'☀️':'🌙';
+  const fmtData=d=>d?d.split('-').reverse().join('/'):'';
+  const pendentes=itensAtual.filter(r=>r.status==='solicitado_pcm').length;
+  const separados=itensAtual.filter(r=>['separado','comprado'].includes(r.status||'')).length;
+
+  const secAtual=renderCards(itensAtual,false);
+  const secPrev=renderCards(itensPrev,true);
+
   render(`
     <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
       <div style="font-weight:800;font-size:17px">🔧 Solicitações de OS</div>
@@ -2319,9 +2361,18 @@ async function telaAlmoxMobSolicitacoes(){
     <div style="display:flex;gap:8px;padding:0 14px 10px">
       <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--amber);border-radius:10px;padding:10px;text-align:center"><b style="color:var(--amber);font-family:'DM Mono',monospace">${pendentes}</b><div style="font-size:10px;color:var(--text3)">Pendentes</div></div>
       <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--green);border-radius:10px;padding:10px;text-align:center"><b style="color:var(--green);font-family:'DM Mono',monospace">${separados}</b><div style="font-size:10px;color:var(--text3)">Separados</div></div>
+      <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--blue);border-radius:10px;padding:10px;text-align:center"><b style="color:var(--blue);font-family:'DM Mono',monospace">${itensPrev.length}</b><div style="font-size:10px;color:var(--text3)">T-1 Inv.</div></div>
     </div>
-    <div class="sl">${lista.length} solicitação(ões)</div>
-    ${cards||'<div class="empty"><div class="empty-ic">🔧</div><div style="font-weight:700">Nenhuma solicitação de OS</div></div>'}
+    <div style="padding:0 14px">
+      <div style="font-size:12px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">${turnoIcon(turnoAtual)} Turno ${turnoAtual==='dia'?'Dia':'Noite'} — ${fmtData(dataAtual)}</div>
+      ${secAtual||'<div style="text-align:center;color:var(--text3);padding:20px 0;font-size:13px">Nenhuma solicitação neste turno</div>'}
+      ${itensPrev.length?`
+      <div style="margin-top:16px;padding-top:14px;border-top:2px dashed var(--border)">
+        <div style="font-size:12px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${turnoIcon(turnoPrev)} Inventário T-1 — Turno ${turnoPrev==='dia'?'Dia':'Noite'} ${fmtData(dataPrev)}</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Peças entregues no turno anterior — confira o estoque físico</div>
+        ${secPrev}
+      </div>`:''}
+    </div>
   `);
 }
 
