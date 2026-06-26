@@ -2236,7 +2236,7 @@ function almoxMobTabNav(tab){
   return`<div style="display:flex;gap:6px;padding:4px 14px 10px;overflow-x:auto">
     ${b('kits','📦','Kits')}
     ${b('sol','🔧','Solicitações')}
-    ${b('conf','📋','Conferência')}
+    ${b('conf','📦','Inv. Rotativo')}
     ${b('inv-rua','🏠','Inv. Rua')}
   </div>`;
 }
@@ -2533,103 +2533,122 @@ async function almoxMobSalvarEntrega(id){
 
 async function telaAlmoxMobConferencia(){
   const gid=getGid();
-  render(`<div style="padding:30px;text-align:center;color:var(--text3)">Carregando quadro...</div>`);
-  // Busca o turno do usuário logado
+  render(`<div style="padding:30px;text-align:center;color:var(--text3)">Carregando...</div>`);
   const{data:turno}=await sb.from('almoxo_quadro_turno')
     .select('*').eq('garagem_id',gid).eq('perfil_id',S.user?.id).maybeSingle();
   if(!turno){
     render(`
       <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
-        <div style="font-weight:800;font-size:17px">📋 Conferência do Turno</div>
+        <div style="font-weight:800;font-size:17px">📦 Inventário Rotativo</div>
       </div>
       ${almoxMobTabNav('conf')}
       <div class="empty" style="margin:40px 14px">
-        <div class="empty-ic">📋</div>
+        <div class="empty-ic">📦</div>
         <div style="font-weight:700;margin-bottom:8px">Você não está no quadro</div>
         <div style="font-size:12px;color:var(--text3)">Peça ao Líder de Suprimentos para cadastrar seu horário no Painel do Líder</div>
       </div>
     `);
     return;
   }
-  // Calcula janela do turno anterior
+  // Calcula janela do turno atual e anterior baseado no quadro do almoxarife
   const [hE,mE]=turno.hora_entrada.split(':').map(Number);
   const [hS,mS]=turno.hora_saida.split(':').map(Number);
   const agora=new Date();
   const entradaHoje=new Date(agora);
   entradaHoje.setHours(hE,mE,0,0);
-  // Se a hora de entrada já passou hoje, usamos hoje; senão, ontem
   if(entradaHoje>agora) entradaHoje.setDate(entradaHoje.getDate()-1);
   let durMin=(hS*60+mS)-(hE*60+mE);
-  if(durMin<=0) durMin+=24*60; // turno que vira a noite
+  if(durMin<=0) durMin+=24*60;
   const durMs=durMin*60*1000;
   const windowFim=new Date(entradaHoje);
   const windowIni=new Date(entradaHoje.getTime()-durMs);
-  // Busca T-1 (turno anterior) e turno atual em paralelo
   const agora2=new Date();
-  const[{data:itensT1},{data:itensAtual}]=await Promise.all([
+
+  // Busca itens (T-1 e turno atual) + inventários existentes em paralelo
+  const[{data:rawT1},{data:rawAtual},{data:invExist}]=await Promise.all([
     sb.from('requisicoes_compra').select('*').eq('garagem_id',gid)
-      .gte('criado_em',windowIni.toISOString()).lte('criado_em',windowFim.toISOString())
+      .gte('criado_em',windowIni.toISOString()).lt('criado_em',windowFim.toISOString())
       .not('item_entregue','is',null).order('criado_em',{ascending:true}),
     sb.from('requisicoes_compra').select('*').eq('garagem_id',gid)
       .gte('criado_em',windowFim.toISOString()).lte('criado_em',agora2.toISOString())
-      .not('item_entregue','is',null).order('criado_em',{ascending:true})
+      .not('item_entregue','is',null).order('criado_em',{ascending:true}),
+    sb.from('almoxo_inventario_t1').select('*').eq('garagem_id',gid)
+      .not('req_id','is',null)
   ]);
-  const listaT1=itensT1||[];
-  const listaAtual=itensAtual||[];
-  const fmtHora=d=>{try{return new Date(d).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}catch(e){return''}};
-  const fmtDt=d=>{try{return new Date(d).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' '+fmtHora(d)}catch(e){return''}};
-  const statusCor=s=>s==='separado'||s==='comprado'?'var(--green)':s==='pedido_compra'?'var(--red)':'var(--amber)';
-  const statusLabel=s=>({solicitado_pcm:'Aguardando',aprovado:'Aprovado',separado:'Separado',pedido_compra:'Compra',comprado:'Chegou',pendente:'Pendente'}[s]||s);
+  const listaT1=rawT1||[];
+  const listaAtual=rawAtual||[];
+
+  // Mapa inventário por req_id
+  const invMap={};
+  (invExist||[]).forEach(i=>{if(i.req_id)invMap[i.req_id]=i;});
+
+  // Guarda estado global para modal e PDF
+  window._invRotItems={};
+  [...listaT1,...listaAtual].forEach(i=>{window._invRotItems[i.id]=i;});
+  window._invRotMap=invMap;
+  window._invRotGid=gid;
+  window._invRotT1=listaT1;
+  window._invRotAtual=listaAtual;
+  window._invRotTurno=turno;
+
+  // Stats para cabeçalhos
+  const confT1=listaT1.filter(i=>invMap[i.id]).length;
+  const devT1=listaT1.filter(i=>invMap[i.id]&&parseFloat(invMap[i.id].acuracia??100)<100).length;
+  const confAt=listaAtual.filter(i=>invMap[i.id]).length;
+  const devAt=listaAtual.filter(i=>invMap[i.id]&&parseFloat(invMap[i.id].acuracia??100)<100).length;
+
   const renderCard=i=>{
+    const inv=invMap[i.id]||null;
+    const acur=inv?.acuracia!=null?parseFloat(inv.acuracia):null;
+    const desvio=inv&&acur!=null&&acur<100;
+    const conforme=inv&&(acur==null||acur>=100);
+    const bordaCor=desvio?'var(--red)':conforme?'var(--green)':'var(--border2)';
+    const badge=inv
+      ?(desvio
+        ?`<span style="background:#EF444420;color:var(--red);border:1px solid #EF444460;border-radius:99px;padding:2px 8px;font-size:9px;font-weight:900;white-space:nowrap">⚠️ ${acur}%</span>`
+        :`<span style="background:#00C48C20;color:var(--green);border:1px solid #00C48C60;border-radius:99px;padding:2px 8px;font-size:9px;font-weight:900;white-space:nowrap">✅ 100%</span>`)
+      :`<span style="background:var(--surface2);color:var(--text3);border:1px solid var(--border);border-radius:99px;padding:2px 8px;font-size:9px;font-weight:700;white-space:nowrap">→ Lançar</span>`;
     const entregaDif=i.item_entregue&&i.item_entregue!==i.peca;
-    const comparativoBlock=i.item_entregue?`
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
-        <div style="background:var(--surface2);border-left:3px solid var(--amber);border-radius:6px;padding:6px 8px">
-          <div style="font-size:9px;font-weight:900;color:var(--amber);text-transform:uppercase;margin-bottom:2px">Pedido</div>
-          <div style="font-size:11px;font-weight:600;line-height:1.3;word-break:break-word">${escHtml(i.peca||'—')}</div>
-          ${i.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--amber);margin-top:2px">${escHtml(i.cod_sap)}</div>`:''}
-          <div style="font-size:10px;color:var(--text3);margin-top:2px">${i.quantidade||1}x</div>
-        </div>
-        <div style="background:var(--surface2);border-left:3px solid ${entregaDif?'var(--blue)':'var(--green)'};border-radius:6px;padding:6px 8px">
-          <div style="font-size:9px;font-weight:900;color:${entregaDif?'var(--blue)':'var(--green)'};text-transform:uppercase;margin-bottom:2px">Entregue${entregaDif?' ✏️':' ✅'}</div>
-          <div style="font-size:11px;font-weight:600;line-height:1.3;word-break:break-word">${escHtml(i.item_entregue)}</div>
-          ${i.cod_sap_entregue?`<div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--amber);margin-top:2px">${escHtml(i.cod_sap_entregue)}</div>`:''}
-          <div style="font-size:10px;color:var(--text3);margin-top:2px">${i.qtd_entregue||i.quantidade||1}x</div>
-        </div>
-      </div>`:'';
-    const itemSimples=!i.item_entregue?`
+    return`<div onclick="almoxMobAbrirInvRotativo('${i.id}')" style="margin-bottom:8px;background:var(--surface);border:1px solid ${bordaCor};border-left:4px solid ${bordaCor};border-radius:12px;padding:12px 14px;cursor:pointer;active-opacity:.7">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px">
         <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:700;word-break:break-word">${escHtml(i.peca||'—')}</div>
-          ${i.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber)">${escHtml(i.cod_sap)}</div>`:''}
+          <div style="font-size:13px;font-weight:800;word-break:break-word">${escHtml(i.item_entregue||i.peca||'—')}</div>
+          ${(i.cod_sap_entregue||i.cod_sap)?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber)">${escHtml(i.cod_sap_entregue||i.cod_sap)}</div>`:''}
+          ${entregaDif?`<div style="font-size:10px;color:var(--text3);margin-top:2px">Pedido: ${escHtml(i.peca||'—')}</div>`:''}
         </div>
-        <div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:800;color:var(--blue);flex-shrink:0">${i.quantidade||1}x</div>
-      </div>`:''
-    return`<div class="card" style="margin-bottom:8px;border-left:4px solid ${statusCor(i.status||'')}">
-      ${itemSimples}${comparativoBlock}
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
-        <div>
-          ${i.prefixo?`<span style="font-size:11px;color:var(--text3)">Prefixo: <b>${escHtml(i.prefixo)}</b></span>`:''}
-          ${i.os_numero?`<span style="font-size:11px;color:var(--text3);margin-left:8px">OS: <b>${escHtml(i.os_numero)}</b></span>`:''}
-          <div style="font-size:10px;color:var(--text4);margin-top:2px">${fmtDt(i.criado_em)}</div>
-        </div>
-        <span style="font-size:11px;font-weight:800;color:${statusCor(i.status||'')}">${statusLabel(i.status||'')}</span>
+        ${badge}
       </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        ${i.prefixo?`<span style="font-size:11px;color:var(--text3)">Prefixo: <b>${escHtml(i.prefixo)}</b></span>`:''}
+        ${i.os_numero?`<span style="font-size:11px;color:var(--text3)">OS: <b>${escHtml(i.os_numero)}</b></span>`:''}
+        <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--blue);font-weight:800">${i.qtd_entregue||i.quantidade||1}x saiu</span>
+      </div>
+      ${inv?`<div style="display:flex;gap:12px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border2)">
+        <span style="font-size:11px;color:var(--text3)">PRAXIO: <b style="color:var(--blue);font-family:'DM Mono',monospace">${inv.qtd_praxio??'—'}</b></span>
+        <span style="font-size:11px;color:var(--text3)">SAP: <b style="color:var(--amber);font-family:'DM Mono',monospace">${inv.qtd_sap??'—'}</b></span>
+        <span style="font-size:11px;color:var(--text3)">Físico: <b style="color:${desvio?'var(--red)':'var(--green)'};font-family:'DM Mono',monospace">${inv.qtd_fisica??'—'}</b></span>
+      </div>`:''}
     </div>`;
   };
+
   const cardsT1=listaT1.map(renderCard).join('');
   const cardsAtual=listaAtual.map(renderCard).join('');
   const fmtH=t=>t||'—';
-  const secaoHeader=(titulo,cor,qtd)=>`
-    <div style="display:flex;align-items:center;gap:8px;padding:10px 14px 6px">
-      <div style="width:4px;height:18px;background:${cor};border-radius:2px"></div>
-      <div style="font-weight:900;font-size:13px;color:${cor};text-transform:uppercase;letter-spacing:.5px">${titulo}</div>
-      <div style="background:${cor}22;color:${cor};border-radius:99px;padding:2px 8px;font-size:11px;font-weight:800">${qtd}</div>
+  const secaoHeader=(titulo,cor,conf,tot,dev)=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 14px 6px;flex-wrap:wrap">
+      <div style="width:4px;height:18px;background:${cor};border-radius:2px;flex-shrink:0"></div>
+      <div style="font-weight:900;font-size:13px;color:${cor};text-transform:uppercase;letter-spacing:.5px;flex:1">${titulo}</div>
+      <span style="background:${cor}22;color:${cor};border-radius:99px;padding:2px 8px;font-size:11px;font-weight:800">${conf}/${tot}</span>
+      ${dev>0?`<span style="background:#EF444420;color:var(--red);border:1px solid #EF444440;border-radius:99px;padding:2px 8px;font-size:11px;font-weight:900">⚠️ ${dev} desvio${dev>1?'s':''}</span>`:''}
     </div>`;
+
   render(`
     <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
-      <div style="font-weight:800;font-size:17px">📋 Conferência do Turno</div>
-      <button onclick="_almoxMobTab='conf';telaValetAlmox()" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">🔄</button>
+      <div style="font-weight:800;font-size:17px">📦 Inventário Rotativo</div>
+      <div style="display:flex;gap:6px">
+        <button onclick="gerarPDFInvRotativo()" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:9px 12px;color:var(--text);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">📄 PDF</button>
+        <button onclick="_almoxMobTab='conf';telaValetAlmox()" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:9px 12px;color:var(--text);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">🔄</button>
+      </div>
     </div>
     ${almoxMobTabNav('conf')}
     <div style="padding:0 14px 10px">
@@ -2638,15 +2657,239 @@ async function telaAlmoxMobConferencia(){
         <div style="font-family:'DM Mono',monospace;font-weight:800"><span style="color:var(--green)">${fmtH(turno.hora_entrada)}</span> <span style="color:var(--text3)">→</span> <span style="color:var(--amber)">${fmtH(turno.hora_saida)}</span></div>
       </div>
     </div>
-    ${secaoHeader('T-1 — Turno Anterior','var(--purple)',listaT1.length)}
+    ${secaoHeader('T-1 — Turno Anterior','var(--purple)',confT1,listaT1.length,devT1)}
     <div style="padding:0 14px">
       ${cardsT1||'<div style="padding:16px;text-align:center;color:var(--text3);font-size:12px">Nenhum item no turno anterior</div>'}
     </div>
-    ${secaoHeader('Turno Atual','var(--blue)',listaAtual.length)}
-    <div style="padding:0 14px 80px">
+    ${secaoHeader('Turno Atual','var(--blue)',confAt,listaAtual.length,devAt)}
+    <div style="padding:0 14px 100px">
       ${cardsAtual||'<div style="padding:16px;text-align:center;color:var(--text3);font-size:12px">Nenhum item no turno atual ainda</div>'}
     </div>
   `);
+}
+
+// ── Inventário Rotativo — Modal de Lançamento ─────────────────────────────────
+function almoxMobAbrirInvRotativo(reqId){
+  const item=window._invRotItems?.[reqId];
+  if(!item){toast('Item não encontrado','err');return;}
+  const inv=window._invRotMap?.[reqId]||null;
+  document.getElementById('inv-rot-overlay')?.remove();
+  const ov=document.createElement('div');
+  ov.id='inv-rot-overlay';
+  ov.style.cssText='position:fixed;inset:0;background:#000a;z-index:9999;display:flex;flex-direction:column;justify-content:flex-end';
+  const nomeItem=escHtml(item.item_entregue||item.peca||'—');
+  const codItem=escHtml(item.cod_sap_entregue||item.cod_sap||'');
+  const qtdSaiu=item.qtd_entregue||item.quantidade||1;
+  ov.innerHTML=`
+    <div style="background:var(--bg);border-radius:18px 18px 0 0;padding:20px 16px 32px;max-height:90vh;overflow-y:auto">
+      <div style="text-align:center;margin-bottom:16px">
+        <div style="width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px"></div>
+        <div style="font-weight:900;font-size:16px">Lançar Inventário</div>
+      </div>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:10px;padding:12px 14px;margin-bottom:16px">
+        <div style="font-size:14px;font-weight:700">${nomeItem}</div>
+        ${codItem?`<div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--amber);margin-top:3px">${codItem}</div>`:''}
+        <div style="font-size:12px;color:var(--text3);margin-top:4px">
+          Qtd saiu: <b style="color:var(--blue)">${qtdSaiu}</b>
+          ${item.prefixo?` · Prefixo: <b>${escHtml(item.prefixo)}</b>`:''}
+          ${item.os_numero?` · OS: <b>${escHtml(item.os_numero)}</b>`:''}
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+        <div>
+          <div style="font-size:10px;font-weight:900;color:#60a5fa;text-transform:uppercase;text-align:center;margin-bottom:6px">🔵 PRAXIO</div>
+          <input id="inv-rot-praxio" type="number" inputmode="decimal" value="${inv?.qtd_praxio??''}" placeholder="0" step="0.001" min="0" oninput="invRotCalcAcur()" style="width:100%;background:var(--surface2);border:2px solid #60a5fa;border-radius:10px;color:var(--text);padding:12px 6px;font-size:20px;font-family:'DM Mono',monospace;font-weight:900;text-align:center;box-sizing:border-box;outline:none">
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:900;color:var(--amber);text-transform:uppercase;text-align:center;margin-bottom:6px">🟡 SAP</div>
+          <input id="inv-rot-sap" type="number" inputmode="decimal" value="${inv?.qtd_sap??''}" placeholder="0" step="0.001" min="0" oninput="invRotCalcAcur()" style="width:100%;background:var(--surface2);border:2px solid var(--amber);border-radius:10px;color:var(--text);padding:12px 6px;font-size:20px;font-family:'DM Mono',monospace;font-weight:900;text-align:center;box-sizing:border-box;outline:none">
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:900;color:var(--green);text-transform:uppercase;text-align:center;margin-bottom:6px">🟢 FÍSICO</div>
+          <input id="inv-rot-fis" type="number" inputmode="decimal" value="${inv?.qtd_fisica??''}" placeholder="0" step="0.001" min="0" oninput="invRotCalcAcur()" style="width:100%;background:var(--surface2);border:2px solid var(--green);border-radius:10px;color:var(--text);padding:12px 6px;font-size:20px;font-family:'DM Mono',monospace;font-weight:900;text-align:center;box-sizing:border-box;outline:none">
+        </div>
+      </div>
+      <div id="inv-rot-acur" style="text-align:center;font-family:'DM Mono',monospace;font-size:20px;font-weight:900;color:var(--text3);margin-bottom:16px;padding:10px;background:var(--surface2);border-radius:10px">—</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="document.getElementById('inv-rot-overlay').remove()" style="flex:1;padding:13px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">Cancelar</button>
+        <button onclick="almoxMobSalvarInvRotativo('${reqId}')" style="flex:2;padding:13px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">💾 Salvar</button>
+      </div>
+    </div>`;
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+  document.body.appendChild(ov);
+  invRotCalcAcur();
+}
+
+function invRotCalcAcur(){
+  const sap=parseFloat(document.getElementById('inv-rot-sap')?.value??'');
+  const fis=parseFloat(document.getElementById('inv-rot-fis')?.value??'');
+  const el=document.getElementById('inv-rot-acur');
+  if(!el)return;
+  if(isNaN(sap)||isNaN(fis)){el.textContent='—';el.style.color='var(--text3)';return;}
+  const acur=sap>0?Math.round((fis/sap)*1000)/10:fis===0?100:0;
+  const cor=acur>=98?'var(--green)':acur>=90?'var(--amber)':'var(--red)';
+  el.textContent=`Acurácia SAP/Físico: ${acur}%`;el.style.color=cor;
+}
+
+async function almoxMobSalvarInvRotativo(reqId){
+  const praxio=parseFloat(document.getElementById('inv-rot-praxio')?.value??'');
+  const sap=parseFloat(document.getElementById('inv-rot-sap')?.value??'');
+  const fis=parseFloat(document.getElementById('inv-rot-fis')?.value??'');
+  if(isNaN(sap)||isNaN(fis)){toast('Preencha ao menos SAP e Físico','err');return;}
+  const gid=window._invRotGid||getGid();
+  const hojeIso=hoje();
+  const acur=sap>0?Math.round((fis/sap)*1000)/10:fis===0?100:0;
+  const item=window._invRotItems?.[reqId]||{};
+  const codSap=item.cod_sap_entregue||item.cod_sap||null;
+  const nomeItem=item.item_entregue||item.peca||null;
+  const existing=window._invRotMap?.[reqId]||null;
+  let err;
+  if(existing){
+    ({error:err}=await sb.from('almoxo_inventario_t1').update({
+      qtd_praxio:isNaN(praxio)?null:praxio,
+      qtd_sap:sap,
+      qtd_fisica:fis,
+      acuracia:acur,
+      conferido_por:S.user?.id
+    }).eq('id',existing.id));
+  } else {
+    ({error:err}=await sb.from('almoxo_inventario_t1').insert({
+      garagem_id:gid,
+      turno_data:hojeIso,
+      req_id:reqId,
+      cod_sap:codSap,
+      nome_item:nomeItem,
+      qtd_praxio:isNaN(praxio)?null:praxio,
+      qtd_sap:sap,
+      qtd_fisica:fis,
+      acuracia:acur,
+      conferido_por:S.user?.id
+    }));
+  }
+  if(err){
+    if(err.code==='42703')toast('⚠️ Execute o SQL no Supabase para adicionar colunas qtd_praxio e req_id','err');
+    else toast('Erro: '+err.message,'err');
+    return;
+  }
+  if(Math.abs(sap-fis)>0.001){
+    await sb.from('almoxo_divergencias').insert({
+      garagem_id:gid,origem:'rotativo',cod_sap:codSap,nome_item:nomeItem,
+      qtd_sap:sap,qtd_fisica:fis,acuracia:acur
+    }).then(()=>{});
+  }
+  document.getElementById('inv-rot-overlay')?.remove();
+  toast(acur>=98?'✅ Conferido — sem desvio':'⚠️ Desvio registrado: '+acur+'%');
+  _almoxMobTab='conf';telaValetAlmox();
+}
+
+// ── Inventário Rotativo — Exportar PDF ───────────────────────────────────────
+async function gerarPDFInvRotativo(){
+  const listaT1=window._invRotT1||[];
+  const listaAtual=window._invRotAtual||[];
+  const invMap=window._invRotMap||{};
+  const turno=window._invRotTurno||{};
+  const gid=window._invRotGid||getGid();
+  if(!listaT1.length&&!listaAtual.length){toast('Nenhum item para exportar','err');return;}
+  const garagem=S.garagens?.find(g=>g.id===gid);
+  const garNome=garagem?.nome||'—';
+  const agora=new Date();
+  const dtFmt=agora.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
+  const hrFmt=agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  const B='border:1px solid #333;';
+  const BH='border:1px solid #333;background:#444;color:#fff;font-weight:900;font-size:9px;padding:4px 6px;text-align:center;';
+  const fmtN=v=>v!=null&&v!==''?String(parseFloat(v)):'—';
+  const renderLinhas=(lista,soLabel)=>{
+    if(!lista.length)return`<tr><td colspan="8" style="${B}padding:8px;text-align:center;color:#888;font-size:10px">Nenhum item</td></tr>`;
+    return lista.map(i=>{
+      const inv=invMap[i.id]||null;
+      const acur=inv?.acuracia!=null?parseFloat(inv.acuracia):null;
+      const desvio=acur!=null&&acur<100;
+      const rowBg=desvio?'background:#fff3f3':'';
+      const acurTxt=acur!=null?`${acur}%`:'—';
+      const acurCor=desvio?'color:#b91c1c;font-weight:900':'color:#166534;font-weight:900';
+      const statusTxt=!inv?'Não lançado':desvio?'⚠️ DESVIO':'✅ OK';
+      const statusCor=!inv?'color:#888':desvio?'color:#b91c1c;font-weight:900':'color:#166534;font-weight:900';
+      return`<tr style="${rowBg}">
+        <td style="${B}padding:3px 5px;font-size:10px;max-width:160px;word-break:break-word">${i.item_entregue||i.peca||'—'}</td>
+        <td style="${B}padding:3px 5px;font-family:monospace;font-size:9px;color:#555">${i.cod_sap_entregue||i.cod_sap||'—'}</td>
+        <td style="${B}padding:3px 5px;font-family:monospace;font-weight:700;font-size:10px;text-align:center">${i.prefixo||'—'}</td>
+        <td style="${B}padding:3px 5px;text-align:center;font-family:monospace;font-size:10px">${i.os_numero||'—'}</td>
+        <td style="${B}padding:3px 5px;text-align:center;font-family:monospace;font-weight:700;font-size:11px">${i.qtd_entregue||i.quantidade||1}</td>
+        <td style="${B}padding:3px 5px;text-align:center;font-family:monospace;font-size:11px;color:#1d4ed8">${fmtN(inv?.qtd_praxio)}</td>
+        <td style="${B}padding:3px 5px;text-align:center;font-family:monospace;font-size:11px;color:#b45309">${fmtN(inv?.qtd_sap)}</td>
+        <td style="${B}padding:3px 5px;text-align:center;font-family:monospace;font-size:11px;${desvio?'color:#b91c1c':inv?'color:#166534':''}">${fmtN(inv?.qtd_fisica)}</td>
+        <td style="${B}padding:3px 5px;text-align:center;font-size:10px;${acurCor}">${acurTxt}</td>
+        <td style="${B}padding:3px 5px;font-size:10px;${statusCor}">${statusTxt}</td>
+      </tr>`;
+    }).join('');
+  };
+  const thead=`<tr>
+    <th style="${BH}text-align:left;min-width:120px">Peça</th>
+    <th style="${BH}min-width:70px">Cód. SAP</th>
+    <th style="${BH}">Prefixo</th>
+    <th style="${BH}">OS</th>
+    <th style="${BH}">Qtd Saiu</th>
+    <th style="${BH}color:#93c5fd">PRAXIO</th>
+    <th style="${BH}color:#fcd34d">SAP</th>
+    <th style="${BH}color:#86efac">FÍSICO</th>
+    <th style="${BH}">Acurácia</th>
+    <th style="${BH}">Status</th>
+  </tr>`;
+  const totConf=[...listaT1,...listaAtual].filter(i=>invMap[i.id]).length;
+  const totDev=[...listaT1,...listaAtual].filter(i=>invMap[i.id]&&parseFloat(invMap[i.id].acuracia??100)<100).length;
+  const totItens=listaT1.length+listaAtual.length;
+  const html=`<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+  body{font-family:Arial,sans-serif;font-size:10px;color:#000;margin:0;padding:10px}
+  @media print{.no-print{display:none!important}body{padding:0;margin:0}@page{margin:8mm;size:A4 landscape}}
+  table{border-collapse:collapse;width:100%}
+</style></head><body>
+<div class="no-print" style="position:sticky;top:0;background:#1e293b;padding:8px 12px;display:flex;gap:8px;align-items:center;z-index:999;margin:-10px -10px 10px -10px">
+  <span style="color:#fff;font-size:12px;font-weight:700">📦 JTP — Inventário Rotativo</span>
+  <button onclick="window.print()" style="margin-left:auto;padding:6px 16px;background:#3B82F6;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">🖨️ Salvar PDF</button>
+</div>
+<div style="text-align:center;border:2.5px solid #000;padding:6px;margin-bottom:5px;background:#fff">
+  <div style="font-size:13px;font-weight:900;letter-spacing:1px">GRUPO JTP  │  OPERAÇÃO GARAGEM  │  Inventário Rotativo de Peças</div>
+</div>
+<table style="margin-bottom:4px">
+  <tr>
+    <td style="${B}padding:3px 6px"><strong>Garagem:</strong> ${garNome}</td>
+    <td style="${B}padding:3px 6px"><strong>Almoxarife:</strong> ${S.perfil?.nome||'—'}</td>
+    <td style="${B}padding:3px 6px"><strong>Turno:</strong> ${turno.hora_entrada||'—'} → ${turno.hora_saida||'—'}</td>
+    <td style="${B}padding:3px 6px"><strong>Gerado em:</strong> ${dtFmt} ${hrFmt}</td>
+  </tr>
+  <tr>
+    <td style="${B}padding:3px 6px"><strong>Total de itens:</strong> ${totItens}</td>
+    <td style="${B}padding:3px 6px"><strong>Conferidos:</strong> ${totConf}/${totItens}</td>
+    <td style="${B}padding:3px 6px${totDev>0?';background:#fee2e2':';background:#f0fdf4'}"><strong>${totDev>0?'⚠️ Desvios:':'✅ Desvios:'}</strong> <span style="font-weight:900;${totDev>0?'color:#b91c1c':'color:#166534'}">${totDev}</span></td>
+    <td style="${B}padding:3px 6px"><strong>Data operacional:</strong> ${dtFmt}</td>
+  </tr>
+</table>
+<div style="font-weight:900;background:#6b21a8;color:#fff;border:1.5px solid #111;padding:4px 8px;margin:8px 0 2px">▌ T-1 — TURNO ANTERIOR (${listaT1.length} item${listaT1.length!==1?'s':''})</div>
+<table style="margin-bottom:10px"><thead>${thead}</thead><tbody>${renderLinhas(listaT1,'T-1')}</tbody></table>
+<div style="font-weight:900;background:#1e40af;color:#fff;border:1.5px solid #111;padding:4px 8px;margin:8px 0 2px">▌ TURNO ATUAL (${listaAtual.length} item${listaAtual.length!==1?'s':''})</div>
+<table><thead>${thead}</thead><tbody>${renderLinhas(listaAtual,'Atual')}</tbody></table>
+${totDev>0?`
+<div style="margin-top:10px;border:2px solid #b91c1c;background:#fff5f5;padding:8px 10px;border-radius:4px">
+  <div style="font-weight:900;color:#b91c1c;font-size:11px;margin-bottom:6px">⚠️ RESUMO DE DESVIOS (${totDev} item${totDev!==1?'s':''})</div>
+  <table>
+    <tr><th style="${BH}text-align:left">Peça</th><th style="${BH}">SAP</th><th style="${BH}">Físico</th><th style="${BH}">Acurácia</th><th style="${BH}">Bloco</th></tr>
+    ${[...listaT1.map(i=>({...i,bloco:'T-1'})),...listaAtual.map(i=>({...i,bloco:'Atual'}))].filter(i=>invMap[i.id]&&parseFloat(invMap[i.id].acuracia??100)<100).map(i=>{
+      const inv=invMap[i.id];
+      const acur=parseFloat(inv.acuracia);
+      return`<tr style="background:#fff3f3">
+        <td style="${B}padding:3px 5px;font-size:10px">${i.item_entregue||i.peca||'—'}</td>
+        <td style="${B}padding:3px 5px;text-align:center;font-family:monospace;color:#b45309">${fmtN(inv.qtd_sap)}</td>
+        <td style="${B}padding:3px 5px;text-align:center;font-family:monospace;color:#b91c1c;font-weight:700">${fmtN(inv.qtd_fisica)}</td>
+        <td style="${B}padding:3px 5px;text-align:center;font-weight:900;color:#b91c1c">${acur}%</td>
+        <td style="${B}padding:3px 5px;text-align:center;font-size:10px">${i.bloco}</td>
+      </tr>`;}).join('')}
+  </table>
+</div>`:''}
+</body></html>`;
+  const dtFile=agora.toISOString().replace(/[-:T]/g,'').slice(0,12);
+  await downloadPDF(html,`JTP_InvRotativo_${dtFile}_${garNome.replace(/\s/g,'_')}.pdf`);
 }
 
 async function telaAlmoxMobInvT1(){
