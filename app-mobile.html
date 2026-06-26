@@ -2744,14 +2744,14 @@ async function almoxMobSalvarInvRotativo(reqId){
   const nomeItem=item.item_entregue||item.peca||null;
   const existing=window._invRotMap?.[reqId]||null;
   let err;
+  const payload={
+    qtd_praxio:isNaN(praxio)?null:praxio,
+    qtd_sap:sap,
+    qtd_fisica:fis,
+    conferido_por:S.user?.id
+  };
   if(existing){
-    ({error:err}=await sb.from('almoxo_inventario_t1').update({
-      qtd_praxio:isNaN(praxio)?null:praxio,
-      qtd_sap:sap,
-      qtd_fisica:fis,
-      acuracia:acur,
-      conferido_por:S.user?.id
-    }).eq('id',existing.id));
+    ({error:err}=await sb.from('almoxo_inventario_t1').update(payload).eq('id',existing.id));
   } else {
     ({error:err}=await sb.from('almoxo_inventario_t1').insert({
       garagem_id:gid,
@@ -2759,11 +2759,7 @@ async function almoxMobSalvarInvRotativo(reqId){
       req_id:reqId,
       cod_sap:codSap,
       nome_item:nomeItem,
-      qtd_praxio:isNaN(praxio)?null:praxio,
-      qtd_sap:sap,
-      qtd_fisica:fis,
-      acuracia:acur,
-      conferido_por:S.user?.id
+      ...payload
     }));
   }
   if(err){
