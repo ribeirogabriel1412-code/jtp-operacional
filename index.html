@@ -1924,7 +1924,11 @@ async function renderAlmoxPainelLider(){
   ]);
   window._almoxPerfisCache=perfisAlmox||[];
   const tabs=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
-  const divAberta=(divs||[]).length;
+  const divTodas=divs||[];
+  const divFiltroOrigem=S._divOrigem||'todas';
+  const divFiltradas=divFiltroOrigem==='todas'?divTodas:divTodas.filter(d=>d.origem===divFiltroOrigem);
+  const divAberta=divFiltradas.length;
+  const cntPorOrigem={rotativo:divTodas.filter(d=>d.origem==='rotativo').length,t1:divTodas.filter(d=>d.origem==='t1').length,rua:divTodas.filter(d=>d.origem==='rua').length};
   const t1Hoje=(ultInvT1||[]).filter(i=>i.turno_data===hojeIso);
   const acurT1=t1Hoje.length?Math.round(t1Hoje.reduce((s,i)=>s+(parseFloat(i.acuracia)||100),0)/t1Hoje.length):null;
   const ruaHoje=(ultInvRua||[]).filter(i=>i.data_inventario===hojeIso);
@@ -1944,11 +1948,14 @@ async function renderAlmoxPainelLider(){
       <div style="font-size:11px;color:var(--text3)">${r.vals.length} contagem(ns)</div>
     </div>`;
   }).join('');
-  const divRows=(divs||[]).slice(0,15).map(d=>{
+  const origemLabel={rotativo:'Rotativo',t1:'T-1',rua:'Rua'};
+  const origemCor={rotativo:'var(--blue)',t1:'var(--purple,#7C3AED)',rua:'var(--amber)'};
+  const divRows=divFiltradas.slice(0,20).map(d=>{
     const acur=d.acuracia!=null?parseFloat(d.acuracia):null;
     const cor=acur==null?'var(--text3)':acur>=95?'var(--green)':acur>=80?'var(--amber)':'var(--red)';
-    return`<div style="display:grid;grid-template-columns:80px 1fr 80px 80px 80px 120px;gap:8px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--border2);font-size:12px">
-      <div style="font-weight:800;color:var(--text3)">${d.origem==='t1'?'T-1':'Rua'}</div>
+    const ocor=origemCor[d.origem]||'var(--text3)';
+    return`<div style="display:grid;grid-template-columns:90px 1fr 80px 80px 80px 120px;gap:8px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--border2);font-size:12px">
+      <div><span style="background:${ocor}20;color:${ocor};border:1px solid ${ocor}50;border-radius:99px;padding:2px 8px;font-size:10px;font-weight:900">${origemLabel[d.origem]||d.origem||'—'}</span></div>
       <div style="color:var(--text);font-weight:700">${d.nome_item||d.cod_sap||'—'}</div>
       <div style="text-align:center;font-family:'DM Mono',monospace">${d.qtd_sap!=null?d.qtd_sap:'—'}</div>
       <div style="text-align:center;font-family:'DM Mono',monospace">${d.qtd_fisica!=null?d.qtd_fisica:'—'}</div>
@@ -1977,7 +1984,7 @@ async function renderAlmoxPainelLider(){
     ${secTitle('📊','Painel do Líder — Almoxarifado')}
     ${tabs}
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
-      ${kpi('Divergências abertas',divAberta,0,'',divAberta>0,0)}
+      ${kpi('Divergências abertas',divTodas.length,0,'',divTodas.length>0,0)}
       ${acurT1!=null?kpi('Acurácia T-1 hoje',acurT1+'%',null,'',acurT1<95,0):kpi('Acurácia T-1 hoje','—',null,'',false,0)}
       ${acurRua!=null?kpi('Acurácia ruas hoje',acurRua+'%',null,'',acurRua<95,0):kpi('Acurácia ruas hoje','—',null,'',false,0)}
     </div>
@@ -1994,8 +2001,15 @@ async function renderAlmoxPainelLider(){
     </div>
     ${ruaKpis?`${secTitle('📦','Histórico por Rua')}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:20px">${ruaKpis}</div>`:''}
     ${secTitle('⚠️','Divergências Abertas')}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+      ${[{k:'todas',l:'Todas',c:divTodas.length},{k:'rotativo',l:'Rotativo',c:cntPorOrigem.rotativo},{k:'t1',l:'T-1',c:cntPorOrigem.t1},{k:'rua',l:'Rua',c:cntPorOrigem.rua}].map(o=>{
+        const ativo=divFiltroOrigem===o.k;
+        return`<button onclick="S._divOrigem='${o.k}';renderAlmoxPainelLider()" style="cursor:pointer;padding:5px 14px;border-radius:20px;font-family:inherit;font-size:12px;font-weight:800;border:1px solid ${ativo?'var(--blue)':'var(--border)'};background:${ativo?'var(--blue)':'var(--surface2)'};color:${ativo?'#fff':'var(--text3)'}">${o.l} <span style="opacity:.8">(${o.c})</span></button>`;
+      }).join('')}
+      <button onclick="S._divOrigem='todas';renderAlmoxPainelLider()" style="margin-left:auto;padding:5px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">🔄</button>
+    </div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:14px">
-      ${divRows?`<div style="display:grid;grid-template-columns:80px 1fr 80px 80px 80px 120px;gap:8px;background:var(--surface2);border-bottom:1px solid var(--border);padding:9px 14px;font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)">
+      ${divRows?`<div style="display:grid;grid-template-columns:90px 1fr 80px 80px 80px 120px;gap:8px;background:var(--surface2);border-bottom:1px solid var(--border);padding:9px 14px;font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)">
         <div>Origem</div><div>Item</div><div style="text-align:center">SAP</div><div style="text-align:center">Físico</div><div style="text-align:center">Acurácia</div><div></div>
       </div>${divRows}`:`<div class="empty">Nenhuma divergência aberta 🎉</div>`}
     </div>
@@ -2012,6 +2026,7 @@ async function renderAlmoxCompras(){
   if(!isLider){setMain(`<div class="empty">Acesso restrito ao Líder de Suprimentos</div>`);return;}
   const{data:pedidos}=await sb.from('almoxo_pedidos_compra').select('*').eq('garagem_id',gid).order('criado_em',{ascending:false});
   const all=pedidos||[];
+  window._comprasPedidosCache=all;
   const filtroStatus=S._almoxComprasStatus||'aberto';
   const hoje=new Date();hoje.setHours(0,0,0,0);
   const isVencido=p=>p.data_previsao_entrega&&new Date(p.data_previsao_entrega+'T12:00:00')<hoje&&p.status!=='recebido';
@@ -2080,8 +2095,33 @@ async function renderAlmoxCompras(){
     </tr></thead>
     <tbody>${tRows}</tbody>
   </table></div>`;
+  // Análise: prazo médio e itens mais solicitados
+  const recebidos=all.filter(p=>p.status==='recebido'&&p.criado_em&&p.atualizado_em);
+  const prazoMedio=recebidos.length?Math.round(recebidos.reduce((s,p)=>{
+    const dias=(new Date(p.atualizado_em)-new Date(p.criado_em))/(1000*60*60*24);return s+dias;
+  },0)/recebidos.length):null;
+  const itensCnt={};all.forEach(p=>{const k=p.item||'—';itensCnt[k]=(itensCnt[k]||0)+1;});
+  const topItens=Object.entries(itensCnt).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const analise=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px">
+      <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">⏱ Prazo Médio de Atendimento</div>
+      <div style="font-family:'DM Mono',monospace;font-size:28px;font-weight:900;color:${prazoMedio==null?'var(--text3)':prazoMedio<=7?'var(--green)':prazoMedio<=15?'var(--amber)':'var(--red)'}">${prazoMedio!=null?prazoMedio+'d':'—'}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">${recebidos.length} pedido(s) concluído(s)</div>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px">
+      <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">🔝 Itens Mais Solicitados</div>
+      ${topItens.length?topItens.map(([item,cnt])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border2);font-size:12px"><span style="font-weight:700;color:var(--text)">${escHtml(item)}</span><span style="font-family:'DM Mono',monospace;font-weight:900;color:var(--blue)">${cnt}x</span></div>`).join(''):'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
+    </div>
+  </div>`;
   const backCompras=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
-  setMain(`<div style="padding:24px">${backCompras}<div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 16px"><h2 style="margin:0;font-size:20px;font-weight:900">🛒 Pedidos de Compra</h2></div>${kpis}${filtrNav}${tabela}</div>`);
+  const headerCompras=`<div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 16px">
+    <h2 style="margin:0;font-size:20px;font-weight:900">🛒 Pedidos de Compra</h2>
+    <div style="display:flex;gap:8px">
+      <button onclick="almoxComprasPDF()" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:800;font-family:inherit;cursor:pointer">📄 Exportar PDF</button>
+      <button onclick="almoxComprasNovoModal()" style="padding:8px 16px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:800;font-family:inherit;cursor:pointer">+ Novo Pedido</button>
+    </div>
+  </div>`;
+  setMain(`<div style="padding:24px">${backCompras}${headerCompras}${kpis}${filtrNav}${analise}${tabela}</div>`);
 }
 
 function almoxComprasAbrirModal(titulo,html,onConfirm){
@@ -2098,6 +2138,109 @@ function almoxComprasAbrirModal(titulo,html,onConfirm){
   </div>`;
   document.body.appendChild(ov);
   window._acModalConfirm=onConfirm;
+}
+
+async function almoxComprasNovoModal(){
+  const gid=getGid();
+  const{data:frota}=await sb.from('frota').select('prefixo').eq('garagem_id',gid).order('prefixo');
+  const prefixos=(frota||[]).map(f=>f.prefixo);
+  almoxComprasAbrirModal('➕ Novo Pedido de Compra',`
+    <div style="display:grid;gap:14px">
+      <div>
+        <label style="font-size:12px;font-weight:800;color:var(--text3)">Item / Peça *</label>
+        <input id="npc-item" placeholder="Ex: Filtro de óleo" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:12px;font-weight:800;color:var(--text3)">Cód. SAP</label>
+          <input id="npc-sap" placeholder="Opcional" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:800;color:var(--text3)">Quantidade *</label>
+          <input id="npc-qtd" type="number" min="1" value="1" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:12px;font-weight:800;color:var(--text3)">Prefixo (veículo)</label>
+          <input id="npc-pref" list="npc-pref-list" placeholder="Ex: 1234" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+          <datalist id="npc-pref-list">${prefixos.map(p=>`<option value="${escHtml(p)}">`).join('')}</datalist>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:800;color:var(--text3)">Nº OS</label>
+          <input id="npc-os" placeholder="Opcional" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+        </div>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:800;color:var(--text3)">Observação</label>
+        <textarea id="npc-obs" placeholder="Urgência, fornecedor sugerido, motivo..." rows="2" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;resize:vertical;box-sizing:border-box"></textarea>
+      </div>
+    </div>`,
+    async()=>{
+      const item=document.getElementById('npc-item')?.value?.trim();
+      const qtd=parseInt(document.getElementById('npc-qtd')?.value)||1;
+      if(!item){toast('Informe o item','err');return;}
+      const now=new Date().toISOString();
+      const payload={
+        garagem_id:gid,
+        item,
+        cod_sap:document.getElementById('npc-sap')?.value?.trim()||null,
+        quantidade:qtd,
+        prefixo:document.getElementById('npc-pref')?.value?.trim()||null,
+        os_numero:document.getElementById('npc-os')?.value?.trim()||null,
+        observacao:document.getElementById('npc-obs')?.value?.trim()||null,
+        status:'pendente',
+        solicitante_id:S.user?.id,
+        solicitante_nome:S.perfil?.nome||null,
+        fup_logs:[{data:now,responsavel:S.perfil?.nome||'Suprimentos',nota:'Pedido criado'}],
+        criado_em:now,
+        atualizado_em:now
+      };
+      const{error}=await sb.from('almoxo_pedidos_compra').insert(payload);
+      if(error){toast('Erro: '+error.message,'err');return;}
+      document.getElementById('ac-modal-overlay')?.remove();
+      toast('✅ Pedido criado com sucesso');
+      renderAlmoxCompras();
+    }
+  );
+}
+
+function almoxComprasPDF(){
+  const gid=getGid();
+  const all=window._comprasPedidosCache||[];
+  const abertos=all.filter(p=>['pendente','enviado_matriz','aguardando_entrega'].includes(p.status));
+  const fmtDate=s=>{if(!s)return'—';const[a,m,d]=String(s).split('-');return`${d}/${m}/${a}`;};
+  const corStatus={pendente:'#EF4444',enviado_matriz:'#2563EB',aguardando_entrega:'#C8A24A',recebido:'#00C48C'};
+  const labelStatus={pendente:'Pendente',enviado_matriz:'Enviado',aguardando_entrega:'Aguardando',recebido:'Recebido'};
+  const hoje=new Date();hoje.setHours(0,0,0,0);
+  const rows=abertos.map(p=>{
+    const vencido=p.data_previsao_entrega&&new Date(p.data_previsao_entrega+'T12:00:00')<hoje;
+    const lastFup=p.fup_logs?.length?p.fup_logs[0].nota:'—';
+    return`<tr style="${vencido?'background:#fff3f3':''}">
+      <td>${escHtml(p.prefixo||'—')}</td>
+      <td><b>${escHtml(p.item||'—')}</b>${p.cod_sap?`<br><small style="color:#666">${escHtml(p.cod_sap)}</small>`:''}</td>
+      <td style="text-align:center">${p.quantidade||1}</td>
+      <td>${escHtml(p.os_numero||'—')}</td>
+      <td><span style="color:${corStatus[p.status]||'#666'};font-weight:700">${labelStatus[p.status]||p.status}</span></td>
+      <td style="${vencido?'color:#EF4444;font-weight:700':''}">${fmtDate(p.data_previsao_entrega)}${vencido?' ⚠️':''}</td>
+      <td style="font-size:11px;color:#555">${escHtml(lastFup)}</td>
+    </tr>`;
+  }).join('');
+  const dtStr=new Date().toLocaleDateString('pt-BR');
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8">
+  <style>body{font-family:Arial,sans-serif;font-size:12px;margin:24px}
+  h2{font-size:16px;margin:0 0 4px}p{margin:0 0 16px;color:#666;font-size:11px}
+  table{width:100%;border-collapse:collapse}
+  th{background:#1E293B;color:#fff;padding:8px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+  td{padding:7px 10px;border-bottom:1px solid #e2e8f0;vertical-align:top}
+  tr:hover td{background:#f8fafc}
+  @page{size:A4 landscape;margin:15mm}</style></head><body>
+  <h2>JTP Transportes — Pedidos de Compra em Aberto</h2>
+  <p>Emitido em ${dtStr} · ${abertos.length} pedido(s) em aberto</p>
+  <table><thead><tr><th>Prefixo</th><th>Item</th><th>Qtd</th><th>OS</th><th>Status</th><th>Prazo</th><th>Último FUP</th></tr></thead>
+  <tbody>${rows}</tbody></table></body></html>`;
+  const dtFile=new Date().toISOString().slice(0,10).replace(/-/g,'');
+  downloadPDF(html,`JTP_Compras_${dtFile}.pdf`);
 }
 
 async function almoxComprasEnviarMatriz(id){
@@ -11331,6 +11474,7 @@ function prevSalvarSemanaHistorico(escala,linhas){
   };
   h.semanas=[rec,...h.semanas.filter(s=>s.id!==id)].slice(0,30);
   prevSalvarHistoricos(h);
+  window._prevUltProgMap=null; // força rebuild na próxima renderização
   return rec;
 }
 async function prevSalvarProgramacaoPreventivaBanco(semana){
@@ -11839,17 +11983,41 @@ function prevMiniSemana(selSet,tipo,capDia){
     </div>`;
   }).join('')}</div>`;
 }
+function prevUltProgramacaoMap(){
+  if(window._prevUltProgMap) return window._prevUltProgMap;
+  const h=prevHistoricos();
+  const map={};
+  // semanas estão do mais recente para o mais antigo
+  (h.semanas||[]).forEach(s=>{
+    (s.itens||[]).forEach(it=>{
+      if(it.prefixo&&!map[it.prefixo]){
+        map[it.prefixo]={inicio:s.inicio,fim:s.fim,inicioBR:s.inicioBR||s.inicio};
+      }
+    });
+  });
+  window._prevUltProgMap=map;
+  return map;
+}
 function prevHtmlLinhaVeiculo(c,tipo,selecionado){
   const km=c.prioridade||c.base?.excessoKm||0;
   const kmCor=km>0?'var(--red)':km<=-1000?'var(--green)':'var(--amber)';
   const outros=c.outrosRadar||[];
   const outrosStr=outros.slice(0,3).map(r=>`<span style="font-size:9px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:1px 5px;color:var(--amber)">${prevEsc(r.planoNum)}</span>`).join(' ');
+  const ultProg=prevUltProgramacaoMap()[c.prefixo]||null;
+  let ultProgHtml='<span style="color:var(--text3);font-size:10px">—</span>';
+  if(ultProg){
+    const diasAtras=ultProg.inicio?Math.floor((new Date()-new Date(ultProg.inicio+'T12:00:00'))/(1000*60*60*24)):null;
+    const cor=diasAtras==null?'var(--text3)':diasAtras<=14?'var(--green)':diasAtras<=30?'var(--amber)':'var(--red)';
+    const fmtIni=ultProg.inicioBR||ultProg.inicio;
+    ultProgHtml=`<div style="font-family:'DM Mono',monospace;font-size:11px;font-weight:800;color:${cor}">${prevEsc(fmtIni)}</div>${diasAtras!=null?`<div style="font-size:9px;color:var(--text3)">${diasAtras}d atrás</div>`:''}`;
+  }
   return`<tr style="border-top:1px solid var(--border);background:${selecionado?'rgba(37,99,235,.06)':'transparent'}">
     <td style="padding:8px 10px;text-align:center"><input type="checkbox" ${selecionado?'checked':''} onchange="prevToggleSel('${tipo}','${prevEsc(c.prefixo)}',this.checked)" style="width:16px;height:16px;cursor:pointer"></td>
     <td style="padding:8px 10px;font-weight:900;color:var(--blue);font-family:'DM Mono',monospace">${prevEsc(c.prefixo)}</td>
     <td style="padding:8px 10px;font-family:'DM Mono',monospace;font-weight:900;color:${kmCor}">${prevFmtKm(km)}</td>
     <td style="padding:8px 10px;color:var(--text3);font-size:11px">${prevEsc(prevResumoServicos(c,tipo==='gar20'||tipo==='gar30'?'garantia':tipo))}</td>
     <td style="padding:8px 10px">${outrosStr}</td>
+    <td style="padding:8px 10px">${ultProgHtml}</td>
   </tr>`;
 }
 function prevHtmlAbaLista(tipo){
@@ -11931,7 +12099,7 @@ function prevHtmlAbaLista(tipo){
     </div>`:''}
     ${lista.length?`<div style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:560px">
       <thead><tr style="background:rgba(2,6,23,.6);color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:1px;text-align:left">
-        <th style="padding:8px 10px">✓</th><th style="padding:8px 10px">Prefixo</th><th style="padding:8px 10px">KM Excedido</th><th style="padding:8px 10px">Serviços</th><th style="padding:8px 10px">Outros planos</th>
+        <th style="padding:8px 10px">✓</th><th style="padding:8px 10px">Prefixo</th><th style="padding:8px 10px">KM Excedido</th><th style="padding:8px 10px">Serviços</th><th style="padding:8px 10px">Outros planos</th><th style="padding:8px 10px">Últ. Prog.</th>
       </tr></thead><tbody>${linhas}</tbody></table></div>`
       :`<div style="padding:20px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhum veículo neste plano.</div>`}
   </div>`;
