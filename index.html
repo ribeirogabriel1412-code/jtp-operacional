@@ -308,6 +308,7 @@ tr:hover td{background:#1F293780}
         <button class="sub-btn" onclick="navToSub('ferr-almox-inv')">📋 Inventários</button>
         <button class="sub-btn" onclick="navToSub('ferr-almox-wms')">🗂️ WMS — Catálogo</button>
         <button class="sub-btn" onclick="navToSub('ferr-almox-painel')">📊 Painel do Líder</button>
+        <button class="sub-btn" onclick="navToSub('ferr-almox-acuracia')">📈 Acurácia</button>
         <button class="sub-btn" onclick="navToSub('ferr-almox-compras')">🛒 Pedidos de Compra</button>
         <button class="sub-btn" onclick="navToSub('ferr-almox-iup')">💰 IUP</button>
         <button class="sub-btn" onclick="navToSub('ferr-almox-dev')">↩️ Devolução</button>
@@ -987,7 +988,7 @@ function navToSub(sub){
   S.subtela=sub;
   document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes(sub))b.classList.add('active')});
-  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-218':renderFerr218,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-almox-inv':renderAlmoxInventario,'ferr-almox-wms':renderAlmoxWMS,'ferr-almox-painel':renderAlmoxPainelLider,'ferr-almox-compras':renderAlmoxCompras,'ferr-almox-iup':renderAlmoxIUP,'ferr-almox-dev':renderAlmoxDevolucao,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios,'ferr-lubri':renderFerrLubri,'ferr-pecas':renderFerrPecas};
+  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-218':renderFerr218,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-almox-inv':renderAlmoxInventario,'ferr-almox-wms':renderAlmoxWMS,'ferr-almox-painel':renderAlmoxPainelLider,'ferr-almox-compras':renderAlmoxCompras,'ferr-almox-iup':renderAlmoxIUP,'ferr-almox-dev':renderAlmoxDevolucao,'ferr-almox-acuracia':renderAlmoxAcuracia,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios,'ferr-lubri':renderFerrLubri,'ferr-pecas':renderFerrPecas};
   if(map[sub]) map[sub]();
 }
 
@@ -2670,6 +2671,155 @@ async function almoxSalvarDevolucao(){
   renderAlmoxDevolucao();
 }
 
+// ── ALMOXARIFADO: Painel de Acurácia ─────────────────────────────────────────
+async function renderAlmoxAcuracia(){
+  const gid=getGid();
+  setMain(`<div class="loading"><div class="spinner"></div></div>`);
+  const cargosAcesso=['lider_suprimentos','lider_almoxarifado','coordenador','supervisor','diretoria','gerente_garagem'];
+  const temAcesso=cargosAcesso.includes(S.perfil?.cargo)||S.perfil?.is_admin;
+  if(!temAcesso){setMain(`<div class="empty">Acesso restrito ao Líder de Suprimentos, Coordenador e Supervisor</div>`);return;}
+  const dias=S._acurDias||30;
+  const almoxFiltro=S._acurAlmox||'todos';
+  const dataCorte=new Date();
+  dataCorte.setDate(dataCorte.getDate()-dias);
+  const dataCorteIso=dataCorte.toISOString().split('T')[0];
+  const fmtMoney=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+  const safe=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const[{data:rotRaw},{data:t1Raw},{data:perfisAlmox}]=await Promise.all([
+    sb.from('almoxo_inventario_turno').select('*').eq('garagem_id',gid).gte('turno_data',dataCorteIso).order('registrado_em',{ascending:false}),
+    sb.from('almoxo_inventario_t1').select('*').eq('garagem_id',gid).not('req_id','is',null).gte('turno_data',dataCorteIso).order('conferido_em',{ascending:false}),
+    sb.from('perfis').select('id,nome,cargo').eq('garagem_id',gid).in('cargo',['almoxarifado','lider_almoxarifado','lider_suprimentos']).order('nome')
+  ]);
+  const rot=(rotRaw||[]).filter(r=>almoxFiltro==='todos'||r.almoxarife_id===almoxFiltro);
+  const t1=t1Raw||[];
+  // Mapa T-1 por req_id para confronto
+  const t1Map={};t1.forEach(i=>{if(i.req_id)t1Map[i.req_id]=i;});
+  // KPIs rotativo
+  const rotComAcur=rot.filter(r=>r.acuracia!=null);
+  const acurRotMedia=rotComAcur.length?Math.round(rotComAcur.reduce((s,i)=>s+parseFloat(i.acuracia),0)/rotComAcur.length):null;
+  // KPIs T-1
+  const t1ComAcur=t1.filter(i=>i.acuracia!=null);
+  const acurT1Media=t1ComAcur.length?Math.round(t1ComAcur.reduce((s,i)=>s+parseFloat(i.acuracia),0)/t1ComAcur.length):null;
+  // Confronto: itens com contagem em AMBAS as tabelas
+  const confronto=rot.filter(r=>r.req_id&&t1Map[r.req_id]).map(r=>{
+    const t=t1Map[r.req_id];
+    const divFis=parseFloat(r.qtd_fisica||0)-parseFloat(t.qtd_fisica||0);
+    const divSap=parseFloat(r.qtd_sap||0)-parseFloat(t.qtd_sap||0);
+    const temDesvio=Math.abs(divFis)>0.001||Math.abs(divSap)>0.001;
+    return{...r,t1:t,divFis,divSap,temDesvio};
+  });
+  const totalConfronto=confronto.length;
+  const desviosConfronto=confronto.filter(c=>c.temDesvio).length;
+  const acurConfronto=totalConfronto>0?Math.round((1-desviosConfronto/totalConfronto)*100):null;
+  // Por almoxarife
+  const porAlmox={};
+  rot.forEach(r=>{
+    const k=r.almoxarife_id||'sem_id';
+    if(!porAlmox[k])porAlmox[k]={nome:r.almoxarife_nome||'—',vals:[],desvios:0};
+    if(r.acuracia!=null)porAlmox[k].vals.push(parseFloat(r.acuracia));
+    if(r.acuracia!=null&&parseFloat(r.acuracia)<100)porAlmox[k].desvios++;
+  });
+  const corAcur=v=>v==null?'var(--text3)':v>=95?'var(--green)':v>=80?'var(--amber)':'var(--red)';
+  const kpiCard=(label,val,sub,alerta)=>`<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${alerta?'var(--red)':'var(--blue)'};border-radius:12px;padding:18px 22px">
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">${label}</div>
+    <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:900;color:${alerta?'var(--red)':'var(--text)'}">${val}</div>
+    ${sub?`<div style="font-size:11px;color:var(--text3);margin-top:4px">${sub}</div>`:''}
+  </div>`;
+  // Seletor de período
+  const seletorDias=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;align-items:center">
+    <span style="font-size:12px;font-weight:700;color:var(--text3)">Período:</span>
+    ${[7,15,30,60].map(d=>`<button onclick="S._acurDias=${d};renderAlmoxAcuracia()" style="cursor:pointer;padding:6px 14px;border-radius:7px;font-size:12px;font-weight:800;font-family:'DM Sans',sans-serif;border:1px solid ${dias===d?'var(--blue)':'var(--border)'};${dias===d?'background:var(--blue);color:#fff':'background:var(--surface2);color:var(--text3)'}">Últimos ${d}d</button>`).join('')}
+    <span style="font-size:12px;font-weight:700;color:var(--text3);margin-left:8px">Almoxarife:</span>
+    <select onchange="S._acurAlmox=this.value;renderAlmoxAcuracia()" style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 10px;font-size:12px;font-family:'DM Sans',sans-serif">
+      <option value="todos" ${almoxFiltro==='todos'?'selected':''}>Todos</option>
+      ${(perfisAlmox||[]).map(p=>`<option value="${p.id}" ${almoxFiltro===p.id?'selected':''}>${safe(p.nome)}</option>`).join('')}
+    </select>
+    <button onclick="renderAlmoxAcuracia()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:7px 14px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">🔄</button>
+  </div>`;
+  // Tabela de confronto
+  const hdrGrid='display:grid;grid-template-columns:1fr 80px 110px 110px 90px 90px 100px;gap:8px;align-items:center';
+  const confrontoRows=confronto.sort((a,b)=>Math.abs(b.divFis)-Math.abs(a.divFis)).map(c=>{
+    const cor=c.temDesvio?'var(--red)':'var(--green)';
+    const bgRow=c.temDesvio?'background:#EF444408;border-left:3px solid var(--red)':'border-left:3px solid transparent';
+    const acRot=c.acuracia!=null?parseFloat(c.acuracia):null;
+    const acT1=c.t1?.acuracia!=null?parseFloat(c.t1.acuracia):null;
+    return`<div style="${hdrGrid};${bgRow};padding:10px 14px;border-bottom:1px solid var(--border2);font-size:12px">
+      <div>
+        <div style="font-weight:700;color:var(--text)">${safe(c.nome_item||'—')}</div>
+        ${c.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber)">${safe(c.cod_sap)}</div>`:''}
+        <div style="font-size:10px;color:var(--text3)">${c.almoxarife_nome||'—'} · ${c.turno_data||'—'}</div>
+      </div>
+      <div style="text-align:center;font-family:'DM Mono',monospace;font-size:13px;font-weight:800;color:var(--blue)">${c.qtd_fisica??'—'}</div>
+      <div style="text-align:center;font-family:'DM Mono',monospace;font-size:13px;font-weight:800;color:${corAcur(acRot)}">${acRot!=null?acRot+'%':'—'}</div>
+      <div style="text-align:center;font-family:'DM Mono',monospace;font-size:13px;font-weight:800;color:var(--blue)">${c.t1?.qtd_fisica??'—'}</div>
+      <div style="text-align:center;font-family:'DM Mono',monospace;font-size:13px;font-weight:800;color:${corAcur(acT1)}">${acT1!=null?acT1+'%':'—'}</div>
+      <div style="text-align:center;font-family:'DM Mono',monospace;font-size:14px;font-weight:900;color:${cor}">${c.temDesvio?(c.divFis>0?'+':'')+c.divFis.toFixed(1):'✅ OK'}</div>
+      <div style="text-align:center"><span style="background:${c.temDesvio?'#EF444420':'#00C48C20'};color:${cor};border:1px solid ${c.temDesvio?'#EF444460':'#00C48C60'};border-radius:99px;padding:2px 8px;font-size:10px;font-weight:900">${c.temDesvio?'⚠️ DESVIO':'✅ OK'}</span></div>
+    </div>`;
+  }).join('');
+  // Tabela rotativo sem confronto (só contagem própria)
+  const rotSemT1=rot.filter(r=>!r.req_id||!t1Map[r.req_id]);
+  const rotRows=rotSemT1.slice(0,20).map(r=>{
+    const acur=r.acuracia!=null?parseFloat(r.acuracia):null;
+    const cor=corAcur(acur);
+    return`<div style="display:grid;grid-template-columns:1fr 70px 70px 70px 90px;gap:8px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--border2);font-size:12px">
+      <div>
+        <div style="font-weight:700">${safe(r.nome_item||'—')}</div>
+        ${r.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber)">${safe(r.cod_sap)}</div>`:''}
+        <div style="font-size:10px;color:var(--text3)">${r.almoxarife_nome||'—'} · ${r.turno_data||'—'}</div>
+      </div>
+      <div style="text-align:center;font-family:'DM Mono',monospace">${r.qtd_praxio??'—'}</div>
+      <div style="text-align:center;font-family:'DM Mono',monospace">${r.qtd_sap??'—'}</div>
+      <div style="text-align:center;font-family:'DM Mono',monospace">${r.qtd_fisica??'—'}</div>
+      <div style="text-align:center;font-family:'DM Mono',monospace;font-weight:900;color:${cor}">${acur!=null?acur+'%':'—'}</div>
+    </div>`;
+  }).join('');
+  // Por almoxarife
+  const almoxRows=Object.values(porAlmox).sort((a,b)=>b.vals.length-a.vals.length).map(a=>{
+    const med=a.vals.length?Math.round(a.vals.reduce((s,v)=>s+v,0)/a.vals.length):null;
+    const cor=corAcur(med);
+    return`<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${cor};border-radius:10px;padding:14px 18px">
+      <div style="font-weight:900;font-size:13px;color:var(--text);margin-bottom:4px">${safe(a.nome)}</div>
+      <div style="font-family:'DM Mono',monospace;font-size:24px;font-weight:900;color:${cor}">${med!=null?med+'%':'—'}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">${a.vals.length} contagem(ns) · ${a.desvios} desvio(s)</div>
+    </div>`;
+  }).join('');
+  setMain(`
+    ${secTitle('📈','Acurácia — Inventários Almoxarifado')}
+    <button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>
+    ${seletorDias}
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:24px">
+      ${kpiCard('Acurácia Rotativo',acurRotMedia!=null?acurRotMedia+'%':'—',`${rotComAcur.length} contagem(ns)`,acurRotMedia!=null&&acurRotMedia<95)}
+      ${kpiCard('Acurácia T-1',acurT1Media!=null?acurT1Media+'%':'—',`${t1ComAcur.length} contagem(ns)`,acurT1Media!=null&&acurT1Media<95)}
+      ${kpiCard('Confronto entre turnos',acurConfronto!=null?acurConfronto+'%':'—',`${totalConfronto} itens em ambos os inventários`,acurConfronto!=null&&acurConfronto<95)}
+      ${kpiCard('Desvios entre contagens',desviosConfronto,`de ${totalConfronto} confrontados`,desviosConfronto>0)}
+    </div>
+    ${almoxRows?`${secTitle('👤','Por Almoxarife')}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:24px">${almoxRows}</div>`:''}
+    ${confronto.length?`
+    ${secTitle('⚖️','Confronto entre turnos',`<span style="font-size:11px;color:var(--text3);font-weight:400">Itens com contagem Rotativo <b>e</b> T-1 — mesmo item contado por dois almoxarifes diferentes</span>`)}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:20px">
+      <div style="${hdrGrid};background:var(--surface2);border-bottom:1px solid var(--border);padding:9px 14px;font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)">
+        <div>Item</div>
+        <div style="text-align:center">Fís. Rot.</div>
+        <div style="text-align:center">Acur. Rot.</div>
+        <div style="text-align:center">Fís. T-1</div>
+        <div style="text-align:center">Acur. T-1</div>
+        <div style="text-align:center">Diferença</div>
+        <div style="text-align:center">Status</div>
+      </div>
+      ${confrontoRows||'<div class="empty">Nenhum confronto disponível</div>'}
+    </div>`:`<div class="info-blue info-banner">💡 Confronto aparece quando um mesmo item é contado no Inventário Rotativo (almoxarife A) e também na conferência T-1 (almoxarife B). Acumula conforme o uso.</div>`}
+    ${rotSemT1.length?`
+    ${secTitle('📋','Contagens sem confronto T-1',`${rotSemT1.length} registro(s)`)}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:20px">
+      <div style="display:grid;grid-template-columns:1fr 70px 70px 70px 90px;gap:8px;background:var(--surface2);border-bottom:1px solid var(--border);padding:9px 14px;font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)">
+        <div>Item</div><div style="text-align:center">PRAXIO</div><div style="text-align:center">SAP</div><div style="text-align:center">Físico</div><div style="text-align:center">Acurácia</div>
+      </div>
+      ${rotRows}
+      ${rotSemT1.length>20?`<div style="padding:10px 14px;font-size:11px;color:var(--text3);text-align:center">Exibindo 20 de ${rotSemT1.length} registros</div>`:''}
+    </div>`:''}
+  `);
+}
 // ── fim Almoxarifado ─────────────────────────────────────────────────────────
 
 function renderPainelComprasSuprimentosValet(data,lista,safe,rowId,fmtMoney){
@@ -3943,6 +4093,7 @@ function renderFerramentas(){
     'ferr-almox-compras':'Acompanhamento de pedidos de compra: status, FUP com a Matriz e prazo de entrega.',
     'ferr-almox-iup':'Dashboard financeiro de peças: custo total por veículo e tipo de OS. Fonte PRAXIO.',
     'ferr-almox-dev':'Registro de devoluções de peças ao estoque com rastreabilidade completa.',
+    'ferr-almox-acuracia':'Painel de acurácia dos inventários: confronto entre contagem do almoxarife (Rotativo) e conferência do turno seguinte (T-1).',
     'ferr-211':'Todos os veículos parados com tempo, status e previsão. Alerta automático de vencimento.',
     'ferr-212':'Disponibilidade, MTTR, OS por tipo e ranking de mecânicos. Atualizado em tempo real.',
     'ferr-pecas':'Visão unificada de todas as peças por prefixo: estoque, em compra, prazo e FUP. Compartilhado entre Almox e PCM.',
@@ -3995,6 +4146,7 @@ function atualizarSubmenuFerramentas(){
     'ferr-almox-compras':'🛒 Pedidos de Compra',
     'ferr-almox-iup':'💰 IUP',
     'ferr-almox-dev':'↩️ Devolução',
+    'ferr-almox-acuracia':'📈 Acurácia',
     'ferr-pecas':'🔩 Peças & Compras',
   };
   const subFerr=document.getElementById('sub-ferr');
