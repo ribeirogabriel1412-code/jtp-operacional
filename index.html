@@ -11991,7 +11991,7 @@ function prevUltProgramacaoMap(){
   (h.semanas||[]).forEach(s=>{
     (s.itens||[]).forEach(it=>{
       if(it.prefixo&&!map[it.prefixo]){
-        map[it.prefixo]={inicio:s.inicio,fim:s.fim,inicioBR:s.inicioBR||s.inicio};
+        map[it.prefixo]={inicio:s.inicio,fim:s.fim,inicioBR:s.inicioBR||s.inicio,tipo:it.tipo||''};
       }
     });
   });
@@ -12009,7 +12009,10 @@ function prevHtmlLinhaVeiculo(c,tipo,selecionado){
     const diasAtras=ultProg.inicio?Math.floor((new Date()-new Date(ultProg.inicio+'T12:00:00'))/(1000*60*60*24)):null;
     const cor=diasAtras==null?'var(--text3)':diasAtras<=14?'var(--green)':diasAtras<=30?'var(--amber)':'var(--red)';
     const fmtIni=ultProg.inicioBR||ultProg.inicio;
-    ultProgHtml=`<div style="font-family:'DM Mono',monospace;font-size:11px;font-weight:800;color:${cor}">${prevEsc(fmtIni)}</div>${diasAtras!=null?`<div style="font-size:9px;color:var(--text3)">${diasAtras}d atrás</div>`:''}`;
+    const tipoMap={pesada:{l:'Pesada',c:'#EF4444'},leve:{l:'Leve',c:'#22C55E'},garantia:{l:'Garantia',c:'#2563EB'},valetamento:{l:'Valetamento',c:'#F97316'},gar20:{l:'Gar. 1º',c:'#2563EB'},gar30:{l:'Gar. 2º',c:'#7C3AED'}};
+    const tm=tipoMap[ultProg.tipo]||null;
+    const badge=tm?`<span style="font-size:9px;background:${tm.c}20;color:${tm.c};border:1px solid ${tm.c}50;border-radius:4px;padding:1px 5px;font-weight:800;margin-left:4px">${tm.l}</span>`:'';
+    ultProgHtml=`<div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px"><span style="font-family:'DM Mono',monospace;font-size:11px;font-weight:800;color:${cor}">${prevEsc(fmtIni)}</span>${badge}</div>${diasAtras!=null?`<div style="font-size:9px;color:var(--text3);margin-top:1px">${diasAtras}d atrás</div>`:''}`;
   }
   return`<tr style="border-top:1px solid var(--border);background:${selecionado?'rgba(37,99,235,.06)':'transparent'}">
     <td style="padding:8px 10px;text-align:center"><input type="checkbox" ${selecionado?'checked':''} onchange="prevToggleSel('${tipo}','${prevEsc(c.prefixo)}',this.checked)" style="width:16px;height:16px;cursor:pointer"></td>
