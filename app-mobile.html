@@ -2763,8 +2763,8 @@ async function almoxMobSalvarInvRotativo(reqId){
     }));
   }
   if(err){
-    if(err.code==='42703')toast('⚠️ Execute o SQL no Supabase para adicionar colunas qtd_praxio e req_id','err');
-    else toast('Erro: '+err.message,'err');
+    console.error('[InvRotativo] Erro Supabase:',JSON.stringify(err));
+    toast('Erro '+err.code+': '+err.message,'err');
     return;
   }
   if(Math.abs(sap-fis)>0.001){
