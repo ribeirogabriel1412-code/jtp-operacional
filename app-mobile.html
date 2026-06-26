@@ -2572,13 +2572,13 @@ async function telaAlmoxMobConferencia(){
     sb.from('requisicoes_compra').select('*').eq('garagem_id',gid)
       .gte('criado_em',windowFim.toISOString()).lte('criado_em',agora2.toISOString())
       .not('item_entregue','is',null).order('criado_em',{ascending:true}),
-    sb.from('almoxo_inventario_t1').select('*').eq('garagem_id',gid)
-      .not('req_id','is',null)
+    sb.from('almoxo_inventario_turno').select('*').eq('garagem_id',gid)
+      .eq('almoxarife_id',S.user?.id).not('req_id','is',null)
   ]);
   const listaT1=rawT1||[];
   const listaAtual=rawAtual||[];
 
-  // Mapa inventário por req_id
+  // Mapa inventário por req_id (somente contagens do próprio almoxarife)
   const invMap={};
   (invExist||[]).forEach(i=>{if(i.req_id)invMap[i.req_id]=i;});
 
@@ -2743,22 +2743,27 @@ async function almoxMobSalvarInvRotativo(reqId){
   const codSap=item.cod_sap_entregue||item.cod_sap||null;
   const nomeItem=item.item_entregue||item.peca||null;
   const existing=window._invRotMap?.[reqId]||null;
+  const turnoAtual=window._invRotTurno||{};
   let err;
   const payload={
     qtd_praxio:isNaN(praxio)?null:praxio,
     qtd_sap:sap,
     qtd_fisica:fis,
-    conferido_por:S.user?.id
+    acuracia:acur,
+    almoxarife_id:S.user?.id,
+    almoxarife_nome:S.perfil?.nome||null
   };
   if(existing){
-    ({error:err}=await sb.from('almoxo_inventario_t1').update(payload).eq('id',existing.id));
+    ({error:err}=await sb.from('almoxo_inventario_turno').update(payload).eq('id',existing.id));
   } else {
-    ({error:err}=await sb.from('almoxo_inventario_t1').insert({
+    ({error:err}=await sb.from('almoxo_inventario_turno').insert({
       garagem_id:gid,
       turno_data:hojeIso,
       req_id:reqId,
       cod_sap:codSap,
       nome_item:nomeItem,
+      hora_turno_ini:turnoAtual.hora_entrada||null,
+      hora_turno_fim:turnoAtual.hora_saida||null,
       ...payload
     }));
   }
