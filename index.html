@@ -9833,10 +9833,11 @@ async function renderFerrPCM(aba='painel'){
     const todosPrefixos=todasOS.map(o=>o.prefixo).filter(Boolean);
     // mapa prefixo → uuid (último OS aberto com esse prefixo)
     const osPrefToId={};todasOS.forEach(o=>{if(o.prefixo&&o.id)osPrefToId[String(o.prefixo)]=o.id;});
-    const[{data:todasReqs},{data:osPecas}]=await Promise.all([
-      todosPrefixos.length?sb.from('requisicoes_compra').select('id,ocorrencia_id,os_numero,prefixo,peca,cod_sap,quantidade,status').in('prefixo',todosPrefixos).neq('status','cancelado').order('criado_em',{ascending:true}):Promise.resolve({data:[]}),
+    const[{data:todasReqs,error:errReqs},{data:osPecas}]=await Promise.all([
+      todosPrefixos.length?sb.from('requisicoes_compra').select('id,ocorrencia_id,os_numero,prefixo,peca,cod_sap,quantidade,status').eq('garagem_id',gid).in('prefixo',todosPrefixos).neq('status','cancelado').order('criado_em',{ascending:true}):Promise.resolve({data:[]}),
       todosOsIds.length?sb.from('ordens_servico_pecas').select('id,ocorrencia_id,descricao,qtd,baixado').in('ocorrencia_id',todosOsIds).order('created_at',{ascending:true}):Promise.resolve({data:[]}),
     ]);
+    if(errReqs)console.error('[PCM] Erro ao buscar requisicoes_compra:',errReqs);
     const jaAdicionado=new Set();
     (todasReqs||[]).forEach(r=>{
       const ocId=r.ocorrencia_id||osNumToId[String(r.os_numero||'')]||osPrefToId[String(r.prefixo||'')];
