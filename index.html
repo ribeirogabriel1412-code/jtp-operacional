@@ -9821,6 +9821,18 @@ async function renderFerrPCM(aba='painel'){
   const{data:herdadasRaw}=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado').lt('hora_entrada',inicioFluxo).order('hora_entrada',{ascending:false});
   const herdadas=(herdadasRaw||[]).filter(o=>{try{return localStorage.getItem('oc22_ign_'+o.id+'_'+hoje())!=='1'}catch(e){return true}});
 
+  // Itens de peças das OS abertas (para exibir no card) — duas fontes
+  const todosOsIds=[...(ocs||[]),...(herdadas||[])].map(o=>o.id).filter(Boolean);
+  const reqsMap={};
+  if(todosOsIds.length){
+    const[{data:reqsPecas},{data:osPecas}]=await Promise.all([
+      sb.from('requisicoes_compra').select('id,ocorrencia_id,peca,cod_sap,quantidade,status').in('ocorrencia_id',todosOsIds).neq('status','cancelado').order('criado_em',{ascending:true}),
+      sb.from('ordens_servico_pecas').select('id,ocorrencia_id,descricao,qtd,baixado').in('ocorrencia_id',todosOsIds).order('created_at',{ascending:true}),
+    ]);
+    (reqsPecas||[]).forEach(r=>{if(!reqsMap[r.ocorrencia_id])reqsMap[r.ocorrencia_id]=[];reqsMap[r.ocorrencia_id].push({fonte:'req',peca:r.peca,cod_sap:r.cod_sap,quantidade:r.quantidade,status:r.status});});
+    (osPecas||[]).forEach(r=>{if(!reqsMap[r.ocorrencia_id])reqsMap[r.ocorrencia_id]=[];reqsMap[r.ocorrencia_id].push({fonte:'os',peca:r.descricao,cod_sap:null,quantidade:r.qtd||1,status:r.baixado?'baixado':'pendente_os'});});
+  }
+
   // Valetamento de preventivas — próximo sábado
   const pcmProxSab=(d=>{const dt=new Date(d+'T12:00:00');const diff=(6-dt.getDay()+7)%7||7;dt.setDate(dt.getDate()+diff);return dt.toISOString().slice(0,10);})(data);
   let pcmValetList=[];
@@ -9909,6 +9921,30 @@ async function renderFerrPCM(aba='painel'){
           <div style="font-size:10px;color:var(--text2)">${o.pecas_utilizadas||'<span style="color:var(--text4)">—</span>'}</div>
         </div>
       </div>
+      ${(()=>{
+        const reqs=reqsMap[o.id]||[];
+        if(!reqs.length) return '';
+        const STATUS_LABEL={pendente:{l:'⏳ Pendente',c:'var(--amber)'},solicitado_pcm:{l:'🔔 Solicitado',c:'var(--amber)'},aprovado:{l:'✅ Aprovado',c:'var(--blue)'},separado:{l:'📦 Separado',c:'var(--green)'},pedido_compra:{l:'🛒 Pedido Compra',c:'#8B5CF6'},comprado:{l:'🚚 Chegou',c:'var(--green)'},pendente_os:{l:'⏳ Ag. Baixa',c:'var(--amber)'},baixado:{l:'✅ Baixado',c:'var(--green)'}};
+        const rows=reqs.map(r=>{
+          const s=STATUS_LABEL[r.status]||{l:r.status,c:'var(--text3)'};
+          return`<div style="display:grid;grid-template-columns:1fr 40px auto;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border2)">
+            <div>
+              <span style="font-size:12px;font-weight:700;color:var(--text)">${r.peca||'—'}</span>
+              ${r.cod_sap?`<span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-left:6px">${r.cod_sap}</span>`:''}
+            </div>
+            <div style="text-align:center;font-family:'DM Mono',monospace;font-size:12px;font-weight:800;color:var(--text3)">${r.quantidade}x</div>
+            <div><span style="font-size:10px;font-weight:700;color:${s.c};background:${s.c}18;border:1px solid ${s.c}40;border-radius:99px;padding:2px 8px;white-space:nowrap">${s.l}</span></div>
+          </div>`;
+        }).join('');
+        const separados=reqs.filter(r=>['separado','comprado','baixado'].includes(r.status)).length;
+        return`<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">🔩 Peças Solicitadas ao Almox</span>
+            <span style="font-size:10px;font-weight:800;color:${separados===reqs.length?'var(--green)':'var(--amber)'}">${separados}/${reqs.length} separado(s)</span>
+          </div>
+          ${rows}
+        </div>`;
+      })()}
     </div>`;
   }).join('');
 
