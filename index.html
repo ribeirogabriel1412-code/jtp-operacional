@@ -9830,14 +9830,19 @@ async function renderFerrPCM(aba='painel'){
   const reqsMap={};
   const _pushReq=(ocId,item)=>{if(!reqsMap[ocId])reqsMap[ocId]=[];reqsMap[ocId].push(item);};
   if(todosOsIds.length||todosOsNumeros.length){
+    const todosPrefixos=todasOS.map(o=>o.prefixo).filter(Boolean);
+    // mapa prefixo → uuid (último OS aberto com esse prefixo)
+    const osPrefToId={};todasOS.forEach(o=>{if(o.prefixo&&o.id)osPrefToId[String(o.prefixo)]=o.id;});
     const queries=[
-      todosOsIds.length?sb.from('requisicoes_compra').select('id,ocorrencia_id,os_numero,peca,cod_sap,quantidade,status').in('ocorrencia_id',todosOsIds).neq('status','cancelado').order('criado_em',{ascending:true}):Promise.resolve({data:[]}),
-      todosOsNumeros.length?sb.from('requisicoes_compra').select('id,ocorrencia_id,os_numero,peca,cod_sap,quantidade,status').in('os_numero',todosOsNumeros).is('ocorrencia_id',null).neq('status','cancelado').order('criado_em',{ascending:true}):Promise.resolve({data:[]}),
+      todosOsIds.length?sb.from('requisicoes_compra').select('id,ocorrencia_id,os_numero,prefixo,peca,cod_sap,quantidade,status').in('ocorrencia_id',todosOsIds).neq('status','cancelado').order('criado_em',{ascending:true}):Promise.resolve({data:[]}),
+      todosOsNumeros.length?sb.from('requisicoes_compra').select('id,ocorrencia_id,os_numero,prefixo,peca,cod_sap,quantidade,status').in('os_numero',todosOsNumeros).is('ocorrencia_id',null).neq('status','cancelado').order('criado_em',{ascending:true}):Promise.resolve({data:[]}),
+      todosPrefixos.length?sb.from('requisicoes_compra').select('id,ocorrencia_id,os_numero,prefixo,peca,cod_sap,quantidade,status').in('prefixo',todosPrefixos).is('ocorrencia_id',null).is('os_numero',null).eq('data',data).neq('status','cancelado').order('criado_em',{ascending:true}):Promise.resolve({data:[]}),
       todosOsIds.length?sb.from('ordens_servico_pecas').select('id,ocorrencia_id,descricao,qtd,baixado').in('ocorrencia_id',todosOsIds).order('created_at',{ascending:true}):Promise.resolve({data:[]}),
     ];
-    const[{data:reqsPorId},{data:reqsPorNum},{data:osPecas}]=await Promise.all(queries);
+    const[{data:reqsPorId},{data:reqsPorNum},{data:reqsPorPref},{data:osPecas}]=await Promise.all(queries);
     (reqsPorId||[]).forEach(r=>{_pushReq(r.ocorrencia_id,{peca:r.peca,cod_sap:r.cod_sap,quantidade:r.quantidade,status:r.status});});
     (reqsPorNum||[]).forEach(r=>{const ocId=osNumToId[String(r.os_numero)];if(ocId)_pushReq(ocId,{peca:r.peca,cod_sap:r.cod_sap,quantidade:r.quantidade,status:r.status});});
+    (reqsPorPref||[]).forEach(r=>{const ocId=osPrefToId[String(r.prefixo)];if(ocId)_pushReq(ocId,{peca:r.peca,cod_sap:r.cod_sap,quantidade:r.quantidade,status:r.status});});
     (osPecas||[]).forEach(r=>{_pushReq(r.ocorrencia_id,{peca:r.descricao,cod_sap:null,quantidade:r.qtd||1,status:r.baixado?'baixado':'pendente_os'});});
   }
 
