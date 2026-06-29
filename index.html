@@ -9917,7 +9917,7 @@ async function renderFerrPCM(aba='painel'){
     // mapa prefixo → uuid (último OS aberto com esse prefixo)
     const osPrefToId={};todasOS.forEach(o=>{if(o.prefixo&&o.id)osPrefToId[String(o.prefixo)]=o.id;});
     const[{data:todasReqs,error:errReqs},{data:osPecas}]=await Promise.all([
-      todosPrefixos.length?sb.from('requisicoes_compra').select('id,ocorrencia_id,os_numero,prefixo,peca,cod_sap,quantidade,status').eq('garagem_id',gid).in('prefixo',todosPrefixos).neq('status','cancelado').order('criado_em',{ascending:true}):Promise.resolve({data:[]}),
+      todosPrefixos.length?sb.from('requisicoes_compra').select('id,ocorrencia_id,os_numero,prefixo,peca,cod_sap,quantidade,valor_estimado,status').eq('garagem_id',gid).in('prefixo',todosPrefixos).neq('status','cancelado').order('criado_em',{ascending:true}):Promise.resolve({data:[]}),
       todosOsIds.length?sb.from('ordens_servico_pecas').select('id,ocorrencia_id,descricao,qtd,baixado').in('ocorrencia_id',todosOsIds).order('created_at',{ascending:true}):Promise.resolve({data:[]}),
     ]);
     if(errReqs)console.error('[PCM] Erro ao buscar requisicoes_compra:',errReqs);
@@ -9929,24 +9929,13 @@ async function renderFerrPCM(aba='painel'){
       const key=r.id;
       if(jaAdicionado.has(key))return;
       jaAdicionado.add(key);
-      _pushReq(ocId,{peca:r.peca,cod_sap:r.cod_sap,quantidade:r.quantidade,status:r.status});
+      _pushReq(ocId,{peca:r.peca,cod_sap:r.cod_sap,quantidade:r.quantidade,valor_estimado:r.valor_estimado,status:r.status});
     });
     (osPecas||[]).forEach(r=>{_pushReq(r.ocorrencia_id,{peca:r.descricao,cod_sap:null,quantidade:r.qtd||1,status:r.baixado?'baixado':'pendente_os'});});
 
-    // Buscar preços SAP para calcular previsto automaticamente
-    const todosCodSap=[...new Set(Object.values(reqsMap).flat().map(r=>r.cod_sap).filter(Boolean))];
-    let sapPrecosMap={};
-    if(todosCodSap.length){
-      const{data:sapPrices}=await sb.from('sap_precos').select('cod_sap,preco_unit').eq('garagem_id',gid).in('cod_sap',todosCodSap);
-      (sapPrices||[]).forEach(p=>{sapPrecosMap[p.cod_sap]=parseFloat(p.preco_unit||0);});
-    }
-    // Calcula previsto por OS a partir das requisições × preço SAP
-    const previstoPorOS={};
+    // Calcula previsto por OS usando valor_estimado já salvo na requisição
     Object.entries(reqsMap).forEach(([ocId,itens])=>{
-      const total=itens.reduce((s,r)=>{
-        const preco=r.cod_sap?sapPrecosMap[r.cod_sap]||0:0;
-        return s+preco*(parseFloat(r.quantidade)||1);
-      },0);
+      const total=itens.reduce((s,r)=>s+(parseFloat(r.valor_estimado)||0)*(parseFloat(r.quantidade)||1),0);
       if(total>0) previstoPorOS[ocId]=total;
     });
   }
