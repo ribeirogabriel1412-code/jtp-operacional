@@ -6747,46 +6747,62 @@ async function carregarReqsAlmoxModal(ocId, prefixo){
   if(!el) return;
   el.innerHTML='<div style="font-size:11px;color:var(--text3);padding:8px 0">Carregando peças...</div>';
   const gid=getGid();
+  const safe=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const STATUS={
     solicitado_pcm:{l:'🔔 Solicitado',c:'var(--amber)'},
     pendente:      {l:'⏳ Pendente',  c:'var(--amber)'},
     aprovado:      {l:'✅ Aprovado',  c:'var(--blue)'},
     separado:      {l:'📦 Separado',  c:'var(--green)'},
-    pedido_compra: {l:'🛒 Compra',    c:'#8B5CF6'},
+    pedido_compra: {l:'🛒 Em Compra', c:'#8B5CF6'},
     comprado:      {l:'🚚 Chegou',    c:'var(--green)'},
-    pendente_os:   {l:'⏳ Ag. Baixa', c:'var(--amber)'},
     baixado:       {l:'✅ Baixado',   c:'var(--green)'},
   };
-  const safe=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const[{data:porId},{data:porPref},{data:osPecas}]=await Promise.all([
-    sb.from('requisicoes_compra').select('id,peca,cod_sap,quantidade,status').eq('ocorrencia_id',ocId).neq('status','cancelado').order('criado_em',{ascending:true}),
-    sb.from('requisicoes_compra').select('id,peca,cod_sap,quantidade,status').eq('garagem_id',gid).eq('prefixo',prefixo).is('ocorrencia_id',null).neq('status','cancelado').neq('cod_sap','__PROG_PREV__').order('criado_em',{ascending:true}),
-    sb.from('ordens_servico_pecas').select('id,descricao,qtd,baixado').eq('ocorrencia_id',ocId).order('created_at',{ascending:true}),
+  const[{data:porId},{data:porPref}]=await Promise.all([
+    sb.from('requisicoes_compra').select('id,peca,cod_sap,quantidade,status,item_entregue,cod_sap_entregue,qtd_entregue').eq('ocorrencia_id',ocId).neq('status','cancelado').order('criado_em',{ascending:true}),
+    sb.from('requisicoes_compra').select('id,peca,cod_sap,quantidade,status,item_entregue,cod_sap_entregue,qtd_entregue').eq('garagem_id',gid).eq('prefixo',prefixo).is('ocorrencia_id',null).neq('status','cancelado').order('criado_em',{ascending:true}),
   ]);
   const visto=new Set();
   const itens=[];
-  (porId||[]).forEach(r=>{if(!visto.has(r.id)){visto.add(r.id);itens.push({peca:r.peca,cod_sap:r.cod_sap,qtd:r.quantidade,status:r.status});}});
-  (porPref||[]).forEach(r=>{
-    if(String(r.peca||'').toLowerCase().includes('programação preventiva'))return;
-    if(!visto.has(r.id)){visto.add(r.id);itens.push({peca:r.peca,cod_sap:r.cod_sap,qtd:r.quantidade,status:r.status});}
-  });
-  (osPecas||[]).forEach(r=>{itens.push({peca:r.descricao,cod_sap:null,qtd:r.qtd||1,status:r.baixado?'baixado':'pendente_os'});});
+  const _add=(r)=>{
+    if(visto.has(r.id))return;
+    if(r.cod_sap==='__PROG_PREV__'||String(r.peca||'').toLowerCase().includes('programação preventiva'))return;
+    visto.add(r.id);
+    itens.push(r);
+  };
+  (porId||[]).forEach(_add);
+  (porPref||[]).forEach(_add);
   if(!itens.length){el.innerHTML='';return;}
   const entregues=itens.filter(r=>['separado','comprado','baixado'].includes(r.status)).length;
   const rows=itens.map(r=>{
     const s=STATUS[r.status]||{l:r.status,c:'var(--text3)'};
-    return`<div style="display:grid;grid-template-columns:1fr 36px auto;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border2)">
-      <div>
-        <span style="font-size:12px;font-weight:700;color:var(--text)">${safe(r.peca||'—')}</span>
-        ${r.cod_sap?`<span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-left:6px">${safe(r.cod_sap)}</span>`:''}
+    const temEntrega=r.item_entregue||r.status==='separado'||r.status==='comprado'||r.status==='baixado';
+    const nomeEntregue=r.item_entregue||r.peca||'—';
+    const codEntregue=r.cod_sap_entregue||r.cod_sap||null;
+    const qtdEntregue=r.qtd_entregue||r.quantidade||1;
+    return`<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:8px">
+      <div style="display:grid;grid-template-columns:1fr 1fr">
+        <!-- PEDIDO -->
+        <div style="padding:10px 12px;border-right:1px solid var(--border);border-left:3px solid var(--amber)">
+          <div style="font-size:9px;font-weight:900;color:var(--amber);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">📋 Pedido</div>
+          <div style="font-size:12px;font-weight:700;color:var(--text);line-height:1.3">${safe(r.peca||'—')}</div>
+          ${r.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-top:3px">${safe(r.cod_sap)}</div>`:''}
+          <div style="font-size:11px;color:var(--text3);margin-top:4px">${r.quantidade||1}x</div>
+        </div>
+        <!-- ENTREGUE -->
+        <div style="padding:10px 12px;border-left:3px solid ${temEntrega?'var(--green)':'var(--border)'}">
+          <div style="font-size:9px;font-weight:900;color:${temEntrega?'var(--green)':'var(--text3)'};text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">${temEntrega?'✅ Entregue':'⏳ Aguardando'}</div>
+          ${temEntrega
+            ?`<div style="font-size:12px;font-weight:700;color:var(--text);line-height:1.3">${safe(nomeEntregue)}</div>
+               ${codEntregue?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-top:3px">${safe(codEntregue)}</div>`:''}
+               <div style="font-size:11px;color:var(--text3);margin-top:4px">${qtdEntregue}x</div>`
+            :`<div style="font-size:11px;color:var(--text4)">${safe(s.l)}</div>`}
+        </div>
       </div>
-      <div style="text-align:center;font-family:'DM Mono',monospace;font-size:12px;color:var(--text3)">${r.qtd}x</div>
-      <span style="font-size:10px;font-weight:700;color:${s.c};background:${s.c}18;border:1px solid ${s.c}40;border-radius:99px;padding:2px 9px;white-space:nowrap">${s.l}</span>
     </div>`;
   }).join('');
   el.innerHTML=`
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:0">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <span style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px">🔩 Peças Solicitadas ao Almox</span>
         <span style="font-size:11px;font-weight:800;color:${entregues===itens.length?'var(--green)':'var(--amber)'}">${entregues}/${itens.length} entregue(s)</span>
       </div>
