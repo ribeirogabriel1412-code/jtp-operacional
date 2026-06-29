@@ -9911,6 +9911,7 @@ async function renderFerrPCM(aba='painel'){
   const osNumToId={};todasOS.forEach(o=>{if(o.numero&&o.id)osNumToId[String(o.numero)]=o.id;});
   const reqsMap={};
   const _pushReq=(ocId,item)=>{if(!reqsMap[ocId])reqsMap[ocId]=[];reqsMap[ocId].push(item);};
+  let previstoPorOS={};
   if(todosOsIds.length||todosOsNumeros.length){
     const todosPrefixos=todasOS.map(o=>o.prefixo).filter(Boolean);
     // mapa prefixo → uuid (último OS aberto com esse prefixo)
@@ -9920,10 +9921,8 @@ async function renderFerrPCM(aba='painel'){
       todosOsIds.length?sb.from('ordens_servico_pecas').select('id,ocorrencia_id,descricao,qtd,baixado').in('ocorrencia_id',todosOsIds).order('created_at',{ascending:true}):Promise.resolve({data:[]}),
     ]);
     if(errReqs)console.error('[PCM] Erro ao buscar requisicoes_compra:',errReqs);
-    console.log('[PCM] prefixos buscados:',todosPrefixos,'resultados:',todasReqs?.length,'itens:',(todasReqs||[]).map(r=>({prefixo:r.prefixo,peca:r.peca,status:r.status,os_numero:r.os_numero,ocorrencia_id:r.ocorrencia_id})));
     const jaAdicionado=new Set();
     (todasReqs||[]).forEach(r=>{
-      // Ignorar entradas de sistema (programação preventiva)
       if(r.cod_sap==='__PROG_PREV__'||String(r.peca||'').toLowerCase().includes('programação preventiva'))return;
       const ocId=r.ocorrencia_id||osNumToId[String(r.os_numero||'')]||osPrefToId[String(r.prefixo||'')];
       if(!ocId)return;
@@ -9933,6 +9932,23 @@ async function renderFerrPCM(aba='painel'){
       _pushReq(ocId,{peca:r.peca,cod_sap:r.cod_sap,quantidade:r.quantidade,status:r.status});
     });
     (osPecas||[]).forEach(r=>{_pushReq(r.ocorrencia_id,{peca:r.descricao,cod_sap:null,quantidade:r.qtd||1,status:r.baixado?'baixado':'pendente_os'});});
+
+    // Buscar preços SAP para calcular previsto automaticamente
+    const todosCodSap=[...new Set(Object.values(reqsMap).flat().map(r=>r.cod_sap).filter(Boolean))];
+    let sapPrecosMap={};
+    if(todosCodSap.length){
+      const{data:sapPrices}=await sb.from('sap_precos').select('cod_sap,preco_unit').eq('garagem_id',gid).in('cod_sap',todosCodSap);
+      (sapPrices||[]).forEach(p=>{sapPrecosMap[p.cod_sap]=parseFloat(p.preco_unit||0);});
+    }
+    // Calcula previsto por OS a partir das requisições × preço SAP
+    const previstoPorOS={};
+    Object.entries(reqsMap).forEach(([ocId,itens])=>{
+      const total=itens.reduce((s,r)=>{
+        const preco=r.cod_sap?sapPrecosMap[r.cod_sap]||0:0;
+        return s+preco*(parseFloat(r.quantidade)||1);
+      },0);
+      if(total>0) previstoPorOS[ocId]=total;
+    });
   }
 
   // Valetamento de preventivas — próximo sábado
@@ -10010,7 +10026,7 @@ async function renderFerrPCM(aba='painel'){
       <div style="display:flex;gap:8px;padding:8px 10px;background:var(--surface2);border-radius:8px;align-items:center">
         <div style="flex:1;text-align:center">
           <div style="font-size:9px;color:var(--amber);font-weight:700;margin-bottom:2px">PREVISTO</div>
-          <div id="pcm-prev-${o.id}" style="font-family:'DM Mono',monospace;font-size:13px;color:var(--amber)">${o.custo_previsto?'R$ '+parseFloat(o.custo_previsto).toFixed(2):'—'}</div>
+          <div id="pcm-prev-${o.id}" style="font-family:'DM Mono',monospace;font-size:13px;color:var(--amber)">${(previstoPorOS[o.id]||o.custo_previsto)?'R$ '+parseFloat(previstoPorOS[o.id]||o.custo_previsto).toFixed(2):'—'}</div>
         </div>
         <div style="width:1px;height:30px;background:var(--border)"></div>
         <div style="flex:1;text-align:center">
