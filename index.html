@@ -7474,7 +7474,10 @@ async function atualizarStatus22(){
   if(['aguardando_peca','aguardando_aprovacao','liberado'].includes(novoStatus)){
     notificarWhatsApp(S.editId22, novoStatus);
   }
-  setTimeout(()=>renderFerr22('ativas'), 800);
+  setTimeout(()=>{
+    if(S.subtela==='ferr-pcm'&&typeof renderFerrPCM==='function') renderFerrPCM();
+    else renderFerr22('ativas');
+  }, 800);
 }
 
 async function verHistorico22(){
