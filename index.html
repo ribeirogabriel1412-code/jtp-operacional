@@ -7474,6 +7474,11 @@ async function atualizarStatus22(){
   if(['aguardando_peca','aguardando_aprovacao','liberado'].includes(novoStatus)){
     notificarWhatsApp(S.editId22, novoStatus);
   }
+  // Atualiza PREVISTO direto no card PCM se estiver visível
+  if(custoPrev){
+    const prevEl=document.getElementById('pcm-prev-'+S.editId22);
+    if(prevEl) prevEl.textContent='R$ '+custoPrev.toFixed(2);
+  }
   setTimeout(()=>{
     if(S.subtela==='ferr-pcm'&&typeof renderFerrPCM==='function') renderFerrPCM();
     else renderFerr22('ativas');
@@ -10005,7 +10010,7 @@ async function renderFerrPCM(aba='painel'){
       <div style="display:flex;gap:8px;padding:8px 10px;background:var(--surface2);border-radius:8px;align-items:center">
         <div style="flex:1;text-align:center">
           <div style="font-size:9px;color:var(--amber);font-weight:700;margin-bottom:2px">PREVISTO</div>
-          <div style="font-family:'DM Mono',monospace;font-size:13px;color:var(--amber)">${o.custo_previsto?'R$ '+parseFloat(o.custo_previsto).toFixed(2):'—'}</div>
+          <div id="pcm-prev-${o.id}" style="font-family:'DM Mono',monospace;font-size:13px;color:var(--amber)">${o.custo_previsto?'R$ '+parseFloat(o.custo_previsto).toFixed(2):'—'}</div>
         </div>
         <div style="width:1px;height:30px;background:var(--border)"></div>
         <div style="flex:1;text-align:center">
