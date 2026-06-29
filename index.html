@@ -9836,7 +9836,7 @@ async function renderFerrPCM(aba='painel'){
     const queries=[
       todosOsIds.length?sb.from('requisicoes_compra').select('id,ocorrencia_id,os_numero,prefixo,peca,cod_sap,quantidade,status').in('ocorrencia_id',todosOsIds).neq('status','cancelado').order('criado_em',{ascending:true}):Promise.resolve({data:[]}),
       todosOsNumeros.length?sb.from('requisicoes_compra').select('id,ocorrencia_id,os_numero,prefixo,peca,cod_sap,quantidade,status').in('os_numero',todosOsNumeros).is('ocorrencia_id',null).neq('status','cancelado').order('criado_em',{ascending:true}):Promise.resolve({data:[]}),
-      todosPrefixos.length?sb.from('requisicoes_compra').select('id,ocorrencia_id,os_numero,prefixo,peca,cod_sap,quantidade,status').in('prefixo',todosPrefixos).is('ocorrencia_id',null).is('os_numero',null).eq('data',data).neq('status','cancelado').order('criado_em',{ascending:true}):Promise.resolve({data:[]}),
+      todosPrefixos.length?sb.from('requisicoes_compra').select('id,ocorrencia_id,os_numero,prefixo,peca,cod_sap,quantidade,status').in('prefixo',todosPrefixos).is('ocorrencia_id',null).is('os_numero',null).neq('status','cancelado').order('criado_em',{ascending:true}):Promise.resolve({data:[]}),
       todosOsIds.length?sb.from('ordens_servico_pecas').select('id,ocorrencia_id,descricao,qtd,baixado').in('ocorrencia_id',todosOsIds).order('created_at',{ascending:true}):Promise.resolve({data:[]}),
     ];
     const[{data:reqsPorId},{data:reqsPorNum},{data:reqsPorPref},{data:osPecas}]=await Promise.all(queries);
