@@ -9840,6 +9840,8 @@ async function renderFerrPCM(aba='painel'){
     if(errReqs)console.error('[PCM] Erro ao buscar requisicoes_compra:',errReqs);
     const jaAdicionado=new Set();
     (todasReqs||[]).forEach(r=>{
+      // Ignorar entradas de sistema (programação preventiva)
+      if(r.cod_sap==='__PROG_PREV__'||String(r.peca||'').toLowerCase().includes('programação preventiva'))return;
       const ocId=r.ocorrencia_id||osNumToId[String(r.os_numero||'')]||osPrefToId[String(r.prefixo||'')];
       if(!ocId)return;
       const key=r.id;
