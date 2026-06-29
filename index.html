@@ -9838,6 +9838,7 @@ async function renderFerrPCM(aba='painel'){
       todosOsIds.length?sb.from('ordens_servico_pecas').select('id,ocorrencia_id,descricao,qtd,baixado').in('ocorrencia_id',todosOsIds).order('created_at',{ascending:true}):Promise.resolve({data:[]}),
     ]);
     if(errReqs)console.error('[PCM] Erro ao buscar requisicoes_compra:',errReqs);
+    console.log('[PCM] prefixos buscados:',todosPrefixos,'resultados:',todasReqs?.length,'itens:',(todasReqs||[]).map(r=>({prefixo:r.prefixo,peca:r.peca,status:r.status,os_numero:r.os_numero,ocorrencia_id:r.ocorrencia_id})));
     const jaAdicionado=new Set();
     (todasReqs||[]).forEach(r=>{
       // Ignorar entradas de sistema (programação preventiva)
