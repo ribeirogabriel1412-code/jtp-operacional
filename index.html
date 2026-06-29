@@ -727,6 +727,9 @@ tr:hover td{background:#1F293780}
       </div>
     </div>
 
+    <!-- Peças solicitadas ao Almox -->
+    <div id="m22s-reqs-almox" style="margin-top:12px"></div>
+
     <!-- HC — Headcount & Horas (Líder de Oficina) -->
     <div id="hc-oficina-wrap" style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:12px;display:none">
       <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">👷 HC — Headcount na OS</div>
@@ -6671,6 +6674,9 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
     _sapUpdRender();
   });
 
+  // Carrega peças solicitadas ao almox
+  carregarReqsAlmoxModal(id, prefixo);
+
   // Mostra/oculta seção HC conforme cargo
   const _hcWrap=document.getElementById('hc-oficina-wrap');
   if(_hcWrap) _hcWrap.style.display=['lider_oficina','lider_pcm','assistente_pcm','gerente_garagem','diretoria'].includes(S.perfil?.cargo)?'block':'none';
@@ -6734,6 +6740,58 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
         </div>`;
     });
   document.getElementById('modal-22-status').style.display='flex';
+}
+
+async function carregarReqsAlmoxModal(ocId, prefixo){
+  const el=document.getElementById('m22s-reqs-almox');
+  if(!el) return;
+  el.innerHTML='<div style="font-size:11px;color:var(--text3);padding:8px 0">Carregando peças...</div>';
+  const gid=getGid();
+  const STATUS={
+    solicitado_pcm:{l:'🔔 Solicitado',c:'var(--amber)'},
+    pendente:      {l:'⏳ Pendente',  c:'var(--amber)'},
+    aprovado:      {l:'✅ Aprovado',  c:'var(--blue)'},
+    separado:      {l:'📦 Separado',  c:'var(--green)'},
+    pedido_compra: {l:'🛒 Compra',    c:'#8B5CF6'},
+    comprado:      {l:'🚚 Chegou',    c:'var(--green)'},
+    pendente_os:   {l:'⏳ Ag. Baixa', c:'var(--amber)'},
+    baixado:       {l:'✅ Baixado',   c:'var(--green)'},
+  };
+  const safe=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const[{data:porId},{data:porPref},{data:osPecas}]=await Promise.all([
+    sb.from('requisicoes_compra').select('id,peca,cod_sap,quantidade,status').eq('ocorrencia_id',ocId).neq('status','cancelado').order('criado_em',{ascending:true}),
+    sb.from('requisicoes_compra').select('id,peca,cod_sap,quantidade,status').eq('garagem_id',gid).eq('prefixo',prefixo).is('ocorrencia_id',null).neq('status','cancelado').neq('cod_sap','__PROG_PREV__').order('criado_em',{ascending:true}),
+    sb.from('ordens_servico_pecas').select('id,descricao,qtd,baixado').eq('ocorrencia_id',ocId).order('created_at',{ascending:true}),
+  ]);
+  const visto=new Set();
+  const itens=[];
+  (porId||[]).forEach(r=>{if(!visto.has(r.id)){visto.add(r.id);itens.push({peca:r.peca,cod_sap:r.cod_sap,qtd:r.quantidade,status:r.status});}});
+  (porPref||[]).forEach(r=>{
+    if(String(r.peca||'').toLowerCase().includes('programação preventiva'))return;
+    if(!visto.has(r.id)){visto.add(r.id);itens.push({peca:r.peca,cod_sap:r.cod_sap,qtd:r.quantidade,status:r.status});}
+  });
+  (osPecas||[]).forEach(r=>{itens.push({peca:r.descricao,cod_sap:null,qtd:r.qtd||1,status:r.baixado?'baixado':'pendente_os'});});
+  if(!itens.length){el.innerHTML='';return;}
+  const entregues=itens.filter(r=>['separado','comprado','baixado'].includes(r.status)).length;
+  const rows=itens.map(r=>{
+    const s=STATUS[r.status]||{l:r.status,c:'var(--text3)'};
+    return`<div style="display:grid;grid-template-columns:1fr 36px auto;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border2)">
+      <div>
+        <span style="font-size:12px;font-weight:700;color:var(--text)">${safe(r.peca||'—')}</span>
+        ${r.cod_sap?`<span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-left:6px">${safe(r.cod_sap)}</span>`:''}
+      </div>
+      <div style="text-align:center;font-family:'DM Mono',monospace;font-size:12px;color:var(--text3)">${r.qtd}x</div>
+      <span style="font-size:10px;font-weight:700;color:${s.c};background:${s.c}18;border:1px solid ${s.c}40;border-radius:99px;padding:2px 9px;white-space:nowrap">${s.l}</span>
+    </div>`;
+  }).join('');
+  el.innerHTML=`
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:0">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px">🔩 Peças Solicitadas ao Almox</span>
+        <span style="font-size:11px;font-weight:800;color:${entregues===itens.length?'var(--green)':'var(--amber)'}">${entregues}/${itens.length} entregue(s)</span>
+      </div>
+      ${rows}
+    </div>`;
 }
 
 // Abrir checklist 3.8 a partir de uma OS — pré-preenche prefixo e abre modal
