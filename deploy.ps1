@@ -25,7 +25,7 @@ Write-Host ""
 # Pede a descricao
 $msg = Read-Host "O que voce fez? (descreva brevemente)"
 if (-not $msg) {
-    Write-Host "Descricao nao pode ser vazia. Cancelanddo." -ForegroundColor Red
+    Write-Host "Descricao nao pode ser vazia. Cancelando." -ForegroundColor Red
     Read-Host "Pressione Enter para fechar"
     exit
 }
@@ -33,9 +33,24 @@ if (-not $msg) {
 Write-Host ""
 Write-Host "Publicando..." -ForegroundColor Yellow
 
-# Add + commit + push
+# Add + commit
 git add .
 git commit -m $msg
+
+# Sincroniza com o remote antes de enviar (evita erro de "fetch first")
+Write-Host "Sincronizando com o GitHub..." -ForegroundColor Yellow
+$pullResult = git pull --rebase origin main 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "ERRO ao sincronizar:" -ForegroundColor Red
+    Write-Host $pullResult -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Resolva os conflitos e tente novamente." -ForegroundColor Yellow
+    Read-Host "Pressione Enter para fechar"
+    exit
+}
+
+# Push
 $pushResult = git push origin main 2>&1
 
 if ($LASTEXITCODE -eq 0) {
