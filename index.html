@@ -15562,11 +15562,12 @@ async function deleteCronograma(id){
 async function renderFerrInstrutor(aba='painel'){
   const gid=getGid();
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
-  const tabs=['painel','ranking','kml','monitorias','relatorios'];
-  const tabLabels={painel:'📊 Painel',ranking:'🏆 Ranking',kml:'⛽ KM/L',monitorias:'👁️ Monitorias',relatorios:'📋 Relatórios'};
+  const tabs=['painel','viagens','ranking','kml','monitorias','relatorios'];
+  const tabLabels={painel:'📊 Painel',viagens:'🚌 Viagens',ranking:'🏆 Ranking',kml:'⛽ KM/L',monitorias:'👁️ Monitorias',relatorios:'📋 Relatórios'};
   const tabBar=tabs.map(t=>`<button class="filtro-btn${aba===t?' active':''}" onclick="renderFerrInstrutor('${t}')">${tabLabels[t]}</button>`).join('');
 
   if(aba==='painel') return _instrPainel(gid,back,tabBar);
+  if(aba==='viagens') return _instrViagens(gid,back,tabBar);
   if(aba==='ranking') return _instrRanking(gid,back,tabBar);
   if(aba==='kml') return _instrKml(gid,back,tabBar);
   if(aba==='monitorias') return _instrMonitorias(gid,back,tabBar);
@@ -15927,6 +15928,161 @@ async function _instrRelatorios(gid,back,tabBar){
         <thead><tr><th>Data</th><th>Prefixo</th><th style="text-align:center">KM/L</th><th>Condição</th><th>Observação</th><th>Monitor</th></tr></thead>
         <tbody>${rowsCarro}</tbody>
       </table>
+    </div>
+  `);
+}
+
+// ══════════════════════════════════════════════════════════════
+// INSTRUTOR — Viagens CITTATI (Azure Blob)
+// ══════════════════════════════════════════════════════════════
+
+async function _instrViagens(gid,back,tabBar){
+  const dias=S._instrVDias||30;
+  const linhaSeL=S._instrVLinha||null;
+  const carroSeL=S._instrVCarro||null;
+  const dataMin=new Date(Date.now()-dias*86400000).toISOString().slice(0,10);
+
+  setMain(`${secTitle('🚌','Viagens — CITTATI',back)}<div class="filtros">${tabBar}</div><div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando dados...</div>`);
+
+  const{data:rows}=await sb.from('viagens_resumo')
+    .select('data,linha,veiculo,motorista_cod,viagens_programadas,viagens_realizadas')
+    .eq('garagem_id',gid)
+    .gte('data',dataMin)
+    .order('data');
+
+  const vg=rows||[];
+
+  // Agrupa linha → veiculo
+  const byLV={};
+  const linhasSet=new Set();
+  vg.forEach(r=>{
+    linhasSet.add(r.linha);
+    if(!byLV[r.linha]) byLV[r.linha]={};
+    if(!byLV[r.linha][r.veiculo]) byLV[r.linha][r.veiculo]={prog:0,real:0};
+    byLV[r.linha][r.veiculo].prog+=r.viagens_programadas||0;
+    byLV[r.linha][r.veiculo].real+=r.viagens_realizadas||0;
+  });
+
+  const linhas=[...linhasSet].sort();
+  const linhaAtual=linhaSeL||(linhas[0]||null);
+
+  const periodoBar=[7,15,30,60].map(d=>
+    `<button class="filtro-btn${dias===d?' active':''}" onclick="S._instrVDias=${d};S._instrVCarro=null;renderFerrInstrutor('viagens')">${d} dias</button>`
+  ).join('');
+
+  const linhaOpts=linhas.map(l=>
+    `<option value="${l}" ${l===linhaAtual?'selected':''}>${l}</option>`
+  ).join('');
+
+  // Tabela de carros da linha selecionada
+  let carrosHtml='<div style="color:var(--text4);padding:24px;text-align:center">Selecione uma linha ou aguarde a sincronização com o Azure.</div>';
+  if(linhaAtual&&byLV[linhaAtual]){
+    const carros=byLV[linhaAtual];
+    const totalProg=Object.values(carros).reduce((s,v)=>s+v.prog,0);
+    carrosHtml=`<div style="overflow-x:auto"><table>
+      <thead><tr>
+        <th>Veículo</th>
+        <th style="text-align:center">Viagens Prog</th>
+        <th style="text-align:center">Viagens Real</th>
+        <th>% das viagens da linha</th>
+        <th style="text-align:center">Cumprimento</th>
+      </tr></thead>
+      <tbody>${Object.entries(carros).sort((a,b)=>b[1].prog-a[1].prog).map(([veiculo,v])=>{
+        const pct=totalProg>0?((v.prog/totalProg)*100).toFixed(1):0;
+        const cum=v.prog>0?((v.real/v.prog)*100).toFixed(1):0;
+        const sel=veiculo===carroSeL;
+        return`<tr style="cursor:pointer;background:${sel?'#2563EB0A':''}" onclick="S._instrVCarro='${veiculo}';renderFerrInstrutor('viagens')">
+          <td style="font-family:'DM Mono',monospace;font-weight:700;color:${sel?'var(--blue)':'var(--text)'}">${veiculo} ${sel?'◀':''}</td>
+          <td style="text-align:center">${v.prog}</td>
+          <td style="text-align:center">${v.real}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="flex:1;background:var(--border);border-radius:4px;height:10px">
+                <div style="width:${pct}%;background:var(--blue);border-radius:4px;height:10px;transition:width .3s"></div>
+              </div>
+              <span style="font-family:'DM Mono',monospace;font-size:12px;min-width:38px;text-align:right;font-weight:700">${pct}%</span>
+            </div>
+          </td>
+          <td style="text-align:center;font-weight:700;color:${cum>=90?'var(--green)':cum>=75?'var(--amber)':'var(--red)'}">${cum}%</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+  }
+
+  // Tabela de motoristas do carro selecionado
+  let motoristasHtml='';
+  if(carroSeL&&linhaAtual){
+    const byMot={};
+    vg.filter(r=>r.linha===linhaAtual&&r.veiculo===carroSeL).forEach(r=>{
+      const m=r.motorista_cod||'SEM_MOTORISTA';
+      if(!byMot[m]) byMot[m]={prog:0,real:0};
+      byMot[m].prog+=r.viagens_programadas||0;
+      byMot[m].real+=r.viagens_realizadas||0;
+    });
+    const totalMot=Object.values(byMot).reduce((s,v)=>s+v.prog,0);
+    motoristasHtml=`
+    <div style="margin-top:16px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:10px">
+        <span>Motoristas no carro <span style="color:var(--amber);font-family:'DM Mono',monospace">${carroSeL}</span> — linha ${linhaAtual}</span>
+        <button onclick="S._instrVCarro=null;renderFerrInstrutor('viagens')" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:2px 8px;color:var(--text4);cursor:pointer;font-size:11px">✕ fechar</button>
+      </div>
+      <div class="tbl-wrap"><div style="overflow-x:auto"><table>
+        <thead><tr>
+          <th>Matrícula Motorista</th>
+          <th style="text-align:center">Viagens</th>
+          <th>% de condução do carro</th>
+          <th style="text-align:center">Cumprimento</th>
+        </tr></thead>
+        <tbody>${Object.entries(byMot).sort((a,b)=>b[1].prog-a[1].prog).map(([mot,v])=>{
+          const pct=totalMot>0?((v.prog/totalMot)*100).toFixed(1):0;
+          const cum=v.prog>0?((v.real/v.prog)*100).toFixed(1):0;
+          return`<tr>
+            <td style="font-family:'DM Mono',monospace;font-weight:700">${mot}</td>
+            <td style="text-align:center">${v.prog}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="flex:1;background:var(--border);border-radius:4px;height:10px">
+                  <div style="width:${pct}%;background:var(--amber);border-radius:4px;height:10px"></div>
+                </div>
+                <span style="font-family:'DM Mono',monospace;font-size:12px;min-width:38px;text-align:right;font-weight:700">${pct}%</span>
+              </div>
+            </td>
+            <td style="text-align:center;font-weight:700;color:${cum>=90?'var(--green)':cum>=75?'var(--amber)':'var(--red)'}">${cum}%</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div></div>
+    </div>`;
+  }
+
+  setMain(`${secTitle('🚌','Viagens — CITTATI',back)}
+    <div class="filtros">${tabBar}</div>
+
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+      <span style="font-size:12px;color:var(--text3)">Período:</span>
+      ${periodoBar}
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:var(--text3)">Linha:</span>
+        <select onchange="S._instrVLinha=this.value;S._instrVCarro=null;renderFerrInstrutor('viagens')"
+          style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text);font-family:'DM Sans',sans-serif">
+          ${linhaOpts||'<option>Sem dados</option>'}
+        </select>
+      </div>
+    </div>
+
+    <div class="tbl-wrap" style="margin-bottom:0">
+      <div class="tbl-head">
+        <div>
+          <div style="font-size:13px;font-weight:700">Distribuição de carros — Linha ${linhaAtual||'—'} · últimos ${dias} dias</div>
+          <div style="font-size:12px;color:var(--text4)">Clique em um carro para ver quais motoristas o dirigiram</div>
+        </div>
+      </div>
+      ${carrosHtml}
+    </div>
+
+    ${motoristasHtml}
+
+    <div class="info-blue info-banner" style="margin-top:12px">
+      📡 Fonte: Azure Blob Storage — CITTATI/JSON_VIAGENS · ${vg.length} registros agregados nos últimos ${dias} dias
     </div>
   `);
 }
