@@ -10463,21 +10463,29 @@ async function _sapUpdSolicAlmox(cod){
   var osNum=(document.getElementById('m22s-os')?.value||'').trim()||
              (document.getElementById('m22s-os-atual')?.textContent||'').trim()||'';
   var prefixo=S.editPrefixo22||document.getElementById('m22s-info')?.textContent||'';
+  var ocId=S.editId22||null;
+  var precoFinal=parseFloat(item.preco)||0;
   var{error}=await sb.from('requisicoes_compra').insert({
     garagem_id:gid,
+    ocorrencia_id:ocId,
     prefixo:prefixo||null,
     peca:item.desc,
     cod_sap:item.cod,
     quantidade:item.qtd,
-    valor_estimado:item.preco||null,
+    valor_estimado:precoFinal>0?precoFinal:null,
     status:'solicitado_pcm',
     os_numero:osNum||null,
     data:hojeISO,
     justificativa:'Solicitado via OS '+(osNum||'s/n')+' pelo PCM'
   });
   if(error){toast('Erro: '+error.message,'err');return;}
+  // Atualiza custo_previsto na OS automaticamente
+  if(ocId&&precoFinal>0){
+    const{data:todasReqs}=await sb.from('requisicoes_compra').select('quantidade,valor_estimado').eq('ocorrencia_id',ocId).neq('status','cancelado');
+    const novoTotal=(todasReqs||[]).reduce((s,r)=>s+(parseFloat(r.valor_estimado)||0)*(parseFloat(r.quantidade)||1),0);
+    if(novoTotal>0) await sb.from('ocorrencias_22').update({custo_previsto:novoTotal}).eq('id',ocId);
+  }
   toast('📦 Peça solicitada ao almoxarifado');
-  // Marca visualmente o botão como solicitado
   var btn=document.querySelector('[data-action="upd-alm"][data-cod="'+cod+'"]');
   if(btn){btn.textContent='✔';btn.style.background='#00C48C';btn.style.color='#fff';btn.style.border='none';btn.disabled=true;}
 }
