@@ -314,6 +314,10 @@ tr:hover td{background:#1F293780}
         <button class="sub-btn" onclick="navToSub('ferr-almox-dev')">↩️ Devolução</button>
         <button class="sub-btn" onclick="navToSub('ferr-lubri')">🛢️ Relatório Lubrificação</button>
       </div>
+      <div class="nav-section" id="sec-instrutor" style="display:none">Instrução / Monitoria</div>
+      <button class="nav-btn" id="btn-instrutor" onclick="navToSub('ferr-instrutor')" style="display:none"><span>📊</span> Painel do Instrutor</button>
+      <button class="nav-btn" id="btn-monitor" onclick="navToSub('ferr-monitor')" style="display:none"><span>👁️</span> Minhas Monitorias</button>
+
       <button class="nav-btn" onclick="toggleSub('sub-rel','arr-rel',this)"><span>📋</span> Relatórios <span id="arr-rel" style="margin-left:auto;font-size:10px;color:var(--text4)">▶</span></button>
       <div class="submenu" id="sub-rel">
         <button class="sub-btn" onclick="navToSub('rel-todos')">📂 Todos os Relatórios</button>
@@ -925,6 +929,18 @@ async function doLogin(){
     btnSup.style.display=temSup?'flex':'none';
   }
 
+  // Seção Instrução / Monitoria
+  const isInstrutor=perfil.cargo==='instrutor';
+  const isMonitor=perfil.cargo==='monitor';
+  const temInstrutor=isInstrutor||isAdmin;
+  const temMonitor=isMonitor||isInstrutor||isAdmin;
+  const secInstrutor=document.getElementById('sec-instrutor');
+  if(secInstrutor) secInstrutor.style.display=(temInstrutor||temMonitor)?'block':'none';
+  const btnInstrutor=document.getElementById('btn-instrutor');
+  if(btnInstrutor) btnInstrutor.style.display=temInstrutor?'flex':'none';
+  const btnMonitor=document.getElementById('btn-monitor');
+  if(btnMonitor) btnMonitor.style.display=temMonitor?'flex':'none';
+
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').classList.add('on');
 
@@ -990,7 +1006,7 @@ function navToSub(sub){
   S.subtela=sub;
   document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes(sub))b.classList.add('active')});
-  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-218':renderFerr218,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-almox-inv':renderAlmoxInventario,'ferr-almox-wms':renderAlmoxWMS,'ferr-almox-painel':renderAlmoxPainelLider,'ferr-almox-compras':renderAlmoxCompras,'ferr-almox-iup':renderAlmoxIUP,'ferr-almox-dev':renderAlmoxDevolucao,'ferr-almox-acuracia':renderAlmoxAcuracia,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios,'ferr-lubri':renderFerrLubri,'ferr-pecas':renderFerrPecas};
+  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-218':renderFerr218,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-almox-inv':renderAlmoxInventario,'ferr-almox-wms':renderAlmoxWMS,'ferr-almox-painel':renderAlmoxPainelLider,'ferr-almox-compras':renderAlmoxCompras,'ferr-almox-iup':renderAlmoxIUP,'ferr-almox-dev':renderAlmoxDevolucao,'ferr-almox-acuracia':renderAlmoxAcuracia,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios,'ferr-lubri':renderFerrLubri,'ferr-pecas':renderFerrPecas,'ferr-instrutor':renderFerrInstrutor,'ferr-monitor':renderFerrMonitor};
   if(map[sub]) map[sub]();
 }
 
@@ -15539,6 +15555,727 @@ async function deleteCronograma(id){
 }
 
 // ── ROTINA OPERACIONAL (BOK) ──────────────────────────────
+// ══════════════════════════════════════════════════════════════
+// INSTRUTOR — Painel de Instrução / Monitoria
+// ══════════════════════════════════════════════════════════════
+
+async function renderFerrInstrutor(aba='painel'){
+  const gid=getGid();
+  const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  const tabs=['painel','ranking','kml','monitorias','relatorios'];
+  const tabLabels={painel:'📊 Painel',ranking:'🏆 Ranking',kml:'⛽ KM/L',monitorias:'👁️ Monitorias',relatorios:'📋 Relatórios'};
+  const tabBar=tabs.map(t=>`<button class="filtro-btn${aba===t?' active':''}" onclick="renderFerrInstrutor('${t}')">${tabLabels[t]}</button>`).join('');
+
+  if(aba==='painel') return _instrPainel(gid,back,tabBar);
+  if(aba==='ranking') return _instrRanking(gid,back,tabBar);
+  if(aba==='kml') return _instrKml(gid,back,tabBar);
+  if(aba==='monitorias') return _instrMonitorias(gid,back,tabBar);
+  if(aba==='relatorios') return _instrRelatorios(gid,back,tabBar);
+}
+
+async function _instrPainel(gid,back,tabBar){
+  const hoje=new Date().toISOString().slice(0,10);
+  const semAgo=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+
+  const[{data:kmlHoje},{data:ranking},{data:monHoje}]=await Promise.all([
+    sb.from('instrutor_kml').select('*').eq('garagem_id',gid).order('data',{ascending:false}).limit(1),
+    sb.from('instrutor_ranking').select('*').eq('garagem_id',gid).order('semana_ref',{ascending:false}).order('posicao').limit(30),
+    sb.from('monitoria_registros').select('monitor_id,monitor_nome,tipo').eq('garagem_id',gid).eq('data',hoje),
+  ]);
+
+  const kml=kmlHoje?.[0];
+  const kmlPct=kml&&kml.meta>0?((kml.media_geral/kml.meta)*100).toFixed(1):null;
+  const kmlCor=kmlPct>=100?'var(--green)':kmlPct>=90?'var(--amber)':'var(--red)';
+
+  // Agrupar monitorias por monitor
+  const porMonitor={};
+  (monHoje||[]).forEach(m=>{
+    if(!porMonitor[m.monitor_id]) porMonitor[m.monitor_id]={nome:m.monitor_nome,total:0,campo:0,linha:0,carro:0};
+    porMonitor[m.monitor_id].total++;
+    porMonitor[m.monitor_id][m.tipo]=(porMonitor[m.monitor_id][m.tipo]||0)+1;
+  });
+
+  const monRows=Object.values(porMonitor).length
+    ? Object.values(porMonitor).map(m=>`
+      <tr>
+        <td style="font-weight:600">${m.nome||'—'}</td>
+        <td style="text-align:center">${m.campo||0}</td>
+        <td style="text-align:center">${m.linha||0}</td>
+        <td style="text-align:center">${m.carro||0}</td>
+        <td style="text-align:center;font-weight:700;color:var(--blue)">${m.total}</td>
+      </tr>`).join('')
+    : `<tr><td colspan="5" style="text-align:center;color:var(--text4);padding:16px">Nenhuma monitoria registrada hoje</td></tr>`;
+
+  const rankRows=(ranking||[]).slice(0,10).map((r,i)=>`
+    <tr>
+      <td style="font-family:'DM Mono',monospace;color:var(--text3);text-align:center">${r.posicao||i+1}°</td>
+      <td style="font-weight:600">${r.motorista_nome||'—'}</td>
+      <td style="font-family:'DM Mono',monospace;text-align:center">${r.matricula||'—'}</td>
+      <td style="text-align:center;color:${(r.km_l||0)<(kml?.meta||3)?'var(--red)':'var(--text)'};font-family:'DM Mono',monospace">${r.km_l??'—'}</td>
+      <td style="text-align:center;color:var(--amber)">${r.infracoes_total||0}</td>
+      <td style="font-size:11px;color:var(--text3)">${r.monitor_nome||'<span style="color:var(--amber)">Não atribuído</span>'}</td>
+    </tr>`).join('');
+
+  setMain(`${secTitle('📊','Painel do Instrutor',back)}
+    <div class="filtros">${tabBar}</div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+        <div style="font-size:11px;color:var(--text4);letter-spacing:1px;text-transform:uppercase">KM/L Ontem</div>
+        <div style="font-size:28px;font-weight:800;color:${kmlCor};font-family:'DM Mono',monospace;margin:8px 0">${kml?.media_geral??'—'}</div>
+        <div style="font-size:12px;color:var(--text3)">Meta: ${kml?.meta??'—'} ${kmlPct?`· ${kmlPct}%`:''}</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+        <div style="font-size:11px;color:var(--text4);letter-spacing:1px;text-transform:uppercase">Monitorias Hoje</div>
+        <div style="font-size:28px;font-weight:800;color:var(--blue);font-family:'DM Mono',monospace;margin:8px 0">${(monHoje||[]).length}</div>
+        <div style="font-size:12px;color:var(--text3)">${Object.keys(porMonitor).length} monitores ativos</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+        <div style="font-size:11px;color:var(--text4);letter-spacing:1px;text-transform:uppercase">Rank — Motoristas</div>
+        <div style="font-size:28px;font-weight:800;color:var(--amber);font-family:'DM Mono',monospace;margin:8px 0">${(ranking||[]).length}</div>
+        <div style="font-size:12px;color:var(--text3)">na lista da semana</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <div class="tbl-wrap">
+          <div class="tbl-head"><div style="font-size:13px;font-weight:700">Produtividade dos Monitores — Hoje</div></div>
+          <table>
+            <thead><tr><th>Monitor</th><th style="text-align:center">Campo</th><th style="text-align:center">Linha</th><th style="text-align:center">Carro</th><th style="text-align:center">Total</th></tr></thead>
+            <tbody>${monRows}</tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <div class="tbl-wrap">
+          <div class="tbl-head"><div style="font-size:13px;font-weight:700">Top 10 — Piores Motoristas</div></div>
+          <table>
+            <thead><tr><th style="text-align:center">Pos</th><th>Motorista</th><th>Matrícula</th><th style="text-align:center">KM/L</th><th style="text-align:center">Inf</th><th>Monitor</th></tr></thead>
+            <tbody>${rankRows}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+async function _instrRanking(gid,back,tabBar){
+  const{data:semanas}=await sb.from('instrutor_ranking').select('semana_ref').eq('garagem_id',gid).order('semana_ref',{ascending:false}).limit(10);
+  const semanasUnicas=[...new Set((semanas||[]).map(s=>s.semana_ref))];
+  const semSel=semanasUnicas[0]||null;
+
+  let rankRows='<tr><td colspan="8" style="text-align:center;color:var(--text4);padding:24px">Nenhum ranking importado. Importe o Excel do sistema de telemetria.</td></tr>';
+  let monitores=[];
+  if(semSel){
+    const[{data:rank},{data:mons}]=await Promise.all([
+      sb.from('instrutor_ranking').select('*').eq('garagem_id',gid).eq('semana_ref',semSel).order('posicao'),
+      sb.from('perfis').select('id,nome').eq('garagem_id',gid).eq('cargo','monitor'),
+    ]);
+    monitores=mons||[];
+    rankRows=(rank||[]).map(r=>`
+      <tr>
+        <td style="font-family:'DM Mono',monospace;text-align:center;color:var(--text3)">${r.posicao}°</td>
+        <td style="font-weight:600">${r.motorista_nome||'—'}</td>
+        <td style="font-family:'DM Mono',monospace;font-size:12px">${r.matricula||'—'}</td>
+        <td style="text-align:center;font-family:'DM Mono',monospace;color:var(--red)">${r.km_l??'—'}</td>
+        <td style="text-align:center">${r.infracoes_total||0}</td>
+        <td style="text-align:center;font-size:11px;color:var(--text3)">${r.velocidade_excessiva||0}/${r.frenagem_brusca||0}/${r.aceleracao_brusca||0}</td>
+        <td>
+          <select onchange="_instrAtribuirMonitor('${r.id}',this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:3px 6px;color:var(--text);font-size:11px;font-family:'DM Sans',sans-serif">
+            <option value="">— sem monitor —</option>
+            ${monitores.map(m=>`<option value="${m.id}" ${r.monitor_id===m.id?'selected':''}>${m.nome}</option>`).join('')}
+          </select>
+        </td>
+        <td style="font-size:11px;color:var(--text3)">${r.monitor_nome||'—'}</td>
+      </tr>`).join('');
+  }
+
+  const semanasOpts=semanasUnicas.map(s=>`<option value="${s}" ${s===semSel?'selected':''}>${s}</option>`).join('');
+
+  setMain(`${secTitle('🏆','Ranking de Motoristas',back)}
+    <div class="filtros">${tabBar}</div>
+
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+      ${semanasUnicas.length?`<select onchange="renderFerrInstrutor('ranking')" id="instr-sem-sel" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text);font-family:'DM Sans',sans-serif">${semanasOpts}</select>`:''}
+      <button onclick="_instrImportRanking('${gid}')" style="padding:7px 14px;border-radius:8px;border:1px solid var(--blue);background:#3B82F618;color:var(--blue);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">📥 Importar Excel</button>
+      <input type="file" id="instr-rank-file" accept=".xlsx,.csv" style="display:none" onchange="_instrProcessarRankingFile(this,'${gid}')">
+      <span style="font-size:12px;color:var(--text4)">Colunas: Posição, Motorista, Matrícula, KM/L, Infrações, Vel.Exc, Frenagem, Aceleração</span>
+    </div>
+
+    <div class="tbl-wrap">
+      <div class="tbl-head"><div style="font-size:13px;font-weight:700">30 Piores Motoristas${semSel?' — Semana '+semSel:''}</div></div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th style="text-align:center">Pos</th><th>Motorista</th><th>Matrícula</th><th style="text-align:center">KM/L</th><th style="text-align:center">Inf</th><th style="text-align:center">Vel/Fren/Acel</th><th>Atribuir Monitor</th><th>Monitor</th></tr></thead>
+          <tbody>${rankRows}</tbody>
+        </table>
+      </div>
+    </div>
+  `);
+}
+
+async function _instrAtribuirMonitor(rankId,monitorId){
+  if(!rankId) return;
+  let upd={monitor_id:monitorId||null,monitor_nome:null};
+  if(monitorId){
+    const{data:p}=await sb.from('perfis').select('nome').eq('id',monitorId).single();
+    upd.monitor_nome=p?.nome||null;
+  }
+  const{error}=await sb.from('instrutor_ranking').update(upd).eq('id',rankId);
+  if(error) toast('Erro ao atribuir: '+error.message,'err');
+  else toast('Monitor atribuído!');
+}
+
+function _instrImportRanking(gid){
+  document.getElementById('instr-rank-file').click();
+}
+
+async function _instrProcessarRankingFile(input,gid){
+  const file=input.files[0];
+  if(!file){return;}
+  const reader=new FileReader();
+  reader.onload=async function(e){
+    try{
+      const text=e.target.result;
+      const lines=text.split('\n').filter(l=>l.trim());
+      if(lines.length<2){toast('Arquivo vazio ou inválido','err');return;}
+      const hoje=new Date().toISOString().slice(0,10);
+      // Detectar semana (segunda-feira anterior)
+      const d=new Date();
+      const dia=d.getDay();
+      const diff=d.getDate()-dia+(dia===0?-6:1);
+      const semana=new Date(d.setDate(diff)).toISOString().slice(0,10);
+
+      const rows=lines.slice(1).map((l,i)=>{
+        const c=l.split(/[,;\t]/).map(x=>x.trim().replace(/^"|"$/g,''));
+        return{
+          garagem_id:gid,
+          semana_ref:semana,
+          posicao:parseInt(c[0])||i+1,
+          motorista_nome:c[1]||'',
+          matricula:c[2]||'',
+          km_l:parseFloat(c[3])||null,
+          infracoes_total:parseInt(c[4])||0,
+          velocidade_excessiva:parseInt(c[5])||0,
+          frenagem_brusca:parseInt(c[6])||0,
+          aceleracao_brusca:parseInt(c[7])||0,
+        };
+      }).filter(r=>r.motorista_nome);
+
+      if(!rows.length){toast('Nenhuma linha válida encontrada','err');return;}
+      // Remover semana anterior e inserir nova
+      await sb.from('instrutor_ranking').delete().eq('garagem_id',gid).eq('semana_ref',semana);
+      const{error}=await sb.from('instrutor_ranking').insert(rows);
+      if(error){toast('Erro: '+error.message,'err');return;}
+      toast(`✅ ${rows.length} motoristas importados — semana ${semana}`);
+      renderFerrInstrutor('ranking');
+    }catch(ex){toast('Erro ao processar arquivo: '+ex.message,'err');}
+  };
+  reader.readAsText(file,'utf-8');
+  input.value='';
+}
+
+async function _instrKml(gid,back,tabBar){
+  const{data:registros}=await sb.from('instrutor_kml').select('*').eq('garagem_id',gid).order('data',{ascending:false}).limit(30);
+
+  const rows=(registros||[]).map(r=>{
+    const pct=r.meta>0?((r.media_geral/r.meta)*100).toFixed(1):null;
+    const cor=pct>=100?'var(--green)':pct>=90?'var(--amber)':'var(--red)';
+    return`<tr>
+      <td style="font-family:'DM Mono',monospace">${r.data}</td>
+      <td style="font-family:'DM Mono',monospace;font-weight:700;color:${cor}">${r.media_geral??'—'}</td>
+      <td style="font-family:'DM Mono',monospace;color:var(--text3)">${r.meta??'—'}</td>
+      <td style="font-family:'DM Mono',monospace;color:${cor}">${pct?pct+'%':'—'}</td>
+      <td style="text-align:center">${r.total_veiculos??'—'}</td>
+      <td style="text-align:center;color:var(--red)">${r.abaixo_meta??'—'}</td>
+      <td><button onclick="_instrDelKml('${r.id}')" style="background:transparent;border:none;color:var(--text4);cursor:pointer;font-size:13px">🗑️</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--text4);padding:24px">Nenhum dado de KM/L. Importe do sistema BI.</td></tr>';
+
+  setMain(`${secTitle('⛽','KM/L — Histórico',back)}
+    <div class="filtros">${tabBar}</div>
+
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+      <button onclick="document.getElementById('kml-file-in').click()" style="padding:7px 14px;border-radius:8px;border:1px solid var(--blue);background:#3B82F618;color:var(--blue);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">📥 Importar KM/L (BI)</button>
+      <input type="file" id="kml-file-in" accept=".xlsx,.csv" style="display:none" onchange="_instrProcessarKmlFile(this,'${gid}')">
+      <span style="font-size:12px;color:var(--text4)">Colunas: Data (AAAA-MM-DD), KM/L Médio, Meta, Total Veículos, Abaixo da Meta</span>
+    </div>
+
+    <div class="tbl-wrap">
+      <div class="tbl-head"><div style="font-size:13px;font-weight:700">Histórico de KM/L — últimos 30 registros</div></div>
+      <table>
+        <thead><tr><th>Data</th><th>KM/L Médio</th><th>Meta</th><th>% Meta</th><th style="text-align:center">Total Veíc.</th><th style="text-align:center">Abaixo Meta</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `);
+}
+
+async function _instrProcessarKmlFile(input,gid){
+  const file=input.files[0];
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=async function(e){
+    try{
+      const lines=e.target.result.split('\n').filter(l=>l.trim());
+      if(lines.length<2){toast('Arquivo vazio','err');return;}
+      const rows=lines.slice(1).map(l=>{
+        const c=l.split(/[,;\t]/).map(x=>x.trim().replace(/^"|"$/g,''));
+        return{garagem_id:gid,data:c[0],media_geral:parseFloat(c[1])||null,meta:parseFloat(c[2])||null,total_veiculos:parseInt(c[3])||null,abaixo_meta:parseInt(c[4])||null};
+      }).filter(r=>r.data&&r.media_geral);
+      if(!rows.length){toast('Nenhuma linha válida','err');return;}
+      const{error}=await sb.from('instrutor_kml').insert(rows);
+      if(error){toast('Erro: '+error.message,'err');return;}
+      toast(`✅ ${rows.length} registros importados`);
+      renderFerrInstrutor('kml');
+    }catch(ex){toast('Erro: '+ex.message,'err');}
+  };
+  reader.readAsText(file,'utf-8');
+  input.value='';
+}
+
+async function _instrDelKml(id){
+  if(!confirm('Remover este registro?')) return;
+  await sb.from('instrutor_kml').delete().eq('id',id);
+  renderFerrInstrutor('kml');
+}
+
+async function _instrMonitorias(gid,back,tabBar){
+  const hoje=new Date().toISOString().slice(0,10);
+  const set7=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+  const{data:mons}=await sb.from('monitoria_registros').select('*').eq('garagem_id',gid).gte('data',set7).order('data',{ascending:false}).order('created_at',{ascending:false});
+
+  const rows=(mons||[]).map(r=>`
+    <tr>
+      <td style="font-family:'DM Mono',monospace;font-size:12px">${r.data}</td>
+      <td style="font-weight:600">${r.motorista_nome||'—'}</td>
+      <td style="font-size:12px;color:var(--text3)">${r.matricula||'—'}</td>
+      <td><span style="background:var(--border);border-radius:5px;padding:2px 7px;font-size:11px">${r.tipo||'—'}</span></td>
+      <td style="font-size:12px;color:var(--text3)">${r.linha||'—'} ${r.prefixo?'· '+r.prefixo:''}</td>
+      <td style="text-align:center;font-weight:700;color:${r.nota>=8?'var(--green)':r.nota>=6?'var(--amber)':'var(--red)'}">${r.nota??'—'}</td>
+      <td style="font-size:11px">
+        ${r.inf_velocidade?'<span style="color:var(--red)">⚡</span>':''}
+        ${r.inf_frenagem?'<span style="color:var(--red)">🛑</span>':''}
+        ${r.inf_aceleracao?'<span style="color:var(--red)">🚀</span>':''}
+        ${r.inf_celular?'<span style="color:var(--red)">📱</span>':''}
+        ${r.inf_cinto?'<span style="color:var(--red)">🔒</span>':''}
+        ${r.inf_postura?'<span style="color:var(--red)">🪑</span>':''}
+      </td>
+      <td style="font-size:12px;color:var(--text3)">${r.monitor_nome||'—'}</td>
+    </tr>`).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--text4);padding:24px">Nenhuma monitoria nos últimos 7 dias</td></tr>';
+
+  setMain(`${secTitle('👁️','Todas as Monitorias',back)}
+    <div class="filtros">${tabBar}</div>
+    <div class="tbl-wrap">
+      <div class="tbl-head">
+        <div style="font-size:13px;font-weight:700">Monitorias — últimos 7 dias</div>
+        <div style="font-size:12px;color:var(--text4)">⚡ Vel &nbsp;🛑 Frenagem &nbsp;🚀 Acel &nbsp;📱 Celular &nbsp;🔒 Cinto &nbsp;🪑 Postura</div>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Data</th><th>Motorista</th><th>Matrícula</th><th>Tipo</th><th>Linha/Carro</th><th style="text-align:center">Nota</th><th>Inf</th><th>Monitor</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+  `);
+}
+
+async function _instrRelatorios(gid,back,tabBar){
+  const set7=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+  const[{data:linhas},{data:carros}]=await Promise.all([
+    sb.from('monitor_relatorio_linha').select('*').eq('garagem_id',gid).gte('data',set7).order('data',{ascending:false}),
+    sb.from('monitor_relatorio_carro').select('*').eq('garagem_id',gid).gte('data',set7).order('data',{ascending:false}),
+  ]);
+
+  const rowsLinha=(linhas||[]).map(r=>`
+    <tr>
+      <td style="font-family:'DM Mono',monospace;font-size:12px">${r.data}</td>
+      <td style="font-weight:600">${r.linha||'—'}</td>
+      <td style="text-align:center">${r.viagens_programadas??'—'}</td>
+      <td style="text-align:center">${r.viagens_realizadas??'—'}</td>
+      <td style="text-align:center;color:var(--red)">${r.atrasos??'—'}</td>
+      <td style="text-align:center;font-weight:700;color:${(r.pontualidade_pct||0)>=90?'var(--green)':(r.pontualidade_pct||0)>=75?'var(--amber)':'var(--red)'}">${r.pontualidade_pct??'—'}%</td>
+      <td style="font-size:12px;color:var(--text3)">${r.monitor_nome||'—'}</td>
+    </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--text4);padding:16px">Nenhum relatório de linha</td></tr>';
+
+  const rowsCarro=(carros||[]).map(r=>`
+    <tr>
+      <td style="font-family:'DM Mono',monospace;font-size:12px">${r.data}</td>
+      <td style="font-weight:600;font-family:'DM Mono',monospace">${r.prefixo||'—'}</td>
+      <td style="font-family:'DM Mono',monospace;text-align:center">${r.km_l??'—'}</td>
+      <td><span style="background:${r.condicao_interna==='ok'?'#00C48C20':r.condicao_interna==='atencao'?'#F59E0B20':'#EF444420'};color:${r.condicao_interna==='ok'?'var(--green)':r.condicao_interna==='atencao'?'var(--amber)':'var(--red)'};border-radius:5px;padding:2px 8px;font-size:11px">${r.condicao_interna||'—'}</span></td>
+      <td style="font-size:12px;color:var(--text3)">${r.observacao||'—'}</td>
+      <td style="font-size:12px;color:var(--text3)">${r.monitor_nome||'—'}</td>
+    </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text4);padding:16px">Nenhum relatório de carro</td></tr>';
+
+  setMain(`${secTitle('📋','Relatórios de Linha e Carro',back)}
+    <div class="filtros">${tabBar}</div>
+
+    <div style="font-size:13px;font-weight:700;margin-bottom:8px">Relatórios de Linha — últimos 7 dias</div>
+    <div class="tbl-wrap" style="margin-bottom:16px">
+      <table>
+        <thead><tr><th>Data</th><th>Linha</th><th style="text-align:center">Prog</th><th style="text-align:center">Real</th><th style="text-align:center">Atrasos</th><th style="text-align:center">Pontualidade</th><th>Monitor</th></tr></thead>
+        <tbody>${rowsLinha}</tbody>
+      </table>
+    </div>
+
+    <div style="font-size:13px;font-weight:700;margin-bottom:8px">Relatórios de Carro — últimos 7 dias</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Data</th><th>Prefixo</th><th style="text-align:center">KM/L</th><th>Condição</th><th>Observação</th><th>Monitor</th></tr></thead>
+        <tbody>${rowsCarro}</tbody>
+      </table>
+    </div>
+  `);
+}
+
+// ══════════════════════════════════════════════════════════════
+// MONITOR — Minhas Monitorias
+// ══════════════════════════════════════════════════════════════
+
+async function renderFerrMonitor(aba='meus'){
+  const gid=getGid();
+  const mid=S.perfil?.id;
+  const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  const tabs=['meus','registrar','rel_linha','rel_carro'];
+  const tabLabels={meus:'👥 Meus Motoristas',registrar:'➕ Registrar',rel_linha:'📋 Rel. Linha',rel_carro:'🚌 Rel. Carro'};
+  const tabBar=tabs.map(t=>`<button class="filtro-btn${aba===t?' active':''}" onclick="renderFerrMonitor('${t}')">${tabLabels[t]}</button>`).join('');
+
+  if(aba==='meus') return _monMeusMotoristas(gid,mid,back,tabBar);
+  if(aba==='registrar') return _monFormRegistrar(gid,mid,back,tabBar);
+  if(aba==='rel_linha') return _monFormRelLinha(gid,mid,back,tabBar);
+  if(aba==='rel_carro') return _monFormRelCarro(gid,mid,back,tabBar);
+}
+
+async function _monMeusMotoristas(gid,mid,back,tabBar){
+  const hoje=new Date().toISOString().slice(0,10);
+  const semAgo=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+  const[{data:motoristas},{data:minhasHoje}]=await Promise.all([
+    sb.from('instrutor_ranking').select('*').eq('garagem_id',gid).eq('monitor_id',mid).order('posicao'),
+    sb.from('monitoria_registros').select('motorista_nome,matricula').eq('garagem_id',gid).eq('monitor_id',mid).eq('data',hoje),
+  ]);
+
+  const jaMonitH=new Set((minhasHoje||[]).map(m=>m.matricula));
+
+  const rows=(motoristas||[]).map(r=>`
+    <tr style="${jaMonitH.has(r.matricula)?'opacity:0.6':''}">
+      <td style="font-family:'DM Mono',monospace;text-align:center;color:var(--text3)">${r.posicao}°</td>
+      <td style="font-weight:600">${r.motorista_nome||'—'}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:12px">${r.matricula||'—'}</td>
+      <td style="font-family:'DM Mono',monospace;color:var(--red)">${r.km_l??'—'}</td>
+      <td style="text-align:center;color:var(--amber)">${r.infracoes_total||0}</td>
+      <td>
+        ${jaMonitH.has(r.matricula)
+          ?'<span style="color:var(--green);font-size:12px">✅ Monitorado hoje</span>'
+          :`<button onclick="_monAbrirForm('${r.motorista_nome}','${r.matricula}')" style="padding:4px 10px;border-radius:6px;border:1px solid var(--blue);background:#3B82F618;color:var(--blue);font-size:12px;cursor:pointer">Registrar</button>`}
+      </td>
+    </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text4);padding:24px">Nenhum motorista atribuído. Aguarde o instrutor distribuir o ranking.</td></tr>';
+
+  setMain(`${secTitle('👥','Meus Motoristas',back)}
+    <div class="filtros">${tabBar}</div>
+    <div class="tbl-wrap">
+      <div class="tbl-head">
+        <div style="font-size:13px;font-weight:700">Motoristas Atribuídos — ${(motoristas||[]).length} total</div>
+        <div style="font-size:12px;color:var(--text4)">${jaMonitH.size} monitorados hoje</div>
+      </div>
+      <table>
+        <thead><tr><th style="text-align:center">Pos</th><th>Motorista</th><th>Matrícula</th><th>KM/L</th><th style="text-align:center">Inf</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `);
+}
+
+function _monAbrirForm(nome,matricula){
+  S._monPreNome=nome||'';
+  S._monPreMat=matricula||'';
+  renderFerrMonitor('registrar');
+}
+
+async function _monFormRegistrar(gid,mid,back,tabBar){
+  const hoje=new Date().toISOString().slice(0,10);
+  const{data:minhas}=await sb.from('monitoria_registros').select('*').eq('garagem_id',gid).eq('monitor_id',mid).eq('data',hoje).order('created_at',{ascending:false});
+
+  const rows=(minhas||[]).map(r=>`
+    <tr>
+      <td style="font-weight:600">${r.motorista_nome||'—'}</td>
+      <td style="font-size:12px;color:var(--text3)">${r.linha||'—'} ${r.prefixo?'· '+r.prefixo:''}</td>
+      <td><span style="background:var(--border);border-radius:5px;padding:2px 7px;font-size:11px">${r.tipo}</span></td>
+      <td style="text-align:center;font-weight:700;color:${r.nota>=8?'var(--green)':r.nota>=6?'var(--amber)':'var(--red)'}">${r.nota}</td>
+      <td><button onclick="_monDelMonitoria('${r.id}')" style="background:transparent;border:none;color:var(--text4);cursor:pointer">🗑️</button></td>
+    </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text4);padding:12px">Nenhuma monitoria registrada hoje</td></tr>';
+
+  setMain(`${secTitle('➕','Registrar Monitoria',back)}
+    <div class="filtros">${tabBar}</div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:800px">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px">
+        <div style="font-size:14px;font-weight:700;margin-bottom:14px">Nova Monitoria</div>
+
+        <label class="fl">Tipo</label>
+        <select id="mon-tipo" class="fs" style="margin-bottom:10px">
+          <option value="campo">🚌 Campo (acompanhar motorista)</option>
+          <option value="linha">📋 Linha</option>
+          <option value="carro">🔧 Carro</option>
+        </select>
+
+        <label class="fl">Motorista</label>
+        <input id="mon-mot-nome" class="fi" placeholder="Nome do motorista..." style="margin-bottom:6px" value="${escHtml(S._monPreNome||'')}">
+        <input id="mon-mot-mat" class="fi" placeholder="Matrícula..." style="margin-bottom:10px" value="${escHtml(S._monPreMat||'')}">
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+          <div><label class="fl">Linha</label><input id="mon-linha" class="fi" placeholder="Ex: 720" style="margin-bottom:0"></div>
+          <div><label class="fl">Prefixo</label><input id="mon-prefixo" class="fi" placeholder="Ex: 02.001" style="margin-bottom:0"></div>
+        </div>
+
+        <label class="fl">Data</label>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
+          <input type="date" id="mon-data" class="fi" style="margin-bottom:0" value="${hoje}">
+          <button onclick="document.getElementById('mon-data').showPicker()" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">📅</button>
+        </div>
+
+        <label class="fl">Nota (1 a 10)</label>
+        <input type="number" id="mon-nota" class="fi" min="1" max="10" placeholder="Ex: 7" style="margin-bottom:12px">
+
+        <label class="fl" style="margin-bottom:8px">Infrações observadas</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-vel"> ⚡ Velocidade</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-fren"> 🛑 Frenagem</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-acel"> 🚀 Aceleração</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-cel"> 📱 Celular</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-cinto"> 🔒 Cinto</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-postura"> 🪑 Postura</label>
+        </div>
+
+        <label class="fl">Observação</label>
+        <textarea id="mon-obs" class="fi" placeholder="Pontos observados..." rows="3" style="resize:vertical;margin-bottom:14px"></textarea>
+
+        <button onclick="_monSalvarMonitoria('${gid}','${mid}')" class="btn-success" style="width:100%">✓ Salvar Monitoria</button>
+      </div>
+
+      <div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:10px">Monitorias de Hoje (${(minhas||[]).length})</div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Motorista</th><th>Linha/Carro</th><th>Tipo</th><th style="text-align:center">Nota</th><th></th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+async function _monSalvarMonitoria(gid,mid){
+  const get=id=>document.getElementById(id);
+  const nome=get('mon-mot-nome')?.value?.trim();
+  const nota=parseInt(get('mon-nota')?.value);
+  if(!nome){toast('Informe o nome do motorista','err');return;}
+  if(!nota||nota<1||nota>10){toast('Nota deve ser de 1 a 10','err');return;}
+
+  const payload={
+    garagem_id:gid,
+    monitor_id:mid,
+    monitor_nome:S.perfil?.nome,
+    motorista_nome:nome,
+    matricula:get('mon-mot-mat')?.value?.trim()||null,
+    linha:get('mon-linha')?.value?.trim()||null,
+    prefixo:get('mon-prefixo')?.value?.trim()||null,
+    data:get('mon-data')?.value||new Date().toISOString().slice(0,10),
+    tipo:get('mon-tipo')?.value||'campo',
+    nota,
+    inf_velocidade:get('mon-inf-vel')?.checked||false,
+    inf_frenagem:get('mon-inf-fren')?.checked||false,
+    inf_aceleracao:get('mon-inf-acel')?.checked||false,
+    inf_celular:get('mon-inf-cel')?.checked||false,
+    inf_cinto:get('mon-inf-cinto')?.checked||false,
+    inf_postura:get('mon-inf-postura')?.checked||false,
+    observacao:get('mon-obs')?.value?.trim()||null,
+  };
+
+  const{error}=await sb.from('monitoria_registros').insert(payload);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  S._monPreNome='';S._monPreMat='';
+  toast('✅ Monitoria registrada!');
+  renderFerrMonitor('registrar');
+}
+
+async function _monDelMonitoria(id){
+  if(!confirm('Remover esta monitoria?')) return;
+  await sb.from('monitoria_registros').delete().eq('id',id);
+  renderFerrMonitor('registrar');
+}
+
+async function _monFormRelLinha(gid,mid,back,tabBar){
+  const hoje=new Date().toISOString().slice(0,10);
+  const{data:minhas}=await sb.from('monitor_relatorio_linha').select('*').eq('garagem_id',gid).eq('monitor_id',mid).order('data',{ascending:false}).limit(20);
+
+  const rows=(minhas||[]).map(r=>`
+    <tr>
+      <td style="font-family:'DM Mono',monospace;font-size:12px">${r.data}</td>
+      <td style="font-weight:600">${r.linha||'—'}</td>
+      <td style="text-align:center">${r.viagens_programadas??'—'}</td>
+      <td style="text-align:center">${r.viagens_realizadas??'—'}</td>
+      <td style="text-align:center;color:var(--red)">${r.atrasos??'—'}</td>
+      <td style="text-align:center;font-weight:700;color:${(r.pontualidade_pct||0)>=90?'var(--green)':(r.pontualidade_pct||0)>=75?'var(--amber)':'var(--red)'}">${r.pontualidade_pct??'—'}%</td>
+      <td><button onclick="_monDelRelLinha('${r.id}')" style="background:transparent;border:none;color:var(--text4);cursor:pointer">🗑️</button></td>
+    </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--text4);padding:14px">Nenhum relatório registrado</td></tr>';
+
+  setMain(`${secTitle('📋','Relatório de Linha',back)}
+    <div class="filtros">${tabBar}</div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:800px">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px">
+        <div style="font-size:14px;font-weight:700;margin-bottom:14px">Novo Relatório de Linha</div>
+
+        <label class="fl">Linha</label>
+        <input id="rlin-linha" class="fi" placeholder="Ex: 720 — Centro/Bairro..." style="margin-bottom:10px">
+
+        <label class="fl">Data</label>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
+          <input type="date" id="rlin-data" class="fi" style="margin-bottom:0" value="${hoje}">
+          <button onclick="document.getElementById('rlin-data').showPicker()" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">📅</button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+          <div><label class="fl">Viagens Programadas</label><input type="number" id="rlin-prog" class="fi" placeholder="0" style="margin-bottom:0"></div>
+          <div><label class="fl">Viagens Realizadas</label><input type="number" id="rlin-real" class="fi" placeholder="0" style="margin-bottom:0"></div>
+        </div>
+
+        <label class="fl">Atrasos</label>
+        <input type="number" id="rlin-atraso" class="fi" placeholder="0" style="margin-bottom:10px">
+
+        <label class="fl">Observação</label>
+        <textarea id="rlin-obs" class="fi" placeholder="Observações da linha..." rows="3" style="resize:vertical;margin-bottom:14px"></textarea>
+
+        <button onclick="_monSalvarRelLinha('${gid}','${mid}')" class="btn-success" style="width:100%">✓ Salvar Relatório</button>
+      </div>
+
+      <div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:10px">Meus Relatórios de Linha</div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Data</th><th>Linha</th><th style="text-align:center">Prog</th><th style="text-align:center">Real</th><th style="text-align:center">Atra</th><th style="text-align:center">Pont</th><th></th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+async function _monSalvarRelLinha(gid,mid){
+  const get=id=>document.getElementById(id)?.value?.trim();
+  const linha=get('rlin-linha');
+  const prog=parseInt(get('rlin-prog'));
+  const real=parseInt(get('rlin-real'));
+  if(!linha){toast('Informe a linha','err');return;}
+
+  const pont=prog>0?+((real/prog)*100).toFixed(1):null;
+  const atraso=parseInt(get('rlin-atraso'))||0;
+
+  const{error}=await sb.from('monitor_relatorio_linha').insert({
+    garagem_id:gid,monitor_id:mid,monitor_nome:S.perfil?.nome,
+    linha,data:get('rlin-data')||new Date().toISOString().slice(0,10),
+    viagens_programadas:prog||null,viagens_realizadas:real||null,
+    atrasos:atraso,pontualidade_pct:pont,
+    observacao:get('rlin-obs')||null,
+  });
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('✅ Relatório de linha salvo!');
+  renderFerrMonitor('rel_linha');
+}
+
+async function _monDelRelLinha(id){
+  if(!confirm('Remover?')) return;
+  await sb.from('monitor_relatorio_linha').delete().eq('id',id);
+  renderFerrMonitor('rel_linha');
+}
+
+async function _monFormRelCarro(gid,mid,back,tabBar){
+  const hoje=new Date().toISOString().slice(0,10);
+  const{data:minhas}=await sb.from('monitor_relatorio_carro').select('*').eq('garagem_id',gid).eq('monitor_id',mid).order('data',{ascending:false}).limit(20);
+
+  const rows=(minhas||[]).map(r=>`
+    <tr>
+      <td style="font-family:'DM Mono',monospace;font-size:12px">${r.data}</td>
+      <td style="font-weight:600;font-family:'DM Mono',monospace">${r.prefixo||'—'}</td>
+      <td style="font-family:'DM Mono',monospace;text-align:center">${r.km_l??'—'}</td>
+      <td><span style="background:${r.condicao_interna==='ok'?'#00C48C20':r.condicao_interna==='atencao'?'#F59E0B20':'#EF444420'};color:${r.condicao_interna==='ok'?'var(--green)':r.condicao_interna==='atencao'?'var(--amber)':'var(--red)'};border-radius:5px;padding:2px 8px;font-size:11px">${r.condicao_interna||'—'}</span></td>
+      <td style="font-size:12px;color:var(--text3)">${r.observacao||'—'}</td>
+      <td><button onclick="_monDelRelCarro('${r.id}')" style="background:transparent;border:none;color:var(--text4);cursor:pointer">🗑️</button></td>
+    </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text4);padding:14px">Nenhum relatório registrado</td></tr>';
+
+  setMain(`${secTitle('🚌','Relatório de Carro',back)}
+    <div class="filtros">${tabBar}</div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:800px">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px">
+        <div style="font-size:14px;font-weight:700;margin-bottom:14px">Novo Relatório de Carro</div>
+
+        <label class="fl">Prefixo do Veículo</label>
+        <input id="rcar-pref" class="fi" placeholder="Ex: 02.001..." style="margin-bottom:10px">
+
+        <label class="fl">Data</label>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
+          <input type="date" id="rcar-data" class="fi" style="margin-bottom:0" value="${hoje}">
+          <button onclick="document.getElementById('rcar-data').showPicker()" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">📅</button>
+        </div>
+
+        <label class="fl">KM/L Observado</label>
+        <input type="number" step="0.01" id="rcar-kml" class="fi" placeholder="Ex: 3.25" style="margin-bottom:10px">
+
+        <label class="fl">Condição Interna</label>
+        <select id="rcar-cond" class="fs" style="margin-bottom:10px">
+          <option value="ok">✅ OK</option>
+          <option value="atencao">⚠️ Atenção</option>
+          <option value="ruim">❌ Ruim</option>
+        </select>
+
+        <label class="fl">Infrações / Observações</label>
+        <textarea id="rcar-obs" class="fi" placeholder="Infrações do condutor, condição geral..." rows="3" style="resize:vertical;margin-bottom:14px"></textarea>
+
+        <button onclick="_monSalvarRelCarro('${gid}','${mid}')" class="btn-success" style="width:100%">✓ Salvar Relatório</button>
+      </div>
+
+      <div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:10px">Meus Relatórios de Carro</div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Data</th><th>Prefixo</th><th style="text-align:center">KM/L</th><th>Condição</th><th>Obs</th><th></th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+async function _monSalvarRelCarro(gid,mid){
+  const get=id=>document.getElementById(id);
+  const pref=get('rcar-pref')?.value?.trim();
+  if(!pref){toast('Informe o prefixo','err');return;}
+
+  const{error}=await sb.from('monitor_relatorio_carro').insert({
+    garagem_id:gid,monitor_id:mid,monitor_nome:S.perfil?.nome,
+    prefixo:pref,data:get('rcar-data')?.value||new Date().toISOString().slice(0,10),
+    km_l:parseFloat(get('rcar-kml')?.value)||null,
+    condicao_interna:get('rcar-cond')?.value||'ok',
+    observacao:get('rcar-obs')?.value?.trim()||null,
+  });
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('✅ Relatório de carro salvo!');
+  renderFerrMonitor('rel_carro');
+}
+
+async function _monDelRelCarro(id){
+  if(!confirm('Remover?')) return;
+  await sb.from('monitor_relatorio_carro').delete().eq('id',id);
+  renderFerrMonitor('rel_carro');
+}
+
 function renderFerrRotina(cargoSel=null){
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
 
@@ -15686,6 +16423,43 @@ function renderFerrRotina(cargoSel=null){
         {hora:'09:00 - 10:00',ativ:'Solicitações',com:'Mecânicos',desc:'Atendimento de solicitações de peças.',tools:['2.21 RJNP']},
         {hora:'15:30 - 16:30',ativ:'Checklist PPS',com:'—',desc:'Preenchimento de checklist e preparação do processo.',tools:[]},
         {hora:'17:30 - 19:30',ativ:'Conformidade Sistêmica',com:'Sistema Praxio',desc:'Atualização de movimentações no sistema.',tools:[]},
+      ]
+    },
+    instrutor:{
+      label:'Instrutor Técnico',
+      horario:'07:00 ~ 17:00 (5x2)',
+      superior:'Coordenador / Operações Seguras',
+      equipe:'5 Monitores de Campo',
+      desc:'Responsável pela análise de KM/L, dados de telemetria e acompanhamento das monitorias dos motoristas. Distribui os 30 piores motoristas da semana entre os monitores e consolida os relatórios de linha e carro.',
+      atividades:[
+        {hora:'07:00 - 07:30',ativ:'Entrada — KM/L do dia anterior',com:'Sistema BI',desc:'Importar e analisar o KM/L do dia anterior. Identificar veículos e motoristas abaixo da meta.',tools:['Painel Instrutor — KM/L']},
+        {hora:'07:30 - 08:00',ativ:'Dados de Telemetria',com:'Sistema Telemetria',desc:'Importar ranking semanal do sistema de telemetria. Atualizar posições dos 30 piores motoristas.',tools:['Painel Instrutor — Ranking']},
+        {hora:'08:00 - 08:30',ativ:'Distribuição de Motoristas',com:'Monitores',desc:'Atribuir os 30 piores motoristas entre os 3 monitores de campo. Confirmar agendas.',tools:['Painel Instrutor — Ranking']},
+        {hora:'08:30 - 09:30',ativ:'Acompanhamento das Monitorias',com:'Monitores em Campo',desc:'Verificar quantas monitorias cada monitor realizou no dia. Cobrar produtividade.',tools:['Painel Instrutor — Monitorias']},
+        {hora:'09:30 - 10:30',ativ:'Relatórios de Linha',com:'Monitor de Linhas',desc:'Revisar os relatórios das piores linhas do monitor de linha. Identificar padrões de atraso.',tools:['Painel Instrutor — Relatórios']},
+        {hora:'10:30 - 11:30',ativ:'Relatórios de Carro',com:'Monitor de Carros',desc:'Revisar os relatórios dos piores carros. Cruzar com dados de KM/L e infração.',tools:['Painel Instrutor — Relatórios']},
+        {hora:'12:00 - 13:00',ativ:'Refeição',com:'—',desc:'Intervalo para refeição.',tools:[]},
+        {hora:'13:00 - 14:30',ativ:'Consolidação de Dados',com:'—',desc:'Consolidar monitorias do dia. Identificar motoristas para treinamento/reciclagem.',tools:['Painel Instrutor']},
+        {hora:'14:30 - 15:30',ativ:'Gemba Walk Rodada 2',com:'Monitores',desc:'Segunda verificação de produtividade dos monitores. Encerramento das monitorias abertas.',tools:['Painel Instrutor — Monitorias']},
+        {hora:'15:30 - 16:30',ativ:'Relatório Semanal',com:'Coordenação',desc:'Compilar relatório semanal de KM/L, telemetria e monitorias. Enviar para coordenação.',tools:['Painel Instrutor']},
+        {hora:'16:30 - 17:00',ativ:'Passagem de Bastão',com:'Coordenador',desc:'Fechar o dia com pendências, motoristas críticos e agenda do dia seguinte.',tools:[]},
+      ]
+    },
+    monitor:{
+      label:'Monitor de Campo',
+      horario:'Turno variável (campo)',
+      superior:'Instrutor Técnico',
+      equipe:'30 Motoristas designados',
+      desc:'Responsável por acompanhar os motoristas atribuídos pelo instrutor em campo, registrando infrações e comportamento. Monitores de linha e carro geram relatórios específicos de pontualidade e condição dos veículos.',
+      atividades:[
+        {hora:'Início do Turno',ativ:'Entrada — Meus Motoristas',com:'Instrutor',desc:'Verificar lista de motoristas atribuídos para o dia. Checar horários e linhas programadas.',tools:['Minhas Monitorias']},
+        {hora:'Após Entrada',ativ:'Planejamento de Rota',com:'—',desc:'Organizar a ordem de acompanhamento pelos horários de saída de cada motorista.',tools:[]},
+        {hora:'Campo',ativ:'Monitoria em Campo',com:'Motorista',desc:'Embarcar na linha junto ao motorista. Observar comportamento, uso de celular, velocidade e postura.',tools:['Minhas Monitorias — Registrar']},
+        {hora:'Pós-Monitoria',ativ:'Registro de Infração',com:'—',desc:'Registrar imediatamente as infrações observadas: velocidade, frenagem, celular, cinto, postura. Dar nota de 1 a 10.',tools:['Minhas Monitorias — Registrar']},
+        {hora:'Pós-Monitoria',ativ:'Feedback ao Motorista',com:'Motorista',desc:'Dar devolutiva presencial ao motorista sobre os pontos observados antes de desembarcar.',tools:[]},
+        {hora:'Meio do Turno',ativ:'Relatório de Linha (Monitor de Linhas)',com:'—',desc:'Preencher relatório de pontualidade da linha: viagens programadas vs realizadas, atrasos, observações.',tools:['Minhas Monitorias — Relatório de Linha']},
+        {hora:'Meio do Turno',ativ:'Relatório de Carro (Monitor de Carros)',com:'—',desc:'Preencher relatório do carro: KM/L observado, condição interna, infrações do condutor.',tools:['Minhas Monitorias — Relatório de Carro']},
+        {hora:'Final do Turno',ativ:'Fechamento das Monitorias',com:'Instrutor',desc:'Confirmar que todas as monitorias do dia estão registradas. Enviar resumo ao instrutor.',tools:['Minhas Monitorias']},
       ]
     },
   };

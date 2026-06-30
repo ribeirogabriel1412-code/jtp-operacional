@@ -1,5 +1,5 @@
 // ── Constantes e definição de ferramentas (desktop) ───────
-const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',gerente_operacional:'Gerente Operacional',coordenador:'Coordenador',supervisor:'Supervisor',lider_pcm:'Líder PCM',assistente_pcm:'Assistente PCM',almoxarifado:'Almoxarifado',lider_almoxarifado:'Líder Almoxarifado',lider_operacional:'Líder Operacional',lider_suprimentos:'Líder de Suprimentos',operacoes_seguras:'Operações Seguras',lider_oficina:'Líder de Oficina',lider_patio:'Líder de Pátio',lavador:'Lavador',manobrista:'Manobrista',frentista:'Frentista',plantao:'Plantão'};
+const CARGOS={diretoria:'Diretoria',gerente_garagem:'Gerente de Garagem',gerente_operacional:'Gerente Operacional',coordenador:'Coordenador',supervisor:'Supervisor',lider_pcm:'Líder PCM',assistente_pcm:'Assistente PCM',almoxarifado:'Almoxarifado',lider_almoxarifado:'Líder Almoxarifado',lider_operacional:'Líder Operacional',lider_suprimentos:'Líder de Suprimentos',operacoes_seguras:'Operações Seguras',lider_oficina:'Líder de Oficina',lider_patio:'Líder de Pátio',lavador:'Lavador',manobrista:'Manobrista',frentista:'Frentista',plantao:'Plantão',instrutor:'Instrutor',monitor:'Monitor'};
 
 const ST_CFG={disponivel:{l:'Disponível',cls:'b-disp'},em_linha:{l:'Em Linha',cls:'b-linha'},manutencao:{l:'Manutenção',cls:'b-manut'},aguardando_peca:{l:'Ag. Peça',cls:'b-agpeca'},sinistro:{l:'Sinistro',cls:'b-sinistro'}};
 
@@ -103,6 +103,16 @@ const FERRAMENTAS_DEF=[
     executa:  ['almoxarifado','lider_almoxarifado','lider_suprimentos'],
     valida:   ['lider_suprimentos'],
     visualiza:['lider_pcm','assistente_pcm','lider_oficina','gerente_garagem','diretoria'],
+  },
+  {id:'ferr-instrutor', icon:'📊', nome:'Painel do Instrutor',
+    executa:  ['instrutor'],
+    valida:   ['coordenador','supervisor'],
+    visualiza:['gerente_garagem','diretoria','operacoes_seguras'],
+  },
+  {id:'ferr-monitor', icon:'👁️', nome:'Minhas Monitorias',
+    executa:  ['monitor','instrutor'],
+    valida:   ['instrutor'],
+    visualiza:['gerente_garagem','diretoria'],
   },
 ];
 
