@@ -2332,7 +2332,9 @@ async function telaAlmoxMobSolicitacoes(){
             ${somenteLeitura?'':`<div style="display:flex;gap:6px;margin-top:8px;align-items:center;justify-content:space-between">
               <span style="font-size:10px;font-weight:800;color:${statusCor(i.status||'')}">${statusLabel(i.status||'solicitado_pcm')}</span>
               <span style="white-space:nowrap;display:flex;gap:4px">
-                ${['separado','comprado'].includes(i.status||'')?'':`<button onclick="almoxMobAbrirConfEntrega('${i.id}')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;font-family:inherit">Separar</button>`}
+                ${['separado','comprado'].includes(i.status||'')?
+                  `<button onclick="almoxMobAbrirConfEntrega('${i.id}',true)" style="padding:6px 9px;border-radius:8px;border:1px solid var(--text3);background:var(--surface2);color:var(--text3);font-size:11px;font-weight:800;font-family:inherit">✏️ Editar</button>`:
+                  `<button onclick="almoxMobAbrirConfEntrega('${i.id}')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;font-family:inherit">Separar</button>`}
                 ${['separado','comprado','pedido_compra'].includes(i.status||'')?'':`<button onclick="almoxMobCompraSol('${i.id}')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--red);background:#EF444418;color:var(--red);font-size:11px;font-weight:800;font-family:inherit">Compra</button>`}
                 <button onclick="almoxMobChegarSol('${i.id}')" style="padding:6px 9px;border-radius:8px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:800;font-family:inherit">Chegou</button>
               </span>
@@ -2418,11 +2420,16 @@ async function almoxMobChegarSol(id){
 
 // ── Confirmação de Entrega ────────────────────────────────────────
 var _solConfTimer=null;
-function almoxMobAbrirConfEntrega(id){
+function almoxMobAbrirConfEntrega(id,isEdit=false){
   const item=window._solItemsMap?.[id];
   if(!item){toast('Item não encontrado','err');return;}
-  // Remove overlay anterior se existir
   document.getElementById('conf-entrega-overlay')?.remove();
+  // Se editando, pré-preenche com o que já foi entregue
+  const nomePreview=isEdit?(item.item_entregue||item.peca||'—'):(item.peca||'—');
+  const codPreview=isEdit?(item.cod_sap_entregue||item.cod_sap||''):(item.cod_sap||'');
+  const qtdPreview=isEdit?(item.qtd_entregue||item.quantidade||1):(item.quantidade||1);
+  const titulo=isEdit?'✏️ Editar Entrega':'Confirmar Entrega';
+  const btnLabel=isEdit?'💾 Salvar Correção':'✅ Confirmar Entrega';
   const ov=document.createElement('div');
   ov.id='conf-entrega-overlay';
   ov.style.cssText='position:fixed;inset:0;background:#000a;z-index:9999;display:flex;flex-direction:column;justify-content:flex-end';
@@ -2430,7 +2437,7 @@ function almoxMobAbrirConfEntrega(id){
     <div style="background:var(--bg);border-radius:18px 18px 0 0;padding:20px 16px 32px;max-height:90vh;overflow-y:auto">
       <div style="text-align:center;margin-bottom:16px">
         <div style="width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px"></div>
-        <div style="font-weight:900;font-size:16px">Confirmar Entrega</div>
+        <div style="font-weight:900;font-size:16px">${titulo}</div>
       </div>
       <!-- PEDIDO -->
       <div style="background:var(--surface2);border:1px solid var(--border);border-left:4px solid var(--amber);border-radius:10px;padding:12px 14px;margin-bottom:14px">
@@ -2441,7 +2448,7 @@ function almoxMobAbrirConfEntrega(id){
       </div>
       <!-- O QUE FOI ENTREGUE -->
       <div style="background:var(--surface2);border:1px solid var(--border);border-left:4px solid var(--green);border-radius:10px;padding:12px 14px;margin-bottom:16px">
-        <div style="font-size:10px;font-weight:900;color:var(--green);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">✅ O que foi entregue</div>
+        <div style="font-size:10px;font-weight:900;color:var(--green);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">${isEdit?'✏️ Corrigir o que foi entregue':'✅ O que foi entregue'}</div>
         <div style="margin-bottom:8px">
           <label style="font-size:11px;font-weight:700;color:var(--text3)">Buscar item (nome ou código SAP)</label>
           <input id="conf-item-busca" placeholder="Digite para buscar no catálogo..." oninput="almoxConfBuscarSap(this.value,'${id}')" autocomplete="off" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--blue);border-radius:8px;color:var(--text);padding:9px 11px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
@@ -2449,27 +2456,26 @@ function almoxMobAbrirConfEntrega(id){
         </div>
         <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">
           <div style="font-size:10px;font-weight:700;color:var(--text3);margin-bottom:4px">ITEM SELECIONADO</div>
-          <div id="conf-item-preview" style="font-size:13px;font-weight:700;color:var(--text)">${escHtml(item.peca||'—')}</div>
-          <div id="conf-item-cod-preview" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--amber);margin-top:2px">${escHtml(item.cod_sap||'')}</div>
+          <div id="conf-item-preview" style="font-size:13px;font-weight:700;color:var(--text)">${escHtml(nomePreview)}</div>
+          <div id="conf-item-cod-preview" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--amber);margin-top:2px">${escHtml(codPreview)}</div>
         </div>
-        <input type="hidden" id="conf-item-nome" value="${escHtml(item.peca||'')}">
+        <input type="hidden" id="conf-item-nome" value="${escHtml(nomePreview)}">
         <div style="margin-bottom:8px;display:none">
           <label style="font-size:11px;font-weight:700;color:var(--text3)">Código SAP</label>
-          <input id="conf-item-cod" placeholder="Código SAP (opcional)" value="${escHtml(item.cod_sap||'')}" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 11px;font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+          <input id="conf-item-cod" placeholder="Código SAP (opcional)" value="${escHtml(codPreview)}" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 11px;font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
         </div>
         <div>
           <label style="font-size:11px;font-weight:700;color:var(--text3)">Qtd entregue</label>
-          <input id="conf-item-qtd" type="number" inputmode="decimal" min="0" step="1" value="${item.quantidade||1}" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 11px;font-size:14px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box;font-weight:800">
+          <input id="conf-item-qtd" type="number" inputmode="decimal" min="0" step="1" value="${qtdPreview}" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 11px;font-size:14px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box;font-weight:800">
         </div>
       </div>
       <div style="display:flex;gap:8px">
         <button onclick="document.getElementById('conf-entrega-overlay').remove()" style="flex:1;padding:13px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">Cancelar</button>
-        <button onclick="almoxMobSalvarEntrega('${id}')" style="flex:2;padding:13px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">✅ Confirmar Entrega</button>
+        <button onclick="almoxMobSalvarEntrega('${id}')" style="flex:2;padding:13px;border-radius:10px;border:none;background:var(--green);color:#fff;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">${btnLabel}</button>
       </div>
     </div>`;
   ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
   document.body.appendChild(ov);
-  setTimeout(()=>document.getElementById('conf-item-qtd')?.focus&&null,100);
 }
 
 window._confSapMap={};
@@ -2519,13 +2525,38 @@ async function almoxMobSalvarEntrega(id){
   const qtdEntregue=parseFloat(document.getElementById('conf-item-qtd')?.value||0)||0;
   if(!nomeEntregue){toast('Informe o item entregue','err');return;}
   if(!qtdEntregue){toast('Informe a quantidade','err');return;}
+  // Busca dados da requisição e preço SAP do item entregue
+  const{data:reqData}=await sb.from('requisicoes_compra').select('ocorrencia_id,garagem_id').eq('id',id).single();
+  let valorEstimado=null;
+  if(codEntregue&&reqData?.garagem_id){
+    const{data:sapRow}=await sb.from('sap_precos').select('preco_unit').eq('garagem_id',reqData.garagem_id).eq('cod_sap',codEntregue).maybeSingle();
+    if(parseFloat(sapRow?.preco_unit)>0) valorEstimado=parseFloat(sapRow.preco_unit);
+  }
   const{error}=await sb.from('requisicoes_compra').update({
     status:'separado',
     item_entregue:nomeEntregue,
     cod_sap_entregue:codEntregue||null,
-    qtd_entregue:qtdEntregue
+    qtd_entregue:qtdEntregue,
+    valor_estimado:valorEstimado
   }).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
+  // Atualiza custo_previsto da OS se item pertence a uma OS
+  const ocId=reqData?.ocorrencia_id;
+  if(ocId&&reqData?.garagem_id){
+    const{data:todasReqs}=await sb.from('requisicoes_compra').select('quantidade,qtd_entregue,valor_estimado,cod_sap,cod_sap_entregue').eq('ocorrencia_id',ocId).neq('status','cancelado');
+    const codsSemPreco=[...new Set((todasReqs||[]).filter(r=>!parseFloat(r.valor_estimado)&&(r.cod_sap_entregue||r.cod_sap)).map(r=>r.cod_sap_entregue||r.cod_sap))];
+    let sapMap={};
+    if(codsSemPreco.length){
+      const{data:sapRows}=await sb.from('sap_precos').select('cod_sap,preco_unit').eq('garagem_id',reqData.garagem_id).in('cod_sap',codsSemPreco);
+      (sapRows||[]).forEach(r=>{if(parseFloat(r.preco_unit)>0)sapMap[r.cod_sap]=parseFloat(r.preco_unit);});
+    }
+    const novoTotal=(todasReqs||[]).reduce((s,r)=>{
+      const preco=parseFloat(r.valor_estimado)||sapMap[r.cod_sap_entregue||r.cod_sap]||0;
+      const qtd=parseFloat(r.qtd_entregue||r.quantidade)||1;
+      return s+preco*qtd;
+    },0);
+    if(novoTotal>0) await sb.from('ocorrencias_22').update({custo_previsto:novoTotal}).eq('id',ocId);
+  }
   document.getElementById('conf-entrega-overlay')?.remove();
   toast('✅ Entrega confirmada');
   _almoxMobTab='sol';telaValetAlmox();
