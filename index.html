@@ -2078,10 +2078,8 @@ async function renderAlmoxCompras(){
           ?`<span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--blue)">${escHtml(p.numero_pedido)}</span>${isLider?` <button onclick="almoxComprasEditNumPed('${p.id}','${escHtml(p.numero_pedido||'')}')" style="padding:2px 5px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:10px;cursor:pointer">✏️</button>`:''}`
           :isLider?`<button onclick="almoxComprasEditNumPed('${p.id}','')" style="padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:11px;font-weight:700;font-family:inherit;cursor:pointer">+ Nº Pedido</button>`:`<span style="color:var(--text4)">—</span>`;
         let btns='';
-        if(isLider){
-          if(p.status==='pendente')btns=`<button onclick="almoxComprasEnviarMatriz('${p.id}')" title="Enviar para Matriz" style="padding:4px 8px;border-radius:6px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:11px;font-weight:800;font-family:inherit;cursor:pointer">📤 Enviar</button>`;
-          else if(p.status==='enviado_matriz')btns=`<button onclick="almoxComprasRegistrarPrazo('${p.id}')" title="Prazo" style="padding:4px 8px;border-radius:6px;border:1px solid var(--amber);background:#C8A24A18;color:var(--amber);font-size:11px;font-weight:800;font-family:inherit;cursor:pointer">📅</button> <button onclick="almoxComprasFup('${p.id}')" title="FUP" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:11px;font-weight:800;font-family:inherit;cursor:pointer">💬 FUP</button>`;
-          else if(p.status==='aguardando_entrega')btns=`<button onclick="almoxComprasFup('${p.id}')" title="FUP" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:11px;font-weight:800;font-family:inherit;cursor:pointer">💬 FUP</button> <button onclick="almoxComprasRecebido('${p.id}')" title="Chegou" style="padding:4px 8px;border-radius:6px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;font-family:inherit;cursor:pointer">✅ Chegou</button>`;
+        if(isLider&&p.status!=='recebido'){
+          btns=`<button onclick="almoxComprasFup('${p.id}')" title="FUP" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:11px;font-weight:800;font-family:inherit;cursor:pointer">💬 FUP</button> <button onclick="almoxComprasConfirmarChegada('${p.id}')" style="padding:4px 8px;border-radius:6px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;font-family:inherit;cursor:pointer">📦 Confirmar Chegada</button>`;
         }
         tRows+=`<tr style="border-top:1px solid var(--border);${vencido?'background:#EF444408':''}" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='${vencido?'#EF444408':''}'">
           <td style="padding:10px 12px;font-family:'DM Mono',monospace;font-weight:900;font-size:13px;color:var(--blue);white-space:nowrap">${idx===0?colA:''}</td>
@@ -2089,7 +2087,8 @@ async function renderAlmoxCompras(){
           <td style="padding:10px 12px"><div style="font-weight:700;font-size:13px;line-height:1.3">${escHtml(p.item||'—')}</div>${p.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-top:2px">${escHtml(p.cod_sap)}</div>`:''}</td>
           <td style="padding:10px 12px;text-align:center;font-weight:800;font-family:'DM Mono',monospace">${p.quantidade||1}</td>
           <td style="padding:10px 12px;white-space:nowrap">${numPedHtml}</td>
-          <td style="padding:10px 12px;white-space:nowrap"><span style="background:${corStatus[p.status]||'var(--border)'}20;color:${corStatus[p.status]||'var(--text3)'};border:1px solid ${corStatus[p.status]||'var(--border)'}50;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:800">${labelStatus[p.status]||p.status}</span></td>
+          <td style="padding:10px 12px;white-space:nowrap"><span style="background:${corStatus[p.status]||'var(--border)'}20;color:${corStatus[p.status]||'var(--text3)'};border:1px solid ${corStatus[p.status]||'var(--border)'}50;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:800">${labelStatus[p.status]||p.status}</span>${p.numero_nf?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);margin-top:3px">NF ${escHtml(p.numero_nf)}${p.data_nf?` · ${fmtDate(p.data_nf)}`:''}</div>`:''}
+          </td>
           <td style="padding:10px 12px;white-space:nowrap;font-size:12px;font-weight:${vencido?'900':'600'};color:${vencido?'var(--red)':p.data_previsao_entrega?'var(--amber)':'var(--text3)'};cursor:${isLider?'pointer':'default'}" onclick="${isLider?`almoxComprasEditPrazoInline('${p.id}','${p.data_previsao_entrega||''}')`:''}" title="${isLider?'Clique para editar prazo':''}">${fmtDate(p.data_previsao_entrega)}${vencido?' ⚠️':''}${isLider?`<span style="font-size:9px;color:var(--text4);margin-left:3px">✏️</span>`:''}</td>
           <td style="padding:10px 12px;min-width:220px">
             ${(p.fup_logs||[]).length?`<div style="max-height:130px;overflow-y:auto;display:grid;gap:3px;margin-bottom:${btns?'6px':'0'}">${(p.fup_logs||[]).map(f=>`<div style="font-size:11px;padding:4px 0;border-bottom:1px solid var(--border2);display:flex;gap:6px;align-items:flex-start"><span style="color:var(--blue);font-weight:700;font-family:'DM Mono',monospace;white-space:nowrap;flex-shrink:0">${fmtD(f.data)}</span><span style="color:var(--text2)">${escHtml(f.nota)}</span></div>`).join('')}</div>`:''}
@@ -2394,22 +2393,45 @@ async function almoxComprasFup(id){
   );
 }
 
-async function almoxComprasRecebido(id){
-  almoxComprasAbrirModal('✅ Confirmar Recebimento',
-    `<div><label style="font-size:12px;font-weight:800;color:var(--text3)">Observação (opcional)</label>
-    <textarea id="ac-rec" placeholder="Ex: Item recebido conforme NF. Encaminhado para estoque." rows="3" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;resize:vertical;box-sizing:border-box"></textarea></div>`,
+async function almoxComprasRecebido(id){return almoxComprasConfirmarChegada(id);}
+async function almoxComprasConfirmarChegada(id){
+  almoxComprasAbrirModal('📦 Confirmar Chegada',
+    `<div style="display:grid;gap:14px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:12px;font-weight:800;color:var(--text3)">Nº da Nota Fiscal *</label>
+          <input id="ac-nf" placeholder="Ex: 000123456" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:13px;font-family:'DM Mono',monospace;outline:none;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:800;color:var(--text3)">Data da NF</label>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <input type="date" id="ac-nf-data" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:12px;font-family:'DM Mono',monospace;outline:none">
+            <button onclick="document.getElementById('ac-nf-data').showPicker()" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;cursor:pointer">📅</button>
+          </div>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:800;color:var(--text3)">Observação <span style="font-weight:600;color:var(--text4)">(opcional)</span></label>
+        <textarea id="ac-rec" placeholder="Ex: Recebido conforme pedido. Encaminhado ao estoque." rows="2" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;resize:vertical;box-sizing:border-box"></textarea>
+      </div>
+    </div>`,
     async()=>{
-      const obs=document.getElementById('ac-rec')?.value?.trim()||'Item recebido na garagem';
+      const nf=document.getElementById('ac-nf')?.value?.trim();
+      if(!nf){toast('Informe o Nº da NF','err');return;}
+      const dataNF=document.getElementById('ac-nf-data')?.value||null;
+      const obs=document.getElementById('ac-rec')?.value?.trim()||'';
       document.getElementById('ac-modal-overlay')?.remove();
       const now=new Date().toISOString();
       const{data:p}=await sb.from('almoxo_pedidos_compra').select('fup_logs,requisicao_id').eq('id',id).single();
-      const logs=[{data:now,responsavel:S.perfil?.nome||'Líder Suprimentos',nota:obs},...(p?.fup_logs||[])];
-      const{error}=await sb.from('almoxo_pedidos_compra').update({status:'recebido',data_recebimento:now,fup_logs:logs,atualizado_em:now}).eq('id',id);
+      const nota=`NF ${nf}${dataNF?' · Data: '+dataNF.split('-').reverse().join('/'):''}.${obs?' '+obs:''}`.trim();
+      const logs=[{data:now,responsavel:S.perfil?.nome||'Suprimentos',nota,nf,data_nf:dataNF||undefined},...(p?.fup_logs||[])];
+      const{error}=await sb.from('almoxo_pedidos_compra').update({status:'recebido',data_recebimento:now,numero_nf:nf,data_nf:dataNF||null,fup_logs:logs,atualizado_em:now}).eq('id',id);
       if(error){toast('Erro: '+error.message,'err');return;}
       if(p?.requisicao_id)await sb.from('requisicoes_compra').update({status:'comprado'}).eq('id',p.requisicao_id);
-      toast('✅ Recebimento confirmado');S._comprasCtx==='pecas'?renderFerrPecas():renderAlmoxCompras();
+      toast('✅ Chegada confirmada — NF '+nf);S._comprasCtx==='pecas'?renderFerrPecas():renderAlmoxCompras();
     }
   );
+  setTimeout(()=>document.getElementById('ac-nf')?.focus(),100);
 }
 
 async function almoxAddRuaModal(){
