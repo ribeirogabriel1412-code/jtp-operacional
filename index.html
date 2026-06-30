@@ -6456,6 +6456,7 @@ function getAuthKey(){return S?.accessToken||SUPABASE_PK;}
 
 // ── Resolvedor central de garagem ────────────────────────────
 // Diretoria/Op.Seguras: usa S.gidAtivo (selecionado pelo seletor)
+function escHtml(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 // Demais cargos: usa garagem do perfil
 // Fallback: primeira garagem disponível
 function getGid(){
