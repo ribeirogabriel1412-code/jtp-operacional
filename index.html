@@ -5902,6 +5902,18 @@ async function criarReqCompraOS(ocId, prefixo, gid, osNum){
   const msg='🛒 *REQUISIÇÃO DE COMPRA — '+gNome+'*\n📅 '+new Date().toLocaleDateString('pt-BR')+' · OS '+(osNum||'—')+' · '+prefixo+'\n📦 *'+itens.length+' item(ns):*\n'+lista+'\n'+(total>0?'💰 Total: R$ '+total.toFixed(2)+'\n':'')+'👤 '+(S.perfil?.nome||'—')+'\n\n⏳ *Aguardando aprovação do Líder PCM*';
   try{ await fetch('https://evolution-api-production-8d56.up.railway.app/message/sendText/jtp-garagem',{method:'POST',headers:{'Content-Type':'application/json','apikey':'4289AC11F437-43AD-96D7-9F27C2735696'},body:JSON.stringify({number:'120363427489152994@g.us',text:msg})}); }catch(e){}
   toast('✅ '+itens.length+' item(ns) solicitado(s) — Líder PCM notificado!');
+  // Auto-atualiza custo_previsto na OS com fallback SAP para itens sem valor
+  if(ocId){
+    const codsParaSAP=itens.filter(it=>!it.valor&&it.sap).map(it=>it.sap);
+    let sapMapReq={};
+    if(codsParaSAP.length){
+      const{data:sapRowsR}=await sb.from('sap_precos').select('cod_sap,preco_unit').eq('garagem_id',gid).in('cod_sap',codsParaSAP);
+      (sapRowsR||[]).forEach(r=>{if(parseFloat(r.preco_unit)>0)sapMapReq[r.cod_sap]=parseFloat(r.preco_unit);});
+    }
+    const{data:todasReqsOS}=await sb.from('requisicoes_compra').select('quantidade,valor_estimado,cod_sap').eq('ocorrencia_id',ocId).neq('status','cancelado');
+    const novoTotalOS=(todasReqsOS||[]).reduce((s,r)=>s+(parseFloat(r.valor_estimado)||sapMapReq[r.cod_sap]||0)*(parseFloat(r.quantidade)||1),0);
+    if(novoTotalOS>0) await sb.from('ocorrencias_22').update({custo_previsto:novoTotalOS}).eq('id',ocId);
+  }
   window._reqItensOS=[];
   const el=document.getElementById('req-lista-itens'); if(el) el.innerHTML='';
   await carregarReqsOS(ocId, gid);
@@ -9933,9 +9945,21 @@ async function renderFerrPCM(aba='painel'){
     });
     (osPecas||[]).forEach(r=>{_pushReq(r.ocorrencia_id,{peca:r.descricao,cod_sap:null,quantidade:r.qtd||1,status:r.baixado?'baixado':'pendente_os'});});
 
-    // Calcula previsto por OS usando valor_estimado já salvo na requisição
+    // Busca preço SAP para itens sem valor_estimado (fallback para registros antigos)
+    const codsSemPreco=[...new Set(
+      Object.values(reqsMap).flat().filter(r=>!parseFloat(r.valor_estimado)&&r.cod_sap).map(r=>r.cod_sap)
+    )];
+    let sapFallbackMap={};
+    if(codsSemPreco.length){
+      const{data:sapRows}=await sb.from('sap_precos').select('cod_sap,preco_unit').eq('garagem_id',gid).in('cod_sap',codsSemPreco);
+      (sapRows||[]).forEach(r=>{if(parseFloat(r.preco_unit)>0)sapFallbackMap[r.cod_sap]=parseFloat(r.preco_unit);});
+    }
+    // Calcula previsto por OS usando valor_estimado (com fallback SAP)
     Object.entries(reqsMap).forEach(([ocId,itens])=>{
-      const total=itens.reduce((s,r)=>s+(parseFloat(r.valor_estimado)||0)*(parseFloat(r.quantidade)||1),0);
+      const total=itens.reduce((s,r)=>{
+        const preco=parseFloat(r.valor_estimado)||sapFallbackMap[r.cod_sap]||0;
+        return s+preco*(parseFloat(r.quantidade)||1);
+      },0);
       if(total>0) previstoPorOS[ocId]=total;
     });
   }
@@ -10479,10 +10503,16 @@ async function _sapUpdSolicAlmox(cod){
     justificativa:'Solicitado via OS '+(osNum||'s/n')+' pelo PCM'
   });
   if(error){toast('Erro: '+error.message,'err');return;}
-  // Atualiza custo_previsto na OS automaticamente
-  if(ocId&&precoFinal>0){
-    const{data:todasReqs}=await sb.from('requisicoes_compra').select('quantidade,valor_estimado').eq('ocorrencia_id',ocId).neq('status','cancelado');
-    const novoTotal=(todasReqs||[]).reduce((s,r)=>s+(parseFloat(r.valor_estimado)||0)*(parseFloat(r.quantidade)||1),0);
+  // Atualiza custo_previsto na OS automaticamente (com fallback SAP para itens sem valor)
+  if(ocId){
+    const{data:todasReqs}=await sb.from('requisicoes_compra').select('quantidade,valor_estimado,cod_sap').eq('ocorrencia_id',ocId).neq('status','cancelado');
+    const codsSAP=[...new Set((todasReqs||[]).filter(r=>!parseFloat(r.valor_estimado)&&r.cod_sap).map(r=>r.cod_sap))];
+    let sapMapAlmox={};
+    if(codsSAP.length){
+      const{data:sapRowsA}=await sb.from('sap_precos').select('cod_sap,preco_unit').eq('garagem_id',gid).in('cod_sap',codsSAP);
+      (sapRowsA||[]).forEach(r=>{if(parseFloat(r.preco_unit)>0)sapMapAlmox[r.cod_sap]=parseFloat(r.preco_unit);});
+    }
+    const novoTotal=(todasReqs||[]).reduce((s,r)=>s+(parseFloat(r.valor_estimado)||sapMapAlmox[r.cod_sap]||0)*(parseFloat(r.quantidade)||1),0);
     if(novoTotal>0) await sb.from('ocorrencias_22').update({custo_previsto:novoTotal}).eq('id',ocId);
   }
   toast('📦 Peça solicitada ao almoxarifado');
