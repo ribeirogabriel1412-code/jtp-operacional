@@ -708,17 +708,17 @@ tr:hover td{background:#1F293780}
         </div>
       </div>
       <div style="margin-bottom:8px">
-        <label class="fl">🔍 Buscar Peças SAP (Necessárias)</label>
-        <div style="position:relative;margin-bottom:6px">
-          <input id="sap-upd-busca" placeholder="Código SAP ou descrição..." oninput="_sapUpdBusca(this)" class="fi" style="margin-bottom:0;padding-right:36px">
-          <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none">🔍</span>
-          <div id="sap-upd-drop" style="position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:999;background:var(--surface);border:1px solid var(--border);border-radius:8px;max-height:200px;overflow-y:auto;display:none;box-shadow:0 4px 20px #0008"></div>
+        <label class="fl">📦 Peças Necessárias</label>
+        <div id="pcm-pecas-modal-lista"><div style="font-size:11px;color:var(--text4);padding:2px 0">Nenhuma peça adicionada</div></div>
+        <div style="display:grid;grid-template-columns:1fr 60px auto;gap:6px;margin-top:6px;align-items:center">
+          <input id="pcm-peca-modal-desc" class="fi" placeholder="Ex: filtro de óleo, bucha de suspensão..." style="margin-bottom:0">
+          <input id="pcm-peca-modal-qtd" type="number" min="1" value="1" class="fi" style="margin-bottom:0;text-align:center;font-family:'DM Mono',monospace">
+          <button onclick="_pcmAddPecaModal()" style="height:40px;padding:0 14px;border-radius:8px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">+ Add</button>
         </div>
-        <div id="sap-upd-lista"><div style="font-size:11px;color:var(--text4);padding:2px 0">Nenhuma peça adicionada</div></div>
-        <div id="sap-upd-total" style="display:none;background:var(--surface2);border-radius:8px;padding:7px 12px;margin-top:6px;display:flex;justify-content:space-between;font-size:12px">
-          <span style="color:var(--text3)">Total estimado:</span>
-          <span id="sap-upd-total-val" style="font-family:monospace;font-weight:700;color:var(--amber)">R$ 0,00</span>
-        </div>
+        <input id="pcm-peca-modal-nota" class="fi" placeholder="Observação (opcional)" style="margin-top:6px">
+        <button id="pcm-solicitar-almox-btn" onclick="_pcmSolicitarTodas()" style="display:none;width:100%;margin-top:8px;padding:10px;border-radius:8px;border:1px solid var(--amber);background:#F59E0B18;color:var(--amber);font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
+          📦 Solicitar ao Almoxarifado
+        </button>
         <input type="hidden" id="m22s-pecas-nec">
       </div>
       <div>
@@ -6647,6 +6647,8 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
   _sapUpdItens=[];
   _sapUpdBasePrev=0;
   _sapUpdBasePecas='';
+  window._pcmPecasModal=[];
+  setTimeout(function(){_pcmRenderPecasModal();},0);
   document.getElementById('m22s-info').textContent=prefixo;
   document.getElementById('mh-info').textContent=prefixo;
   document.getElementById('m22s-status').value=statusAtual;
@@ -8775,6 +8777,20 @@ async function salvarValetAlmoxInline(rowId,id){
   const payload={cod_sap:cod,peca,quantidade,valor_estimado:valor,status:'separado',justificativa:montarJustValetComOriginal(atual.data?.justificativa,original,sep)};
   const{error}=await sb.from('requisicoes_compra').update(payload).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
+  // Se item pertence a uma OS, atualiza custo_previsto com preço que o almox informou
+  const _ocIdAlmox=atual.data?.ocorrencia_id;
+  if(_ocIdAlmox){
+    const _gidAlmox=getGid();
+    const{data:_reqsAlmox}=await sb.from('requisicoes_compra').select('quantidade,valor_estimado,cod_sap').eq('ocorrencia_id',_ocIdAlmox).neq('status','cancelado');
+    const _codsSemPreco=[...new Set((_reqsAlmox||[]).filter(r=>!parseFloat(r.valor_estimado)&&r.cod_sap).map(r=>r.cod_sap))];
+    let _sapMAlmox={};
+    if(_codsSemPreco.length){
+      const{data:_sapRAlmox}=await sb.from('sap_precos').select('cod_sap,preco_unit').eq('garagem_id',_gidAlmox).in('cod_sap',_codsSemPreco);
+      (_sapRAlmox||[]).forEach(r=>{if(parseFloat(r.preco_unit)>0)_sapMAlmox[r.cod_sap]=parseFloat(r.preco_unit);});
+    }
+    const _totAlmox=(_reqsAlmox||[]).reduce((s,r)=>s+(parseFloat(r.valor_estimado)||_sapMAlmox[r.cod_sap]||0)*(parseFloat(r.quantidade)||1),0);
+    if(_totAlmox>0) await sb.from('ocorrencias_22').update({custo_previsto:_totAlmox}).eq('id',_ocIdAlmox);
+  }
   abrirNotificacaoFluxoPecas('separado',{...(atual.data||{}),...payload,id});
   toast('Item salvo e separado.');
   renderAlmoxarifado();
@@ -10518,6 +10534,65 @@ async function _sapUpdSolicAlmox(cod){
   toast('📦 Peça solicitada ao almoxarifado');
   var btn=document.querySelector('[data-action="upd-alm"][data-cod="'+cod+'"]');
   if(btn){btn.textContent='✔';btn.style.background='#00C48C';btn.style.color='#fff';btn.style.border='none';btn.disabled=true;}
+}
+
+// ── Peças livres no modal PCM (sem SAP obrigatório) ──────────────────────────
+window._pcmPecasModal=[];
+function _pcmAddPecaModal(){
+  var desc=document.getElementById('pcm-peca-modal-desc')?.value?.trim();
+  if(!desc){toast('Informe a descrição da peça','err');return;}
+  var qtd=parseInt(document.getElementById('pcm-peca-modal-qtd')?.value)||1;
+  var nota=document.getElementById('pcm-peca-modal-nota')?.value?.trim()||'';
+  window._pcmPecasModal.push({desc:desc,qtd:qtd,nota:nota});
+  document.getElementById('pcm-peca-modal-desc').value='';
+  document.getElementById('pcm-peca-modal-qtd').value='1';
+  document.getElementById('pcm-peca-modal-nota').value='';
+  _pcmRenderPecasModal();
+}
+function _pcmRenderPecasModal(){
+  var lista=document.getElementById('pcm-pecas-modal-lista');
+  var btn=document.getElementById('pcm-solicitar-almox-btn');
+  if(!lista)return;
+  var itens=window._pcmPecasModal||[];
+  if(!itens.length){
+    lista.innerHTML='<div style="font-size:11px;color:var(--text4);padding:2px 0">Nenhuma peça adicionada</div>';
+    if(btn)btn.style.display='none';
+    return;
+  }
+  lista.innerHTML='<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:4px">'+
+    itens.map(function(it,i){
+      return '<div style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:7px 10px">'+
+        '<span style="flex:1;font-size:12px;font-weight:600">'+it.desc+(it.qtd>1?' <span style="font-family:\'DM Mono\',monospace;color:var(--amber)">×'+it.qtd+'</span>':'')+(it.nota?' <span style="color:var(--text3);font-weight:400;font-style:italic">· '+it.nota+'</span>':'')+'</span>'+
+        '<button onclick="window._pcmPecasModal.splice('+i+',1);_pcmRenderPecasModal()" style="background:transparent;border:none;color:var(--red);font-size:14px;cursor:pointer;padding:0 2px">✕</button>'+
+      '</div>';
+    }).join('')+
+  '</div>';
+  if(btn)btn.style.display='block';
+}
+async function _pcmSolicitarTodas(){
+  var itens=window._pcmPecasModal||[];
+  if(!itens.length){toast('Adicione pelo menos uma peça','err');return;}
+  var gid=getGid();
+  var ocId=S.editId22||null;
+  var prefixo=S.editPrefixo22||'';
+  var osNum=(document.getElementById('m22s-os')?.value||'').trim()||(document.getElementById('m22s-os-atual')?.textContent||'').trim()||'';
+  var btn=document.getElementById('pcm-solicitar-almox-btn');
+  if(btn){btn.disabled=true;btn.textContent='Enviando...';}
+  for(var it of itens){
+    var{error}=await sb.from('requisicoes_compra').insert({
+      garagem_id:gid, ocorrencia_id:ocId, prefixo:prefixo||null,
+      peca:it.desc, quantidade:it.qtd,
+      justificativa:it.nota||('Solicitado via OS '+(osNum||'s/n')+' pelo PCM'),
+      data:hoje(), status:'solicitado_pcm', os_numero:osNum||null,
+      criado_por:S.perfil?.nome||null, criado_em:new Date().toISOString(),
+    });
+    if(error){toast('Erro: '+error.message,'err');if(btn){btn.disabled=false;btn.textContent='📦 Solicitar ao Almoxarifado';}return;}
+  }
+  toast('📦 '+itens.length+' peça(s) solicitada(s) ao almoxarifado');
+  window._pcmPecasModal=[];
+  _pcmRenderPecasModal();
+  if(btn){btn.disabled=false;btn.textContent='📦 Solicitar ao Almoxarifado';}
+  if(ocId) await carregarReqsAlmoxModal(ocId,prefixo);
 }
 
 document.addEventListener('click',function(e){
