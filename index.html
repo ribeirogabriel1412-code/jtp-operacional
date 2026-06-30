@@ -707,17 +707,17 @@ tr:hover td{background:#1F293780}
         </div>
       </div>
       <div style="margin-bottom:8px">
-        <label class="fl">📦 Peças Necessárias</label>
-        <div id="pcm-pecas-modal-lista"><div style="font-size:11px;color:var(--text4);padding:2px 0">Nenhuma peça adicionada</div></div>
-        <div style="display:grid;grid-template-columns:1fr 60px auto;gap:6px;margin-top:6px;align-items:center">
-          <input id="pcm-peca-modal-desc" class="fi" placeholder="Ex: filtro de óleo, bucha de suspensão..." style="margin-bottom:0">
-          <input id="pcm-peca-modal-qtd" type="number" min="1" value="1" class="fi" style="margin-bottom:0;text-align:center;font-family:'DM Mono',monospace">
-          <button onclick="_pcmAddPecaModal()" style="height:40px;padding:0 14px;border-radius:8px;border:1px solid var(--blue);background:#2563EB18;color:var(--blue);font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">+ Add</button>
+        <label class="fl">🔍 Buscar Peças SAP</label>
+        <div style="position:relative;margin-bottom:6px">
+          <input id="sap-upd-busca" placeholder="Código SAP ou descrição..." oninput="_sapUpdBusca(this)" class="fi" style="margin-bottom:0;padding-right:36px">
+          <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none">🔍</span>
+          <div id="sap-upd-drop" style="position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:999;background:var(--surface);border:1px solid var(--border);border-radius:8px;max-height:200px;overflow-y:auto;display:none;box-shadow:0 4px 20px #0008"></div>
         </div>
-        <input id="pcm-peca-modal-nota" class="fi" placeholder="Observação (opcional)" style="margin-top:6px">
-        <button id="pcm-solicitar-almox-btn" onclick="_pcmSolicitarTodas()" style="display:none;width:100%;margin-top:8px;padding:10px;border-radius:8px;border:1px solid var(--amber);background:#F59E0B18;color:var(--amber);font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
-          📦 Solicitar ao Almoxarifado
-        </button>
+        <div id="sap-upd-lista"><div style="font-size:11px;color:var(--text4);padding:2px 0">Nenhuma peça adicionada</div></div>
+        <div id="sap-upd-total" style="display:none;background:var(--surface2);border-radius:8px;padding:7px 12px;margin-top:6px;flex;justify-content:space-between;align-items:center;font-size:12px">
+          <span style="color:var(--text3)">Total estimado:</span>
+          <span id="sap-upd-total-val" style="font-family:monospace;font-weight:700;color:var(--amber)">R$ 0,00</span>
+        </div>
         <input type="hidden" id="m22s-pecas-nec">
       </div>
       <div>
@@ -6755,8 +6755,6 @@ function abrirModalStatus22(id,prefixo,statusAtual,mecanico){
   _sapUpdItens=[];
   _sapUpdBasePrev=0;
   _sapUpdBasePecas='';
-  window._pcmPecasModal=[];
-  setTimeout(function(){_pcmRenderPecasModal();},0);
   document.getElementById('m22s-info').textContent=prefixo;
   document.getElementById('mh-info').textContent=prefixo;
   document.getElementById('m22s-status').value=statusAtual;
@@ -10263,6 +10261,7 @@ async function renderFerrPCM(aba='painel'){
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div style="font-size:13px;font-weight:700">${parados} OS em aberto</div>
       <div style="display:flex;gap:8px">
+        <button onclick="pcmSapBuscaRapida()" title="Consulta rápida de preços SAP" style="padding:6px 12px;border-radius:8px;border:1px solid var(--amber);background:#F59E0B18;color:var(--amber);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">🔍 SAP</button>
         <button onclick="abrirNovaOcorrencia()" class="btn-add">+ Nova OS</button>
       </div>
     </div>
@@ -10295,6 +10294,54 @@ async function enviarWppOrc(msg){
 }
 
 // ── SAP Preços ────────────────────────────────────────────────────
+function pcmSapBuscaRapida(){
+  const gid=getGid();
+  const overlay=document.createElement('div');
+  overlay.id='sap-rapida-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:#0009;z-index:9000;display:flex;align-items:flex-start;justify-content:center;padding-top:80px';
+  overlay.innerHTML=`
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;width:100%;max-width:560px;box-shadow:0 20px 60px #0006;overflow:hidden">
+      <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:14px;font-weight:800;color:var(--amber)">🔍 Consulta Rápida — Preços SAP</div>
+        <button onclick="document.getElementById('sap-rapida-overlay').remove()" style="background:transparent;border:none;color:var(--text3);font-size:20px;cursor:pointer;line-height:1">×</button>
+      </div>
+      <div style="padding:14px 16px">
+        <div style="position:relative">
+          <input id="sap-rapida-input" placeholder="Código SAP ou descrição da peça..." autocomplete="off"
+            style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:10px 14px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none"
+            oninput="pcmSapBuscaRapidaFiltrar(this.value,'${gid}')">
+        </div>
+        <div id="sap-rapida-resultado" style="margin-top:10px;max-height:340px;overflow-y:auto">
+          <div style="text-align:center;padding:24px;color:var(--text4);font-size:12px">Digite para buscar...</div>
+        </div>
+      </div>
+    </div>`;
+  overlay.addEventListener('click',function(e){if(e.target===overlay)overlay.remove();});
+  document.body.appendChild(overlay);
+  setTimeout(()=>document.getElementById('sap-rapida-input')?.focus(),50);
+}
+
+var _sapRapidaTimer=null;
+async function pcmSapBuscaRapidaFiltrar(q,gid){
+  clearTimeout(_sapRapidaTimer);
+  const el=document.getElementById('sap-rapida-resultado');
+  if(!el)return;
+  if(!q||q.trim().length<2){el.innerHTML='<div style="text-align:center;padding:24px;color:var(--text4);font-size:12px">Digite ao menos 2 caracteres...</div>';return;}
+  el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:12px">⏳ Buscando...</div>';
+  _sapRapidaTimer=setTimeout(async()=>{
+    const q2=q.trim();
+    const{data}=await sb.from('sap_precos').select('cod_sap,descricao,preco_unit,unidade').eq('garagem_id',gid).or('cod_sap.ilike.%'+q2+'%,descricao.ilike.%'+q2+'%').order('descricao').limit(20);
+    if(!el||!document.getElementById('sap-rapida-overlay'))return;
+    if(!data||!data.length){el.innerHTML='<div style="text-align:center;padding:24px;color:var(--text4);font-size:12px">Nenhum item encontrado para "'+escHtml(q2)+'"</div>';return;}
+    el.innerHTML=data.map(p=>`<div style="display:grid;grid-template-columns:110px 1fr 90px 50px;gap:8px;align-items:center;padding:9px 10px;border-radius:8px;border-bottom:1px solid var(--border2)" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+      <div style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--amber)">${escHtml(p.cod_sap)}</div>
+      <div style="font-size:12px;color:var(--text);line-height:1.3">${escHtml(p.descricao||'—')}</div>
+      <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:800;color:var(--green);text-align:right">R$ ${parseFloat(p.preco_unit||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+      <div style="font-size:10px;color:var(--text3);text-align:center">${escHtml(p.unidade||'UN')}</div>
+    </div>`).join('');
+  },280);
+}
+
 async function renderSapPrecos(gid,back,tabs){
   setMain(back+tabs+'<div class="loading"><div class="spinner"></div></div>');
   const{data:lista}=await sb.from('sap_precos').select('*').eq('garagem_id',gid).order('descricao').limit(500);
