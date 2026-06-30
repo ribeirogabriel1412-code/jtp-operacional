@@ -313,7 +313,6 @@ tr:hover td{background:#1F293780}
         <button class="sub-btn" onclick="navToSub('ferr-almox-iup')">💰 IUP</button>
         <button class="sub-btn" onclick="navToSub('ferr-almox-dev')">↩️ Devolução</button>
         <button class="sub-btn" onclick="navToSub('ferr-lubri')">🛢️ Relatório Lubrificação</button>
-        <button class="sub-btn" onclick="navToSub('ferr-pecas')">🔩 Peças & Compras</button>
       </div>
       <button class="nav-btn" onclick="toggleSub('sub-rel','arr-rel',this)"><span>📋</span> Relatórios <span id="arr-rel" style="margin-left:auto;font-size:10px;color:var(--text4)">▶</span></button>
       <div class="submenu" id="sub-rel">
@@ -2091,9 +2090,9 @@ async function renderAlmoxCompras(){
           <td style="padding:10px 12px;text-align:center;font-weight:800;font-family:'DM Mono',monospace">${p.quantidade||1}</td>
           <td style="padding:10px 12px;white-space:nowrap">${numPedHtml}</td>
           <td style="padding:10px 12px;white-space:nowrap"><span style="background:${corStatus[p.status]||'var(--border)'}20;color:${corStatus[p.status]||'var(--text3)'};border:1px solid ${corStatus[p.status]||'var(--border)'}50;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:800">${labelStatus[p.status]||p.status}</span></td>
-          <td style="padding:10px 12px;white-space:nowrap;font-size:12px;font-weight:${vencido?'900':'600'};color:${vencido?'var(--red)':p.data_previsao_entrega?'var(--amber)':'var(--text3)'}">${fmtDate(p.data_previsao_entrega)}${vencido?' ⚠️':''}</td>
-          <td style="padding:10px 12px;min-width:180px">
-            ${lastFup?`<div style="font-size:11px;color:var(--text3);margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px" title="${escHtml(lastFup.nota)}"><span style="color:var(--blue);font-weight:700">${fmtD(lastFup.data)}</span> · ${escHtml(lastFup.nota)}</div>`:''}
+          <td style="padding:10px 12px;white-space:nowrap;font-size:12px;font-weight:${vencido?'900':'600'};color:${vencido?'var(--red)':p.data_previsao_entrega?'var(--amber)':'var(--text3)'};cursor:${isLider?'pointer':'default'}" onclick="${isLider?`almoxComprasEditPrazoInline('${p.id}','${p.data_previsao_entrega||''}')`:''}" title="${isLider?'Clique para editar prazo':''}">${fmtDate(p.data_previsao_entrega)}${vencido?' ⚠️':''}${isLider?`<span style="font-size:9px;color:var(--text4);margin-left:3px">✏️</span>`:''}</td>
+          <td style="padding:10px 12px;min-width:220px">
+            ${(p.fup_logs||[]).length?`<div style="max-height:130px;overflow-y:auto;display:grid;gap:3px;margin-bottom:${btns?'6px':'0'}">${(p.fup_logs||[]).map(f=>`<div style="font-size:11px;padding:4px 0;border-bottom:1px solid var(--border2);display:flex;gap:6px;align-items:flex-start"><span style="color:var(--blue);font-weight:700;font-family:'DM Mono',monospace;white-space:nowrap;flex-shrink:0">${fmtD(f.data)}</span><span style="color:var(--text2)">${escHtml(f.nota)}</span></div>`).join('')}</div>`:''}
             ${btns?`<div style="display:flex;gap:4px;flex-wrap:wrap">${btns}</div>`:''}
           </td>
         </tr>`;
@@ -2145,6 +2144,30 @@ async function renderAlmoxCompras(){
     </div>
   </div>`;
   setMain(`<div style="padding:24px">${backCompras}${headerCompras}${kpis}${filtrNav}${analise}${tabela}</div>`);
+}
+
+async function almoxComprasEditPrazoInline(id,atual){
+  almoxComprasAbrirModal('📅 Atualizar Prazo de Entrega',
+    `<div style="display:flex;gap:8px;align-items:center">
+      <input type="date" id="ac-prazo-il" value="${escHtml(atual||'')}" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Mono',monospace;outline:none">
+      <button onclick="document.getElementById('ac-prazo-il').showPicker()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:14px;cursor:pointer">📅</button>
+    </div>`,
+    async()=>{
+      const prazo=document.getElementById('ac-prazo-il')?.value;
+      if(!prazo){toast('Informe a data','err');return;}
+      document.getElementById('ac-modal-overlay')?.remove();
+      const now=new Date().toISOString();
+      const{data:p}=await sb.from('almoxo_pedidos_compra').select('fup_logs,status').eq('id',id).single();
+      const nota=`Prazo atualizado para ${prazo.split('-').reverse().join('/')}`;
+      const logs=[{data:now,responsavel:S.perfil?.nome||'Suprimentos',nota},...(p?.fup_logs||[])];
+      const upd={data_previsao_entrega:prazo,fup_logs:logs,atualizado_em:now};
+      if(p?.status==='enviado_matriz') upd.status='aguardando_entrega';
+      const{error}=await sb.from('almoxo_pedidos_compra').update(upd).eq('id',id);
+      if(error){toast('Erro: '+error.message,'err');return;}
+      toast('📅 Prazo atualizado');S._comprasCtx==='pecas'?renderFerrPecas():renderAlmoxCompras();
+    }
+  );
+  setTimeout(()=>document.getElementById('ac-prazo-il')?.showPicker&&document.getElementById('ac-prazo-il').focus(),100);
 }
 
 async function almoxComprasEditNumPed(id,atual){
@@ -2340,16 +2363,31 @@ async function almoxComprasRegistrarPrazo(id){
 
 async function almoxComprasFup(id){
   almoxComprasAbrirModal('💬 Registrar FUP',
-    `<div><label style="font-size:12px;font-weight:800;color:var(--text3)">Nota de acompanhamento</label>
-    <textarea id="ac-fup" placeholder="Ex: Contato com fornecedor — previsão mantida para 25/06." rows="3" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;resize:vertical;box-sizing:border-box"></textarea></div>`,
+    `<div style="display:grid;gap:14px">
+      <div>
+        <label style="font-size:12px;font-weight:800;color:var(--text3)">O que foi tratado *</label>
+        <textarea id="ac-fup" placeholder="Ex: Contato com fornecedor — previsão mantida para 25/06." rows="3" style="width:100%;margin-top:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;resize:vertical;box-sizing:border-box"></textarea>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:800;color:var(--text3)">Atualizar prazo de entrega <span style="font-weight:600;color:var(--text4)">(opcional)</span></label>
+        <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+          <input type="date" id="ac-fup-prazo" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:'DM Mono',monospace;outline:none">
+          <button onclick="document.getElementById('ac-fup-prazo').showPicker()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:14px;cursor:pointer">📅</button>
+        </div>
+      </div>
+    </div>`,
     async()=>{
       const nota=document.getElementById('ac-fup')?.value?.trim();
       if(!nota){toast('Informe uma nota','err');return;}
+      const novoPrazo=document.getElementById('ac-fup-prazo')?.value||null;
       document.getElementById('ac-modal-overlay')?.remove();
       const now=new Date().toISOString();
       const{data:p}=await sb.from('almoxo_pedidos_compra').select('fup_logs').eq('id',id).single();
-      const logs=[{data:now,responsavel:S.perfil?.nome||'Líder Suprimentos',nota},...(p?.fup_logs||[])];
-      const{error}=await sb.from('almoxo_pedidos_compra').update({fup_logs:logs,atualizado_em:now}).eq('id',id);
+      const textoLog=novoPrazo?`${nota} · Prazo: ${novoPrazo.split('-').reverse().join('/')}`:nota;
+      const logs=[{data:now,responsavel:S.perfil?.nome||'Líder Suprimentos',nota:textoLog,prazo:novoPrazo||undefined},...(p?.fup_logs||[])];
+      const upd={fup_logs:logs,atualizado_em:now};
+      if(novoPrazo) upd.data_previsao_entrega=novoPrazo;
+      const{error}=await sb.from('almoxo_pedidos_compra').update(upd).eq('id',id);
       if(error){toast('Erro: '+error.message,'err');return;}
       toast('💬 FUP registrado');S._comprasCtx==='pecas'?renderFerrPecas():renderAlmoxCompras();
     }
