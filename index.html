@@ -16054,9 +16054,24 @@ async function _instrViagens(gid,back,tabBar){
       const totalGeral=Object.values(linhasV).reduce((s,v)=>s+v.prog,0);
       const motObj=byVM[veiculo]||{};
       const totMot=Object.values(motObj).reduce((s,v)=>s+v.prog,0);
+      const linhasHtml=Object.entries(linhasV).sort((a,b)=>b[1].prog-a[1].prog).map(([linha,v])=>{
+        const pct=totalGeral>0?((v.prog/totalGeral)*100).toFixed(1):0;
+        const cum=v.prog>0?((v.real/v.prog)*100).toFixed(1):0;
+        const cor=cum>=90?'var(--green)':cum>=75?'var(--amber)':'var(--red)';
+        return`<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="font-family:'DM Mono',monospace;font-weight:800;font-size:14px;min-width:60px">L.${linha}</div>
+          <div style="flex:1;background:var(--border);border-radius:4px;height:8px">
+            <div style="width:${pct}%;background:var(--blue);border-radius:4px;height:8px"></div>
+          </div>
+          <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;min-width:42px;text-align:right">${pct}%</span>
+          <span style="font-size:13px;font-weight:700;color:${cor};min-width:52px;text-align:right">${cum}%</span>
+        </div>`;
+      }).join('');
       return`<div style="margin-bottom:20px">
         <div style="font-size:14px;font-weight:800;margin-bottom:4px;color:var(--blue)">Veículo ${veiculo}</div>
-        <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Linhas: ${Object.keys(linhasV).sort().join(', ')} · ${totalGeral} viagens programadas</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:10px">${totalGeral} viagens programadas nos últimos ${dias} dias</div>
+        <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:6px">LINHAS QUE ESTE CARRO SERVIU</div>
+        <div style="margin-bottom:16px">${linhasHtml}</div>
         <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px">MOTORISTAS QUE CONDUZIRAM ESTE CARRO</div>
         ${colmeia(motObj,totMot)}
       </div>`;
