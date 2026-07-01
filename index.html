@@ -16058,21 +16058,32 @@ async function _instrViagens(gid,back,tabBar){
         const pct=totalGeral>0?((v.prog/totalGeral)*100).toFixed(1):0;
         const cum=v.prog>0?((v.real/v.prog)*100).toFixed(1):0;
         const cor=cum>=90?'var(--green)':cum>=75?'var(--amber)':'var(--red)';
-        return`<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)">
-          <div style="font-family:'DM Mono',monospace;font-weight:800;font-size:14px;min-width:60px">L.${linha}</div>
-          <div style="flex:1;background:var(--border);border-radius:4px;height:8px">
-            <div style="width:${pct}%;background:var(--blue);border-radius:4px;height:8px"></div>
+        const chave=veiculo+'||'+linha;
+        const aberto=carroSeL===chave;
+        const motLinhaObj=(byLVM[linha]||{})[veiculo]||{};
+        const totMotLinha=Object.values(motLinhaObj).reduce((s,v)=>s+v.prog,0);
+        return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px">
+          <div style="display:flex;align-items:center;gap:12px;cursor:pointer" onclick="S._instrVCarro=S._instrVCarro==='${chave}'?null:'${chave}';renderFerrInstrutor('viagens')">
+            <div style="font-family:'DM Mono',monospace;font-weight:800;font-size:15px;min-width:72px">L.${linha}</div>
+            <div style="flex:1;background:var(--border);border-radius:4px;height:8px">
+              <div style="width:${pct}%;background:var(--blue);border-radius:4px;height:8px"></div>
+            </div>
+            <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;min-width:40px;text-align:right">${pct}%</span>
+            <span style="font-weight:700;font-size:13px;color:${cor};min-width:50px;text-align:right">${cum}%</span>
+            <span style="color:var(--text4);font-size:16px;margin-left:4px">${aberto?'▲':'▼'}</span>
           </div>
-          <span style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;min-width:42px;text-align:right">${pct}%</span>
-          <span style="font-size:13px;font-weight:700;color:${cor};min-width:52px;text-align:right">${cum}%</span>
+          ${aberto?`<div style="margin-top:4px;padding-top:10px;border-top:1px solid var(--border)">
+            <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px">MOTORISTAS NESTE CARRO NESTA LINHA</div>
+            ${colmeia(motLinhaObj,totMotLinha)}
+          </div>`:''}
         </div>`;
       }).join('');
       return`<div style="margin-bottom:20px">
         <div style="font-size:14px;font-weight:800;margin-bottom:4px;color:var(--blue)">Veículo ${veiculo}</div>
         <div style="font-size:12px;color:var(--text3);margin-bottom:10px">${totalGeral} viagens programadas nos últimos ${dias} dias</div>
-        <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:6px">LINHAS QUE ESTE CARRO SERVIU</div>
-        <div style="margin-bottom:16px">${linhasHtml}</div>
-        <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px">MOTORISTAS QUE CONDUZIRAM ESTE CARRO</div>
+        <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:8px">LINHAS QUE ESTE CARRO SERVIU</div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">${linhasHtml}</div>
+        <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px">TODOS OS MOTORISTAS DESTE CARRO</div>
         ${colmeia(motObj,totMot)}
       </div>`;
     }).join('');
