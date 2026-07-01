@@ -15948,11 +15948,13 @@ async function _instrViagens(gid,back,tabBar){
   if(!S._instrVRows||S._instrVRowsDias!==dias||S._instrVRowsGid!==gid){
     setMain(`${secTitle('🚌','Viagens — CITTATI',back)}<div class="filtros">${tabBar}</div><div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando dados...</div>`);
     const{data:rows}=await sb.from('viagens_resumo')
-      .select('data,linha,veiculo,motorista_cod,viagens_programadas,viagens_realizadas')
+      .select('data,linha,veiculo,motorista_cod,viagens_programadas,viagens_realizadas,updated_at')
       .eq('garagem_id',gid).gte('data',dataMin).order('data');
     S._instrVRows=rows||[];
     S._instrVRowsDias=dias;
     S._instrVRowsGid=gid;
+    const uts=(rows||[]).map(r=>r.updated_at).filter(Boolean).sort();
+    S._instrVUltimoSync=uts.length?uts[uts.length-1]:null;
   }
   const vg=S._instrVRows;
 
@@ -16106,8 +16108,9 @@ async function _instrViagens(gid,back,tabBar){
       ${busca?`<button onclick="S._instrVBusca='';S._instrVCarro=null;renderFerrInstrutor('viagens')" style="background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text4);cursor:pointer">✕ Limpar</button>`:''}
     </div>
     <div>${resultHtml}</div>
-    <div class="info-blue info-banner" style="margin-top:12px">
-      📡 CITTATI/JSON_VIAGENS · ${vg.length} registros · últimos ${dias} dias
+    <div class="info-blue info-banner" style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
+      <span>📡 CITTATI/JSON_VIAGENS · ${vg.length} registros · últimos ${dias} dias</span>
+      <span style="font-size:11px;color:var(--text3)">🔄 Última sync: ${S._instrVUltimoSync?new Date(S._instrVUltimoSync).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'}</span>
     </div>
   `);
 }
