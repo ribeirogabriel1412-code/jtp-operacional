@@ -16094,11 +16094,11 @@ async function _instrViagens(gid,back,tabBar){
     </div>`;
   }
 
+  const ultimaSync=S._instrVUltimoSync?new Date(S._instrVUltimoSync).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
   setMain(`${secTitle('🚌','Viagens — CITTATI',back)}
     <div class="filtros">${tabBar}</div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
-      <span style="font-size:12px;color:var(--text3)">Período:</span>
-      ${periodoBar}
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <span style="font-size:11px;color:var(--text4);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;white-space:nowrap">🔄 Atualizado: ${ultimaSync}</span>
     </div>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px">
       <input id="instr-v-busca" class="fi" placeholder="🔍 Buscar por linha (ex: 110) ou veículo (ex: 02.275)..."
@@ -16108,9 +16108,8 @@ async function _instrViagens(gid,back,tabBar){
       ${busca?`<button onclick="S._instrVBusca='';S._instrVCarro=null;renderFerrInstrutor('viagens')" style="background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text4);cursor:pointer">✕ Limpar</button>`:''}
     </div>
     <div>${resultHtml}</div>
-    <div class="info-blue info-banner" style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
-      <span>📡 CITTATI/JSON_VIAGENS · ${vg.length} registros · últimos ${dias} dias</span>
-      <span style="font-size:11px;color:var(--text3)">🔄 Última sync: ${S._instrVUltimoSync?new Date(S._instrVUltimoSync).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'}</span>
+    <div style="margin-top:12px;font-size:11px;color:var(--text4);text-align:center">
+      📡 CITTATI/JSON_VIAGENS · ${vg.length} registros · últimos 7 dias
     </div>
   `);
 }
