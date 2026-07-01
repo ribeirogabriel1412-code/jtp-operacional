@@ -48,6 +48,16 @@ function To-DataISO($str) {
     return $null
 }
 
+function Parse-DataHora($str) {
+    if (-not $str) { return $null }
+    try {
+        if ($str -match '(\d{2})/(\d{2})/(\d{4}) (\d{2}):(\d{2}):(\d{2})') {
+            return [datetime]::new([int]$matches[3],[int]$matches[2],[int]$matches[1],[int]$matches[4],[int]$matches[5],[int]$matches[6])
+        }
+    } catch { return $null }
+    return $null
+}
+
 # -- Janela --------------------------------------------------------
 $hoje       = Get-Date
 $dataInicio = $hoje.AddDays(-$JANELA_DIAS).ToString("yyyy-MM-dd")
@@ -121,18 +131,32 @@ foreach ($prefixo in $GARAGEM_MAP.Keys) {
             $p = $g.Name -split "~"
             if (-not $p[0]) { continue }
 
-            $realizadas = ($g.Group | Where-Object { $null -ne $_.inicioRealizado }).Count
+            $realizadas = 0; $pontuais = 0; $adiantadas = 0; $atrasadas = 0
+            foreach ($trip in $g.Group) {
+                if ($null -eq $trip.inicioRealizado) { continue }
+                $realizadas++
+                $prog = Parse-DataHora $trip.inicioProgramado
+                $real = Parse-DataHora $trip.inicioRealizado
+                if (-not $prog -or -not $real) { continue }
+                $diff = ($real - $prog).TotalMinutes
+                if     ($diff -lt -10) { $adiantadas++ }
+                elseif ($diff -le  10) { $pontuais++   }
+                else                   { $atrasadas++  }
+            }
 
             $registros.Add([PSCustomObject]@{
-                garagem_id          = $gid
-                garagem_cod         = $cod
-                data                = $dataISO
-                linha               = $p[0]
-                veiculo             = $p[1]
-                motorista_cod       = $p[2]
-                viagens_programadas = $g.Count
-                viagens_realizadas  = $realizadas
-                updated_at          = $agora
+                garagem_id           = $gid
+                garagem_cod          = $cod
+                data                 = $dataISO
+                linha                = $p[0]
+                veiculo              = $p[1]
+                motorista_cod        = $p[2]
+                viagens_programadas  = $g.Count
+                viagens_realizadas   = $realizadas
+                viagens_pontuais     = $pontuais
+                viagens_adiantadas   = $adiantadas
+                viagens_atrasadas    = $atrasadas
+                updated_at           = $agora
             })
         }
     }

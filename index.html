@@ -15564,12 +15564,13 @@ async function deleteCronograma(id){
 async function renderFerrInstrutor(aba='painel'){
   const gid=getGid();
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
-  const tabs=['painel','viagens','ranking','kml','monitorias','relatorios'];
-  const tabLabels={painel:'📊 Painel',viagens:'🚌 Viagens',ranking:'🏆 Ranking',kml:'⛽ KM/L',monitorias:'👁️ Monitorias',relatorios:'📋 Relatórios'};
+  const tabs=['painel','viagens','pontualidade','ranking','kml','monitorias','relatorios'];
+  const tabLabels={painel:'📊 Painel',viagens:'🚌 Viagens',pontualidade:'📍 Pontualidade',ranking:'🏆 Ranking',kml:'⛽ KM/L',monitorias:'👁️ Monitorias',relatorios:'📋 Relatórios'};
   const tabBar=tabs.map(t=>`<button class="filtro-btn${aba===t?' active':''}" onclick="renderFerrInstrutor('${t}')">${tabLabels[t]}</button>`).join('');
 
   if(aba==='painel') return _instrPainel(gid,back,tabBar);
   if(aba==='viagens') return _instrViagens(gid,back,tabBar);
+  if(aba==='pontualidade') return _instrPontualidade(gid,back,tabBar);
   if(aba==='ranking') return _instrRanking(gid,back,tabBar);
   if(aba==='kml') return _instrKml(gid,back,tabBar);
   if(aba==='monitorias') return _instrMonitorias(gid,back,tabBar);
@@ -16111,6 +16112,123 @@ async function _instrViagens(gid,back,tabBar){
     <div style="margin-top:12px;font-size:11px;color:var(--text4);text-align:center">
       📡 CITTATI/JSON_VIAGENS · ${vg.length} registros · últimos 7 dias
     </div>
+  `);
+}
+
+async function _instrPontualidade(gid,back,tabBar){
+  setMain(`${secTitle('📍','Pontualidade',back)}<div class="filtros">${tabBar}</div><div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando dados...</div>`);
+
+  const{data:rows}=await sb.from('viagens_resumo')
+    .select('data,linha,viagens_programadas,viagens_realizadas,viagens_pontuais,viagens_adiantadas,viagens_atrasadas,updated_at')
+    .eq('garagem_id',gid).order('data');
+
+  const vg=rows||[];
+
+  let totProg=0,totReal=0,totPont=0,totAdiant=0,totAtras=0;
+  const byLinha={};
+  vg.forEach(r=>{
+    totProg+=r.viagens_programadas||0;
+    totReal+=r.viagens_realizadas||0;
+    totPont+=r.viagens_pontuais||0;
+    totAdiant+=r.viagens_adiantadas||0;
+    totAtras+=r.viagens_atrasadas||0;
+    if(!byLinha[r.linha]) byLinha[r.linha]={prog:0,real:0,pont:0,adiant:0,atras:0};
+    byLinha[r.linha].prog+=r.viagens_programadas||0;
+    byLinha[r.linha].real+=r.viagens_realizadas||0;
+    byLinha[r.linha].pont+=r.viagens_pontuais||0;
+    byLinha[r.linha].adiant+=r.viagens_adiantadas||0;
+    byLinha[r.linha].atras+=r.viagens_atrasadas||0;
+  });
+
+  const pctPont=totReal>0?((totPont/totReal)*100).toFixed(1):0;
+  const pctAdiant=totReal>0?((totAdiant/totReal)*100).toFixed(1):0;
+  const pctAtras=totReal>0?((totAtras/totReal)*100).toFixed(1):0;
+  const gaugeN=parseFloat(pctPont);
+  const gCor=gaugeN>=85?'var(--green)':gaugeN>=70?'var(--amber)':'var(--red)';
+
+  // Semicircle gauge  center(100,100) r=80  arc de 180°  circunferência = π*80 ≈ 251.3
+  const cSemi=251.3;
+  const filled=(gaugeN/100)*cSemi;
+  const gauge=`<svg viewBox="0 0 200 115" style="width:200px;height:115px">
+    <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="var(--border)" stroke-width="14" stroke-linecap="round"/>
+    <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="${gCor}" stroke-width="14" stroke-linecap="round"
+      stroke-dasharray="${filled} ${cSemi}"/>
+    <text x="100" y="88" text-anchor="middle" font-size="26" font-weight="800" fill="${gCor}" font-family="DM Mono,monospace">${pctPont}%</text>
+    <text x="100" y="106" text-anchor="middle" font-size="10" fill="var(--text4)" font-family="sans-serif">PONTUAIS</text>
+    <text x="22" y="113" text-anchor="middle" font-size="9" fill="var(--text4)">0%</text>
+    <text x="178" y="113" text-anchor="middle" font-size="9" fill="var(--text4)">100%</text>
+  </svg>`;
+
+  const uts=vg.map(r=>r.updated_at).filter(Boolean).sort();
+  const ultimaSync=uts.length?new Date(uts[uts.length-1]).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+
+  const linhaRows=Object.entries(byLinha).sort((a,b)=>b[1].prog-a[1].prog).map(([linha,v])=>{
+    const pp=v.real>0?((v.pont/v.real)*100).toFixed(1):'—';
+    const cor=parseFloat(pp)>=85?'var(--green)':parseFloat(pp)>=70?'var(--amber)':'var(--red)';
+    return`<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:9px 14px;font-weight:700;font-family:'DM Mono',monospace">${linha}</td>
+      <td style="padding:9px 8px;text-align:center">${v.prog}</td>
+      <td style="padding:9px 8px;text-align:center;color:var(--blue)">${v.real}</td>
+      <td style="padding:9px 8px;text-align:center;color:var(--green);font-weight:700">${v.pont}</td>
+      <td style="padding:9px 8px;text-align:center;color:var(--amber)">${v.adiant}</td>
+      <td style="padding:9px 8px;text-align:center;color:var(--red)">${v.atras}</td>
+      <td style="padding:9px 8px;text-align:center;font-weight:800;color:${cor}">${pp}%</td>
+    </tr>`;
+  }).join('');
+
+  setMain(`${secTitle('📍','Pontualidade',back)}
+    <div class="filtros">${tabBar}</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <span style="font-size:11px;color:var(--text4);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;white-space:nowrap">🔄 Atualizado: ${ultimaSync}</span>
+    </div>
+    <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin-bottom:20px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px">
+      <div style="display:flex;flex-direction:column;align-items:center">${gauge}</div>
+      <div style="flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;min-width:280px">
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center">
+          <div style="font-size:10px;color:var(--text4);text-transform:uppercase;letter-spacing:1px">PROG</div>
+          <div style="font-size:22px;font-weight:800;font-family:'DM Mono',monospace;margin-top:4px">${totProg}</div>
+        </div>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center">
+          <div style="font-size:10px;color:var(--text4);text-transform:uppercase;letter-spacing:1px">REALIZ</div>
+          <div style="font-size:22px;font-weight:800;font-family:'DM Mono',monospace;margin-top:4px;color:var(--blue)">${totReal}</div>
+        </div>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center">
+          <div style="font-size:10px;color:var(--text4);text-transform:uppercase;letter-spacing:1px">PONTUAIS</div>
+          <div style="font-size:22px;font-weight:800;font-family:'DM Mono',monospace;margin-top:4px;color:var(--green)">${totPont}</div>
+        </div>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center">
+          <div style="font-size:10px;color:var(--text4);text-transform:uppercase;letter-spacing:1px">ADIANTADAS</div>
+          <div style="font-size:22px;font-weight:800;font-family:'DM Mono',monospace;margin-top:4px;color:var(--amber)">${totAdiant}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px">${pctAdiant}%</div>
+        </div>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center">
+          <div style="font-size:10px;color:var(--text4);text-transform:uppercase;letter-spacing:1px">ATRASADAS</div>
+          <div style="font-size:22px;font-weight:800;font-family:'DM Mono',monospace;margin-top:4px;color:var(--red)">${totAtras}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px">${pctAtras}%</div>
+        </div>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center">
+          <div style="font-size:10px;color:var(--text4);text-transform:uppercase;letter-spacing:1px">NÃO REALIZ</div>
+          <div style="font-size:22px;font-weight:800;font-family:'DM Mono',monospace;margin-top:4px;color:var(--text3)">${totProg-totReal}</div>
+        </div>
+      </div>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="background:var(--surface2);border-bottom:1px solid var(--border)">
+            <th style="padding:10px 14px;text-align:left;font-size:11px;color:var(--text4);letter-spacing:0.5px">LINHA</th>
+            <th style="padding:10px 8px;text-align:center;font-size:11px;color:var(--text4)">PROG</th>
+            <th style="padding:10px 8px;text-align:center;font-size:11px;color:var(--blue)">REALIZ</th>
+            <th style="padding:10px 8px;text-align:center;font-size:11px;color:var(--green)">PONTUAIS</th>
+            <th style="padding:10px 8px;text-align:center;font-size:11px;color:var(--amber)">ADIANT</th>
+            <th style="padding:10px 8px;text-align:center;font-size:11px;color:var(--red)">ATRAS</th>
+            <th style="padding:10px 8px;text-align:center;font-size:11px;color:var(--text4)">% PONT</th>
+          </tr>
+        </thead>
+        <tbody>${linhaRows||`<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--text4)">Sem dados de pontualidade — aguardando próximo sync</td></tr>`}</tbody>
+      </table>
+    </div>
+    <div style="margin-top:12px;font-size:11px;color:var(--text4);text-align:center">⏱️ Tolerância: ±10 min · 📡 CITTATI/JSON_VIAGENS · últimos 7 dias</div>
   `);
 }
 
