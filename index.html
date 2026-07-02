@@ -4702,9 +4702,9 @@ function confProcessar(){
   Object.keys(mapS).forEach(cod=>{
     const s=mapS[cod];
     const p=mapP[cod];
-    const saldoS=s.saldo;
-    const saldoP=p?p.saldo:0;
-    const dif=Math.round((saldoS-saldoP)*1000)/1000;
+    const saldoS=Math.round(s.saldo);
+    const saldoP=Math.round(p?p.saldo:0);
+    const dif=saldoS-saldoP;
     if(dif!==0){
       desvios.push({
         cod,
