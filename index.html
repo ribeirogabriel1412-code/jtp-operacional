@@ -4808,7 +4808,7 @@ async function confCruzarRotativo(){
   const {data:rotRaw,error}=await sb.from('almoxo_inventario_turno')
     .select('*').eq('garagem_id',gid)
     .lte('turno_data',dataRef)
-    .order('criado_em',{ascending:false});
+    .order('turno_data',{ascending:false});
   if(error){el.innerHTML=`<div style="color:var(--danger);padding:12px">Erro: ${error.message}</div>`;return;}
   if(!rotRaw||!rotRaw.length){el.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3)">Nenhum inventário rotativo encontrado para este período.</div>';return;}
 
@@ -4835,7 +4835,7 @@ async function confCruzarRotativo(){
       difSap:saldoSap!=null&&fis!=null?fis-saldoSap:null,
       difPrax:saldoPrax!=null&&fis!=null?fis-saldoPrax:null,
       almoxarife:rot.almoxarife_nome||'',
-      data:rot.turno_data||rot.criado_em?.slice(0,10)||'',
+      data:rot.turno_data||'',
     };
   }).sort((a,b)=>{
     // Maior desvio absoluto primeiro
