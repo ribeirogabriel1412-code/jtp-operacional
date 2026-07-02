@@ -4691,9 +4691,9 @@ function confProcessar(){
     const difCor=d.diferenca>0?'var(--green)':'var(--danger)';
     return`<tr style="border-bottom:1px solid var(--border)">
       <td style="padding:7px 10px;font-family:monospace;font-size:11px;color:var(--text3)">${i+1}</td>
-      <td style="padding:7px 10px;font-family:monospace;font-size:12px;font-weight:700">${esc(d.cod)}</td>
-      <td style="padding:7px 10px;font-size:12px">${esc(d.desc)}</td>
-      <td style="padding:7px 10px;font-size:11px;color:var(--text3)">${esc(d.grupo)}</td>
+      <td style="padding:7px 10px;font-family:monospace;font-size:12px;font-weight:700">${escHtml(d.cod)}</td>
+      <td style="padding:7px 10px;font-size:12px">${escHtml(d.desc)}</td>
+      <td style="padding:7px 10px;font-size:11px;color:var(--text3)">${escHtml(d.grupo)}</td>
       <td style="padding:7px 10px;text-align:right;font-family:monospace">${d.saldo_sap.toFixed(0)}</td>
       <td style="padding:7px 10px;text-align:right;font-family:monospace">${d.saldo_praxio.toFixed(0)}</td>
       <td style="padding:7px 10px;text-align:right;font-family:monospace;font-weight:700;color:${difCor}">${d.diferenca>0?'+':''}${d.diferenca.toFixed(0)}</td>
