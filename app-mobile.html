@@ -2844,21 +2844,10 @@ function almoxMobAbrirInvRotativo(reqId){
         </div>
       </div>
       ${refBlock}
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
-        <div>
-          <div style="font-size:10px;font-weight:900;color:#60a5fa;text-transform:uppercase;text-align:center;margin-bottom:6px">🔵 PRAXIO</div>
-          <input id="inv-rot-praxio" type="number" inputmode="decimal" value="${preFilPraxio}" placeholder="0" step="0.001" min="0" oninput="invRotCalcAcur()" style="width:100%;background:var(--surface2);border:2px solid #60a5fa;border-radius:10px;color:var(--text);padding:12px 6px;font-size:20px;font-family:'DM Mono',monospace;font-weight:900;text-align:center;box-sizing:border-box;outline:none">
-        </div>
-        <div>
-          <div style="font-size:10px;font-weight:900;color:var(--amber);text-transform:uppercase;text-align:center;margin-bottom:6px">🟡 SAP</div>
-          <input id="inv-rot-sap" type="number" inputmode="decimal" value="${preFilSap}" placeholder="0" step="0.001" min="0" oninput="invRotCalcAcur()" style="width:100%;background:var(--surface2);border:2px solid var(--amber);border-radius:10px;color:var(--text);padding:12px 6px;font-size:20px;font-family:'DM Mono',monospace;font-weight:900;text-align:center;box-sizing:border-box;outline:none">
-        </div>
-        <div>
-          <div style="font-size:10px;font-weight:900;color:var(--green);text-transform:uppercase;text-align:center;margin-bottom:6px">🟢 FÍSICO</div>
-          <input id="inv-rot-fis" type="number" inputmode="decimal" value="${preFilFis}" placeholder="0" step="0.001" min="0" oninput="invRotCalcAcur()" style="width:100%;background:var(--surface2);border:2px solid var(--green);border-radius:10px;color:var(--text);padding:12px 6px;font-size:20px;font-family:'DM Mono',monospace;font-weight:900;text-align:center;box-sizing:border-box;outline:none">
-        </div>
+      <div style="margin-bottom:20px">
+        <div style="font-size:11px;font-weight:900;color:var(--green);text-transform:uppercase;text-align:center;letter-spacing:.5px;margin-bottom:10px">🟢 Quantidade física em estoque</div>
+        <input id="inv-rot-fis" type="number" inputmode="decimal" value="${preFilFis}" placeholder="0" step="1" min="0" style="width:100%;background:var(--surface2);border:2px solid var(--green);border-radius:12px;color:var(--text);padding:18px 12px;font-size:32px;font-family:'DM Mono',monospace;font-weight:900;text-align:center;box-sizing:border-box;outline:none">
       </div>
-      <div id="inv-rot-acur" style="text-align:center;font-family:'DM Mono',monospace;font-size:20px;font-weight:900;color:var(--text3);margin-bottom:16px;padding:10px;background:var(--surface2);border-radius:10px">—</div>
       <div style="display:flex;gap:8px">
         <button onclick="document.getElementById('inv-rot-overlay').remove()" style="flex:1;padding:13px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">Cancelar</button>
         <button onclick="almoxMobSalvarInvRotativo('${reqId}')" style="flex:2;padding:13px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">💾 Salvar</button>
@@ -2881,13 +2870,10 @@ function invRotCalcAcur(){
 }
 
 async function almoxMobSalvarInvRotativo(reqId){
-  const praxio=parseFloat(document.getElementById('inv-rot-praxio')?.value??'');
-  const sap=parseFloat(document.getElementById('inv-rot-sap')?.value??'');
   const fis=parseFloat(document.getElementById('inv-rot-fis')?.value??'');
-  if(isNaN(sap)||isNaN(fis)){toast('Preencha ao menos SAP e Físico','err');return;}
+  if(isNaN(fis)){toast('Informe a quantidade física','err');return;}
   const gid=window._invRotGid||getGid();
   const hojeIso=hoje();
-  const acur=sap>0?Math.round((fis/sap)*1000)/10:fis===0?100:0;
   const item=window._invRotItems?.[reqId]||{};
   const codSap=item.cod_sap_entregue||item.cod_sap||null;
   const nomeItem=item.item_entregue||item.peca||null;
@@ -2895,10 +2881,7 @@ async function almoxMobSalvarInvRotativo(reqId){
   const turnoAtual=window._invRotTurno||{};
   let err;
   const payload={
-    qtd_praxio:isNaN(praxio)?null:praxio,
-    qtd_sap:sap,
     qtd_fisica:fis,
-    acuracia:acur,
     almoxarife_id:S.user?.id,
     almoxarife_nome:S.perfil?.nome||null
   };
@@ -2921,14 +2904,8 @@ async function almoxMobSalvarInvRotativo(reqId){
     toast('Erro '+err.code+': '+err.message,'err');
     return;
   }
-  if(Math.abs(sap-fis)>0.001){
-    await sb.from('almoxo_divergencias').insert({
-      garagem_id:gid,origem:'rotativo',cod_sap:codSap,nome_item:nomeItem,
-      qtd_sap:sap,qtd_fisica:fis,acuracia:acur
-    }).then(()=>{});
-  }
   document.getElementById('inv-rot-overlay')?.remove();
-  toast(acur>=98?'✅ Conferido — sem desvio':'⚠️ Desvio registrado: '+acur+'%');
+  toast('✅ Físico registrado: '+fis);
   _almoxMobTab='conf';telaValetAlmox();
 }
 
