@@ -1972,6 +1972,14 @@ async function renderAlmoxPainelLider(){
           <div id="conf-praxio-status" style="margin-top:8px;font-size:11px;color:var(--text4)">Nenhum arquivo selecionado</div>
         </div>
       </div>
+      <!-- Diagnóstico de código -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span style="font-size:11px;color:var(--text3);font-weight:700;white-space:nowrap">🔍 Verificar código no PRAXIO:</span>
+        <input id="conf-diag-cod" type="text" placeholder="Ex: 30027329" onkeydown="if(event.key==='Enter')confBuscarCodigo()" style="font-family:'DM Mono',monospace;padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;width:130px;outline:none">
+        <button onclick="confBuscarCodigo()" class="btn-sec" style="padding:5px 12px;font-size:11px">Buscar</button>
+        <div id="conf-diag-res" style="font-size:11px;color:var(--text3);flex:1;min-width:180px;max-height:80px;overflow-y:auto"></div>
+      </div>
+
       <div style="display:flex;gap:10px;align-items:center;margin-bottom:20px">
         <button id="conf-proc-btn" class="btn-success" onclick="confProcessar()" disabled style="min-width:160px">⚙️ Processar</button>
         <button id="conf-save-btn" class="btn-add" onclick="confSalvarSupabase()" disabled style="min-width:200px;display:none">💾 Salvar Desvios no Sistema</button>
@@ -4497,6 +4505,14 @@ function renderAlmoxConferenciaSapPraxio(){
       </div>
     </div>
 
+    <!-- Diagnóstico de código -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:11px;color:var(--text3);font-weight:700;white-space:nowrap">🔍 Verificar código no PRAXIO:</span>
+      <input id="conf-diag-cod" type="text" placeholder="Ex: 30027329" onkeydown="if(event.key==='Enter')confBuscarCodigo()" style="font-family:'DM Mono',monospace;padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;width:130px;outline:none">
+      <button onclick="confBuscarCodigo()" class="btn-sec" style="padding:5px 12px;font-size:11px">Buscar</button>
+      <div id="conf-diag-res" style="font-size:11px;color:var(--text3);flex:1;min-width:180px;max-height:80px;overflow-y:auto"></div>
+    </div>
+
     <div style="display:flex;gap:10px;align-items:center;margin-bottom:20px">
       <button id="conf-proc-btn" class="btn-success" onclick="confProcessar()" disabled style="min-width:160px">⚙️ Processar</button>
       <button id="conf-save-btn" class="btn-add" onclick="confSalvarSupabase()" disabled style="min-width:200px;display:none">💾 Salvar Desvios no Sistema</button>
@@ -4557,31 +4573,54 @@ function confPraxioFileChanged(input){
   const reader=new FileReader();
   reader.onload=function(e){
     try{
-      // Tenta latin-1, fallback utf-8
       let text;
       try{text=new TextDecoder('windows-1252').decode(new Uint8Array(e.target.result));}
       catch(_){text=new TextDecoder('utf-8').decode(new Uint8Array(e.target.result));}
       const rows=confParseCSV(text);
-      // Linha 0 = cabeçalho (16 colunas), linhas 1+ = dados (17 colunas)
-      // campo[7]=cod_interno, campo[8]=descricao, campo[13]=saldo (int)
+      if(rows.length<2){throw new Error('Arquivo sem dados');}
+
+      // Detecta posição das colunas pelo cabeçalho
+      const header=rows[0].map(h=>h.trim().toLowerCase());
+      const COD_NAMES=['código interno do material','codigo interno do material','cod. interno','cod interno','código interno'];
+      const SALDO_NAMES=['saldo','quantidade','qtd','estoque','qty'];
+      const DESC_NAMES=['descrição','descricao','descr','nome'];
+
+      let hCodIdx=header.findIndex(h=>COD_NAMES.some(n=>h.includes(n)));
+      let hSaldoIdx=-1;
+      // Busca saldo: tenta do fim para o início (geralmente últimas colunas)
+      for(let k=header.length-1;k>=0;k--){
+        if(SALDO_NAMES.some(n=>header[k].includes(n))&&k!==hCodIdx){hSaldoIdx=k;break;}
+      }
+      let hDescIdx=header.findIndex(h=>DESC_NAMES.some(n=>h.includes(n))&&header.indexOf(h)!==hCodIdx);
+
+      // Detecta se linhas de dados têm número sequencial na coluna 0
+      const firstData=rows[1];
+      const hasSeq=/^\d+$/.test((firstData[0]||'').trim());
+      const off=hasSeq?1:0; // offset para converter índice do header → índice do dado
+
+      // Índices finais nas linhas de dados
+      const codIdx  = hCodIdx>=0  ? hCodIdx+off  : 7;
+      const saldoIdx= hSaldoIdx>=0 ? hSaldoIdx+off : 13;
+      const descIdx = hDescIdx>=0  ? hDescIdx+off  : 8;
+
+      window._confPraxioMeta={codIdx,saldoIdx,descIdx,off,headerLen:header.length};
+
       const items=[];
+      const skipped=[];
       for(let i=1;i<rows.length;i++){
         const r=rows[i];
-        if(r.length<14) continue;
-        const cod=(r[7]||'').trim();
-        if(!cod||cod==='Código interno do material') continue;
-        const saldoStr=(r[13]||'').trim();
-        const saldo=parseInt(saldoStr,10);
-        if(isNaN(saldo)) continue;
-        items.push({
-          cod,
-          desc:(r[8]||'').trim(),
-          saldo,
-          preco:parseFloat((r[14]||'0').replace(',','.'))||0,
-        });
+        if(r.length<3) continue;
+        const cod=(r[codIdx]||'').trim();
+        if(!cod||!/^\d/.test(cod)) continue; // ignora linhas de total/cabeçalho
+        const saldoStr=(r[saldoIdx]||'').trim().replace(',','.');
+        const saldo=parseFloat(saldoStr)||0;
+        items.push({cod,desc:(r[descIdx]||'').trim(),saldo,preco:0});
       }
+
       window._confPraxioData={items};
-      document.getElementById('conf-praxio-status').innerHTML=`<span style="color:var(--green)">✓ ${items.length} itens carregados</span>`;
+      window._confPraxioRaws=rows; // bruto para diagnóstico
+      document.getElementById('conf-praxio-status').innerHTML=
+        `<span style="color:var(--green)">✓ ${items.length} itens carregados · col código: ${codIdx}, saldo: ${saldoIdx}</span>`;
     }catch(err){
       document.getElementById('conf-praxio-status').innerHTML=`<span style="color:var(--danger)">❌ Erro: ${err.message}</span>`;
       window._confPraxioData=null;
@@ -4589,6 +4628,26 @@ function confPraxioFileChanged(input){
     confVerificarPronto();
   };
   reader.readAsArrayBuffer(f);
+}
+
+function confBuscarCodigo(){
+  const cod=(document.getElementById('conf-diag-cod')?.value||'').trim();
+  if(!cod){return;}
+  const raws=window._confPraxioRaws||[];
+  const meta=window._confPraxioMeta||{codIdx:7,saldoIdx:13,descIdx:8};
+  // Busca em todas as colunas
+  const found=raws.filter(r=>r.some(f=>(f||'').trim()===cod));
+  const el=document.getElementById('conf-diag-res');
+  if(!el)return;
+  if(!found.length){
+    el.innerHTML=`<span style="color:var(--danger)">❌ Código "${cod}" NÃO encontrado nas ${raws.length} linhas do CSV</span>`;
+    return;
+  }
+  const linhas=found.map(r=>{
+    const posicoes=r.map((v,i)=>v.trim()===cod?`<b>col${i}="${v}"</b>`:`col${i}="${v}"`).join(' · ');
+    return`<div style="font-size:10px;font-family:monospace;margin-bottom:4px;word-break:break-all">${posicoes}</div>`;
+  }).join('');
+  el.innerHTML=`<div style="color:var(--green);margin-bottom:6px">✓ Encontrado em ${found.length} linha(s). Col código detectada: ${meta.codIdx}, col saldo: ${meta.saldoIdx}</div>${linhas}`;
 }
 
 function confParseCSV(text){
