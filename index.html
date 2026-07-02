@@ -4812,115 +4812,71 @@ async function confCruzarRotativo(){
   if(error){el.innerHTML=`<div style="color:var(--danger);padding:12px">Erro: ${error.message}</div>`;return;}
   if(!rotRaw||!rotRaw.length){el.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3)">Nenhum inventário rotativo encontrado para este período.</div>';return;}
 
-  // Agrupa por cod_sap — mantém a contagem mais recente (maior turno_data, desempate por id)
+  // Agrupa por cod_sap + turno_data — última contagem de cada item por dia
+  // Se o mesmo item saiu segunda E terça, aparece uma linha por dia
   const rotMap={};
   rotRaw.forEach(r=>{
     if(!r.cod_sap)return;
-    const k=confNormCod(r.cod_sap);
-    if(!rotMap[k]||r.turno_data>rotMap[k].turno_data)rotMap[k]=r;
+    const k=confNormCod(r.cod_sap)+'|'+(r.turno_data||'');
+    if(!rotMap[k])rotMap[k]=r; // já vem ordenado por turno_data DESC do Supabase
   });
 
   // Monta lista 3-way: Físico × PRAXIO × SAP
-  const itens=Object.keys(rotMap).map(cod=>{
-    const rot=rotMap[cod];
+  const itens=Object.values(rotMap).map(rot=>{
+    const cod=confNormCod(rot.cod_sap);
     const s=mapS[cod]||null;
     const p=mapP[cod]||null;
     const fis=rot.qtd_fisica??null;
     const saldoSap=s?.saldo??null;
     const saldoPrax=p?.saldo??null;
     return{
-      cod,
-      nome:rot.nome_item||p?.desc||'',
+      cod:rot.cod_sap,
+      nome:rot.nome_item||p?.desc||s?.desc||'',
       fis,saldoSap,saldoPrax,
-      difSap:saldoSap!=null&&fis!=null?fis-saldoSap:null,
-      difPrax:saldoPrax!=null&&fis!=null?fis-saldoPrax:null,
+      difSap:saldoSap!=null&&fis!=null?Math.round((fis-saldoSap)*1000)/1000:null,
+      difPrax:saldoPrax!=null&&fis!=null?Math.round((fis-saldoPrax)*1000)/1000:null,
       almoxarife:rot.almoxarife_nome||'',
       data:rot.turno_data||'',
     };
-  }).sort((a,b)=>{
-    // Maior desvio absoluto primeiro
-    const da=Math.max(Math.abs(a.difSap??0),Math.abs(a.difPrax??0));
-    const db=Math.max(Math.abs(b.difSap??0),Math.abs(b.difPrax??0));
-    return db-da;
-  });
+  }).sort((a,b)=>b.data.localeCompare(a.data)||a.cod.localeCompare(b.cod));
 
   const N=v=>v==null?'—':Number.isInteger(v)?v:v.toFixed(2);
-  const difCell=(v,extra='')=>{
+  const difCell=v=>{
     if(v==null)return`<td style="padding:7px 10px;text-align:right;color:var(--text3)">—</td>`;
     const cor=v===0?'var(--green)':v>0?'var(--blue)':'var(--danger)';
-    const sinal=v>0?'+':'';
-    return`<td style="padding:7px 10px;text-align:right;font-family:monospace;font-weight:700;color:${cor}">${sinal}${N(v)}${extra}</td>`;
+    return`<td style="padding:7px 10px;text-align:right;font-family:monospace;font-weight:700;color:${cor}">${v>0?'+':''}${N(v)}</td>`;
   };
-  const th=t=>`<th style="padding:9px 10px;text-align:${t.r?'right':'left'};border-bottom:1px solid var(--border);border-right:${t.sep?'2px solid var(--border2)':'none'};color:var(--text3);font-size:10px;white-space:nowrap">${t.l}</th>`;
+  const thH=l=>`<th style="padding:9px 10px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-size:10px;white-space:nowrap">${l}</th>`;
+  const thR=l=>`<th style="padding:9px 10px;text-align:right;border-bottom:1px solid var(--border);color:var(--text3);font-size:10px;white-space:nowrap">${l}</th>`;
 
-  // ── Tabela 1: Divergência Físico × PRAXIO ───────────────────────────
-  const divPrax=itens.filter(i=>i.difPrax!=null&&i.difPrax!==0);
-  const rowsPrax=divPrax.map((d,i)=>`<tr style="border-bottom:1px solid var(--border)">
-    <td style="padding:7px 10px;font-family:monospace;font-size:11px;color:var(--text3)">${i+1}</td>
-    <td style="padding:7px 10px;font-family:monospace;font-size:12px;font-weight:700">${escHtml(d.cod)}</td>
-    <td style="padding:7px 10px;font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(d.nome)}</td>
-    <td style="padding:7px 10px;text-align:right;font-family:monospace;font-weight:800;color:var(--green)">${N(d.fis)}</td>
-    <td style="padding:7px 10px;text-align:right;font-family:monospace">${N(d.saldoPrax)}</td>
-    ${difCell(d.difPrax)}
-    <td style="padding:7px 10px;font-size:11px;color:var(--text3)">${escHtml(d.almoxarife)}</td>
-    <td style="padding:7px 10px;font-size:11px;color:var(--text3)">${escHtml(d.data)}</td>
-  </tr>`).join('');
+  const thead=`<tr style="background:var(--surface2)">
+    ${thH('#')}${thH('Código')}${thH('Descrição')}${thR('Físico (Rot.)')}${thR('PRAXIO')}${thR('Δ Fís.↔PRAX')}${thR('SAP')}${thR('Δ Fís.↔SAP')}${thH('Almoxarife')}${thH('Data')}
+  </tr>`;
 
-  // ── Tabela 2: Divergência Físico × SAP ──────────────────────────────
-  const divSap=itens.filter(i=>i.difSap!=null&&i.difSap!==0);
-  const rowsSap=divSap.map((d,i)=>`<tr style="border-bottom:1px solid var(--border)">
-    <td style="padding:7px 10px;font-family:monospace;font-size:11px;color:var(--text3)">${i+1}</td>
-    <td style="padding:7px 10px;font-family:monospace;font-size:12px;font-weight:700">${escHtml(d.cod)}</td>
-    <td style="padding:7px 10px;font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(d.nome)}</td>
-    <td style="padding:7px 10px;text-align:right;font-family:monospace;font-weight:800;color:var(--green)">${N(d.fis)}</td>
-    <td style="padding:7px 10px;text-align:right;font-family:monospace">${N(d.saldoSap)}</td>
-    ${difCell(d.difSap)}
-    <td style="padding:7px 10px;font-size:11px;color:var(--text3)">${escHtml(d.almoxarife)}</td>
-    <td style="padding:7px 10px;font-size:11px;color:var(--text3)">${escHtml(d.data)}</td>
-  </tr>`).join('');
-
-  // ── Tabela 3: Inventário Rotativo completo (todos contados) ──────────
-  const rowsTodos=itens.map((d,i)=>{
+  const rows=itens.map((d,i)=>{
     const temDesvio=(d.difSap!=null&&d.difSap!==0)||(d.difPrax!=null&&d.difPrax!==0);
     return`<tr style="border-bottom:1px solid var(--border);${temDesvio?'background:#EF444408':''}">
-      <td style="padding:7px 10px;font-family:monospace;font-size:11px;color:var(--text3)">${i+1}</td>
+      <td style="padding:7px 10px;font-size:11px;color:var(--text3)">${i+1}</td>
       <td style="padding:7px 10px;font-family:monospace;font-size:12px;font-weight:700">${escHtml(d.cod)}</td>
-      <td style="padding:7px 10px;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(d.nome)}</td>
+      <td style="padding:7px 10px;font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.nome)}">${escHtml(d.nome)}</td>
       <td style="padding:7px 10px;text-align:right;font-family:monospace;font-weight:800;color:var(--green)">${N(d.fis)}</td>
       <td style="padding:7px 10px;text-align:right;font-family:monospace">${N(d.saldoPrax)}</td>
       ${difCell(d.difPrax)}
       <td style="padding:7px 10px;text-align:right;font-family:monospace">${N(d.saldoSap)}</td>
       ${difCell(d.difSap)}
-      <td style="padding:7px 10px;font-size:11px;color:var(--text3)">${escHtml(d.almoxarife)}</td>
-      <td style="padding:7px 10px;font-size:11px;color:var(--text3)">${escHtml(d.data)}</td>
+      <td style="padding:7px 10px;font-size:11px;color:var(--text3);white-space:nowrap">${escHtml(d.almoxarife)}</td>
+      <td style="padding:7px 10px;font-size:11px;color:var(--text3);white-space:nowrap">${escHtml(d.data)}</td>
     </tr>`;
   }).join('');
 
-  const thead1=`<tr style="background:var(--surface2)">${[
-    {l:'#'},{l:'Código'},{l:'Descrição'},{l:'Físico (Rot.)',r:true},{l:'PRAXIO',r:true},{l:'Δ Fís.↔PRAX',r:true},{l:'Almoxarife'},{l:'Data'}
-  ].map(th).join('')}</tr>`;
-  const thead2=`<tr style="background:var(--surface2)">${[
-    {l:'#'},{l:'Código'},{l:'Descrição'},{l:'Físico (Rot.)',r:true},{l:'SAP',r:true},{l:'Δ Fís.↔SAP',r:true},{l:'Almoxarife'},{l:'Data'}
-  ].map(th).join('')}</tr>`;
-  const thead3=`<tr style="background:var(--surface2)">${[
-    {l:'#'},{l:'Código'},{l:'Descrição'},{l:'Físico (Rot.)',r:true},{l:'PRAXIO',r:true},{l:'Δ Fís.↔PRAX',r:true},{l:'SAP',r:true},{l:'Δ Fís.↔SAP',r:true},{l:'Almoxarife'},{l:'Data'}
-  ].map(th).join('')}</tr>`;
-
-  const secTitulo=(ico,titulo,qtd,cor)=>`
-    <div style="display:flex;align-items:center;gap:10px;padding:10px 0 8px">
-      <div style="font-size:13px;font-weight:900">${ico} ${titulo}</div>
-      <span style="background:${cor}20;color:${cor};border:1px solid ${cor}60;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:800">${qtd} item${qtd!==1?'s':''}</span>
-    </div>`;
-
+  const desvioCount=itens.filter(d=>(d.difSap!=null&&d.difSap!==0)||(d.difPrax!=null&&d.difPrax!==0)).length;
   el.innerHTML=`
-    ${secTitulo('⚠️','Divergência: Físico × PRAXIO',divPrax.length,'#F59E0B')}
-    ${divPrax.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead>${thead1}</thead><tbody>${rowsPrax}</tbody></table></div>`:'<div style="color:var(--green);padding:10px 0;font-size:12px">✅ Nenhuma divergência entre físico e PRAXIO</div>'}
-
-    ${secTitulo('⚠️','Divergência: Físico × SAP',divSap.length,'#EF4444')}
-    ${divSap.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead>${thead2}</thead><tbody>${rowsSap}</tbody></table></div>`:'<div style="color:var(--green);padding:10px 0;font-size:12px">✅ Nenhuma divergência entre físico e SAP</div>'}
-
-    ${secTitulo('📋','Inventário Rotativo — Todos os Itens Contados',itens.length,'#00C48C')}
-    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead>${thead3}</thead><tbody>${rowsTodos}</tbody></table></div>
+    <div style="display:flex;align-items:center;gap:10px;padding:4px 0 12px;flex-wrap:wrap">
+      <span style="font-size:13px;font-weight:900">📋 Inventário Rotativo — Última contagem por item/turno</span>
+      <span style="background:#00C48C20;color:#00C48C;border:1px solid #00C48C60;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:800">${itens.length} registro${itens.length!==1?'s':''}</span>
+      ${desvioCount?`<span style="background:#EF444420;color:var(--danger);border:1px solid #EF444460;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:800">⚠️ ${desvioCount} com desvio</span>`:'<span style="background:#00C48C20;color:#00C48C;border:1px solid #00C48C60;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:800">✅ Sem desvios</span>'}
+    </div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>
   `;
 }
 
