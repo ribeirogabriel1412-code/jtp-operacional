@@ -4529,6 +4529,10 @@ function renderAlmoxConferenciaSapPraxio(){
 }
 
 function confSapFileChanged(input){
+  // Colunas fixas SAP:
+  //   C (idx 2) = Código do item
+  //   E (idx 4) = Código do depósito → filtrar "2000"
+  //   F (idx 5) = Saldo em estoque
   const f=input.files[0];
   if(!f){return;}
   document.getElementById('conf-sap-status').textContent='Lendo…';
@@ -4537,28 +4541,24 @@ function confSapFileChanged(input){
     try{
       const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
       const ws=wb.Sheets[wb.SheetNames[0]];
-      const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
-      // Filtro depósito 200
-      const sap200=rows.filter(r=>{
-        const dep=String(r['Código do depósito']||'').trim();
-        return dep==='200'||Number(dep)===200;
-      });
-      // Data referência (primeira Data não-vazia)
-      let dataRef='';
-      for(const r of sap200){if(r['Data']){dataRef=String(r['Data']).split('T')[0];break;}}
-      // Normaliza campos
-      const items=sap200.map(r=>({
-        cod:String(r['Código do item']||'').trim(),
-        desc:String(r['Descrição do item']||'').trim(),
-        grupo:String(r['Nome do grupo']||'').trim(),
-        saldo:Number(r['Saldo em estoque'])||0,
-        preco:Number(r['Preço médio'])||0,
-        valor:Number(r['Valor em estoque'])||0,
-      })).filter(r=>r.cod);
-      window._confSapData={items,dataRef};
-      document.getElementById('conf-sap-status').innerHTML=`<span style="color:var(--green)">✓ ${items.length} itens (depósito 200) · ref: ${dataRef||'—'}</span>`;
+      // header:1 → cada linha vira array; índice 0=colA, 1=colB, 2=colC...
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      const items=[];
+      for(let i=1;i<rows.length;i++){
+        const r=rows[i];
+        const dep=String(r[4]||'').trim(); // col E
+        if(dep!=='2000') continue;
+        const cod=String(r[2]||'').trim(); // col C
+        if(!cod) continue;
+        const saldo=parseFloat(String(r[5]||'').replace(',','.'))||0; // col F
+        items.push({cod,saldo,desc:'',grupo:'',preco:0,valor:0});
+      }
+      window._confSapData={items,dataRef:''};
+      document.getElementById('conf-sap-status').innerHTML=
+        `<span style="color:var(--green)">✓ ${items.length} itens (depósito 2000) · colC=código, colF=saldo</span>`;
     }catch(err){
-      document.getElementById('conf-sap-status').innerHTML=`<span style="color:var(--danger)">❌ Erro: ${err.message}</span>`;
+      document.getElementById('conf-sap-status').innerHTML=
+        `<span style="color:var(--danger)">❌ Erro: ${err.message}</span>`;
       window._confSapData=null;
     }
     confVerificarPronto();
@@ -4567,6 +4567,10 @@ function confSapFileChanged(input){
 }
 
 function confPraxioFileChanged(input){
+  // Colunas fixas PRAXIO (CSV com delimitador ","):
+  //   G (idx 6) = Código interno do material  ← chave do PROCX
+  //   N (idx 13) = Saldo                      ← valor trazido
+  //   I (idx 8) = Descrição do material
   const f=input.files[0];
   if(!f){return;}
   document.getElementById('conf-praxio-status').textContent='Lendo…';
@@ -4578,51 +4582,25 @@ function confPraxioFileChanged(input){
       catch(_){text=new TextDecoder('utf-8').decode(new Uint8Array(e.target.result));}
       const rows=confParseCSV(text);
       if(rows.length<2){throw new Error('Arquivo sem dados');}
-
-      // Detecta posição das colunas pelo cabeçalho
-      const header=rows[0].map(h=>h.trim().toLowerCase());
-      const COD_NAMES=['código interno do material','codigo interno do material','cod. interno','cod interno','código interno'];
-      const SALDO_NAMES=['saldo','quantidade','qtd','estoque','qty'];
-      const DESC_NAMES=['descrição','descricao','descr','nome'];
-
-      let hCodIdx=header.findIndex(h=>COD_NAMES.some(n=>h.includes(n)));
-      let hSaldoIdx=-1;
-      // Busca saldo: tenta do fim para o início (geralmente últimas colunas)
-      for(let k=header.length-1;k>=0;k--){
-        if(SALDO_NAMES.some(n=>header[k].includes(n))&&k!==hCodIdx){hSaldoIdx=k;break;}
-      }
-      let hDescIdx=header.findIndex(h=>DESC_NAMES.some(n=>h.includes(n))&&header.indexOf(h)!==hCodIdx);
-
-      // Detecta se linhas de dados têm número sequencial na coluna 0
-      const firstData=rows[1];
-      const hasSeq=/^\d+$/.test((firstData[0]||'').trim());
-      const off=hasSeq?1:0; // offset para converter índice do header → índice do dado
-
-      // Índices finais nas linhas de dados
-      const codIdx  = hCodIdx>=0  ? hCodIdx+off  : 7;
-      const saldoIdx= hSaldoIdx>=0 ? hSaldoIdx+off : 13;
-      const descIdx = hDescIdx>=0  ? hDescIdx+off  : 8;
-
-      window._confPraxioMeta={codIdx,saldoIdx,descIdx,off,headerLen:header.length};
-
+      // Linha 0 = cabeçalho (ignorada nos dados, mantida para diagnóstico)
       const items=[];
-      const skipped=[];
       for(let i=1;i<rows.length;i++){
         const r=rows[i];
-        if(r.length<3) continue;
-        const cod=(r[codIdx]||'').trim();
-        if(!cod||!/^\d/.test(cod)) continue; // ignora linhas de total/cabeçalho
-        const saldoStr=(r[saldoIdx]||'').trim().replace(',','.');
-        const saldo=parseFloat(saldoStr)||0;
-        items.push({cod,desc:(r[descIdx]||'').trim(),saldo,preco:0});
+        if(!r||r.length<14) continue;
+        const cod=(r[6]||'').trim(); // col G
+        if(!cod) continue;
+        const saldo=parseFloat((r[13]||'').trim().replace(',','.'))||0; // col N
+        const desc=(r[8]||'').trim(); // col I
+        items.push({cod,saldo,desc,preco:0});
       }
-
       window._confPraxioData={items};
-      window._confPraxioRaws=rows; // bruto para diagnóstico
+      window._confPraxioRaws=rows;
+      window._confPraxioMeta={codIdx:6,saldoIdx:13,descIdx:8};
       document.getElementById('conf-praxio-status').innerHTML=
-        `<span style="color:var(--green)">✓ ${items.length} itens carregados · col código: ${codIdx}, saldo: ${saldoIdx}</span>`;
+        `<span style="color:var(--green)">✓ ${items.length} itens · colG(6)=código, colN(13)=saldo</span>`;
     }catch(err){
-      document.getElementById('conf-praxio-status').innerHTML=`<span style="color:var(--danger)">❌ Erro: ${err.message}</span>`;
+      document.getElementById('conf-praxio-status').innerHTML=
+        `<span style="color:var(--danger)">❌ Erro: ${err.message}</span>`;
       window._confPraxioData=null;
     }
     confVerificarPronto();
@@ -4713,14 +4691,14 @@ function confProcessar(){
     if(dif!==0){
       desvios.push({
         cod,
-        desc:s.desc||'',
-        grupo:s.grupo||'',
+        desc:(p?p.desc:'')||'',  // descrição vem do PRAXIO (col I)
+        grupo:'',
         saldo_sap:saldoS,
         saldo_praxio:saldoP,
         naoEncontrado:!p,
         diferenca:dif,
-        preco_medio_sap:s.preco||0,
-        valor_sap:s.valor||0,
+        preco_medio_sap:0,
+        valor_sap:0,
       });
     }
   });
@@ -4740,7 +4718,7 @@ function confProcessar(){
   const _kc=(label,val,sub,alerta)=>`<div class="kpi ${alerta?'nok':'ok'}"><div class="kpi-label">${label}</div><div class="kpi-val" style="font-size:22px">${val}</div><div style="font-size:11px;color:var(--text3);margin-top:2px">${sub}</div></div>`;
   const resumo=`
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
-      ${_kc('Base SAP',Object.keys(mapS).length,'itens (depósito 200)',false)}
+      ${_kc('Base SAP',Object.keys(mapS).length,'itens (depósito 2000)',false)}
       ${_kc('Com desvio',desvios.length,'itens com diferença',desvios.length>0)}
       ${_kc('Não encontrado no PRAXIO',naoEncontrado,'constam no SAP, ausentes no PRAXIO',naoEncontrado>0)}
       ${_kc('Divergência de saldo',diverg,'saldo diferente entre sistemas',diverg>0)}
