@@ -4547,7 +4547,7 @@ function confSapFileChanged(input){
       for(let i=1;i<rows.length;i++){
         const r=rows[i];
         const dep=String(r[4]||'').trim(); // col E
-        if(dep!=='2000') continue;
+        if(dep!=='200') continue;
         const cod=String(r[2]||'').trim(); // col C
         if(!cod) continue;
         const saldo=parseFloat(String(r[5]||'').replace(',','.'))||0; // col F
@@ -4555,7 +4555,7 @@ function confSapFileChanged(input){
       }
       window._confSapData={items,dataRef:''};
       document.getElementById('conf-sap-status').innerHTML=
-        `<span style="color:var(--green)">✓ ${items.length} itens (depósito 2000) · colC=código, colF=saldo</span>`;
+        `<span style="color:var(--green)">✓ ${items.length} itens (depósito 200) · colC=código, colF=saldo</span>`;
     }catch(err){
       document.getElementById('conf-sap-status').innerHTML=
         `<span style="color:var(--danger)">❌ Erro: ${err.message}</span>`;
@@ -4718,7 +4718,7 @@ function confProcessar(){
   const _kc=(label,val,sub,alerta)=>`<div class="kpi ${alerta?'nok':'ok'}"><div class="kpi-label">${label}</div><div class="kpi-val" style="font-size:22px">${val}</div><div style="font-size:11px;color:var(--text3);margin-top:2px">${sub}</div></div>`;
   const resumo=`
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
-      ${_kc('Base SAP',Object.keys(mapS).length,'itens (depósito 2000)',false)}
+      ${_kc('Base SAP',Object.keys(mapS).length,'itens (depósito 200)',false)}
       ${_kc('Com desvio',desvios.length,'itens com diferença',desvios.length>0)}
       ${_kc('Não encontrado no PRAXIO',naoEncontrado,'constam no SAP, ausentes no PRAXIO',naoEncontrado>0)}
       ${_kc('Divergência de saldo',diverg,'saldo diferente entre sistemas',diverg>0)}
