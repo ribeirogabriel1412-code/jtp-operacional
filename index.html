@@ -4763,7 +4763,7 @@ function confProcessar(){
   }).join('');
 
   const tabela=`
-    ${secTitle('📊',`Desvios encontrados — ${desvios.length} item(ns)`,`<span style="font-size:11px;color:var(--text3)">ref: ${sap.dataRef||'—'}</span>`)}
+    ${secTitle('📊',`Desvios encontrados — ${desvios.length} item(ns)`,`<span style="font-size:11px;color:var(--text3)">ref: ${sap.dataRef||'—'}</span><button onclick="confMotorExportarPDF()" class="btn-sec" style="padding:4px 12px;font-size:11px;margin-left:10px">📄 PDF</button>`)}
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:20px">
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:12px">
@@ -4905,6 +4905,62 @@ async function confCruzarRotativo(){
   `;
 }
 
+function confMotorExportarPDF(){
+  const desvios=window._confDesvios;
+  if(!desvios?.length){toast('Sem dados para exportar.','err');return;}
+  const dataRef=window._confDataRef||new Date().toISOString().slice(0,10);
+  const gid=getGid();
+  const garagem=S.garagens?.find(g=>g.id===gid)?.nome||'Garagem';
+  const semCad=desvios.filter(d=>d.semCadastro).length;
+  const naoEnc=desvios.filter(d=>d.naoEncontrado&&!d.semCadastro).length;
+  const diverg=desvios.filter(d=>!d.naoEncontrado).length;
+  const esc=v=>String(v??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const dataFmt=new Date(dataRef+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
+
+  const rows=desvios.map((d,i)=>{
+    const status=d.semCadastro?'Sem cadastro PRAXIO':d.naoEncontrado?'Não no PRAXIO':'Divergência';
+    const badgeCls=d.semCadastro?'pend':d.naoEncontrado?'nok':'pend';
+    const difCor=d.diferenca>0?'#1d4ed8':'#991b1b';
+    return`<tr>
+      <td>${i+1}</td>
+      <td style="font-family:monospace;font-weight:700">${esc(d.cod)}</td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.desc)}</td>
+      <td style="text-align:right">${d.saldo_sap}</td>
+      <td style="text-align:right">${d.saldo_praxio}</td>
+      <td style="text-align:right;font-weight:700;color:${difCor}">${d.diferenca>0?'+':''}${d.diferenca}</td>
+      <td><span class="badge ${badgeCls}">${status}</span></td>
+    </tr>`;
+  }).join('');
+
+  abrirJanelaPDF(`
+    <div class="header">
+      <div>
+        <div class="logo">JTP Transportes</div>
+        <h1>Conferência SAP × PRAXIO</h1>
+        <div style="font-size:10px;color:#555">${esc(garagem)} · Ref.: ${dataFmt}</div>
+      </div>
+      <div class="meta">
+        <div style="font-size:22px;font-weight:800;color:${diverg===0&&naoEnc===0?'#059669':'#d97706'}">${desvios.length}</div>
+        <div>desvio(s) encontrado(s)</div>
+      </div>
+    </div>
+    <div class="kpi-row" style="grid-template-columns:repeat(4,1fr)">
+      <div class="kpi"><div class="kpi-val">${desvios.length-semCad}</div><div class="kpi-lab">Desvios reais</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#dc2626">${naoEnc}</div><div class="kpi-lab">Não no PRAXIO</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#d97706">${diverg}</div><div class="kpi-lab">Divergência de saldo</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#6b7280">${semCad}</div><div class="kpi-lab">Sem cadastro PRAXIO</div></div>
+    </div>
+    <table>
+      <thead><tr>
+        <th>#</th><th>Cód. SAP</th><th>Descrição</th>
+        <th style="text-align:right">SAP</th><th style="text-align:right">PRAXIO</th>
+        <th style="text-align:right">Diferença</th><th>Status</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `,'Conferência SAP × PRAXIO');
+}
+
 function confRotExportarXLSX(){
   const itens=window._confRotItens;
   if(!itens?.length){toast('Sem dados para exportar.','err');return;}
@@ -4928,79 +4984,63 @@ function confRotExportarPDF(){
   if(!itens?.length){toast('Sem dados para exportar.','err');return;}
   const garagem=window._confRotGaragem||'Garagem';
   const dataRef=window._confRotDataRef||new Date().toISOString().slice(0,10);
-  const gerado=new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'});
   const esc=v=>String(v??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const N=v=>v==null?'—':Number.isInteger(v)?v:parseFloat(v).toFixed(2);
   const difStr=v=>v==null?'—':(v>0?'+':'')+N(v);
   const desvioCount=itens.filter(d=>(d.difSap!=null&&d.difSap!==0)||(d.difPrax!=null&&d.difPrax!==0)).length;
   const conformeCount=itens.length-desvioCount;
+  const acuracia=itens.length>0?Math.round((conformeCount/itens.length)*100)+'%':'0%';
 
   const rows=itens.map((d,i)=>{
     const temDesvio=(d.difSap!=null&&d.difSap!==0)||(d.difPrax!=null&&d.difPrax!==0);
-    const bg=temDesvio?'#fff3f3':'#f0fff8';
-    const statusTxt=temDesvio?'⚠️ Desvio':'✅ Conforme';
-    const statusCor=temDesvio?'#b91c1c':'#065f46';
-    return`<tr style="background:${bg};border-bottom:1px solid #e2e8f0">
+    const statusBadge=temDesvio?'<span class="badge nok">⚠️ Desvio</span>':'<span class="badge ok">✅ Conforme</span>';
+    const difPraxCor=d.difPrax==null||d.difPrax===0?'#065f46':d.difPrax>0?'#1d4ed8':'#991b1b';
+    const difSapCor=d.difSap==null||d.difSap===0?'#065f46':d.difSap>0?'#1d4ed8':'#991b1b';
+    return`<tr>
       <td>${i+1}</td>
-      <td style="color:${statusCor};font-weight:700">${statusTxt}</td>
+      <td>${statusBadge}</td>
       <td style="font-family:monospace;font-weight:700">${esc(d.cod)}</td>
-      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.nome)}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.nome)}</td>
       <td style="text-align:right;font-weight:800;color:#047857">${N(d.fis)}</td>
       <td style="text-align:right">${N(d.saldoPrax)}</td>
-      <td style="text-align:right;color:${d.difPrax==null||d.difPrax===0?'#047857':d.difPrax>0?'#1d4ed8':'#b91c1c'};font-weight:700">${difStr(d.difPrax)}</td>
+      <td style="text-align:right;font-weight:700;color:${difPraxCor}">${difStr(d.difPrax)}</td>
       <td style="text-align:right">${N(d.saldoSap)}</td>
-      <td style="text-align:right;color:${d.difSap==null||d.difSap===0?'#047857':d.difSap>0?'#1d4ed8':'#b91c1c'};font-weight:700">${difStr(d.difSap)}</td>
+      <td style="text-align:right;font-weight:700;color:${difSapCor}">${difStr(d.difSap)}</td>
       <td style="font-size:10px">${esc(d.almoxarife)}</td>
       <td>${esc(d.data)}</td>
     </tr>`;
   }).join('');
 
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <title>Inventário Rotativo — ${esc(garagem)}</title>
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:Arial,sans-serif;font-size:11px;color:#111;padding:12px}
-    h1{font-size:14px;margin-bottom:4px}
-    .info{font-size:10px;color:#555;margin-bottom:10px}
-    .kpis{display:flex;gap:10px;margin-bottom:12px}
-    .kpi{border:1px solid #e2e8f0;border-radius:6px;padding:8px 14px;min-width:120px}
-    .kpi-val{font-size:20px;font-weight:900}
-    .kpi-lbl{font-size:9px;color:#666;text-transform:uppercase;margin-top:2px}
-    table{width:100%;border-collapse:collapse;font-size:10px}
-    th{background:#1e293b;color:#fff;padding:6px 8px;text-align:left;font-size:9px;white-space:nowrap}
-    th.r{text-align:right}
-    td{padding:5px 8px;vertical-align:middle}
-    .no-print{margin-bottom:10px;display:flex;gap:8px}
-    .no-print button{padding:6px 18px;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer}
-    @media print{.no-print{display:none}@page{size:A4 landscape;margin:8mm}}
-  </style></head><body>
-  <div class="no-print">
-    <button onclick="window.print()" style="background:#2563eb;color:#fff">🖨️ Imprimir / Salvar PDF</button>
-    <button onclick="window.close()" style="background:#e5e7eb;color:#111">Fechar</button>
-  </div>
-  <h1>📋 Inventário Rotativo × SAP × PRAXIO — ${esc(garagem)}</h1>
-  <div class="info">Ref.: ${esc(dataRef)} · Gerado em: ${esc(gerado)}</div>
-  <div class="kpis">
-    <div class="kpi"><div class="kpi-val">${itens.length}</div><div class="kpi-lbl">Total registros</div></div>
-    <div class="kpi" style="border-color:#86efac"><div class="kpi-val" style="color:#065f46">${conformeCount}</div><div class="kpi-lbl">Conformes</div></div>
-    <div class="kpi" style="border-color:#fca5a5"><div class="kpi-val" style="color:#b91c1c">${desvioCount}</div><div class="kpi-lbl">Com desvio</div></div>
-    <div class="kpi"><div class="kpi-val">${desvioCount>0?Math.round((1-desvioCount/itens.length)*100)+'%':'100%'}</div><div class="kpi-lbl">Acurácia</div></div>
-  </div>
-  <table>
-    <thead><tr>
-      <th>#</th><th>Status</th><th>Código</th><th>Descrição</th>
-      <th class="r">Físico (Rot.)</th><th class="r">PRAXIO</th><th class="r">Δ Fís.↔PRAX</th>
-      <th class="r">SAP</th><th class="r">Δ Fís.↔SAP</th>
-      <th>Almoxarife</th><th>Data</th>
-    </tr></thead>
-    <tbody>${rows}</tbody>
-  </table>
-  </body></html>`;
-
-  const w=window.open('','_blank','width=1100,height=750');
-  w.document.write(html);w.document.close();
+  const dataFmt=new Date(dataRef+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
+  abrirJanelaPDF(`
+    <div class="header">
+      <div>
+        <div class="logo">JTP Transportes</div>
+        <h1>Inventário Rotativo × SAP × PRAXIO</h1>
+        <div style="font-size:10px;color:#555">${esc(garagem)} · Ref.: ${dataFmt}</div>
+      </div>
+      <div class="meta">
+        <div style="font-size:22px;font-weight:800;color:${conformeCount===itens.length?'#059669':'#d97706'}">${acuracia}</div>
+        <div>Acurácia do inventário</div>
+      </div>
+    </div>
+    <div class="kpi-row" style="grid-template-columns:repeat(4,1fr)">
+      <div class="kpi"><div class="kpi-val">${itens.length}</div><div class="kpi-lab">Total registros</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#059669">${conformeCount}</div><div class="kpi-lab">Conformes</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#dc2626">${desvioCount}</div><div class="kpi-lab">Com desvio</div></div>
+      <div class="kpi"><div class="kpi-val">${acuracia}</div><div class="kpi-lab">Acurácia</div></div>
+    </div>
+    <table>
+      <thead><tr>
+        <th>#</th><th>Status</th><th>Código</th><th>Descrição</th>
+        <th style="text-align:right">Físico (Rot.)</th><th style="text-align:right">PRAXIO</th><th style="text-align:right">Δ Fís.↔PRAX</th>
+        <th style="text-align:right">SAP</th><th style="text-align:right">Δ Fís.↔SAP</th>
+        <th>Almoxarife</th><th>Data</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `,'Inventário Rotativo × SAP × PRAXIO');
 }
-
 async function confSalvarSupabase(){
   const desvios=window._confDesvios;
   const dataRef=window._confDataRef;
