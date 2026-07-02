@@ -4675,12 +4675,13 @@ function confProcessar(){
   const soPRAXIO=desvios.filter(d=>d.saldo_sap===0&&d.saldo_praxio>0).length;
   const diverg=desvios.length-soSAP-soPRAXIO;
 
+  const _kc=(label,val,sub,alerta)=>`<div class="kpi ${alerta?'nok':'ok'}"><div class="kpi-label">${label}</div><div class="kpi-val" style="font-size:22px">${val}</div><div style="font-size:11px;color:var(--text3);margin-top:2px">${sub}</div></div>`;
   const resumo=`
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
-      ${kpiCard('Total comparado',Object.keys(mapS).length+' vs '+Object.keys(mapP).length,'SAP vs PRAXIO',false)}
-      ${kpiCard('Com desvio',desvios.length,'itens',desvios.length>0)}
-      ${kpiCard('Só no SAP',soSAP,'sem reg. PRAXIO',soSAP>0)}
-      ${kpiCard('Só no PRAXIO',soPRAXIO,'saldo SAP = 0',soPRAXIO>0)}
+      ${_kc('Total comparado',Object.keys(mapS).length+' vs '+Object.keys(mapP).length,'SAP vs PRAXIO',false)}
+      ${_kc('Com desvio',desvios.length,'itens',desvios.length>0)}
+      ${_kc('Só no SAP',soSAP,'sem reg. PRAXIO',soSAP>0)}
+      ${_kc('Só no PRAXIO',soPRAXIO,'saldo SAP = 0',soPRAXIO>0)}
     </div>`;
 
   const STATUS_COLOR={sap:'#EF4444',praxio:'#F59E0B',diverg:'#3B82F6'};
