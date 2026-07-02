@@ -2589,7 +2589,8 @@ async function almoxMobSalvarEntrega(id){
     cod_sap_entregue:codEntregue||null,
     qtd_entregue:qtdEntregue,
     valor_estimado:valorEstimado,
-    entregue_em:new Date().toISOString()   // usado para filtrar T-1 / Turno Atual
+    entregue_em:new Date().toISOString(),
+    separado_por:S.user?.id   // identifica o almox que entregou → T-1 vs Turno Atual
   }).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
   // Atualiza custo_previsto da OS se item pertence a uma OS
@@ -2670,18 +2671,25 @@ async function telaAlmoxMobConferencia(){
   const windowIni=new Date(entradaHoje.getTime()-durMs);
   const agora2=new Date();
 
+  // Janela de 48h para capturar trocas de turno sem risco de fuso/horário
+  const ultimas48h=new Date(agora.getTime()-48*60*60*1000).toISOString();
+
   // Busca itens (T-1 e turno atual) + inventários existentes em paralelo
-  // T-1 e Turno Atual filtram por entregue_em (hora real da entrega, não de criação da OS)
+  // T-1  = itens entregues por OUTROS almoxes (separado_por != eu)
+  // Atual = itens entregues pelo PRÓPRIO almox (separado_por = eu)
+  // Discriminador: QUEM entregou, não o horário — elimina problema de janela de turno
   const[{data:rawT1},{data:rawAtual},{data:invExist}]=await Promise.all([
     sb.from('requisicoes_compra').select('*').eq('garagem_id',gid)
-      .not('entregue_em','is',null)
-      .gte('entregue_em',windowIni.toISOString()).lt('entregue_em',windowFim.toISOString())
-      .order('entregue_em',{ascending:true}),
+      .not('separado_por','is',null)
+      .neq('separado_por',S.user?.id)
+      .gte('entregue_em',ultimas48h)
+      .order('entregue_em',{ascending:false}).limit(50),
     sb.from('requisicoes_compra').select('*').eq('garagem_id',gid)
+      .eq('separado_por',S.user?.id)
       .not('entregue_em','is',null)
-      .gte('entregue_em',windowFim.toISOString()).lte('entregue_em',agora2.toISOString())
-      .order('entregue_em',{ascending:true}),
-    // Carrega inventários de TODOS os almoxes — necessário para montar os dois mapas
+      .gte('entregue_em',ultimas48h)
+      .order('entregue_em',{ascending:false}).limit(50),
+    // Todos os inventários da garagem para montar os dois mapas
     sb.from('almoxo_inventario_turno').select('*').eq('garagem_id',gid)
       .not('req_id','is',null).order('criado_em',{ascending:false})
   ]);

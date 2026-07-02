@@ -5,6 +5,12 @@
 ALTER TABLE requisicoes_compra
   ADD COLUMN IF NOT EXISTS entregue_em timestamptz;
 
+-- 3. Adiciona separado_por em requisicoes_compra
+--    UUID do almox que confirmou a entrega — discriminador T-1 vs Turno Atual
+--    (elimina fragilidade da janela de horário de turno)
+ALTER TABLE requisicoes_compra
+  ADD COLUMN IF NOT EXISTS separado_por uuid;
+
 -- 2. Corrige RLS em almoxo_inventario_turno
 --    A tabela tinha RLS ativo mas sem policy → bloqueava inserts do app mobile
 ALTER TABLE almoxo_inventario_turno ENABLE ROW LEVEL SECURITY;
