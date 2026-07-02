@@ -4701,7 +4701,7 @@ function confProcessar(){
     const p=mapP[cod];
     const saldoS=s.saldo;
     const saldoP=p?p.saldo:0;
-    const dif=saldoS-saldoP;
+    const dif=Math.round((saldoS-saldoP)*1000)/1000;
     if(dif!==0){
       desvios.push({
         cod,
