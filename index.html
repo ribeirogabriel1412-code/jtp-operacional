@@ -4531,6 +4531,9 @@ function renderAlmoxConferenciaSapPraxio(){
 // Normaliza código: remove espaços, tabs e chars invisíveis para comparação segura
 function confNormCod(c){return String(c||'').replace(/[\s ​]/g,'');}
 
+// Itens sem cadastro no PRAXIO — sempre divergem, não são erro real
+const CONF_SEM_PRAXIO=new Set(['COMB001','30027165','30027166','PEPN001','30027167','PEPN005','PEPN041','PEPN022']);
+
 function confSapFileChanged(input){
   // Colunas fixas SAP:
   //   C (idx 2) = Código do item
@@ -4710,14 +4713,16 @@ function confProcessar(){
         saldo_sap:saldoS,
         saldo_praxio:saldoP,
         naoEncontrado:!p,
+        semCadastro:!p&&CONF_SEM_PRAXIO.has(cod),
         diferenca:dif,
         preco_medio_sap:0,
         valor_sap:0,
       });
     }
   });
-  // Ordena: não encontrados primeiro, depois por |diferença| desc
+  // Ordena: sem cadastro por último, depois não encontrados, depois por |diferença| desc
   desvios.sort((a,b)=>{
+    if(a.semCadastro!==b.semCadastro)return a.semCadastro?1:-1;
     if(a.naoEncontrado!==b.naoEncontrado)return a.naoEncontrado?-1:1;
     return Math.abs(b.diferenca)-Math.abs(a.diferenca);
   });
@@ -4725,23 +4730,25 @@ function confProcessar(){
   window._confDesvios=desvios;
   window._confDataRef=sap.dataRef;
 
-  // Resumo
-  const naoEncontrado=desvios.filter(d=>d.naoEncontrado).length;
-  const diverg=desvios.length-naoEncontrado;
+  // Resumo (exclui itens sem cadastro PRAXIO dos KPIs de problema real)
+  const semCadastro=desvios.filter(d=>d.semCadastro).length;
+  const naoEncontrado=desvios.filter(d=>d.naoEncontrado&&!d.semCadastro).length;
+  const diverg=desvios.filter(d=>!d.naoEncontrado).length;
 
   const _kc=(label,val,sub,alerta)=>`<div class="kpi ${alerta?'nok':'ok'}"><div class="kpi-label">${label}</div><div class="kpi-val" style="font-size:22px">${val}</div><div style="font-size:11px;color:var(--text3);margin-top:2px">${sub}</div></div>`;
   const resumo=`
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px">
       ${_kc('Base SAP',Object.keys(mapS).length,'itens (depósito 200)',false)}
-      ${_kc('Com desvio',desvios.length,'itens com diferença',desvios.length>0)}
-      ${_kc('Não encontrado no PRAXIO',naoEncontrado,'constam no SAP, ausentes no PRAXIO',naoEncontrado>0)}
+      ${_kc('Com desvio',desvios.length-semCadastro,'itens com diferença real',desvios.length-semCadastro>0)}
+      ${_kc('Não no PRAXIO',naoEncontrado,'constam no SAP, ausentes no PRAXIO',naoEncontrado>0)}
       ${_kc('Divergência de saldo',diverg,'saldo diferente entre sistemas',diverg>0)}
+      ${_kc('Sem cadastro PRAXIO',semCadastro,'esperado — não são erro',false)}
     </div>`;
 
-  const STATUS_COLOR={nao:'#EF4444',diverg:'#F59E0B'};
+  const STATUS_COLOR={nao:'#EF4444',diverg:'#F59E0B',sem:'#6B7280'};
   const rows=desvios.slice(0,500).map((d,i)=>{
-    const status=d.naoEncontrado?'Não no PRAXIO':'Divergência';
-    const cor=d.naoEncontrado?STATUS_COLOR.nao:STATUS_COLOR.diverg;
+    const status=d.semCadastro?'Sem cadastro PRAXIO':d.naoEncontrado?'Não no PRAXIO':'Divergência';
+    const cor=d.semCadastro?STATUS_COLOR.sem:d.naoEncontrado?STATUS_COLOR.nao:STATUS_COLOR.diverg;
     const difCor=d.diferenca>0?'var(--green)':'var(--danger)';
     return`<tr style="border-bottom:1px solid var(--border)">
       <td style="padding:7px 10px;font-family:monospace;font-size:11px;color:var(--text3)">${i+1}</td>
