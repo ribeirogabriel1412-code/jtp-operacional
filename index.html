@@ -4812,12 +4812,12 @@ async function confCruzarRotativo(){
   if(error){el.innerHTML=`<div style="color:var(--danger);padding:12px">Erro: ${error.message}</div>`;return;}
   if(!rotRaw||!rotRaw.length){el.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3)">Nenhum inventário rotativo encontrado para este período.</div>';return;}
 
-  // Agrupa por cod_sap — contagem mais recente por item
+  // Agrupa por cod_sap — mantém a contagem mais recente (maior turno_data, desempate por id)
   const rotMap={};
   rotRaw.forEach(r=>{
     if(!r.cod_sap)return;
     const k=confNormCod(r.cod_sap);
-    if(!rotMap[k])rotMap[k]=r;
+    if(!rotMap[k]||r.turno_data>rotMap[k].turno_data)rotMap[k]=r;
   });
 
   // Monta lista 3-way: Físico × PRAXIO × SAP
