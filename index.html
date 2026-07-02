@@ -4669,15 +4669,26 @@ function confProcessar(){
   const praxio=window._confPraxioData;
   if(!sap||!praxio){toast('Carregue os dois arquivos primeiro.','err');return;}
 
-  // Mapa PRAXIO por código
+  // Mapa PRAXIO por código (normalizado: sem espaços/chars invisíveis)
+  const normCod=c=>String(c||'').replace(/[\s ​]/g,'');
   const mapP={};
   praxio.items.forEach(r=>{
-    if(!mapP[r.cod])mapP[r.cod]=r;
+    const k=normCod(r.cod);
+    if(k&&!mapP[k])mapP[k]=r;
   });
-  // Mapa SAP por código
+  // Mapa SAP por código (normalizado)
   const mapS={};
   sap.items.forEach(r=>{
-    if(!mapS[r.cod])mapS[r.cod]=r;
+    const k=normCod(r.cod);
+    if(k&&!mapS[k])mapS[k]=r;
+  });
+
+  // Diagnóstico — exibe no console os valores exatos para um código suspeito
+  const _dbgCod='30020220';
+  console.log(`[SAP×PRAXIO debug] ${_dbgCod}`,{
+    noSAP:!!mapS[_dbgCod], sapRaw:mapS[_dbgCod],
+    noPRAXIO:!!mapP[_dbgCod], praxioRaw:mapP[_dbgCod],
+    praxioSimilares:Object.keys(mapP).filter(k=>k.includes('020220')||k.includes('20220'))
   });
 
   // Base = SAP (left join). Itens só no PRAXIO são ignorados.

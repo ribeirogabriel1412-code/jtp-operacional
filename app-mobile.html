@@ -2720,26 +2720,29 @@ async function telaAlmoxMobConferencia(){
   window._invRotAtual=listaAtual;
   window._invRotTurno=turno;
 
+  // T-1 pendente: só mostra itens que EU não contei E que nenhum outro almox (≠ entregador) já verificou
+  // → uma vez verificado por qualquer almox, some do T-1 de todos os turnos seguintes
+  const listaT1Pendente=listaT1.filter(i=>{
+    if(invMapMine[i.id]) return false; // eu já contei → ocultar
+    const outro=invMapOther[i.id];
+    if(outro&&outro.almoxarife_id!==i.separado_por) return false; // outro almox verificou → ocultar
+    return true;
+  });
+
   // Stats para cabeçalhos
   const confT1=listaT1.filter(i=>invMap[i.id]).length;
-  const devT1=listaT1.filter(i=>invMap[i.id]&&parseFloat(invMap[i.id].acuracia??100)<100).length;
+  const totT1=listaT1.length;
   const confAt=listaAtual.filter(i=>invMap[i.id]).length;
-  const devAt=listaAtual.filter(i=>invMap[i.id]&&parseFloat(invMap[i.id].acuracia??100)<100).length;
 
   const renderCard=i=>{
     const inv=invMapMine[i.id]||null;
-    const invRef=invMapOther[i.id]||null; // contagem do turno anterior (outro almox)
-    const acur=inv?.acuracia!=null?parseFloat(inv.acuracia):null;
-    const desvio=inv&&acur!=null&&acur<100;
-    const conforme=inv&&(acur==null||acur>=100);
-    const bordaCor=desvio?'var(--red)':conforme?'var(--green)':'var(--border2)';
+    const invRef=invMapOther[i.id]||null;
+    const conforme=inv!=null;
+    const bordaCor=conforme?'var(--green)':'var(--border2)';
     const badge=inv
-      ?(desvio
-        ?`<span style="background:#EF444420;color:var(--red);border:1px solid #EF444460;border-radius:99px;padding:2px 8px;font-size:9px;font-weight:900;white-space:nowrap">⚠️ ${acur}%</span>`
-        :`<span style="background:#00C48C20;color:var(--green);border:1px solid #00C48C60;border-radius:99px;padding:2px 8px;font-size:9px;font-weight:900;white-space:nowrap">✅ 100%</span>`)
+      ?`<span style="background:#00C48C20;color:var(--green);border:1px solid #00C48C60;border-radius:99px;padding:2px 8px;font-size:9px;font-weight:900;white-space:nowrap">✅ Contado</span>`
       :`<span style="background:var(--surface2);color:var(--text3);border:1px solid var(--border);border-radius:99px;padding:2px 8px;font-size:9px;font-weight:700;white-space:nowrap">→ Lançar</span>`;
     const entregaDif=i.item_entregue&&i.item_entregue!==i.peca;
-    // Referência do turno anterior (físico contado pelo almox que entregou)
     const refHtml=!inv&&invRef&&invRef.qtd_fisica!=null
       ?`<div style="margin-top:6px;padding:5px 8px;background:#7C3AED15;border:1px solid #7C3AED40;border-radius:6px;font-size:10px;color:var(--purple)">
           📋 T-anterior contou: <b style="font-family:'DM Mono',monospace">${invRef.qtd_fisica}</b> físico${invRef.almoxarife_nome?' · '+escHtml(invRef.almoxarife_nome):''}
@@ -2760,15 +2763,13 @@ async function telaAlmoxMobConferencia(){
         <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--blue);font-weight:800">${i.qtd_entregue||i.quantidade||1}x saiu</span>
       </div>
       ${refHtml}
-      ${inv?`<div style="display:flex;gap:12px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border2)">
-        <span style="font-size:11px;color:var(--text3)">PRAXIO: <b style="color:var(--blue);font-family:'DM Mono',monospace">${inv.qtd_praxio??'—'}</b></span>
-        <span style="font-size:11px;color:var(--text3)">SAP: <b style="color:var(--amber);font-family:'DM Mono',monospace">${inv.qtd_sap??'—'}</b></span>
-        <span style="font-size:11px;color:var(--text3)">Físico: <b style="color:${desvio?'var(--red)':'var(--green)'};font-family:'DM Mono',monospace">${inv.qtd_fisica??'—'}</b></span>
+      ${inv?`<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border2)">
+        <span style="font-size:11px;color:var(--text3)">Físico: <b style="color:var(--green);font-family:'DM Mono',monospace">${inv.qtd_fisica??'—'}</b></span>
       </div>`:''}
     </div>`;
   };
 
-  const cardsT1=listaT1.map(renderCard).join('');
+  const cardsT1=listaT1Pendente.map(renderCard).join('');
   const cardsAtual=listaAtual.map(renderCard).join('');
   const fmtH=t=>t||'—';
   const secaoHeader=(titulo,cor,conf,tot,dev)=>`
@@ -2794,11 +2795,11 @@ async function telaAlmoxMobConferencia(){
         <div style="font-family:'DM Mono',monospace;font-weight:800"><span style="color:var(--green)">${fmtH(turno.hora_entrada)}</span> <span style="color:var(--text3)">→</span> <span style="color:var(--amber)">${fmtH(turno.hora_saida)}</span></div>
       </div>
     </div>
-    ${secaoHeader('T-1 — Turno Anterior','var(--purple)',confT1,listaT1.length,devT1)}
+    ${secaoHeader('T-1 — Turno Anterior','var(--purple)',totT1-listaT1Pendente.length,totT1,0)}
     <div style="padding:0 14px">
       ${cardsT1||'<div style="padding:16px;text-align:center;color:var(--text3);font-size:12px">Nenhum item no turno anterior</div>'}
     </div>
-    ${secaoHeader('Turno Atual','var(--blue)',confAt,listaAtual.length,devAt)}
+    ${secaoHeader('Turno Atual','var(--blue)',confAt,listaAtual.length,0)}
     <div style="padding:0 14px 100px">
       ${cardsAtual||'<div style="padding:16px;text-align:center;color:var(--text3);font-size:12px">Nenhum item no turno atual ainda</div>'}
     </div>
@@ -2818,9 +2819,6 @@ function almoxMobAbrirInvRotativo(reqId){
   const codItem=escHtml(item.cod_sap_entregue||item.cod_sap||'');
   const qtdSaiu=item.qtd_entregue||item.quantidade||1;
   const invRef=window._invRotMapOther?.[reqId]||null; // contagem do turno anterior
-  // Pré-preenche: contagem própria > contagem do turno anterior > vazio
-  const preFilPraxio=inv?.qtd_praxio??'';
-  const preFilSap=inv?.qtd_sap??'';
   const preFilFis=inv?.qtd_fisica??invRef?.qtd_fisica??'';
   const refBlock=invRef&&!inv?`
     <div style="background:#7C3AED15;border:1px solid #7C3AED50;border-left:4px solid var(--purple);border-radius:10px;padding:10px 14px;margin-bottom:14px">
