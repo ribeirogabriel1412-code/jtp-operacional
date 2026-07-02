@@ -2588,7 +2588,8 @@ async function almoxMobSalvarEntrega(id){
     item_entregue:nomeEntregue,
     cod_sap_entregue:codEntregue||null,
     qtd_entregue:qtdEntregue,
-    valor_estimado:valorEstimado
+    valor_estimado:valorEstimado,
+    entregue_em:new Date().toISOString()   // usado para filtrar T-1 / Turno Atual
   }).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
   // Atualiza custo_previsto da OS se item pertence a uma OS
@@ -2670,27 +2671,42 @@ async function telaAlmoxMobConferencia(){
   const agora2=new Date();
 
   // Busca itens (T-1 e turno atual) + inventários existentes em paralelo
+  // T-1 e Turno Atual filtram por entregue_em (hora real da entrega, não de criação da OS)
   const[{data:rawT1},{data:rawAtual},{data:invExist}]=await Promise.all([
     sb.from('requisicoes_compra').select('*').eq('garagem_id',gid)
-      .gte('criado_em',windowIni.toISOString()).lt('criado_em',windowFim.toISOString())
-      .not('item_entregue','is',null).order('criado_em',{ascending:true}),
+      .not('entregue_em','is',null)
+      .gte('entregue_em',windowIni.toISOString()).lt('entregue_em',windowFim.toISOString())
+      .order('entregue_em',{ascending:true}),
     sb.from('requisicoes_compra').select('*').eq('garagem_id',gid)
-      .gte('criado_em',windowFim.toISOString()).lte('criado_em',agora2.toISOString())
-      .not('item_entregue','is',null).order('criado_em',{ascending:true}),
+      .not('entregue_em','is',null)
+      .gte('entregue_em',windowFim.toISOString()).lte('entregue_em',agora2.toISOString())
+      .order('entregue_em',{ascending:true}),
+    // Carrega inventários de TODOS os almoxes — necessário para montar os dois mapas
     sb.from('almoxo_inventario_turno').select('*').eq('garagem_id',gid)
-      .eq('almoxarife_id',S.user?.id).not('req_id','is',null)
+      .not('req_id','is',null).order('criado_em',{ascending:false})
   ]);
   const listaT1=rawT1||[];
   const listaAtual=rawAtual||[];
 
-  // Mapa inventário por req_id (somente contagens do próprio almoxarife)
-  const invMap={};
-  (invExist||[]).forEach(i=>{if(i.req_id)invMap[i.req_id]=i;});
+  // invMapMine  → contagens do almoxarife atual (badge ✅/⚠️ no card)
+  // invMapOther → contagem mais recente de outro almox (referência / pré-preenchimento)
+  const invMapMine={};
+  const invMapOther={};
+  (invExist||[]).forEach(i=>{
+    if(!i.req_id) return;
+    if(i.almoxarife_id===S.user?.id){
+      if(!invMapMine[i.req_id]) invMapMine[i.req_id]=i;
+    } else {
+      if(!invMapOther[i.req_id]) invMapOther[i.req_id]=i; // mais recente primeiro
+    }
+  });
+  const invMap=invMapMine; // compatibilidade com renderCard abaixo
 
   // Guarda estado global para modal e PDF
   window._invRotItems={};
   [...listaT1,...listaAtual].forEach(i=>{window._invRotItems[i.id]=i;});
-  window._invRotMap=invMap;
+  window._invRotMap=invMapMine;
+  window._invRotMapOther=invMapOther;
   window._invRotGid=gid;
   window._invRotT1=listaT1;
   window._invRotAtual=listaAtual;
@@ -2703,7 +2719,8 @@ async function telaAlmoxMobConferencia(){
   const devAt=listaAtual.filter(i=>invMap[i.id]&&parseFloat(invMap[i.id].acuracia??100)<100).length;
 
   const renderCard=i=>{
-    const inv=invMap[i.id]||null;
+    const inv=invMapMine[i.id]||null;
+    const invRef=invMapOther[i.id]||null; // contagem do turno anterior (outro almox)
     const acur=inv?.acuracia!=null?parseFloat(inv.acuracia):null;
     const desvio=inv&&acur!=null&&acur<100;
     const conforme=inv&&(acur==null||acur>=100);
@@ -2714,6 +2731,12 @@ async function telaAlmoxMobConferencia(){
         :`<span style="background:#00C48C20;color:var(--green);border:1px solid #00C48C60;border-radius:99px;padding:2px 8px;font-size:9px;font-weight:900;white-space:nowrap">✅ 100%</span>`)
       :`<span style="background:var(--surface2);color:var(--text3);border:1px solid var(--border);border-radius:99px;padding:2px 8px;font-size:9px;font-weight:700;white-space:nowrap">→ Lançar</span>`;
     const entregaDif=i.item_entregue&&i.item_entregue!==i.peca;
+    // Referência do turno anterior (físico contado pelo almox que entregou)
+    const refHtml=!inv&&invRef&&invRef.qtd_fisica!=null
+      ?`<div style="margin-top:6px;padding:5px 8px;background:#7C3AED15;border:1px solid #7C3AED40;border-radius:6px;font-size:10px;color:var(--purple)">
+          📋 T-anterior contou: <b style="font-family:'DM Mono',monospace">${invRef.qtd_fisica}</b> físico${invRef.almoxarife_nome?' · '+escHtml(invRef.almoxarife_nome):''}
+        </div>`
+      :'';
     return`<div onclick="almoxMobAbrirInvRotativo('${i.id}')" style="margin-bottom:8px;background:var(--surface);border:1px solid ${bordaCor};border-left:4px solid ${bordaCor};border-radius:12px;padding:12px 14px;cursor:pointer;active-opacity:.7">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px">
         <div style="flex:1;min-width:0">
@@ -2728,6 +2751,7 @@ async function telaAlmoxMobConferencia(){
         ${i.os_numero?`<span style="font-size:11px;color:var(--text3)">OS: <b>${escHtml(i.os_numero)}</b></span>`:''}
         <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--blue);font-weight:800">${i.qtd_entregue||i.quantidade||1}x saiu</span>
       </div>
+      ${refHtml}
       ${inv?`<div style="display:flex;gap:12px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border2)">
         <span style="font-size:11px;color:var(--text3)">PRAXIO: <b style="color:var(--blue);font-family:'DM Mono',monospace">${inv.qtd_praxio??'—'}</b></span>
         <span style="font-size:11px;color:var(--text3)">SAP: <b style="color:var(--amber);font-family:'DM Mono',monospace">${inv.qtd_sap??'—'}</b></span>
@@ -2785,13 +2809,24 @@ function almoxMobAbrirInvRotativo(reqId){
   const nomeItem=escHtml(item.item_entregue||item.peca||'—');
   const codItem=escHtml(item.cod_sap_entregue||item.cod_sap||'');
   const qtdSaiu=item.qtd_entregue||item.quantidade||1;
+  const invRef=window._invRotMapOther?.[reqId]||null; // contagem do turno anterior
+  // Pré-preenche: contagem própria > contagem do turno anterior > vazio
+  const preFilPraxio=inv?.qtd_praxio??'';
+  const preFilSap=inv?.qtd_sap??'';
+  const preFilFis=inv?.qtd_fisica??invRef?.qtd_fisica??'';
+  const refBlock=invRef&&!inv?`
+    <div style="background:#7C3AED15;border:1px solid #7C3AED50;border-left:4px solid var(--purple);border-radius:10px;padding:10px 14px;margin-bottom:14px">
+      <div style="font-size:10px;font-weight:900;color:var(--purple);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">📋 Turno anterior — ${escHtml(invRef.almoxarife_nome||'—')}</div>
+      <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:900;color:var(--text)">Físico: <span style="color:var(--green)">${invRef.qtd_fisica??'—'}</span></div>
+      <div style="font-size:10px;color:var(--text3);margin-top:4px">Pré-preenchido abaixo — confirme ou corrija o físico real</div>
+    </div>`:'';
   ov.innerHTML=`
     <div style="background:var(--bg);border-radius:18px 18px 0 0;padding:20px 16px 32px;max-height:90vh;overflow-y:auto">
       <div style="text-align:center;margin-bottom:16px">
         <div style="width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px"></div>
         <div style="font-weight:900;font-size:16px">Lançar Inventário</div>
       </div>
-      <div style="background:var(--surface2);border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:10px;padding:12px 14px;margin-bottom:16px">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:10px;padding:12px 14px;margin-bottom:14px">
         <div style="font-size:14px;font-weight:700">${nomeItem}</div>
         ${codItem?`<div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--amber);margin-top:3px">${codItem}</div>`:''}
         <div style="font-size:12px;color:var(--text3);margin-top:4px">
@@ -2800,18 +2835,19 @@ function almoxMobAbrirInvRotativo(reqId){
           ${item.os_numero?` · OS: <b>${escHtml(item.os_numero)}</b>`:''}
         </div>
       </div>
+      ${refBlock}
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
         <div>
           <div style="font-size:10px;font-weight:900;color:#60a5fa;text-transform:uppercase;text-align:center;margin-bottom:6px">🔵 PRAXIO</div>
-          <input id="inv-rot-praxio" type="number" inputmode="decimal" value="${inv?.qtd_praxio??''}" placeholder="0" step="0.001" min="0" oninput="invRotCalcAcur()" style="width:100%;background:var(--surface2);border:2px solid #60a5fa;border-radius:10px;color:var(--text);padding:12px 6px;font-size:20px;font-family:'DM Mono',monospace;font-weight:900;text-align:center;box-sizing:border-box;outline:none">
+          <input id="inv-rot-praxio" type="number" inputmode="decimal" value="${preFilPraxio}" placeholder="0" step="0.001" min="0" oninput="invRotCalcAcur()" style="width:100%;background:var(--surface2);border:2px solid #60a5fa;border-radius:10px;color:var(--text);padding:12px 6px;font-size:20px;font-family:'DM Mono',monospace;font-weight:900;text-align:center;box-sizing:border-box;outline:none">
         </div>
         <div>
           <div style="font-size:10px;font-weight:900;color:var(--amber);text-transform:uppercase;text-align:center;margin-bottom:6px">🟡 SAP</div>
-          <input id="inv-rot-sap" type="number" inputmode="decimal" value="${inv?.qtd_sap??''}" placeholder="0" step="0.001" min="0" oninput="invRotCalcAcur()" style="width:100%;background:var(--surface2);border:2px solid var(--amber);border-radius:10px;color:var(--text);padding:12px 6px;font-size:20px;font-family:'DM Mono',monospace;font-weight:900;text-align:center;box-sizing:border-box;outline:none">
+          <input id="inv-rot-sap" type="number" inputmode="decimal" value="${preFilSap}" placeholder="0" step="0.001" min="0" oninput="invRotCalcAcur()" style="width:100%;background:var(--surface2);border:2px solid var(--amber);border-radius:10px;color:var(--text);padding:12px 6px;font-size:20px;font-family:'DM Mono',monospace;font-weight:900;text-align:center;box-sizing:border-box;outline:none">
         </div>
         <div>
           <div style="font-size:10px;font-weight:900;color:var(--green);text-transform:uppercase;text-align:center;margin-bottom:6px">🟢 FÍSICO</div>
-          <input id="inv-rot-fis" type="number" inputmode="decimal" value="${inv?.qtd_fisica??''}" placeholder="0" step="0.001" min="0" oninput="invRotCalcAcur()" style="width:100%;background:var(--surface2);border:2px solid var(--green);border-radius:10px;color:var(--text);padding:12px 6px;font-size:20px;font-family:'DM Mono',monospace;font-weight:900;text-align:center;box-sizing:border-box;outline:none">
+          <input id="inv-rot-fis" type="number" inputmode="decimal" value="${preFilFis}" placeholder="0" step="0.001" min="0" oninput="invRotCalcAcur()" style="width:100%;background:var(--surface2);border:2px solid var(--green);border-radius:10px;color:var(--text);padding:12px 6px;font-size:20px;font-family:'DM Mono',monospace;font-weight:900;text-align:center;box-sizing:border-box;outline:none">
         </div>
       </div>
       <div id="inv-rot-acur" style="text-align:center;font-family:'DM Mono',monospace;font-size:20px;font-weight:900;color:var(--text3);margin-bottom:16px;padding:10px;background:var(--surface2);border-radius:10px">—</div>
