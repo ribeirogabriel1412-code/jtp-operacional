@@ -312,6 +312,7 @@ tr:hover td{background:#1F293780}
         <button class="sub-btn" onclick="navToSub('ferr-almox-compras')">🛒 Pedidos de Compra</button>
         <button class="sub-btn" onclick="navToSub('ferr-almox-iup')">💰 IUP</button>
         <button class="sub-btn" onclick="navToSub('ferr-almox-dev')">↩️ Devolução</button>
+        <button class="sub-btn" onclick="navToSub('ferr-almox-conf')">🔍 Conferência SAP x PRAXIO</button>
         <button class="sub-btn" onclick="navToSub('ferr-lubri')">🛢️ Relatório Lubrificação</button>
       </div>
       <div class="nav-section" id="sec-instrutor" style="display:none">Instrução / Monitoria</div>
@@ -1008,7 +1009,7 @@ function navToSub(sub){
   S.subtela=sub;
   document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes(sub))b.classList.add('active')});
-  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-218':renderFerr218,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-almox-inv':renderAlmoxInventario,'ferr-almox-wms':renderAlmoxWMS,'ferr-almox-painel':renderAlmoxPainelLider,'ferr-almox-compras':renderAlmoxCompras,'ferr-almox-iup':renderAlmoxIUP,'ferr-almox-dev':renderAlmoxDevolucao,'ferr-almox-acuracia':renderAlmoxAcuracia,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios,'ferr-lubri':renderFerrLubri,'ferr-pecas':renderFerrPecas,'ferr-instrutor':renderFerrInstrutor,'ferr-monitor':renderFerrMonitor};
+  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-218':renderFerr218,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-almox-inv':renderAlmoxInventario,'ferr-almox-wms':renderAlmoxWMS,'ferr-almox-painel':renderAlmoxPainelLider,'ferr-almox-compras':renderAlmoxCompras,'ferr-almox-iup':renderAlmoxIUP,'ferr-almox-dev':renderAlmoxDevolucao,'ferr-almox-acuracia':renderAlmoxAcuracia,'ferr-almox-conf':renderAlmoxConferenciaSapPraxio,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'rel-todos':renderRelatorios,'ferr-lubri':renderFerrLubri,'ferr-pecas':renderFerrPecas,'ferr-instrutor':renderFerrInstrutor,'ferr-monitor':renderFerrMonitor};
   if(map[sub]) map[sub]();
 }
 
@@ -1943,7 +1944,44 @@ async function renderAlmoxPainelLider(){
     sb.from('perfis').select('id,nome,cargo').eq('garagem_id',gid).in('cargo',['almoxarifado','lider_almoxarifado','lider_suprimentos']).order('nome')
   ]);
   window._almoxPerfisCache=perfisAlmox||[];
-  const tabs=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
+  const abaAtiva=S._almoxPainelAba||'painel';
+  const tabs=`
+    <button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>
+    <div style="display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap">
+      <button onclick="S._almoxPainelAba='painel';renderAlmoxPainelLider()" style="cursor:pointer;padding:6px 18px;border-radius:20px;font-family:inherit;font-size:12px;font-weight:800;border:1px solid ${abaAtiva==='painel'?'var(--blue)':'var(--border)'};background:${abaAtiva==='painel'?'var(--blue)':'var(--surface2)'};color:${abaAtiva==='painel'?'#fff':'var(--text3)'}">📊 Painel</button>
+      <button onclick="S._almoxPainelAba='conf';renderAlmoxPainelLider()" style="cursor:pointer;padding:6px 18px;border-radius:20px;font-family:inherit;font-size:12px;font-weight:800;border:1px solid ${abaAtiva==='conf'?'var(--blue)':'var(--border)'};background:${abaAtiva==='conf'?'var(--blue)':'var(--surface2)'};color:${abaAtiva==='conf'?'#fff':'var(--text3)'}">🔍 SAP x PRAXIO</button>
+    </div>`;
+  if(abaAtiva==='conf'){
+    setMain(`
+      ${secTitle('📊','Painel do Líder — Almoxarifado')}
+      ${tabs}
+      <div class="info-blue info-banner" style="margin-bottom:16px">📌 Os arquivos são processados diretamente no navegador. Apenas os itens com desvio são gravados no sistema.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+          <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">📊 Arquivo SAP (Excel)</div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:8px">Relatório: <em>Valor do Estoque por Dia e Filial</em></div>
+          <input type="file" id="conf-sap-file" accept=".xlsx,.xls" style="display:none" onchange="confSapFileChanged(this)">
+          <button class="btn-sec" onclick="document.getElementById('conf-sap-file').click()" style="width:100%">📁 Selecionar arquivo SAP</button>
+          <div id="conf-sap-status" style="margin-top:8px;font-size:11px;color:var(--text4)">Nenhum arquivo selecionado</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+          <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">📋 Arquivo PRAXIO (CSV)</div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:8px">Relatório: <em>Posição de Estoque</em></div>
+          <input type="file" id="conf-praxio-file" accept=".csv,.CSV" style="display:none" onchange="confPraxioFileChanged(this)">
+          <button class="btn-sec" onclick="document.getElementById('conf-praxio-file').click()" style="width:100%">📁 Selecionar arquivo PRAXIO</button>
+          <div id="conf-praxio-status" style="margin-top:8px;font-size:11px;color:var(--text4)">Nenhum arquivo selecionado</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:20px">
+        <button id="conf-proc-btn" class="btn-success" onclick="confProcessar()" disabled style="min-width:160px">⚙️ Processar</button>
+        <button id="conf-save-btn" class="btn-add" onclick="confSalvarSupabase()" disabled style="min-width:200px;display:none">💾 Salvar Desvios no Sistema</button>
+        <span id="conf-save-status" style="font-size:12px;color:var(--text3)"></span>
+      </div>
+      <div id="conf-resultado"></div>
+    `);
+    window._confSapData=null;window._confPraxioData=null;window._confDesvios=null;window._confDataRef=null;
+    return;
+  }
   const divTodas=divs||[];
   const divFiltroOrigem=S._divOrigem||'todas';
   const divFiltradas=divFiltroOrigem==='todas'?divTodas:divTodas.filter(d=>d.origem===divFiltroOrigem);
@@ -4368,6 +4406,7 @@ function renderFerramentas(){
     'ferr-211':'Todos os veículos parados com tempo, status e previsão. Alerta automático de vencimento.',
     'ferr-212':'Disponibilidade, MTTR, OS por tipo e ranking de mecânicos. Atualizado em tempo real.',
     'ferr-pecas':'Visão unificada de todas as peças por prefixo: estoque, em compra, prazo e FUP. Compartilhado entre Almox e PCM.',
+    'ferr-almox-conf':'Motor comparativo SAP x PRAXIO: carregue os arquivos, processe no browser e grave apenas os desvios no sistema.',
   };
 
   const tools=FERRAMENTAS_DEF.filter(f=>temAcessoFerr(f.id)&&f.id!=='ferr-lav-lavador'||isLavador()&&f.id==='ferr-lav-lavador');
@@ -4418,6 +4457,7 @@ function atualizarSubmenuFerramentas(){
     'ferr-almox-iup':'💰 IUP',
     'ferr-almox-dev':'↩️ Devolução',
     'ferr-almox-acuracia':'📈 Acurácia',
+    'ferr-almox-conf':'🔍 Conferência SAP x PRAXIO',
     'ferr-pecas':'🔩 Peças & Compras',
   };
   const subFerr=document.getElementById('sub-ferr');
@@ -4428,6 +4468,317 @@ function atualizarSubmenuFerramentas(){
     const match=onclick.match(/'(ferr-[^']+)'/);
     if(match) btn.style.display=temAcessoFerr(match[1])?'':'none';
   });
+}
+
+// ── CONFERÊNCIA SAP x PRAXIO — motor browser-side ──────────
+function renderAlmoxConferenciaSapPraxio(){
+  const cargo=S.perfil?.cargo;
+  const podeGravar=['lider_almoxarifado','lider_suprimentos'].includes(cargo)||S.perfil?.is_admin;
+  setMain(`
+    ${secTitle('🔍','Conferência SAP x PRAXIO')}
+    <button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>
+    <div class="info-blue info-banner" style="margin-bottom:16px">📌 Os arquivos são processados diretamente no navegador. Apenas os itens com desvio são gravados no sistema.</div>
+
+    <!-- Upload -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+        <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">📊 Arquivo SAP (Excel)</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px">Relatório: <em>Valor do Estoque por Dia e Filial</em></div>
+        <input type="file" id="conf-sap-file" accept=".xlsx,.xls" style="display:none" onchange="confSapFileChanged(this)">
+        <button class="btn-sec" onclick="document.getElementById('conf-sap-file').click()" style="width:100%">📁 Selecionar arquivo SAP</button>
+        <div id="conf-sap-status" style="margin-top:8px;font-size:11px;color:var(--text4)">Nenhum arquivo selecionado</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+        <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">📋 Arquivo PRAXIO (CSV)</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px">Relatório: <em>Posição de Estoque</em></div>
+        <input type="file" id="conf-praxio-file" accept=".csv,.CSV" style="display:none" onchange="confPraxioFileChanged(this)">
+        <button class="btn-sec" onclick="document.getElementById('conf-praxio-file').click()" style="width:100%">📁 Selecionar arquivo PRAXIO</button>
+        <div id="conf-praxio-status" style="margin-top:8px;font-size:11px;color:var(--text4)">Nenhum arquivo selecionado</div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:20px">
+      <button id="conf-proc-btn" class="btn-success" onclick="confProcessar()" disabled style="min-width:160px">⚙️ Processar</button>
+      <button id="conf-save-btn" class="btn-add" onclick="confSalvarSupabase()" disabled style="min-width:200px;display:none">💾 Salvar Desvios no Sistema</button>
+      <span id="conf-save-status" style="font-size:12px;color:var(--text3)"></span>
+    </div>
+
+    <!-- Resultados -->
+    <div id="conf-resultado"></div>
+  `);
+  window._confSapData=null;
+  window._confPraxioData=null;
+  window._confDesvios=null;
+  window._confDataRef=null;
+}
+
+function confSapFileChanged(input){
+  const f=input.files[0];
+  if(!f){return;}
+  document.getElementById('conf-sap-status').textContent='Lendo…';
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+      // Filtro depósito 200
+      const sap200=rows.filter(r=>{
+        const dep=String(r['Código do depósito']||'').trim();
+        return dep==='200'||Number(dep)===200;
+      });
+      // Data referência (primeira Data não-vazia)
+      let dataRef='';
+      for(const r of sap200){if(r['Data']){dataRef=String(r['Data']).split('T')[0];break;}}
+      // Normaliza campos
+      const items=sap200.map(r=>({
+        cod:String(r['Código do item']||'').trim(),
+        desc:String(r['Descrição do item']||'').trim(),
+        grupo:String(r['Nome do grupo']||'').trim(),
+        saldo:Number(r['Saldo em estoque'])||0,
+        preco:Number(r['Preço médio'])||0,
+        valor:Number(r['Valor em estoque'])||0,
+      })).filter(r=>r.cod);
+      window._confSapData={items,dataRef};
+      document.getElementById('conf-sap-status').innerHTML=`<span style="color:var(--green)">✓ ${items.length} itens (depósito 200) · ref: ${dataRef||'—'}</span>`;
+    }catch(err){
+      document.getElementById('conf-sap-status').innerHTML=`<span style="color:var(--danger)">❌ Erro: ${err.message}</span>`;
+      window._confSapData=null;
+    }
+    confVerificarPronto();
+  };
+  reader.readAsArrayBuffer(f);
+}
+
+function confPraxioFileChanged(input){
+  const f=input.files[0];
+  if(!f){return;}
+  document.getElementById('conf-praxio-status').textContent='Lendo…';
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      // Tenta latin-1, fallback utf-8
+      let text;
+      try{text=new TextDecoder('windows-1252').decode(new Uint8Array(e.target.result));}
+      catch(_){text=new TextDecoder('utf-8').decode(new Uint8Array(e.target.result));}
+      const rows=confParseCSV(text);
+      // Linha 0 = cabeçalho (16 colunas), linhas 1+ = dados (17 colunas)
+      // campo[7]=cod_interno, campo[8]=descricao, campo[13]=saldo (int)
+      const items=[];
+      for(let i=1;i<rows.length;i++){
+        const r=rows[i];
+        if(r.length<14) continue;
+        const cod=(r[7]||'').trim();
+        if(!cod||cod==='Código interno do material') continue;
+        const saldoStr=(r[13]||'').trim();
+        const saldo=parseInt(saldoStr,10);
+        if(isNaN(saldo)) continue;
+        items.push({
+          cod,
+          desc:(r[8]||'').trim(),
+          saldo,
+          preco:parseFloat((r[14]||'0').replace(',','.'))||0,
+        });
+      }
+      window._confPraxioData={items};
+      document.getElementById('conf-praxio-status').innerHTML=`<span style="color:var(--green)">✓ ${items.length} itens carregados</span>`;
+    }catch(err){
+      document.getElementById('conf-praxio-status').innerHTML=`<span style="color:var(--danger)">❌ Erro: ${err.message}</span>`;
+      window._confPraxioData=null;
+    }
+    confVerificarPronto();
+  };
+  reader.readAsArrayBuffer(f);
+}
+
+function confParseCSV(text){
+  const rows=[];
+  let i=0;const n=text.length;
+  while(i<n){
+    const row=[];
+    while(i<n&&text[i]!=='\n'&&text[i]!=='\r'){
+      if(text[i]==='"'){
+        let val='';i++;
+        while(i<n){
+          if(text[i]==='"'){
+            if(text[i+1]==='"'){val+='"';i+=2;}
+            else{i++;break;}
+          }else{val+=text[i++];}
+        }
+        row.push(val);
+        if(i<n&&text[i]===',')i++;
+      }else{
+        let val='';
+        while(i<n&&text[i]!==','&&text[i]!=='\n'&&text[i]!=='\r')val+=text[i++];
+        row.push(val);
+        if(i<n&&text[i]===',')i++;
+      }
+    }
+    if(i<n&&text[i]==='\r')i++;
+    if(i<n&&text[i]==='\n')i++;
+    if(row.length>1||(row.length===1&&row[0]!==''))rows.push(row);
+  }
+  return rows;
+}
+
+function confVerificarPronto(){
+  const pronto=!!(window._confSapData&&window._confPraxioData);
+  const btn=document.getElementById('conf-proc-btn');
+  if(btn)btn.disabled=!pronto;
+}
+
+function confProcessar(){
+  const sap=window._confSapData;
+  const praxio=window._confPraxioData;
+  if(!sap||!praxio){toast('Carregue os dois arquivos primeiro.','err');return;}
+
+  // Mapa PRAXIO por código
+  const mapP={};
+  praxio.items.forEach(r=>{
+    if(!mapP[r.cod])mapP[r.cod]=r;
+  });
+  // Mapa SAP por código
+  const mapS={};
+  sap.items.forEach(r=>{
+    if(!mapS[r.cod])mapS[r.cod]=r;
+  });
+
+  const desvios=[];
+  const todoCods=new Set([...Object.keys(mapS),...Object.keys(mapP)]);
+  todoCods.forEach(cod=>{
+    const s=mapS[cod];
+    const p=mapP[cod];
+    const saldoS=s?s.saldo:0;
+    const saldoP=p?p.saldo:0;
+    const dif=saldoS-saldoP;
+    if(dif!==0){
+      desvios.push({
+        cod,
+        desc:(s?.desc||p?.desc||''),
+        grupo:(s?.grupo||''),
+        saldo_sap:saldoS,
+        saldo_praxio:saldoP,
+        diferenca:dif,
+        preco_medio_sap:s?.preco||0,
+        valor_sap:s?.valor||0,
+      });
+    }
+  });
+  // Ordena por |diferença| desc
+  desvios.sort((a,b)=>Math.abs(b.diferenca)-Math.abs(a.diferenca));
+
+  window._confDesvios=desvios;
+  window._confDataRef=sap.dataRef;
+
+  // Resumo
+  const soSAP=desvios.filter(d=>d.saldo_praxio===0&&d.saldo_sap>0).length;
+  const soPRAXIO=desvios.filter(d=>d.saldo_sap===0&&d.saldo_praxio>0).length;
+  const diverg=desvios.length-soSAP-soPRAXIO;
+
+  const resumo=`
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
+      ${kpiCard('Total comparado',Object.keys(mapS).length+' vs '+Object.keys(mapP).length,'SAP vs PRAXIO',false)}
+      ${kpiCard('Com desvio',desvios.length,'itens',desvios.length>0)}
+      ${kpiCard('Só no SAP',soSAP,'sem reg. PRAXIO',soSAP>0)}
+      ${kpiCard('Só no PRAXIO',soPRAXIO,'saldo SAP = 0',soPRAXIO>0)}
+    </div>`;
+
+  const STATUS_COLOR={sap:'#EF4444',praxio:'#F59E0B',diverg:'#3B82F6'};
+  const rows=desvios.slice(0,500).map((d,i)=>{
+    const status=d.saldo_praxio===0&&d.saldo_sap>0?'Só SAP':d.saldo_sap===0&&d.saldo_praxio>0?'Só PRAXIO':'Divergência';
+    const cor=status==='Só SAP'?STATUS_COLOR.sap:status==='Só PRAXIO'?STATUS_COLOR.praxio:STATUS_COLOR.diverg;
+    const difCor=d.diferenca>0?'var(--green)':'var(--danger)';
+    return`<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:7px 10px;font-family:monospace;font-size:11px;color:var(--text3)">${i+1}</td>
+      <td style="padding:7px 10px;font-family:monospace;font-size:12px;font-weight:700">${esc(d.cod)}</td>
+      <td style="padding:7px 10px;font-size:12px">${esc(d.desc)}</td>
+      <td style="padding:7px 10px;font-size:11px;color:var(--text3)">${esc(d.grupo)}</td>
+      <td style="padding:7px 10px;text-align:right;font-family:monospace">${d.saldo_sap.toFixed(0)}</td>
+      <td style="padding:7px 10px;text-align:right;font-family:monospace">${d.saldo_praxio.toFixed(0)}</td>
+      <td style="padding:7px 10px;text-align:right;font-family:monospace;font-weight:700;color:${difCor}">${d.diferenca>0?'+':''}${d.diferenca.toFixed(0)}</td>
+      <td style="padding:7px 10px;text-align:center"><span style="background:${cor}20;color:${cor};border:1px solid ${cor}40;border-radius:5px;padding:2px 7px;font-size:10px;font-weight:700">${status}</span></td>
+    </tr>`;
+  }).join('');
+
+  const tabela=`
+    ${secTitle('📊',`Desvios encontrados — ${desvios.length} item(ns)`,`<span style="font-size:11px;color:var(--text3)">ref: ${sap.dataRef||'—'}</span>`)}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:20px">
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:var(--surface2)">
+            <th style="padding:9px 10px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-size:10px">#</th>
+            <th style="padding:9px 10px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-size:10px">Cód. SAP</th>
+            <th style="padding:9px 10px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-size:10px">Descrição</th>
+            <th style="padding:9px 10px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-size:10px">Grupo</th>
+            <th style="padding:9px 10px;text-align:right;border-bottom:1px solid var(--border);color:var(--text3);font-size:10px">SAP</th>
+            <th style="padding:9px 10px;text-align:right;border-bottom:1px solid var(--border);color:var(--text3);font-size:10px">PRAXIO</th>
+            <th style="padding:9px 10px;text-align:right;border-bottom:1px solid var(--border);color:var(--text3);font-size:10px">Diferença</th>
+            <th style="padding:9px 10px;text-align:center;border-bottom:1px solid var(--border);color:var(--text3);font-size:10px">Status</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      ${desvios.length>500?`<div style="padding:10px 14px;font-size:11px;color:var(--text3)">Exibindo 500 de ${desvios.length} desvios. Todos serão gravados no sistema.</div>`:''}
+    </div>`;
+
+  document.getElementById('conf-resultado').innerHTML=resumo+tabela;
+
+  const saveBtn=document.getElementById('conf-save-btn');
+  if(saveBtn){saveBtn.style.display=desvios.length&&(document.querySelector('[onclick*="confSalvarSupabase"]')||true)?'':'none';saveBtn.disabled=false;}
+}
+
+async function confSalvarSupabase(){
+  const desvios=window._confDesvios;
+  const dataRef=window._confDataRef;
+  if(!desvios||!desvios.length){toast('Nenhum desvio para gravar.','err');return;}
+  const gid=getGid();
+  if(!gid){toast('Garagem não identificada.','err');return;}
+
+  const saveBtn=document.getElementById('conf-save-btn');
+  const statusEl=document.getElementById('conf-save-status');
+  saveBtn.disabled=true;saveBtn.textContent='Gravando…';
+  if(statusEl)statusEl.textContent='';
+
+  const dataIso=dataRef||new Date().toISOString().slice(0,10);
+
+  // Limpa registros anteriores da mesma data/garagem
+  const{error:delErr}=await sb.from('almox_conferencia_sap_praxio')
+    .delete().eq('garagem_id',gid).eq('data_referencia',dataIso);
+  if(delErr){toast('Erro ao limpar registros anteriores: '+delErr.message,'err');saveBtn.disabled=false;saveBtn.textContent='💾 Salvar Desvios no Sistema';return;}
+
+  const now=new Date().toISOString();
+  const records=desvios.map(d=>({
+    garagem_id:gid,
+    data_referencia:dataIso,
+    cod_sap:String(d.cod),
+    descricao:(d.desc||'').slice(0,200),
+    grupo:(d.grupo||'').slice(0,100),
+    saldo_sap:d.saldo_sap,
+    saldo_praxio:d.saldo_praxio,
+    diferenca:d.diferenca,
+    preco_medio_sap:d.preco_medio_sap||0,
+    valor_sap:d.valor_sap||0,
+    criado_em:now,
+  }));
+
+  let ok=0,erros=0;
+  const BATCH=200;
+  for(let i=0;i<records.length;i+=BATCH){
+    const batch=records.slice(i,i+BATCH);
+    const{error}=await sb.from('almox_conferencia_sap_praxio').insert(batch);
+    if(error){erros+=batch.length;console.error('[confSalvar] lote erro:',error.message);}
+    else ok+=batch.length;
+    if(statusEl)statusEl.textContent=`Gravando… ${ok}/${records.length}`;
+  }
+
+  saveBtn.disabled=false;saveBtn.textContent='💾 Salvar Desvios no Sistema';
+  if(erros>0){
+    if(statusEl)statusEl.innerHTML=`<span style="color:var(--danger)">⚠️ ${ok} gravados, ${erros} com erro</span>`;
+    toast(`⚠️ ${ok} gravados, ${erros} com erro.`,'err');
+  }else{
+    if(statusEl)statusEl.innerHTML=`<span style="color:var(--green)">✓ ${ok} desvios gravados — ref: ${dataIso}</span>`;
+    toast(`✅ ${ok} desvios gravados no sistema!`);
+  }
 }
 
 // ── PEÇAS & COMPRAS — painel compartilhado Almox + PCM ──────

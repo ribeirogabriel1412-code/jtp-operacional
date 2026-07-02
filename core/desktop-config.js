@@ -114,6 +114,11 @@ const FERRAMENTAS_DEF=[
     valida:   ['instrutor'],
     visualiza:['gerente_garagem','diretoria'],
   },
+  {id:'ferr-almox-conf', icon:'🔍', nome:'Conferência SAP x PRAXIO',
+    executa:  ['lider_almoxarifado','lider_suprimentos'],
+    valida:   ['lider_suprimentos'],
+    visualiza:['gerente_garagem','diretoria','coordenador','supervisor','lider_pcm','assistente_pcm'],
+  },
 ];
 
 const PAPEIS=['executa','valida','visualiza'];
