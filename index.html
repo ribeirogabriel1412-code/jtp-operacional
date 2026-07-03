@@ -4900,16 +4900,15 @@ async function confCruzarRotativo(){
   const thH=l=>`<th style="padding:9px 10px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-size:10px;white-space:nowrap">${l}</th>`;
   const thR=l=>`<th style="padding:9px 10px;text-align:right;border-bottom:1px solid var(--border);color:var(--text3);font-size:10px;white-space:nowrap">${l}</th>`;
 
-  // Um item tem desvio se físico≠PRAXIO, físico≠SAP, ou a conferência do
-  // turno seguinte (T-1) não bater com a contagem de origem.
+  // "Desvio", pra fins deste filtro, é só Físico × SAP divergente.
   itens.forEach(d=>{
-    d.temDesvio=(d.difPrax!=null&&d.difPrax!==0)||(d.difSap!=null&&d.difSap!==0)||(d.difCadeia!=null&&d.difCadeia!==0);
+    d.temDesvio=d.difSap!=null&&d.difSap!==0;
   });
   const soDesvio=!!window._confRotSoDesvio;
   const itensExibidos=soDesvio?itens.filter(d=>d.temDesvio):itens;
 
   const thead=`<tr style="background:var(--surface2)">
-    ${thH('#')}${thH('Status')}${thH('Código')}${thH('Descrição')}${thR('Físico (Rot.)')}${thR('PRAXIO')}${thR('Δ Fís.↔PRAX')}${thR('SAP')}${thR('Δ Fís.↔SAP')}${thR('T-1 (conf. seguinte)')}${thR('Δ Cadeia')}${thH('Almoxarife')}${thH('Data')}
+    ${thH('#')}${thH('Status')}${thH('Código')}${thH('Descrição')}${thR('Físico (Rot.)')}${thR('SAP')}${thR('Δ Fís.↔SAP')}${thR('T-1 (conf. seguinte)')}${thR('Δ Cadeia')}${thH('Almoxarife')}${thH('Data')}
   </tr>`;
 
   const rows=itensExibidos.map((d,i)=>{
@@ -4922,8 +4921,6 @@ async function confCruzarRotativo(){
       <td style="padding:7px 10px;font-family:monospace;font-size:12px;font-weight:700">${escHtml(d.cod)}</td>
       <td style="padding:7px 10px;font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.nome)}">${escHtml(d.nome)}</td>
       <td style="padding:7px 10px;text-align:right;font-family:monospace;font-weight:800;color:var(--green)">${N(d.fis)}</td>
-      <td style="padding:7px 10px;text-align:right;font-family:monospace">${N(d.saldoPrax)}</td>
-      ${difCell(d.difPrax)}
       <td style="padding:7px 10px;text-align:right;font-family:monospace">${N(d.saldoSap)}</td>
       ${difCell(d.difSap)}
       <td style="padding:7px 10px;text-align:right;font-family:monospace">${N(d.fisT1)}</td>
@@ -4937,7 +4934,7 @@ async function confCruzarRotativo(){
   const conformeCount=itens.length-desvioCount;
   const filtroSoDesvio=`<label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);cursor:pointer">
     <input type="checkbox" ${soDesvio?'checked':''} onchange="window._confRotSoDesvio=this.checked;confCruzarRotativo()">
-    Mostrar só desvios
+    Mostrar só desvios (Físico × SAP)
   </label>`;
 
   // Salva dados para exportação
