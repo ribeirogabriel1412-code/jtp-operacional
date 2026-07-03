@@ -2690,8 +2690,9 @@ async function telaAlmoxMobConferencia(){
       .gte('entregue_em',ultimas48h)
       .order('entregue_em',{ascending:false}).limit(50),
     // Todos os inventários da garagem para montar os dois mapas
+    // (a tabela não tem coluna de criado_em — usa turno_data pra pegar a contagem mais recente)
     sb.from('almoxo_inventario_turno').select('*').eq('garagem_id',gid)
-      .not('req_id','is',null).order('criado_em',{ascending:false})
+      .not('req_id','is',null).order('turno_data',{ascending:false})
   ]);
   const listaT1=rawT1||[];
   const listaAtual=rawAtual||[];

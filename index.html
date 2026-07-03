@@ -11416,7 +11416,7 @@ function _sapUpdRender(){
   var totalValEl=document.getElementById('sap-upd-total-val');
   if(!lista) return;
   if(!_sapUpdItens.length){
-    lista.innerHTML=(_sapUpdBasePecas||'').trim()?'<div style="font-size:11px;color:var(--text3);padding:7px 10px;background:var(--surface2);border-radius:8px;white-space:pre-wrap"><strong>Já solicitado:</strong>\n'+_sapUpdBasePecas.trim()+'</div>':'<div style="font-size:11px;color:var(--text4);padding:2px 0">Nenhuma peça adicionada</div>';
+    lista.innerHTML=(_sapUpdBasePecas||'').trim()?'<div style="font-size:11px;color:var(--amber);padding:7px 10px;background:#F59E0B14;border:1px solid #F59E0B40;border-radius:8px;white-space:pre-wrap"><strong>⚠️ Peças necessárias informadas na OS (ainda NÃO solicitadas ao almoxarifado):</strong>\n'+_sapUpdBasePecas.trim()+'\n<span style="color:var(--text3);font-weight:400">Busque cada peça no campo SAP acima e adicione pra enviar de verdade ao almoxarifado.</span></div>':'<div style="font-size:11px;color:var(--text4);padding:2px 0">Nenhuma peça adicionada</div>';
     if(totalEl)totalEl.style.display=_sapUpdBasePrev>0?'flex':'none';
     if(totalValEl) totalValEl.textContent='R$\u00a0'+_sapUpdBasePrev.toLocaleString('pt-BR',{minimumFractionDigits:2});
     var prevBaseEl=document.getElementById('m22s-custo-prev');
