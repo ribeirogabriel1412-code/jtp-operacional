@@ -5107,15 +5107,18 @@ function confRotExportarPDF(){
       :`<div style="padding:8px 0;color:#555;font-size:9px">Sem inventário rotativo cruzado nesta sessão.</div>`}
   `;
 
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${estiloRelJTP()}</style></head><body>
-${barraPrint('📋 Conferência SAP × PRAXIO × Inventário Rotativo','JTP_Conferencia_SAP_PRAXIO_Rotativo')}
-<div class="cabecalho">
-  <div style="font-size:12px;font-weight:900">GRUPO JTP | OPERAÇÃO GARAGEM | ${esc(garagem)}</div>
-  <div style="font-size:10px;color:#555;margin-top:2px">Conferência SAP × PRAXIO × Inventário Rotativo · Ref.: ${dataFmt}</div>
-</div>
+  const agora=new Date();
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${estiloRelJTP()}.assin{display:grid;grid-template-columns:1fr 1fr;gap:90px;margin-top:60px}.linha{border-top:1px solid #000;text-align:center;padding-top:4px}</style></head><body>
+${barraPrint('📋 Conferência SAP × PRAXIO × Inventário Rotativo · '+esc(garagem),'JTP_Conferencia_SAP_PRAXIO_Rotativo')}
+<div class="cabecalho"><strong>GRUPO JTP | OPERAÇÃO GARAGEM | CONFERÊNCIA SAP × PRAXIO × INVENTÁRIO ROTATIVO | ${esc(garagem)}</strong></div>
+<table style="margin-bottom:8px"><tr>
+  <td style="${B}"><b>Data ref.:</b> ${dataFmt}</td>
+  <td style="${B}"><b>Responsável:</b> ${esc(S.perfil?.nome||'—')}</td>
+  <td style="${B}"><b>Gerado:</b> ${agora.toLocaleString('pt-BR')}</td>
+</tr></table>
 ${quadroPraxio}
 ${quadroFisico}
-<div style="margin-top:14px;font-size:8px;color:#777;text-align:right">Gerado em ${new Date().toLocaleString('pt-BR')} por ${esc(S.perfil?.nome||'—')}</div>
+<div class="assin"><div class="linha">Líder de Almoxarifado / Suprimentos</div><div class="linha">Líder PCM</div></div>
 </body></html>`;
   abrirRelatorioHTMLPCM(html,`JTP_Conferencia_SAP_PRAXIO_Rotativo_${dataRef.replace(/-/g,'')}.pdf`);
 }
