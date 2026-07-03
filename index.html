@@ -4698,8 +4698,11 @@ function confProcessar(){
   });
 
   // Base = SAP (left join). Itens só no PRAXIO são ignorados.
+  // Itens em CONF_SEM_PRAXIO são conhecidos por não terem cadastro no PRAXIO
+  // (não é erro, é esperado) — nem entram na lista de desvios.
   const desvios=[];
   Object.keys(mapS).forEach(cod=>{
+    if(CONF_SEM_PRAXIO.has(cod))return;
     const s=mapS[cod];
     const p=mapP[cod];
     const saldoS=Math.round(s.saldo);
@@ -4713,16 +4716,14 @@ function confProcessar(){
         saldo_sap:saldoS,
         saldo_praxio:saldoP,
         naoEncontrado:!p,
-        semCadastro:!p&&CONF_SEM_PRAXIO.has(cod),
         diferenca:dif,
         preco_medio_sap:0,
         valor_sap:0,
       });
     }
   });
-  // Ordena: sem cadastro por último, depois não encontrados, depois por |diferença| desc
+  // Ordena: não encontrados primeiro, depois por |diferença| desc
   desvios.sort((a,b)=>{
-    if(a.semCadastro!==b.semCadastro)return a.semCadastro?1:-1;
     if(a.naoEncontrado!==b.naoEncontrado)return a.naoEncontrado?-1:1;
     return Math.abs(b.diferenca)-Math.abs(a.diferenca);
   });
@@ -4730,25 +4731,22 @@ function confProcessar(){
   window._confDesvios=desvios;
   window._confDataRef=sap.dataRef;
 
-  // Resumo (exclui itens sem cadastro PRAXIO dos KPIs de problema real)
-  const semCadastro=desvios.filter(d=>d.semCadastro).length;
-  const naoEncontrado=desvios.filter(d=>d.naoEncontrado&&!d.semCadastro).length;
+  const naoEncontrado=desvios.filter(d=>d.naoEncontrado).length;
   const diverg=desvios.filter(d=>!d.naoEncontrado).length;
 
   const _kc=(label,val,sub,alerta)=>`<div class="kpi ${alerta?'nok':'ok'}"><div class="kpi-label">${label}</div><div class="kpi-val" style="font-size:22px">${val}</div><div style="font-size:11px;color:var(--text3);margin-top:2px">${sub}</div></div>`;
   const resumo=`
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
       ${_kc('Base SAP',Object.keys(mapS).length,'itens (depósito 200)',false)}
-      ${_kc('Com desvio',desvios.length-semCadastro,'itens com diferença real',desvios.length-semCadastro>0)}
+      ${_kc('Com desvio',desvios.length,'itens com diferença real',desvios.length>0)}
       ${_kc('Não no PRAXIO',naoEncontrado,'constam no SAP, ausentes no PRAXIO',naoEncontrado>0)}
       ${_kc('Divergência de saldo',diverg,'saldo diferente entre sistemas',diverg>0)}
-      ${_kc('Sem cadastro PRAXIO',semCadastro,'esperado — não são erro',false)}
     </div>`;
 
-  const STATUS_COLOR={nao:'#EF4444',diverg:'#F59E0B',sem:'#6B7280'};
+  const STATUS_COLOR={nao:'#EF4444',diverg:'#F59E0B'};
   const rows=desvios.slice(0,500).map((d,i)=>{
-    const status=d.semCadastro?'Sem cadastro PRAXIO':d.naoEncontrado?'Não no PRAXIO':'Divergência';
-    const cor=d.semCadastro?STATUS_COLOR.sem:d.naoEncontrado?STATUS_COLOR.nao:STATUS_COLOR.diverg;
+    const status=d.naoEncontrado?'Não no PRAXIO':'Divergência';
+    const cor=d.naoEncontrado?STATUS_COLOR.nao:STATUS_COLOR.diverg;
     const difCor=d.diferenca>0?'var(--green)':'var(--danger)';
     return`<tr style="border-bottom:1px solid var(--border)">
       <td style="padding:7px 10px;font-family:monospace;font-size:11px;color:var(--text3)">${i+1}</td>
@@ -4812,12 +4810,15 @@ async function confCruzarRotativo(){
   el.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3)"><div class="spinner" style="width:24px;height:24px;border-width:3px;margin:0 auto 8px"></div>Buscando inventários rotativos...</div>';
 
   const dataRef=window._confDataRef||hoje();
-  const {data:rotRaw,error}=await sb.from('almoxo_inventario_turno')
-    .select('*').eq('garagem_id',gid)
-    .lte('turno_data',dataRef)
-    .order('turno_data',{ascending:false});
+  const [{data:rotRaw,error},{data:t1Raw,error:t1Error}]=await Promise.all([
+    sb.from('almoxo_inventario_turno').select('*').eq('garagem_id',gid)
+      .lte('turno_data',dataRef).order('turno_data',{ascending:false}),
+    sb.from('almoxo_inventario_t1').select('*').eq('garagem_id',gid)
+      .lte('turno_data',dataRef).order('turno_data',{ascending:false})
+  ]);
   if(error){el.innerHTML=`<div style="color:var(--danger);padding:12px">Erro: ${error.message}</div>`;return;}
   if(!rotRaw||!rotRaw.length){el.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3)">Nenhum inventário rotativo encontrado para este período.</div>';return;}
+  if(t1Error)console.warn('[Cruzamento T-1]',t1Error);
 
   // Agrupa por cod_sap + turno_data — última contagem de cada item por dia
   // Se o mesmo item saiu segunda E terça, aparece uma linha por dia
@@ -4828,11 +4829,21 @@ async function confCruzarRotativo(){
     if(!rotMap[k])rotMap[k]=r; // já vem ordenado por turno_data DESC do Supabase
   });
 
+  // Conferência T-1 (turno seguinte reconferindo o que o turno de origem contou)
+  const t1Map={};
+  (t1Raw||[]).forEach(r=>{
+    if(!r.cod_sap)return;
+    const k=confNormCod(r.cod_sap)+'|'+(r.turno_data||'');
+    if(!t1Map[k])t1Map[k]=r; // já vem ordenado por turno_data DESC do Supabase
+  });
+
   // Monta lista 3-way: Físico × PRAXIO × SAP
   const itens=Object.values(rotMap).map(rot=>{
     const cod=confNormCod(rot.cod_sap);
+    const k=cod+'|'+(rot.turno_data||'');
     const s=mapS[cod]||null;
     const p=mapP[cod]||null;
+    const t1=t1Map[k]||null;
     const fis=rot.qtd_fisica??null;
     const saldoSap=s?.saldo??null;
     const saldoPrax=p?.saldo??null;
@@ -4844,6 +4855,9 @@ async function confCruzarRotativo(){
       difPrax:saldoPrax!=null&&fis!=null?Math.round((fis-saldoPrax)*1000)/1000:null,
       almoxarife:rot.almoxarife_nome||'',
       data:rot.turno_data||'',
+      // Encadeamento — conferência do turno seguinte (T-1) sobre a contagem de origem
+      fisT1:t1?t1.qtd_fisica??null:null,
+      difCadeia:t1&&t1.qtd_fisica!=null&&fis!=null?Math.round((t1.qtd_fisica-fis)*1000)/1000:null,
     };
   }).sort((a,b)=>b.data.localeCompare(a.data)||a.cod.localeCompare(b.cod));
 
@@ -4885,6 +4899,34 @@ async function confCruzarRotativo(){
   const desvioCount=itens.filter(d=>(d.difSap!=null&&d.difSap!==0)||(d.difPrax!=null&&d.difPrax!==0)).length;
   const conformeCount=itens.length-desvioCount;
 
+  // Encadeamento de turnos (T-1): item contado pelo turno de origem e reconferido
+  // pelo turno seguinte. Só entra na lista quando os dois números não batem.
+  const cadeiaDivergente=itens.filter(d=>d.difCadeia!=null&&d.difCadeia!==0);
+  const cadeiaRows=cadeiaDivergente.map((d,i)=>`<tr style="border-bottom:1px solid var(--border);background:#EF444406">
+      <td style="padding:7px 10px;font-size:11px;color:var(--text3)">${i+1}</td>
+      <td style="padding:7px 10px;font-family:monospace;font-size:12px;font-weight:700">${escHtml(d.cod)}</td>
+      <td style="padding:7px 10px;font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.nome)}">${escHtml(d.nome)}</td>
+      <td style="padding:7px 10px;text-align:right;font-family:monospace;font-weight:800">${N(d.fis)}</td>
+      <td style="padding:7px 10px;text-align:right;font-family:monospace;font-weight:800">${N(d.fisT1)}</td>
+      <td style="padding:7px 10px;text-align:right;font-family:monospace;font-weight:700;color:var(--danger)">${d.difCadeia>0?'+':''}${N(d.difCadeia)}</td>
+      <td style="padding:7px 10px;text-align:right;font-family:monospace">${N(d.saldoSap)}</td>
+      <td style="padding:7px 10px;text-align:right;font-family:monospace">${N(d.saldoPrax)}</td>
+      <td style="padding:7px 10px;font-size:11px;color:var(--text3);white-space:nowrap">${escHtml(d.data)}</td>
+    </tr>`).join('');
+  const secaoCadeia=`
+    <div style="margin-top:20px">
+      <div style="display:flex;align-items:center;gap:10px;padding:4px 0 12px;flex-wrap:wrap">
+        <span style="font-size:13px;font-weight:900">🔗 Encadeamento de Turnos (T-1) — Divergências</span>
+        ${cadeiaDivergente.length
+          ?`<span style="background:#EF444420;color:var(--danger);border:1px solid #EF444460;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:800">⚠️ ${cadeiaDivergente.length} item${cadeiaDivergente.length!==1?'s':''}</span>`
+          :`<span style="background:#00C48C20;color:#00C48C;border:1px solid #00C48C60;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:800">✅ nenhuma divergência</span>`}
+      </div>
+      ${cadeiaDivergente.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)">
+        ${thH('#')}${thH('Código')}${thH('Descrição')}${thR('Contagem turno origem')}${thR('Conferência turno seguinte')}${thR('Δ Cadeia')}${thR('SAP')}${thR('PRAXIO')}${thH('Data')}
+      </tr></thead><tbody>${cadeiaRows}</tbody></table></div>`
+      :`<div style="padding:14px;text-align:center;color:var(--text3);font-size:12px">Todos os itens conferidos pelo turno seguinte batem com a contagem de origem.</div>`}
+    </div>`;
+
   // Salva dados para exportação
   window._confRotItens=itens;
   window._confRotGaragem=S.garagens?.find(g=>g.id===gid)?.nome||gid;
@@ -4902,6 +4944,7 @@ async function confCruzarRotativo(){
       </div>
     </div>
     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>
+    ${secaoCadeia}
   `;
 }
 
@@ -4911,15 +4954,14 @@ function confMotorExportarPDF(){
   const dataRef=window._confDataRef||new Date().toISOString().slice(0,10);
   const gid=getGid();
   const garagem=S.garagens?.find(g=>g.id===gid)?.nome||'Garagem';
-  const semCad=desvios.filter(d=>d.semCadastro).length;
-  const naoEnc=desvios.filter(d=>d.naoEncontrado&&!d.semCadastro).length;
+  const naoEnc=desvios.filter(d=>d.naoEncontrado).length;
   const diverg=desvios.filter(d=>!d.naoEncontrado).length;
   const esc=v=>String(v??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const dataFmt=new Date(dataRef+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
 
   const rows=desvios.map((d,i)=>{
-    const status=d.semCadastro?'Sem cadastro PRAXIO':d.naoEncontrado?'Não no PRAXIO':'Divergência';
-    const badgeCls=d.semCadastro?'pend':d.naoEncontrado?'nok':'pend';
+    const status=d.naoEncontrado?'Não no PRAXIO':'Divergência';
+    const badgeCls=d.naoEncontrado?'nok':'pend';
     const difCor=d.diferenca>0?'#1d4ed8':'#991b1b';
     return`<tr>
       <td>${i+1}</td>
@@ -4944,11 +4986,10 @@ function confMotorExportarPDF(){
         <div>desvio(s) encontrado(s)</div>
       </div>
     </div>
-    <div class="kpi-row" style="grid-template-columns:repeat(4,1fr)">
-      <div class="kpi"><div class="kpi-val">${desvios.length-semCad}</div><div class="kpi-lab">Desvios reais</div></div>
+    <div class="kpi-row" style="grid-template-columns:repeat(3,1fr)">
+      <div class="kpi"><div class="kpi-val">${desvios.length}</div><div class="kpi-lab">Desvios reais</div></div>
       <div class="kpi"><div class="kpi-val" style="color:#dc2626">${naoEnc}</div><div class="kpi-lab">Não no PRAXIO</div></div>
       <div class="kpi"><div class="kpi-val" style="color:#d97706">${diverg}</div><div class="kpi-lab">Divergência de saldo</div></div>
-      <div class="kpi"><div class="kpi-val" style="color:#6b7280">${semCad}</div><div class="kpi-lab">Sem cadastro PRAXIO</div></div>
     </div>
     <table>
       <thead><tr>
@@ -4975,6 +5016,18 @@ function confRotExportarXLSX(){
   ws['!cols']=[{wch:4},{wch:10},{wch:12},{wch:40},{wch:12},{wch:10},{wch:12},{wch:10},{wch:12},{wch:30},{wch:12}];
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'Inventário Rotativo');
+
+  // Aba de encadeamento — só os itens onde a conferência do turno seguinte
+  // (T-1) não bate com a contagem do turno de origem.
+  const cadeia=itens.filter(d=>d.difCadeia!=null&&d.difCadeia!==0);
+  if(cadeia.length){
+    const headerCad=[['#','Código','Descrição','Contagem turno origem','Conferência turno seguinte','Δ Cadeia','SAP','PRAXIO','Data']];
+    const bodyCad=cadeia.map((d,i)=>[i+1,d.cod,d.nome,d.fis??'',d.fisT1??'',d.difCadeia??'',d.saldoSap??'',d.saldoPrax??'',d.data]);
+    const wsCad=XLSX.utils.aoa_to_sheet([...headerCad,...bodyCad]);
+    wsCad['!cols']=[{wch:4},{wch:12},{wch:40},{wch:16},{wch:20},{wch:10},{wch:10},{wch:10},{wch:12}];
+    XLSX.utils.book_append_sheet(wb,wsCad,'Encadeamento T-1');
+  }
+
   XLSX.writeFile(wb,`InvRotativo_${garagem}_${dataRef}.xlsx`);
   toast('✅ Excel gerado');
 }
@@ -5011,6 +5064,34 @@ function confRotExportarPDF(){
     </tr>`;
   }).join('');
 
+  // Encadeamento de turnos (T-1) — só os itens onde a conferência do turno
+  // seguinte não bate com a contagem do turno de origem.
+  const cadeia=itens.filter(d=>d.difCadeia!=null&&d.difCadeia!==0);
+  const cadeiaRows=cadeia.map((d,i)=>{
+    const difCor=d.difCadeia>0?'#1d4ed8':'#991b1b';
+    return`<tr>
+      <td>${i+1}</td>
+      <td style="font-family:monospace;font-weight:700">${esc(d.cod)}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.nome)}</td>
+      <td style="text-align:right;font-weight:800">${N(d.fis)}</td>
+      <td style="text-align:right;font-weight:800">${N(d.fisT1)}</td>
+      <td style="text-align:right;font-weight:700;color:${difCor}">${difStr(d.difCadeia)}</td>
+      <td style="text-align:right">${N(d.saldoSap)}</td>
+      <td style="text-align:right">${N(d.saldoPrax)}</td>
+      <td>${esc(d.data)}</td>
+    </tr>`;
+  }).join('');
+  const secaoCadeiaPdf=`
+    <div style="margin-top:16px;font-weight:800;font-size:13px">🔗 Encadeamento de Turnos (T-1) — Divergências</div>
+    ${cadeia.length?`<table style="margin-top:6px">
+      <thead><tr>
+        <th>#</th><th>Código</th><th>Descrição</th>
+        <th style="text-align:right">Contagem turno origem</th><th style="text-align:right">Conferência turno seguinte</th><th style="text-align:right">Δ Cadeia</th>
+        <th style="text-align:right">SAP</th><th style="text-align:right">PRAXIO</th><th>Data</th>
+      </tr></thead>
+      <tbody>${cadeiaRows}</tbody>
+    </table>`:`<div style="padding:8px 0;color:#555;font-size:11px">Todos os itens conferidos pelo turno seguinte batem com a contagem de origem.</div>`}`;
+
   const dataFmt=new Date(dataRef+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
   abrirJanelaPDF(`
     <div class="header">
@@ -5039,6 +5120,7 @@ function confRotExportarPDF(){
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>
+    ${secaoCadeiaPdf}
   `,'Inventário Rotativo × SAP × PRAXIO');
 }
 async function confSalvarSupabase(){
