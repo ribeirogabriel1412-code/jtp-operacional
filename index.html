@@ -4829,14 +4829,25 @@ async function confCruzarRotativo(){
   el.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3)"><div class="spinner" style="width:24px;height:24px;border-width:3px;margin:0 auto 8px"></div>Buscando inventários rotativos...</div>';
 
   const dataRef=window._confDataRef||hoje();
+  const janelaDias=window._confRotJanela||3;
+  const dataIni=opAddDays(dataRef,-(janelaDias-1));
   const [{data:rotRaw,error},{data:t1Raw,error:t1Error}]=await Promise.all([
     sb.from('almoxo_inventario_turno').select('*').eq('garagem_id',gid)
-      .lte('turno_data',dataRef).order('turno_data',{ascending:false}),
+      .gte('turno_data',dataIni).lte('turno_data',dataRef).order('turno_data',{ascending:false}),
     sb.from('almoxo_inventario_t1').select('*').eq('garagem_id',gid)
-      .lte('turno_data',dataRef).order('turno_data',{ascending:false})
+      .gte('turno_data',dataIni).lte('turno_data',dataRef).order('turno_data',{ascending:false})
   ]);
+  const janelaSelect=`<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3)">
+    <span>Janela:</span>
+    <select onchange="window._confRotJanela=parseInt(this.value);confCruzarRotativo()" style="padding:5px 8px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px">
+      <option value="1"${janelaDias===1?' selected':''}>Só hoje</option>
+      <option value="2"${janelaDias===2?' selected':''}>2 dias</option>
+      <option value="3"${janelaDias===3?' selected':''}>3 dias</option>
+      <option value="7"${janelaDias===7?' selected':''}>7 dias</option>
+    </select>
+  </div>`;
   if(error){el.innerHTML=`<div style="color:var(--danger);padding:12px">Erro: ${error.message}</div>`;return;}
-  if(!rotRaw||!rotRaw.length){el.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3)">Nenhum inventário rotativo encontrado para este período.</div>';return;}
+  if(!rotRaw||!rotRaw.length){el.innerHTML=`<div style="padding:12px 0 20px"><div style="margin-bottom:10px">${janelaSelect}</div><div style="padding:20px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhum inventário rotativo encontrado nos últimos ${janelaDias} dia(s). Aumente a janela acima se precisar ver mais histórico.</div></div>`;return;}
   if(t1Error)console.warn('[Cruzamento T-1]',t1Error);
 
   // Agrupa por cod_sap + turno_data — última contagem de cada item por dia
@@ -4957,6 +4968,7 @@ async function confCruzarRotativo(){
       <span style="background:#00C48C20;color:#00C48C;border:1px solid #00C48C60;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:800">${itens.length} registros</span>
       ${desvioCount?`<span style="background:#EF444420;color:var(--danger);border:1px solid #EF444460;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:800">⚠️ ${desvioCount} desvio${desvioCount!==1?'s':''}</span>`:''}
       <span style="background:#00C48C20;color:#00C48C;border:1px solid #00C48C60;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:800">✅ ${conformeCount} conforme${conformeCount!==1?'s':''}</span>
+      ${janelaSelect}
       <div style="margin-left:auto;display:flex;gap:6px">
         <button onclick="confRotExportarXLSX()" class="btn-sec" style="padding:6px 14px;font-size:12px">📊 Excel</button>
         <button onclick="confRotExportarPDF()" class="btn-sec" style="padding:6px 14px;font-size:12px">📄 PDF</button>
