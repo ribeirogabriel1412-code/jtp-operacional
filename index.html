@@ -13399,6 +13399,15 @@ function prevHtmlAbaLista(tipo){
       const kmCor=km>0?'var(--red)':km<=-1000?'var(--green)':'var(--amber)';
       const sel=selValet.has(c.prefixo);
       const outros=(c.outrosRadar||[]).slice(0,3).map(r=>`<span style="font-size:9px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:1px 5px;color:var(--amber)">${prevEsc(r.planoNum)}</span>`).join(' ');
+      const proj=prevTextoProjecao(c.base||{excessoKm:km,prefixo:c.prefixo});
+      const ultProg=prevUltProgramacaoMap()[c.prefixo]||null;
+      let ultProgHtml='<span style="color:var(--text3);font-size:10px">—</span>';
+      if(ultProg){
+        const diasAtras=ultProg.inicio?Math.floor((new Date()-new Date(ultProg.inicio+'T12:00:00'))/(1000*60*60*24)):null;
+        const cor=diasAtras==null?'var(--text3)':diasAtras<=14?'var(--green)':diasAtras<=30?'var(--amber)':'var(--red)';
+        const badgeCor=ultProg.tipo==='pesada'?'#EF4444':'#22C55E';
+        ultProgHtml=`<div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px"><span style="font-family:'DM Mono',monospace;font-size:11px;font-weight:800;color:${cor}">${prevEsc(ultProg.inicioBR||ultProg.inicio)}</span><span style="font-size:9px;background:${badgeCor}20;color:${badgeCor};border:1px solid ${badgeCor}50;border-radius:4px;padding:1px 5px;font-weight:800">${ultProg.tipo==='pesada'?'Pesada':'Leve'}</span></div>${diasAtras!=null?`<div style="font-size:9px;color:var(--text3);margin-top:1px">${diasAtras}d atrás</div>`:''}`;
+      }
       return`<tr style="border-top:1px solid var(--border);background:${sel?'rgba(249,115,22,.06)':'transparent'}">
         <td style="padding:8px 10px;text-align:center"><input type="checkbox" ${sel?'checked':''} onchange="prevToggleValetamento('${prevEsc(c.prefixo)}',this.checked)" style="width:16px;height:16px;cursor:pointer"></td>
         <td style="padding:8px 10px;font-size:11px;color:var(--text3);font-family:'DM Mono',monospace">#${i+_prevSelPesada.size+1}</td>
@@ -13406,6 +13415,9 @@ function prevHtmlAbaLista(tipo){
         <td style="padding:8px 10px;font-family:'DM Mono',monospace;font-weight:900;color:${kmCor}">${prevFmtKm(km)}</td>
         <td style="padding:8px 10px;color:var(--text3);font-size:11px">${prevEsc(prevResumoServicos(c,'pesada'))}</td>
         <td style="padding:8px 10px">${outros}</td>
+        <td style="padding:8px 10px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text2);white-space:nowrap">${prevEsc(proj.media)}</td>
+        <td style="padding:8px 10px;font-size:11px;font-weight:800;color:${proj.cor};white-space:nowrap">${prevEsc(proj.projecao)}</td>
+        <td style="padding:8px 10px">${ultProgHtml}</td>
       </tr>`;
     }).join('');
     const proxDias=prevDiasSemana().map(d=>{const dt=new Date(d.iso+'T12:00:00');dt.setDate(dt.getDate()+7);return dt.toISOString().split('T')[0];});
@@ -13425,9 +13437,9 @@ function prevHtmlAbaLista(tipo){
           <button class="btn primary" style="font-size:11px;padding:5px 12px" onclick="prevGerarValetamentoProxSemana()" ${selValet.size?'':'disabled'}>✅ Gerar Valetamento (${selValet.size})</button>
         </div>
       </div>
-      ${backlog.length?`<div style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:580px">
+      ${backlog.length?`<div style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:800px">
         <thead><tr style="background:rgba(2,6,23,.6);color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:1px;text-align:left">
-          <th style="padding:8px 10px">✓</th><th style="padding:8px 10px">#</th><th style="padding:8px 10px">Prefixo</th><th style="padding:8px 10px">KM Excedido</th><th style="padding:8px 10px">Serviços</th><th style="padding:8px 10px">Outros planos</th>
+          <th style="padding:8px 10px">✓</th><th style="padding:8px 10px">#</th><th style="padding:8px 10px">Prefixo</th><th style="padding:8px 10px">KM Excedido</th><th style="padding:8px 10px">Serviços</th><th style="padding:8px 10px">Outros planos</th><th style="padding:8px 10px">Média KM</th><th style="padding:8px 10px">Projeção</th><th style="padding:8px 10px">Última Preventiva</th>
         </tr></thead><tbody>${linhasV}</tbody></table></div>`
         :`<div style="padding:20px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">✅ Todos os veículos de pesada estão programados para esta semana.</div>`}
     </div>`;
