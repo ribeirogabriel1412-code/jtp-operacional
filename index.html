@@ -5045,95 +5045,79 @@ function confRotExportarXLSX(){
 }
 
 function confRotExportarPDF(){
-  const itens=window._confRotItens;
-  if(!itens?.length){toast('Sem dados para exportar.','err');return;}
-  const garagem=window._confRotGaragem||'Garagem';
-  const dataRef=window._confRotDataRef||new Date().toISOString().slice(0,10);
+  const itens=window._confRotItens||[];
+  const desvios=window._confDesvios||[];
+  if(!itens.length&&!desvios.length){toast('Sem dados para exportar.','err');return;}
+  const garagem=window._confRotGaragem||S.garagens?.find(g=>g.id===getGid())?.nome||'Garagem';
+  const dataRef=window._confRotDataRef||window._confDataRef||new Date().toISOString().slice(0,10);
   const esc=v=>String(v??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const N=v=>v==null?'—':Number.isInteger(v)?v:parseFloat(v).toFixed(2);
-  const difStr=v=>v==null?'—':(v>0?'+':'')+N(v);
-  const desvioCount=itens.filter(d=>(d.difSap!=null&&d.difSap!==0)||(d.difPrax!=null&&d.difPrax!==0)).length;
-  const conformeCount=itens.length-desvioCount;
-  const acuracia=itens.length>0?Math.round((conformeCount/itens.length)*100)+'%':'0%';
-
-  const rows=itens.map((d,i)=>{
-    const temDesvio=(d.difSap!=null&&d.difSap!==0)||(d.difPrax!=null&&d.difPrax!==0);
-    const statusBadge=temDesvio?'<span class="badge nok">⚠️ Desvio</span>':'<span class="badge ok">✅ Conforme</span>';
-    const difPraxCor=d.difPrax==null||d.difPrax===0?'#065f46':d.difPrax>0?'#1d4ed8':'#991b1b';
-    const difSapCor=d.difSap==null||d.difSap===0?'#065f46':d.difSap>0?'#1d4ed8':'#991b1b';
-    return`<tr>
-      <td>${i+1}</td>
-      <td>${statusBadge}</td>
-      <td style="font-family:monospace;font-weight:700">${esc(d.cod)}</td>
-      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.nome)}</td>
-      <td style="text-align:right;font-weight:800;color:#047857">${N(d.fis)}</td>
-      <td style="text-align:right">${N(d.saldoPrax)}</td>
-      <td style="text-align:right;font-weight:700;color:${difPraxCor}">${difStr(d.difPrax)}</td>
-      <td style="text-align:right">${N(d.saldoSap)}</td>
-      <td style="text-align:right;font-weight:700;color:${difSapCor}">${difStr(d.difSap)}</td>
-      <td style="font-size:10px">${esc(d.almoxarife)}</td>
-      <td>${esc(d.data)}</td>
-    </tr>`;
-  }).join('');
-
-  // Encadeamento de turnos (T-1) — só os itens onde a conferência do turno
-  // seguinte não bate com a contagem do turno de origem.
-  const cadeia=itens.filter(d=>d.difCadeia!=null&&d.difCadeia!==0);
-  const cadeiaRows=cadeia.map((d,i)=>{
-    const difCor=d.difCadeia>0?'#1d4ed8':'#991b1b';
-    return`<tr>
-      <td>${i+1}</td>
-      <td style="font-family:monospace;font-weight:700">${esc(d.cod)}</td>
-      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.nome)}</td>
-      <td style="text-align:right;font-weight:800">${N(d.fis)}</td>
-      <td style="text-align:right;font-weight:800">${N(d.fisT1)}</td>
-      <td style="text-align:right;font-weight:700;color:${difCor}">${difStr(d.difCadeia)}</td>
-      <td style="text-align:right">${N(d.saldoSap)}</td>
-      <td style="text-align:right">${N(d.saldoPrax)}</td>
-      <td>${esc(d.data)}</td>
-    </tr>`;
-  }).join('');
-  const secaoCadeiaPdf=`
-    <div style="margin-top:16px;font-weight:800;font-size:13px">🔗 Encadeamento de Turnos (T-1) — Divergências</div>
-    ${cadeia.length?`<table style="margin-top:6px">
-      <thead><tr>
-        <th>#</th><th>Código</th><th>Descrição</th>
-        <th style="text-align:right">Contagem turno origem</th><th style="text-align:right">Conferência turno seguinte</th><th style="text-align:right">Δ Cadeia</th>
-        <th style="text-align:right">SAP</th><th style="text-align:right">PRAXIO</th><th>Data</th>
-      </tr></thead>
-      <tbody>${cadeiaRows}</tbody>
-    </table>`:`<div style="padding:8px 0;color:#555;font-size:11px">Todos os itens conferidos pelo turno seguinte batem com a contagem de origem.</div>`}`;
-
   const dataFmt=new Date(dataRef+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
-  abrirJanelaPDF(`
-    <div class="header">
-      <div>
-        <div class="logo">JTP Transportes</div>
-        <h1>Inventário Rotativo × SAP × PRAXIO</h1>
-        <div style="font-size:10px;color:#555">${esc(garagem)} · Ref.: ${dataFmt}</div>
-      </div>
-      <div class="meta">
-        <div style="font-size:22px;font-weight:800;color:${conformeCount===itens.length?'#059669':'#d97706'}">${acuracia}</div>
-        <div>Acurácia do inventário</div>
-      </div>
-    </div>
-    <div class="kpi-row" style="grid-template-columns:repeat(4,1fr)">
-      <div class="kpi"><div class="kpi-val">${itens.length}</div><div class="kpi-lab">Total registros</div></div>
-      <div class="kpi"><div class="kpi-val" style="color:#059669">${conformeCount}</div><div class="kpi-lab">Conformes</div></div>
-      <div class="kpi"><div class="kpi-val" style="color:#dc2626">${desvioCount}</div><div class="kpi-lab">Com desvio</div></div>
-      <div class="kpi"><div class="kpi-val">${acuracia}</div><div class="kpi-lab">Acurácia</div></div>
-    </div>
-    <table>
+  const B='border:1px solid #333;';
+  const BH='border:1px solid #333;background:#555;color:#fff;font-weight:900;';
+
+  // ── Quadro 1: Divergência SAP × PRAXIO ──────────────────────────────────
+  const rowsPraxio=desvios.map((d,i)=>`<tr>
+    <td style="${B}text-align:center">${i+1}</td>
+    <td style="${B}font-family:monospace;font-weight:700">${esc(d.cod)}</td>
+    <td style="${B}">${esc(d.desc)}</td>
+    <td style="${B}text-align:right">${N(d.saldo_sap)}</td>
+    <td style="${B}text-align:right">${N(d.saldo_praxio)}</td>
+    <td style="${B}text-align:right;font-weight:700">${d.diferenca>0?'+':''}${N(d.diferenca)}</td>
+    <td style="${B}text-align:center">${d.naoEncontrado?'Não no PRAXIO':'Divergência'}</td>
+  </tr>`).join('');
+  const quadroPraxio=`
+    <div class="sec-header">■ DIVERGÊNCIA SAP × PRAXIO (${desvios.length})</div>
+    ${desvios.length?`<table>
       <thead><tr>
-        <th>#</th><th>Status</th><th>Código</th><th>Descrição</th>
-        <th style="text-align:right">Físico (Rot.)</th><th style="text-align:right">PRAXIO</th><th style="text-align:right">Δ Fís.↔PRAX</th>
-        <th style="text-align:right">SAP</th><th style="text-align:right">Δ Fís.↔SAP</th>
-        <th>Almoxarife</th><th>Data</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-    ${secaoCadeiaPdf}
-  `,'Inventário Rotativo × SAP × PRAXIO');
+        <th style="${BH}">#</th><th style="${BH}">Cód. SAP</th><th style="${BH}">Descrição</th>
+        <th style="${BH}text-align:right">SAP</th><th style="${BH}text-align:right">PRAXIO</th>
+        <th style="${BH}text-align:right">Diferença</th><th style="${BH}">Status</th>
+      </tr></thead><tbody>${rowsPraxio}</tbody></table>`
+      :`<div style="padding:8px 0;color:#555;font-size:9px">Sem desvios SAP × PRAXIO processados nesta sessão.</div>`}
+  `;
+
+  // ── Quadro 2: Divergência SAP × Físico — Inventário Rotativo ────────────
+  const desvioFisCount=itens.filter(d=>d.difSap!=null&&d.difSap!==0).length;
+  const rowsFisico=itens.map((d,i)=>{
+    const temDesvio=d.difSap!=null&&d.difSap!==0;
+    return`<tr>
+      <td style="${B}text-align:center">${i+1}</td>
+      <td style="${B}text-align:center">${temDesvio?'⚠️ Desvio':'✅ Conforme'}</td>
+      <td style="${B}font-family:monospace;font-weight:700">${esc(d.cod)}</td>
+      <td style="${B}">${esc(d.nome)}</td>
+      <td style="${B}text-align:right;font-weight:700">${N(d.fis)}</td>
+      <td style="${B}text-align:right">${N(d.saldoSap)}</td>
+      <td style="${B}text-align:right;font-weight:700">${d.difSap==null?'—':(d.difSap>0?'+':'')+N(d.difSap)}</td>
+      <td style="${B}text-align:right">${N(d.fisT1)}</td>
+      <td style="${B}text-align:right">${d.difCadeia==null?'—':(d.difCadeia>0?'+':'')+N(d.difCadeia)}</td>
+      <td style="${B}font-size:9px">${esc(d.almoxarife)}</td>
+      <td style="${B}">${esc(d.data)}</td>
+    </tr>`;
+  }).join('');
+  const quadroFisico=`
+    <div class="sec-header">■ DIVERGÊNCIA SAP × FÍSICO — INVENTÁRIO ROTATIVO (${itens.length} registro${itens.length!==1?'s':''} · ${desvioFisCount} desvio${desvioFisCount!==1?'s':''})</div>
+    ${itens.length?`<table>
+      <thead><tr>
+        <th style="${BH}">#</th><th style="${BH}">Status</th><th style="${BH}">Código</th><th style="${BH}">Descrição</th>
+        <th style="${BH}text-align:right">Físico (Rot.)</th><th style="${BH}text-align:right">SAP</th><th style="${BH}text-align:right">Δ Fís.↔SAP</th>
+        <th style="${BH}text-align:right">T-1 (conf. seguinte)</th><th style="${BH}text-align:right">Δ Cadeia</th>
+        <th style="${BH}">Almoxarife</th><th style="${BH}">Data</th>
+      </tr></thead><tbody>${rowsFisico}</tbody></table>`
+      :`<div style="padding:8px 0;color:#555;font-size:9px">Sem inventário rotativo cruzado nesta sessão.</div>`}
+  `;
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${estiloRelJTP()}</style></head><body>
+${barraPrint('📋 Conferência SAP × PRAXIO × Inventário Rotativo','JTP_Conferencia_SAP_PRAXIO_Rotativo')}
+<div class="cabecalho">
+  <div style="font-size:12px;font-weight:900">GRUPO JTP | OPERAÇÃO GARAGEM | ${esc(garagem)}</div>
+  <div style="font-size:10px;color:#555;margin-top:2px">Conferência SAP × PRAXIO × Inventário Rotativo · Ref.: ${dataFmt}</div>
+</div>
+${quadroPraxio}
+${quadroFisico}
+<div style="margin-top:14px;font-size:8px;color:#777;text-align:right">Gerado em ${new Date().toLocaleString('pt-BR')} por ${esc(S.perfil?.nome||'—')}</div>
+</body></html>`;
+  abrirRelatorioHTMLPCM(html,`JTP_Conferencia_SAP_PRAXIO_Rotativo_${dataRef.replace(/-/g,'')}.pdf`);
 }
 async function confSalvarSupabase(){
   const desvios=window._confDesvios;
