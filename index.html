@@ -13604,7 +13604,8 @@ function renderFerrPrev(){
     <span style="font-size:13px;font-weight:900;color:var(--blue)">${rangeStr}</span>
     <div style="display:flex;align-items:center;gap:6px;margin-left:auto">
       <label style="font-size:11px;color:var(--text3)">Começa na segunda:</label>
-      <input type="date" value="${dias[0].iso}" onchange="prevDefinirSemanaBase(this.value)" style="padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px">
+      <input type="date" id="prev-semana-base-input" value="${dias[0].iso}" onchange="prevDefinirSemanaBase(this.value)" style="padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px">
+      <button type="button" title="Abrir calendário" onclick="document.getElementById('prev-semana-base-input')?.showPicker?.();document.getElementById('prev-semana-base-input')?.focus()" style="width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;font-size:14px">📅</button>
       ${_prevSemanaBase?`<button class="btn" style="font-size:11px;padding:5px 10px" onclick="_prevSemanaBase=null;_prevDiaManual={};renderFerrPrev()">↺ Semana atual</button>`:''}
     </div>
   </div>`;})():''}
