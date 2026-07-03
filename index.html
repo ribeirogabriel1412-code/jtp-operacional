@@ -12564,7 +12564,7 @@ async function salvarCustoRapido(ocId, gid, data){
 // ══════════════════════════════════════════════════════════════
 // PAINEL PREVENTIVAS — IMPORTAÇÃO MAN V1
 // ══════════════════════════════════════════════════════════════
-let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='planos', _prevImportId=null, _prevBuscaPrefixo='', _prevEscalaAlteracoes={}, _prevValidados={}, _prevHistFiltro='', _prevPlanoSel={}, _prevKmMedias={}, _prevOutrosFiltro=14, _prevProxSemanaCarros=null, _prevDiaManual={};
+let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='planos', _prevImportId=null, _prevBuscaPrefixo='', _prevEscalaAlteracoes={}, _prevValidados={}, _prevHistFiltro='', _prevPlanoSel={}, _prevKmMedias={}, _prevOutrosFiltro=14, _prevProxSemanaCarros=null, _prevDiaManual={}, _prevSemanaBase=null;
 // ── SELEÇÕES POR ABA ──────────────────────────────────────────────
 let _prevSelPesada=new Set(), _prevSelLeve=new Set(), _prevSelGar20=new Set(), _prevSelGar30=new Set(), _prevAbaAtiva='pesada';
 
@@ -13583,10 +13583,19 @@ function renderFerrPrev(){
         <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="processarPrevPDF(this.files[0]);this.value=''">
       </label>
       ${total?`<button class="btn primary" onclick="prevConsolidarSelecoes()">✅ Consolidar semana</button>
-               <button class="btn" onclick="_prevDados=[];_prevSelPesada=new Set();_prevSelLeve=new Set();_prevSelGar20=new Set();_prevSelGar30=new Set();_prevBuscaPrefixo='';_prevDiaManual={};_prevAbaAtiva='pesada';renderFerrPrev()">🗑️ Limpar</button>`:''}
+               <button class="btn" onclick="_prevDados=[];_prevSelPesada=new Set();_prevSelLeve=new Set();_prevSelGar20=new Set();_prevSelGar30=new Set();_prevBuscaPrefixo='';_prevDiaManual={};_prevSemanaBase=null;_prevAbaAtiva='pesada';renderFerrPrev()">🗑️ Limpar</button>`:''}
     </div>
     <div style="font-size:11px;color:var(--text3)">Base KM: <b>${qtdMedias}</b> carro(s) &nbsp;·&nbsp; Última importação: <b style="color:var(--text2)">${prevEsc(importado)}</b></div>
   </div>
+  ${total?(()=>{const dias=prevDiasSemana();const rangeStr=`${dias[0].data} a ${dias[4].data}`;return`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:12px">
+    <span style="font-size:12px;color:var(--text3);font-weight:700">📆 Semana sendo programada:</span>
+    <span style="font-size:13px;font-weight:900;color:var(--blue)">${rangeStr}</span>
+    <div style="display:flex;align-items:center;gap:6px;margin-left:auto">
+      <label style="font-size:11px;color:var(--text3)">Começa na segunda:</label>
+      <input type="date" value="${dias[0].iso}" onchange="prevDefinirSemanaBase(this.value)" style="padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px">
+      ${_prevSemanaBase?`<button class="btn" style="font-size:11px;padding:5px 10px" onclick="_prevSemanaBase=null;_prevDiaManual={};renderFerrPrev()">↺ Semana atual</button>`:''}
+    </div>
+  </div>`;})():''}
   ${kpis}
   ${semVig&&!total?`<div style="background:var(--surface);border:1px solid #2563EB40;border-left:4px solid var(--blue);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
     <div><b style="color:var(--blue)">📆 Semana ${prevEsc(prevSemanaLabel(semVig))} programada</b>
@@ -13716,14 +13725,27 @@ async function prevSalvarValetamentoDaEscala(p){
   return await salvarValetamentoMetrica(data,prevValetamentoPesada(p));
 }
 function prevDiasSemana(){
-  const hoje=new Date();
-  const base=new Date(hoje);
-  const delta=(base.getDay()+6)%7;
-  base.setDate(base.getDate()-delta);
+  const base=_prevSemanaBase?new Date(_prevSemanaBase+'T12:00:00'):(()=>{
+    const hoje=new Date();
+    const delta=(hoje.getDay()+6)%7;
+    hoje.setDate(hoje.getDate()-delta);
+    return hoje;
+  })();
   return Array.from({length:5},(_,i)=>{
     const d=new Date(base); d.setDate(base.getDate()+i);
     return {idx:i,label:d.toLocaleDateString('pt-BR',{weekday:'long'}),data:d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}),iso:prevIsoDia(d)};
   });
+}
+// Permite escolher qual semana está sendo programada (ex: hoje programando p/ semana que vem).
+// Sempre normaliza pra segunda-feira daquela semana, mesmo que outro dia seja escolhido.
+function prevDefinirSemanaBase(v){
+  if(!v)return;
+  const d=new Date(v+'T12:00:00');
+  const delta=(d.getDay()+6)%7;
+  d.setDate(d.getDate()-delta);
+  _prevSemanaBase=prevIsoDia(d);
+  _prevDiaManual={}; // datas antigas não fazem mais sentido na semana nova
+  renderFerrPrev();
 }
 
 function prevCandidatoPorPrefixo(p,prefixo,tipoPreferido){
