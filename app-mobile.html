@@ -3346,7 +3346,7 @@ async function telaRonda33(){
   render('<div class="loading"><div class="sp"></div></div>');
   let registros={};
   try{registros[1]=await r33Registro(1);registros[2]=await r33Registro(2);}
-  catch(e){render(`<div class="empty"><div class="empty-ic">👣</div><div style="font-weight:800">Base checklist_33 não encontrada</div><div style="font-size:12px;color:var(--text3);margin-top:8px">Rode o SQL checklist_33.sql no Supabase para ativar o 3.3.</div></div>`);return;}
+  catch(e){console.error('[R33]',e);render(`<div class="empty"><div class="empty-ic">👣</div><div style="font-weight:800">Erro ao carregar 3.3</div><div style="font-size:12px;color:var(--text3);margin-top:8px">${escHtml(e?.message||String(e))}</div></div>`);return;}
   let statusOps=null;
   if(r33Coord()){
     try{statusOps=await r33StatusOperacional();}catch(e){console.warn('[R33 STATUS OPS]',e);}
@@ -3381,7 +3381,7 @@ async function salvarItemRonda33(rodada,itemId){
     Object.assign(dados.respostas[itemId],{tratativa_coord:trat,resposta_coord:trat,tratativa_supervisao:trat,tratativa_nok:trat,obs_coord:trat,tratativa:trat,tratativa_por:S.perfil?.nome||'',tratativa_em:agora});
   }
   const payload={garagem_id:getGid(),data:_r33Data,turno:_r33Turno,rodada,dados,status:'em_andamento',preenchido_por:S.perfil?.nome||null,preenchido_em:new Date().toISOString()};
-  const res=rec.id?await sb.from('checklist_33').update(payload).eq('id',rec.id):await sb.from('checklist_33').insert(payload).select('id').single();
+  const res=rec.id?await sb.from('checklist_33').update(payload).eq('id',rec.id):await sb.from('checklist_33').upsert(payload,{onConflict:'garagem_id,data,turno,rodada'}).select('id').single();
   if(res.error){toast('Erro: '+res.error.message,'err');return;}
   closeSheet(true);toast('3.3 salvo');telaRonda33();
 }
@@ -3393,7 +3393,7 @@ async function salvarResumoRonda33(id){
   const rec=await r33Registro(1), dados=rec.dados||{respostas:{},resumos:{}};dados.resumos=dados.resumos||{};
   dados.resumos[id]={texto:document.getElementById('r33-resumo')?.value?.trim()||'',por:S.perfil?.nome||'',cargo:cargo(),em:new Date().toISOString()};
   const payload={garagem_id:getGid(),data:_r33Data,turno:_r33Turno,rodada:1,dados,status:'em_andamento',preenchido_por:S.perfil?.nome||null,preenchido_em:new Date().toISOString()};
-  const res=rec.id?await sb.from('checklist_33').update(payload).eq('id',rec.id):await sb.from('checklist_33').insert(payload).select('id').single();
+  const res=rec.id?await sb.from('checklist_33').update(payload).eq('id',rec.id):await sb.from('checklist_33').upsert(payload,{onConflict:'garagem_id,data,turno,rodada'}).select('id').single();
   if(res.error){toast('Erro: '+res.error.message,'err');return;}
   closeSheet(true);toast('Complemento salvo');telaRonda33();
 }

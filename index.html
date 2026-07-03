@@ -14569,8 +14569,9 @@ async function renderFerr33(){
     ronda33AtalhosData(gid,data,turno)
   ]);
   if(error){
+    console.error('[R33]',error);
     setMain(`${secTitle('👣','3.3 Ronda Operacional',back)}
-      <div class="info-blue info-banner" style="border-color:#EF444455;color:var(--red)">Tabela checklist_33 ainda não existe ou o banco recusou a consulta. Rode o arquivo SQL criado em Downloads/checklist_33.sql no Supabase.</div>`);
+      <div class="info-blue info-banner" style="border-color:#EF444455;color:var(--red)">Erro ao carregar 3.3: ${escHtml(error.message||String(error))}</div>`);
     return;
   }
   const porRodada={};
@@ -14659,7 +14660,7 @@ async function editarItemRonda33Site(rodada,itemId){
   if(obs===null)return;
   dados.respostas[itemId]={...anterior,status,obs:obs.trim(),registro_lider:obs.trim(),por:S.perfil?.nome||anterior.por||'',cargo:S.perfil?.cargo||anterior.cargo||'',em:new Date().toISOString()};
   const payload={garagem_id:gid,data,turno,rodada,dados,status:'em_andamento',preenchido_por:S.perfil?.nome||null,preenchido_em:new Date().toISOString()};
-  const res=rec.id?await sb.from('checklist_33').update(payload).eq('id',rec.id):await sb.from('checklist_33').insert(payload);
+  const res=rec.id?await sb.from('checklist_33').update(payload).eq('id',rec.id):await sb.from('checklist_33').upsert(payload,{onConflict:'garagem_id,data,turno,rodada'});
   if(res.error){toast('Erro: '+res.error.message,'err');return;}
   toast('Item atualizado');renderFerr33();
 }
@@ -14818,7 +14819,7 @@ async function salvarVerificacao33(rodada,itemId,valor){
     tratativa_em:quandoTratou
   };
   const payload={garagem_id:gid,data,turno,rodada,dados,status:valor?'validado':'em_andamento',verificado_por:S.perfil?.nome||null,verificado_em:new Date().toISOString()};
-  const res=rec.id?await sb.from('checklist_33').update(payload).eq('id',rec.id):await sb.from('checklist_33').insert(payload);
+  const res=rec.id?await sb.from('checklist_33').update(payload).eq('id',rec.id):await sb.from('checklist_33').upsert(payload,{onConflict:'garagem_id,data,turno,rodada'});
   if(res.error){toast('Erro: '+res.error.message,'err');return;}
   toast(valor?'Item validado':'Validação removida');renderFerr33();
 }
