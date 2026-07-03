@@ -2878,26 +2878,21 @@ async function almoxMobSalvarInvRotativo(reqId){
   const nomeItem=item.item_entregue||item.peca||null;
   const existing=window._invRotMap?.[reqId]||null;
   const turnoAtual=window._invRotTurno||{};
-  let err;
+  // upsert por (req_id, almoxarife_id) — evita duplicar registro se o cache
+  // local não sabia que já existia contagem (cache desatualizado/duplo clique)
   const payload={
+    garagem_id:gid,
+    turno_data:existing?.turno_data||hojeIso,
+    req_id:reqId,
+    cod_sap:codSap,
+    nome_item:nomeItem,
+    hora_turno_ini:existing?.hora_turno_ini??(turnoAtual.hora_entrada||null),
+    hora_turno_fim:existing?.hora_turno_fim??(turnoAtual.hora_saida||null),
     qtd_fisica:fis,
     almoxarife_id:S.user?.id,
     almoxarife_nome:S.perfil?.nome||null
   };
-  if(existing){
-    ({error:err}=await sb.from('almoxo_inventario_turno').update(payload).eq('id',existing.id));
-  } else {
-    ({error:err}=await sb.from('almoxo_inventario_turno').insert({
-      garagem_id:gid,
-      turno_data:hojeIso,
-      req_id:reqId,
-      cod_sap:codSap,
-      nome_item:nomeItem,
-      hora_turno_ini:turnoAtual.hora_entrada||null,
-      hora_turno_fim:turnoAtual.hora_saida||null,
-      ...payload
-    }));
-  }
+  const {error:err}=await sb.from('almoxo_inventario_turno').upsert(payload,{onConflict:'req_id,almoxarife_id'});
   if(err){
     console.error('[InvRotativo] Erro Supabase:',JSON.stringify(err));
     toast('Erro '+err.code+': '+err.message,'err');
