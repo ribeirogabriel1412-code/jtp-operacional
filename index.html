@@ -12639,6 +12639,7 @@ async function prevCarregarHistoricoSupabase(){
     };
     await prevCarregarValetamentoSupabase(gid);
     window._prevUltProgMap=null;
+    window._prevSemanaAnteriorMap=null;
   }catch(e){console.warn('[PREV HIST Supabase]',e);}
 }
 async function prevMigrarHistoricoLocalUmaVez(gid){
@@ -12765,6 +12766,7 @@ async function prevSalvarSemanaHistorico(escala,linhas){
   };
   _prevHistCache.semanas=[rec,..._prevHistCache.semanas.filter(s=>s.semanaKey!==semanaKey)].slice(0,30);
   window._prevUltProgMap=null; // força rebuild na próxima renderização
+  window._prevSemanaAnteriorMap=null;
   return rec;
 }
 async function prevSalvarProgramacaoPreventivaBanco(semana){
@@ -13287,6 +13289,25 @@ let _prevUltValetCache={};
 function prevUltimoValetamentoPorPrefixo(){
   return _prevUltValetCache;
 }
+function prevSemanaAnteriorMap(){
+  if(window._prevSemanaAnteriorMap) return window._prevSemanaAnteriorMap;
+  const map={};
+  const dias=prevDiasSemana();
+  const iniAtual=dias[0]?.iso;
+  if(!iniAtual){ window._prevSemanaAnteriorMap=map; return map; }
+  const d=new Date(iniAtual+'T12:00:00'); d.setDate(d.getDate()-7);
+  const iniAnterior=prevIsoDia(d);
+  const semanaAnt=prevHistoricos().semanas.find(s=>s.inicio===iniAnterior)||null;
+  if(semanaAnt){
+    (semanaAnt.itens||[]).forEach(it=>{
+      if(it.prefixo&&(it.tipo==='pesada'||it.tipo==='leve')&&!map[it.prefixo]){
+        map[it.prefixo]={tipo:it.tipo,inicioBR:semanaAnt.inicioBR||semanaAnt.inicio,servicos:it.servicos||''};
+      }
+    });
+  }
+  window._prevSemanaAnteriorMap=map;
+  return map;
+}
 async function prevCarregarValetamentoSupabase(gid){
   try{
     const {data,error}=await sb.from('preventiva_valetamento').select('data,itens').eq('garagem_id',gid).order('data',{ascending:false}).limit(60);
@@ -13313,6 +13334,10 @@ function prevHtmlLinhaVeiculo(c,tipo,selecionado){
     ultProgHtml=`<div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px"><span style="font-family:'DM Mono',monospace;font-size:11px;font-weight:800;color:${cor}">${prevEsc(formatData(ultValet.data))}</span></div>${diasAtras!=null?`<div style="font-size:9px;color:var(--text3);margin-top:1px">${diasAtras}d atrás</div>`:''}`;
   }
   const proj=prevTextoProjecao(c.base||{excessoKm:km,prefixo:c.prefixo});
+  const semAnt=prevSemanaAnteriorMap()[c.prefixo]||null;
+  const semAntHtml=semAnt
+    ?`<span style="font-size:10px;font-weight:800;padding:2px 7px;border-radius:5px;white-space:nowrap;background:${semAnt.tipo==='pesada'?'#EF444420':'#22C55E20'};color:${semAnt.tipo==='pesada'?'#EF4444':'#22C55E'}">✓ ${semAnt.tipo==='pesada'?'Pesada':'Leve'}</span>`
+    :'<span style="color:var(--text3);font-size:10px">—</span>';
   return`<tr style="border-top:1px solid var(--border);background:${selecionado?'rgba(37,99,235,.06)':'transparent'}">
     <td style="padding:8px 10px;text-align:center"><input type="checkbox" ${selecionado?'checked':''} onchange="prevToggleSel('${tipo}','${prevEsc(c.prefixo)}',this.checked)" style="width:16px;height:16px;cursor:pointer"></td>
     <td style="padding:8px 10px;font-weight:900;color:var(--blue);font-family:'DM Mono',monospace">${prevEsc(c.prefixo)}</td>
@@ -13321,6 +13346,7 @@ function prevHtmlLinhaVeiculo(c,tipo,selecionado){
     <td style="padding:8px 10px">${outrosStr}</td>
     <td style="padding:8px 10px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text2);white-space:nowrap">${prevEsc(proj.media)}</td>
     <td style="padding:8px 10px;font-size:11px;font-weight:800;color:${proj.cor};white-space:nowrap">${prevEsc(proj.projecao)}</td>
+    <td style="padding:8px 10px">${semAntHtml}</td>
     <td style="padding:8px 10px">${ultProgHtml}</td>
   </tr>`;
 }
@@ -13393,9 +13419,9 @@ function prevHtmlAbaLista(tipo){
       <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;margin-bottom:4px">Distribuição na semana</div>
       ${prevMiniSemana(selSet,tipo,cap)}
     </div>`:''}
-    ${lista.length?`<div style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:700px">
+    ${lista.length?`<div style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:800px">
       <thead><tr style="background:rgba(2,6,23,.6);color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:1px;text-align:left">
-        <th style="padding:8px 10px">✓</th><th style="padding:8px 10px">Prefixo</th><th style="padding:8px 10px">KM Excedido</th><th style="padding:8px 10px">Serviços</th><th style="padding:8px 10px">Outros planos</th><th style="padding:8px 10px">Média KM</th><th style="padding:8px 10px">Projeção</th><th style="padding:8px 10px">Últ. Valetamento</th>
+        <th style="padding:8px 10px">✓</th><th style="padding:8px 10px">Prefixo</th><th style="padding:8px 10px">KM Excedido</th><th style="padding:8px 10px">Serviços</th><th style="padding:8px 10px">Outros planos</th><th style="padding:8px 10px">Média KM</th><th style="padding:8px 10px">Projeção</th><th style="padding:8px 10px">Sem. Anterior</th><th style="padding:8px 10px">Últ. Valetamento</th>
       </tr></thead><tbody>${linhas}</tbody></table></div>`
       :`<div style="padding:20px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhum veículo neste plano.</div>`}
   </div>`;
