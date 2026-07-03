@@ -9318,6 +9318,7 @@ function lerValetamentoMetrica(data){
 function salvarValetamentoMetrica(data,itens){
   const rec={data,itens:itens||[],criadoEm:new Date().toISOString(),criadoPor:S.perfil?.nome||null};
   try{localStorage.setItem(valetMetricaKey(data),JSON.stringify(rec));}catch(e){console.warn('[VALET]',e);}
+  window._prevUltValetMap=null; // força rebuild na próxima renderização
   return rec;
 }
 function preencherValetCarro(prefixo, servicos){
@@ -13198,21 +13199,41 @@ function prevUltProgramacaoMap(){
   window._prevUltProgMap=map;
   return map;
 }
+function prevUltimoValetamentoPorPrefixo(){
+  if(window._prevUltValetMap) return window._prevUltValetMap;
+  let gid='geral';
+  try{ gid=getGid()||'geral'; }catch(e){}
+  const prefixoChave=`${VALET_METRICA_BASE}:${gid}:`;
+  const map={};
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      const key=localStorage.key(i);
+      if(!key||!key.startsWith(prefixoChave))continue;
+      const rec=JSON.parse(localStorage.getItem(key)||'null');
+      if(!rec||!Array.isArray(rec.itens))continue;
+      rec.itens.forEach(it=>{
+        if(!it.prefixo)return;
+        const atual=map[it.prefixo];
+        if(!atual||(rec.data||'')>(atual.data||'')){
+          map[it.prefixo]={data:rec.data||'',servicos:it.servicos||''};
+        }
+      });
+    }
+  }catch(e){console.warn('[PREV VALET MAP]',e);}
+  window._prevUltValetMap=map;
+  return map;
+}
 function prevHtmlLinhaVeiculo(c,tipo,selecionado){
   const km=c.prioridade||c.base?.excessoKm||0;
   const kmCor=km>0?'var(--red)':km<=-1000?'var(--green)':'var(--amber)';
   const outros=c.outrosRadar||[];
   const outrosStr=outros.slice(0,3).map(r=>`<span style="font-size:9px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:1px 5px;color:var(--amber)">${prevEsc(r.planoNum)}</span>`).join(' ');
-  const ultProg=prevUltProgramacaoMap()[c.prefixo]||null;
+  const ultValet=prevUltimoValetamentoPorPrefixo()[c.prefixo]||null;
   let ultProgHtml='<span style="color:var(--text3);font-size:10px">—</span>';
-  if(ultProg){
-    const diasAtras=ultProg.inicio?Math.floor((new Date()-new Date(ultProg.inicio+'T12:00:00'))/(1000*60*60*24)):null;
+  if(ultValet){
+    const diasAtras=ultValet.data?Math.floor((new Date()-new Date(ultValet.data+'T12:00:00'))/(1000*60*60*24)):null;
     const cor=diasAtras==null?'var(--text3)':diasAtras<=14?'var(--green)':diasAtras<=30?'var(--amber)':'var(--red)';
-    const fmtIni=ultProg.inicioBR||ultProg.inicio;
-    const tipoMap={pesada:{l:'Pesada',c:'#EF4444'},leve:{l:'Leve',c:'#22C55E'},valetamento:{l:'Valetamento',c:'#F97316'}};
-    const tm=tipoMap[ultProg.tipo]||null;
-    const badge=tm?`<span style="font-size:9px;background:${tm.c}20;color:${tm.c};border:1px solid ${tm.c}50;border-radius:4px;padding:1px 5px;font-weight:800;margin-left:4px">${tm.l}</span>`:'';
-    ultProgHtml=`<div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px"><span style="font-family:'DM Mono',monospace;font-size:11px;font-weight:800;color:${cor}">${prevEsc(fmtIni)}</span>${badge}</div>${diasAtras!=null?`<div style="font-size:9px;color:var(--text3);margin-top:1px">${diasAtras}d atrás</div>`:''}`;
+    ultProgHtml=`<div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px"><span style="font-family:'DM Mono',monospace;font-size:11px;font-weight:800;color:${cor}">${prevEsc(formatData(ultValet.data))}</span></div>${diasAtras!=null?`<div style="font-size:9px;color:var(--text3);margin-top:1px">${diasAtras}d atrás</div>`:''}`;
   }
   const proj=prevTextoProjecao(c.base||{excessoKm:km,prefixo:c.prefixo});
   return`<tr style="border-top:1px solid var(--border);background:${selecionado?'rgba(37,99,235,.06)':'transparent'}">
@@ -13297,7 +13318,7 @@ function prevHtmlAbaLista(tipo){
     </div>`:''}
     ${lista.length?`<div style="overflow:auto;border:1px solid var(--border);border-radius:10px"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:700px">
       <thead><tr style="background:rgba(2,6,23,.6);color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:1px;text-align:left">
-        <th style="padding:8px 10px">✓</th><th style="padding:8px 10px">Prefixo</th><th style="padding:8px 10px">KM Excedido</th><th style="padding:8px 10px">Serviços</th><th style="padding:8px 10px">Outros planos</th><th style="padding:8px 10px">Média KM</th><th style="padding:8px 10px">Projeção</th><th style="padding:8px 10px">Últ. Prog.</th>
+        <th style="padding:8px 10px">✓</th><th style="padding:8px 10px">Prefixo</th><th style="padding:8px 10px">KM Excedido</th><th style="padding:8px 10px">Serviços</th><th style="padding:8px 10px">Outros planos</th><th style="padding:8px 10px">Média KM</th><th style="padding:8px 10px">Projeção</th><th style="padding:8px 10px">Últ. Valetamento</th>
       </tr></thead><tbody>${linhas}</tbody></table></div>`
       :`<div style="padding:20px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhum veículo neste plano.</div>`}
   </div>`;
