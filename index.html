@@ -12564,7 +12564,7 @@ async function salvarCustoRapido(ocId, gid, data){
 // ══════════════════════════════════════════════════════════════
 // PAINEL PREVENTIVAS — IMPORTAÇÃO MAN V1
 // ══════════════════════════════════════════════════════════════
-let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='planos', _prevImportId=null, _prevBuscaPrefixo='', _prevEscalaAlteracoes={}, _prevValidados={}, _prevHistFiltro='', _prevPlanoSel={}, _prevKmMedias={}, _prevOutrosFiltro=14, _prevProxSemanaCarros=null;
+let _prevDados=[], _prevImportadoEm='', _prevGrupoAtivo='planos', _prevImportId=null, _prevBuscaPrefixo='', _prevEscalaAlteracoes={}, _prevValidados={}, _prevHistFiltro='', _prevPlanoSel={}, _prevKmMedias={}, _prevOutrosFiltro=14, _prevProxSemanaCarros=null, _prevDiaManual={};
 // ── SELEÇÕES POR ABA ──────────────────────────────────────────────
 let _prevSelPesada=new Set(), _prevSelLeve=new Set(), _prevSelGar20=new Set(), _prevSelGar30=new Set(), _prevAbaAtiva='pesada';
 
@@ -13225,6 +13225,28 @@ function prevToggleSelTodos(tipo,sel){
   if(tipo==='pesada'&&sel) lista.forEach(c=>{_prevSelLeve.delete(c.prefixo);if(_prevProxSemanaCarros)_prevProxSemanaCarros.delete(c.prefixo);});
   prevRenderAbaPrev();
 }
+// Distribui os veículos selecionados pelos 5 dias da semana, respeitando
+// qualquer dia escolhido manualmente (_prevDiaManual) e preenchendo o
+// restante em ordem, na primeira vaga livre dentro da capacidade do dia.
+function prevAtribuirDias(veics,dias,capDia,tipo){
+  const porDia=Array.from({length:dias.length},()=>[]);
+  const semDia=[];
+  veics.forEach(c=>{
+    const diaManual=_prevDiaManual[tipo+'|'+c.prefixo];
+    if(diaManual!=null&&porDia[diaManual]) porDia[diaManual].push(c);
+    else semDia.push(c);
+  });
+  let idx=0;
+  porDia.forEach((lista,i)=>{
+    while(lista.length<capDia&&idx<semDia.length){ lista.push(semDia[idx]); idx++; }
+  });
+  while(idx<semDia.length){ porDia[dias.length-1].push(semDia[idx]); idx++; } // sobra além da capacidade da semana
+  return porDia;
+}
+function prevMoverCarroDia(tipo,prefixo,diaIdx){
+  _prevDiaManual[tipo+'|'+prefixo]=parseInt(diaIdx,10);
+  prevRenderAbaPrev();
+}
 function prevBuildEscalaFromSelecoes(){
   const p=prevGerarPropostas();
   _prevEscalaAlteracoes={}; _prevValidados={};
@@ -13233,13 +13255,15 @@ function prevBuildEscalaFromSelecoes(){
     _prevSelPesada.forEach(pref=>_prevProxSemanaCarros.delete(pref));
     _prevSelLeve.forEach(pref=>_prevProxSemanaCarros.delete(pref));
   }
+  const dias=prevDiasSemana();
   const fillSlots=(selSet,tipo,capDia)=>{
     const veics=[...selSet].map(pref=>p.porPrefixo?.get(pref)).filter(Boolean).sort(prevOrdenarPreventiva);
-    // Preencher slots com os veículos selecionados
-    veics.forEach((c,i)=>{
-      const dia=Math.floor(i/capDia), slot=i%capDia;
-      if(dia>=5)return;
-      _prevEscalaAlteracoes[prevSlotKey(tipo,dia,slot)]={tipo,prefixo:c.prefixo};
+    const porDia=prevAtribuirDias(veics,dias,capDia,tipo);
+    porDia.forEach((lista,dia)=>{
+      lista.forEach((c,slot)=>{
+        if(slot>=capDia)return; // segurança: mais carros que vagas na semana
+        _prevEscalaAlteracoes[prevSlotKey(tipo,dia,slot)]={tipo,prefixo:c.prefixo};
+      });
     });
     // Marcar slots restantes como null (vazio explícito) para impedir auto-preenchimento
     for(let dia=0;dia<5;dia++){
@@ -13258,14 +13282,20 @@ function prevMiniSemana(selSet,tipo,capDia){
   const p=prevGerarPropostas();
   const dias=prevDiasSemana();
   const veics=[...selSet].map(pref=>p.porPrefixo?.get(pref)).filter(Boolean).sort(prevOrdenarPreventiva);
+  const porDia=prevAtribuirDias(veics,dias,capDia,tipo);
   const cor=tipo==='pesada'?'var(--orange)':tipo==='leve'?'var(--green)':'var(--purple)';
   const borderCor=tipo==='pesada'?'rgba(249,115,22,.3)':tipo==='leve'?'rgba(0,196,140,.3)':'rgba(139,92,246,.3)';
   return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${dias.map((d,i)=>{
-    const filled=veics.slice(i*capDia,(i+1)*capDia);
+    const filled=porDia[i]||[];
     const emptySlots=Math.max(0,capDia-filled.length);
-    return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;min-width:100px">
+    return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;min-width:135px">
       <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:capitalize;margin-bottom:5px">${d.label.slice(0,3).toUpperCase()} ${d.data}</div>
-      ${filled.map(c=>`<div style="font-size:11px;font-weight:900;color:${cor};margin-bottom:2px">${prevEsc(c.prefixo)}</div>`).join('')}
+      ${filled.map(c=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:2px">
+        <span style="font-size:11px;font-weight:900;color:${cor}">${prevEsc(c.prefixo)}</span>
+        <select onchange="prevMoverCarroDia('${tipo}','${prevEsc(c.prefixo)}',this.value)" style="font-size:9px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text3);padding:1px 2px;cursor:pointer" title="Mover para outro dia">
+          ${dias.map((dd,ii)=>`<option value="${ii}"${ii===i?' selected':''}>${dd.label.slice(0,3).toUpperCase()}</option>`).join('')}
+        </select>
+      </div>`).join('')}
       ${Array.from({length:emptySlots},()=>`<div style="font-size:10px;border:1px dashed ${borderCor};border-radius:4px;padding:2px 4px;color:var(--text4);text-align:center;margin-bottom:2px">vago</div>`).join('')}
     </div>`;
   }).join('')}</div>`;
@@ -13553,7 +13583,7 @@ function renderFerrPrev(){
         <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="processarPrevPDF(this.files[0]);this.value=''">
       </label>
       ${total?`<button class="btn primary" onclick="prevConsolidarSelecoes()">✅ Consolidar semana</button>
-               <button class="btn" onclick="_prevDados=[];_prevSelPesada=new Set();_prevSelLeve=new Set();_prevSelGar20=new Set();_prevSelGar30=new Set();_prevBuscaPrefixo='';_prevAbaAtiva='pesada';renderFerrPrev()">🗑️ Limpar</button>`:''}
+               <button class="btn" onclick="_prevDados=[];_prevSelPesada=new Set();_prevSelLeve=new Set();_prevSelGar20=new Set();_prevSelGar30=new Set();_prevBuscaPrefixo='';_prevDiaManual={};_prevAbaAtiva='pesada';renderFerrPrev()">🗑️ Limpar</button>`:''}
     </div>
     <div style="font-size:11px;color:var(--text3)">Base KM: <b>${qtdMedias}</b> carro(s) &nbsp;·&nbsp; Última importação: <b style="color:var(--text2)">${prevEsc(importado)}</b></div>
   </div>
@@ -14516,6 +14546,7 @@ async function processarPrevPDF(file){
     _prevEscalaAlteracoes={};
     _prevValidados={};
     _prevPlanoSel={};
+    _prevDiaManual={};
     prevInitSelecoes();
     renderFerrPrev();
     const r=prevResumoPropostas();
