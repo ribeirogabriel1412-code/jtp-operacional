@@ -100,6 +100,9 @@ WHERE id IN (
 );
 
 -- 6. Constraint única — impede duplicidade pra sempre (necessária pro upsert do app).
-CREATE UNIQUE INDEX IF NOT EXISTS checklist_33_uniq
-  ON checklist_33 (garagem_id, data, turno, rodada)
-  WHERE rodada IS NOT NULL;
+-- Precisa ser uma constraint COMPLETA (sem WHERE): o Postgres só usa índice
+-- parcial em ON CONFLICT se o próprio INSERT repetir o mesmo WHERE, e o
+-- upsert do app não faz isso. NULLs em `rodada` continuam sem conflitar entre si.
+DROP INDEX IF EXISTS checklist_33_uniq;
+CREATE UNIQUE INDEX checklist_33_uniq
+  ON checklist_33 (garagem_id, data, turno, rodada);

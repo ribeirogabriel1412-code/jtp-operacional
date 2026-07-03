@@ -4900,18 +4900,23 @@ async function confCruzarRotativo(){
   const thH=l=>`<th style="padding:9px 10px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-size:10px;white-space:nowrap">${l}</th>`;
   const thR=l=>`<th style="padding:9px 10px;text-align:right;border-bottom:1px solid var(--border);color:var(--text3);font-size:10px;white-space:nowrap">${l}</th>`;
 
+  // Um item tem desvio se físico≠PRAXIO, físico≠SAP, ou a conferência do
+  // turno seguinte (T-1) não bater com a contagem de origem.
+  itens.forEach(d=>{
+    d.temDesvio=(d.difPrax!=null&&d.difPrax!==0)||(d.difSap!=null&&d.difSap!==0)||(d.difCadeia!=null&&d.difCadeia!==0);
+  });
+  const soDesvio=!!window._confRotSoDesvio;
+  const itensExibidos=soDesvio?itens.filter(d=>d.temDesvio):itens;
+
   const thead=`<tr style="background:var(--surface2)">
-    ${thH('#')}${thH('Status')}${thH('Código')}${thH('Descrição')}${thR('Físico (Rot.)')}${thR('PRAXIO')}${thR('Δ Fís.↔PRAX')}${thR('SAP')}${thR('Δ Fís.↔SAP')}${thH('Almoxarife')}${thH('Data')}
+    ${thH('#')}${thH('Status')}${thH('Código')}${thH('Descrição')}${thR('Físico (Rot.)')}${thR('PRAXIO')}${thR('Δ Fís.↔PRAX')}${thR('SAP')}${thR('Δ Fís.↔SAP')}${thR('T-1 (conf. seguinte)')}${thR('Δ Cadeia')}${thH('Almoxarife')}${thH('Data')}
   </tr>`;
 
-  const rows=itens.map((d,i)=>{
-    const desvPrax=d.difPrax!=null&&d.difPrax!==0;
-    const desvSap=d.difSap!=null&&d.difSap!==0;
-    const temDesvio=desvPrax||desvSap;
-    const statusBadge=temDesvio
+  const rows=itensExibidos.map((d,i)=>{
+    const statusBadge=d.temDesvio
       ?`<span style="background:#EF444420;color:#EF4444;border:1px solid #EF444450;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:800;white-space:nowrap">⚠️ Desvio</span>`
       :`<span style="background:#00C48C20;color:#00C48C;border:1px solid #00C48C50;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:800;white-space:nowrap">✅ Conforme</span>`;
-    return`<tr style="border-bottom:1px solid var(--border);${temDesvio?'background:#EF444406':'background:#00C48C03'}">
+    return`<tr style="border-bottom:1px solid var(--border);${d.temDesvio?'background:#EF444406':'background:#00C48C03'}">
       <td style="padding:7px 10px;font-size:11px;color:var(--text3)">${i+1}</td>
       <td style="padding:7px 10px">${statusBadge}</td>
       <td style="padding:7px 10px;font-family:monospace;font-size:12px;font-weight:700">${escHtml(d.cod)}</td>
@@ -4921,44 +4926,22 @@ async function confCruzarRotativo(){
       ${difCell(d.difPrax)}
       <td style="padding:7px 10px;text-align:right;font-family:monospace">${N(d.saldoSap)}</td>
       ${difCell(d.difSap)}
+      <td style="padding:7px 10px;text-align:right;font-family:monospace">${N(d.fisT1)}</td>
+      ${difCell(d.difCadeia)}
       <td style="padding:7px 10px;font-size:11px;color:var(--text3);white-space:nowrap">${escHtml(d.almoxarife)}</td>
       <td style="padding:7px 10px;font-size:11px;color:var(--text3);white-space:nowrap">${escHtml(d.data)}</td>
     </tr>`;
   }).join('');
 
-  const desvioCount=itens.filter(d=>(d.difSap!=null&&d.difSap!==0)||(d.difPrax!=null&&d.difPrax!==0)).length;
+  const desvioCount=itens.filter(d=>d.temDesvio).length;
   const conformeCount=itens.length-desvioCount;
-
-  // Encadeamento de turnos (T-1): item contado pelo turno de origem e reconferido
-  // pelo turno seguinte. Só entra na lista quando os dois números não batem.
-  const cadeiaDivergente=itens.filter(d=>d.difCadeia!=null&&d.difCadeia!==0);
-  const cadeiaRows=cadeiaDivergente.map((d,i)=>`<tr style="border-bottom:1px solid var(--border);background:#EF444406">
-      <td style="padding:7px 10px;font-size:11px;color:var(--text3)">${i+1}</td>
-      <td style="padding:7px 10px;font-family:monospace;font-size:12px;font-weight:700">${escHtml(d.cod)}</td>
-      <td style="padding:7px 10px;font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.nome)}">${escHtml(d.nome)}</td>
-      <td style="padding:7px 10px;text-align:right;font-family:monospace;font-weight:800">${N(d.fis)}</td>
-      <td style="padding:7px 10px;text-align:right;font-family:monospace;font-weight:800">${N(d.fisT1)}</td>
-      <td style="padding:7px 10px;text-align:right;font-family:monospace;font-weight:700;color:var(--danger)">${d.difCadeia>0?'+':''}${N(d.difCadeia)}</td>
-      <td style="padding:7px 10px;text-align:right;font-family:monospace">${N(d.saldoSap)}</td>
-      <td style="padding:7px 10px;text-align:right;font-family:monospace">${N(d.saldoPrax)}</td>
-      <td style="padding:7px 10px;font-size:11px;color:var(--text3);white-space:nowrap">${escHtml(d.data)}</td>
-    </tr>`).join('');
-  const secaoCadeia=`
-    <div style="margin-top:20px">
-      <div style="display:flex;align-items:center;gap:10px;padding:4px 0 12px;flex-wrap:wrap">
-        <span style="font-size:13px;font-weight:900">🔗 Encadeamento de Turnos (T-1) — Divergências</span>
-        ${cadeiaDivergente.length
-          ?`<span style="background:#EF444420;color:var(--danger);border:1px solid #EF444460;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:800">⚠️ ${cadeiaDivergente.length} item${cadeiaDivergente.length!==1?'s':''}</span>`
-          :`<span style="background:#00C48C20;color:#00C48C;border:1px solid #00C48C60;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:800">✅ nenhuma divergência</span>`}
-      </div>
-      ${cadeiaDivergente.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--surface2)">
-        ${thH('#')}${thH('Código')}${thH('Descrição')}${thR('Contagem turno origem')}${thR('Conferência turno seguinte')}${thR('Δ Cadeia')}${thR('SAP')}${thR('PRAXIO')}${thH('Data')}
-      </tr></thead><tbody>${cadeiaRows}</tbody></table></div>`
-      :`<div style="padding:14px;text-align:center;color:var(--text3);font-size:12px">Todos os itens conferidos pelo turno seguinte batem com a contagem de origem.</div>`}
-    </div>`;
+  const filtroSoDesvio=`<label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);cursor:pointer">
+    <input type="checkbox" ${soDesvio?'checked':''} onchange="window._confRotSoDesvio=this.checked;confCruzarRotativo()">
+    Mostrar só desvios
+  </label>`;
 
   // Salva dados para exportação
-  window._confRotItens=itens;
+  window._confRotItens=itensExibidos;
   window._confRotGaragem=S.garagens?.find(g=>g.id===gid)?.nome||gid;
   window._confRotDataRef=dataRef;
 
@@ -4969,13 +4952,14 @@ async function confCruzarRotativo(){
       ${desvioCount?`<span style="background:#EF444420;color:var(--danger);border:1px solid #EF444460;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:800">⚠️ ${desvioCount} desvio${desvioCount!==1?'s':''}</span>`:''}
       <span style="background:#00C48C20;color:#00C48C;border:1px solid #00C48C60;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:800">✅ ${conformeCount} conforme${conformeCount!==1?'s':''}</span>
       ${janelaSelect}
+      ${filtroSoDesvio}
       <div style="margin-left:auto;display:flex;gap:6px">
         <button onclick="confRotExportarXLSX()" class="btn-sec" style="padding:6px 14px;font-size:12px">📊 Excel</button>
         <button onclick="confRotExportarPDF()" class="btn-sec" style="padding:6px 14px;font-size:12px">📄 PDF</button>
       </div>
     </div>
-    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>
-    ${secaoCadeia}
+    ${itensExibidos.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:1000px"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>`
+      :`<div style="padding:20px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhum item com desvio nessa janela. 🎉</div>`}
   `;
 }
 
