@@ -13553,7 +13553,7 @@ function renderFerrPrev(){
         <input type="file" accept="application/pdf,.pdf" style="display:none" onchange="processarPrevPDF(this.files[0]);this.value=''">
       </label>
       ${total?`<button class="btn primary" onclick="prevConsolidarSelecoes()">✅ Consolidar semana</button>
-               <button class="btn" onclick="_prevDados=[];_prevSelPesada=new Set();_prevSelLeve=new Set();_prevSelGar20=new Set();_prevSelGar30=new Set();_prevAbaAtiva='pesada';renderFerrPrev()">🗑️ Limpar</button>`:''}
+               <button class="btn" onclick="_prevDados=[];_prevSelPesada=new Set();_prevSelLeve=new Set();_prevSelGar20=new Set();_prevSelGar30=new Set();_prevBuscaPrefixo='';_prevAbaAtiva='pesada';renderFerrPrev()">🗑️ Limpar</button>`:''}
     </div>
     <div style="font-size:11px;color:var(--text3)">Base KM: <b>${qtdMedias}</b> carro(s) &nbsp;·&nbsp; Última importação: <b style="color:var(--text2)">${prevEsc(importado)}</b></div>
   </div>
@@ -13566,8 +13566,17 @@ function renderFerrPrev(){
       <button class="btn primary" style="font-size:11px" onclick="prevAbrirHistoricoSemana('${semVig.id}')">Abrir semana</button>
     </div>
   </div>`:''}
-  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${tabsHtml}</div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${tabsHtml}</div>
+    ${total&&_prevAbaAtiva!=='historico'?`<div style="position:relative;min-width:200px">
+      <span style="position:absolute;left:10px;top:8px;color:var(--text3);font-size:12px">🔍</span>
+      <input id="prev-busca-prefixo" value="${prevEsc(_prevBuscaPrefixo)}" oninput="_prevBuscaPrefixo=this.value;prevRenderAbaPrev()" placeholder="Filtrar por carro (prefixo)..." style="width:100%;padding:8px 10px 8px 30px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;outline:none;box-sizing:border-box">
+      ${_prevBuscaPrefixo?`<button onclick="_prevBuscaPrefixo='';prevRenderAbaPrev()" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);border:none;background:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0">✕</button>`:''}
+    </div>`:''}
+  </div>
   <div id="prev-aba-content">${_prevAbaAtiva==='historico'?prevHtmlHistoricos():(total?prevHtmlAbaLista(_prevAbaAtiva)+prevHtmlOutrosPlanosResumo():prevHtmlVazio())}</div>`);
+  const bi=document.getElementById('prev-busca-prefixo');
+  if(bi&&_prevBuscaPrefixo){bi.focus();const cp=bi.value.length;bi.setSelectionRange(cp,cp);}
 }
 
 function prevResumoPropostas(){
