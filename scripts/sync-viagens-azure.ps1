@@ -11,7 +11,7 @@ $BLOB_PREFIX  = "CITTATI/JSON_VIAGENS"
 $SUPABASE_URL = "https://yxwxcxdegkvjvwchemsm.supabase.co"
 $SUPABASE_KEY = "sb_publishable_SvC1D0cMk94sZ_9kYv41QQ_RJVrSuUV"
 $BATCH        = 400
-$JANELA_DIAS  = 7
+$JANELA_DIAS  = 60  # cobre a maior opcao de periodo do Painel do Instrutor (7/15/30/60 dias)
 
 # Prefixo do arquivo blob -> garagem no Supabase
 # Formato dos arquivos: "Jessica DD_MM_YYYY.json"
@@ -111,7 +111,11 @@ foreach ($prefixo in $GARAGEM_MAP.Keys) {
         }
 
         $json    = Get-Content $tmp -Raw -Encoding UTF8 | ConvertFrom-Json
-        $viagens = $json.viagens
+        # So conta viagem comercial real -- "Saida de Garagem" e "Recolhe" sao
+        # movimentacao de patio, nao viagem de linha, e tem taxa de "nao realizada"
+        # artificialmente alta (validado em 2026-07-04: Recolhe ~25% vs Viagem
+        # Normal ~0,2-0,4% -- sem esse filtro a % de perda fica ~6-7x maior que a real)
+        $viagens = $json.viagens | Where-Object { $_.atividade -eq "Viagem Normal" }
 
         if (-not $viagens -or $viagens.Count -eq 0) {
             Write-Host "  (sem viagens)"
@@ -139,8 +143,10 @@ foreach ($prefixo in $GARAGEM_MAP.Keys) {
                 $real = Parse-DataHora $trip.inicioRealizado
                 if (-not $prog -or -not $real) { continue }
                 $diff = ($real - $prog).TotalMinutes
-                if     ($diff -lt -10) { $adiantadas++ }
-                elseif ($diff -le  10) { $pontuais++   }
+                # Tolerancia +-11min, calibrada em 2026-07-04 contra o painel oficial
+                # "Falta de Pontualidade por Linha e Motorista" (9 de 10 combos bateram exato)
+                if     ($diff -lt -11) { $adiantadas++ }
+                elseif ($diff -le  11) { $pontuais++   }
                 else                   { $atrasadas++  }
             }
 

@@ -6,6 +6,9 @@ criar_usuarios.ps1
 criar_usuarios.sql
 criar_banco_novo.sql
 
+# Wrappers locais com credenciais reais (nunca commitar)
+scripts/*.local.ps1
+
 # Pastas de sincronização e dados brutos
 sync _ Servidor/
 tabelas - Base/

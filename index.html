@@ -16721,6 +16721,153 @@ async function _instrProcessarRankingFile(input,gid){
 }
 
 async function _instrKml(gid,back,tabBar){
+  const view=S._instrKmlView||'detalhado';
+  const subTabs=`<div style="display:flex;gap:6px;margin-bottom:14px">
+    <button class="filtro-btn${view==='detalhado'?' active':''}" onclick="S._instrKmlView='detalhado';renderFerrInstrutor('kml')">🚌 Por Veículo</button>
+    <button class="filtro-btn${view==='historico'?' active':''}" onclick="S._instrKmlView='historico';renderFerrInstrutor('kml')">📋 Histórico Diário (BI)</button>
+  </div>`;
+  if(view==='detalhado') return _instrKmlDetalhado(gid,back,tabBar,subTabs);
+  return _instrKmlHistorico(gid,back,tabBar,subTabs);
+}
+
+async function _instrKmlDetalhado(gid,back,tabBar,subTabs){
+  const dias=S._instrKDias||7;
+  const busca=(S._instrKBusca||'').trim().toUpperCase();
+  const dataMin=new Date(Date.now()-dias*86400000).toISOString().slice(0,10);
+
+  if(!S._instrKRows||S._instrKRowsDias!==dias||S._instrKRowsGid!==gid){
+    setMain(`${secTitle('⛽','KM/L — Por Veículo',back)}<div class="filtros">${tabBar}</div>${subTabs}<div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando dados...</div>`);
+    const[{data:rows},{data:kmlMeta}]=await Promise.all([
+      sb.from('instrutor_kml_detalhado')
+        .select('data,veiculo,motorista_cod,motorista_nome,linha,linha_nome,km_percorrido,litros,updated_at')
+        .eq('garagem_id',gid).gte('data',dataMin).order('data'),
+      sb.from('instrutor_kml').select('meta').eq('garagem_id',gid).order('data',{ascending:false}).limit(1),
+    ]);
+    S._instrKRows=rows||[];
+    S._instrKRowsDias=dias;
+    S._instrKRowsGid=gid;
+    S._instrKMeta=kmlMeta?.[0]?.meta||2.76;
+    const uts=(rows||[]).map(r=>r.updated_at).filter(Boolean).sort();
+    S._instrKUltimoSync=uts.length?uts[uts.length-1]:null;
+  }
+  const kg=S._instrKRows;
+  const meta=S._instrKMeta;
+
+  // IMPORTANTE: Km/L sempre por SUM(km)/SUM(litros), nunca media das medias
+  // (validado em 2026-07-04/05 -- media ingenua distorce o resultado)
+  function somaKmL(lista){
+    const km=lista.reduce((s,r)=>s+(r.km_percorrido||0),0);
+    const lt=lista.reduce((s,r)=>s+(r.litros||0),0);
+    return{km,lt,kml:lt>0?km/lt:0};
+  }
+
+  const byVeiculo={},byLinha={};
+  kg.forEach(r=>{
+    if(!byVeiculo[r.veiculo]) byVeiculo[r.veiculo]={linhas:{},motoristas:{},registros:[]};
+    byVeiculo[r.veiculo].registros.push(r);
+    const linhaKey=r.linha_nome||r.linha||'SEM_LINHA';
+    if(!byVeiculo[r.veiculo].linhas[linhaKey]) byVeiculo[r.veiculo].linhas[linhaKey]=[];
+    byVeiculo[r.veiculo].linhas[linhaKey].push(r);
+    const motKey=r.motorista_nome||r.motorista_cod||'SEM_MOTORISTA';
+    if(!byVeiculo[r.veiculo].motoristas[motKey]) byVeiculo[r.veiculo].motoristas[motKey]=[];
+    byVeiculo[r.veiculo].motoristas[motKey].push(r);
+
+    if(!byLinha[linhaKey]) byLinha[linhaKey]={};
+    if(!byLinha[linhaKey][r.veiculo]) byLinha[linhaKey][r.veiculo]=[];
+    byLinha[linhaKey][r.veiculo].push(r);
+  });
+
+  const veiculos=Object.keys(byVeiculo).sort();
+  const linhas=Object.keys(byLinha).sort();
+
+  const periodoBar=[7,15,30,60].map(d=>
+    `<button class="filtro-btn${dias===d?' active':''}" onclick="S._instrKDias=${d};S._instrKRows=null;renderFerrInstrutor('kml')">${d} dias</button>`
+  ).join('');
+
+  function corKml(v){ return v>=meta?'var(--green)':v>=meta*0.85?'var(--amber)':'var(--red)'; }
+
+  // Colmeia de cards (motoristas ou linhas), com km/l empilhado
+  function colmeia(obj){
+    const entradas=Object.entries(obj).map(([k,lista])=>[k,somaKmL(lista),lista.length]);
+    entradas.sort((a,b)=>b[1].km-a[1].km);
+    return`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
+      ${entradas.map(([nome,agg,qtd])=>{
+        const cor=corKml(agg.kml);
+        return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;min-width:120px;text-align:center">
+          <div style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700">${nome}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px">${Math.round(agg.km)} km · ${qtd} abast.</div>
+          <div style="font-size:18px;font-weight:800;color:${cor};margin-top:4px;font-family:'DM Mono',monospace">${agg.kml.toFixed(2)}</div>
+          <div style="font-size:10px;color:var(--text4)">km/l</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  let resultHtml='';
+  const matchVeiculos=busca?veiculos.filter(v=>v.toUpperCase().includes(busca)):[];
+  const matchLinhas=busca?linhas.filter(l=>l.toUpperCase().includes(busca)):[];
+
+  if(!busca){
+    const geral=somaKmL(kg);
+    resultHtml=`<div style="text-align:center;padding:32px;color:var(--text4)">
+      <div style="font-size:36px;margin-bottom:10px">⛽</div>
+      <div style="font-size:28px;font-weight:800;color:${corKml(geral.kml)};font-family:'DM Mono',monospace">${geral.kml.toFixed(2)} km/l</div>
+      <div style="font-size:12px;color:var(--text3);margin-top:4px">Meta: ${meta} · ${Math.round(geral.km)} km · ${veiculos.length} veículos · ${linhas.length} linhas nos últimos ${dias} dias</div>
+      <div style="font-size:13px;font-weight:600;color:var(--text2);margin-top:16px">🔍 Busque por veículo (ex: 02.275) ou linha (ex: 110) acima</div>
+    </div>`;
+  } else if(matchVeiculos.length>0){
+    resultHtml=matchVeiculos.map(veiculo=>{
+      const v=byVeiculo[veiculo];
+      const geral=somaKmL(v.registros);
+      return`<div style="margin-bottom:20px">
+        <div style="font-size:14px;font-weight:800;margin-bottom:4px;color:var(--blue)">Veículo ${veiculo}</div>
+        <div style="font-size:24px;font-weight:800;color:${corKml(geral.kml)};font-family:'DM Mono',monospace;margin-bottom:4px">${geral.kml.toFixed(2)} km/l</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:12px">${Math.round(geral.km)} km rodado nos últimos ${dias} dias</div>
+        <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px">LINHAS QUE ESTE CARRO SERVIU</div>
+        ${colmeia(v.linhas)}
+        <div style="font-size:11px;color:var(--text3);font-weight:600;margin-top:14px;margin-bottom:4px">MOTORISTAS DESTE CARRO</div>
+        ${colmeia(v.motoristas)}
+      </div>`;
+    }).join('');
+  } else if(matchLinhas.length>0){
+    resultHtml=matchLinhas.map(linha=>{
+      const vs=byLinha[linha];
+      const todos=Object.values(vs).flat();
+      const geral=somaKmL(todos);
+      return`<div style="margin-bottom:20px">
+        <div style="font-size:14px;font-weight:800;margin-bottom:4px;color:var(--blue)">Linha ${linha}</div>
+        <div style="font-size:24px;font-weight:800;color:${corKml(geral.kml)};font-family:'DM Mono',monospace;margin-bottom:12px">${geral.kml.toFixed(2)} km/l</div>
+        <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px">VEÍCULOS NESTA LINHA</div>
+        ${colmeia(vs)}
+      </div>`;
+    }).join('');
+  } else{
+    resultHtml=`<div style="text-align:center;padding:32px;color:var(--text4)"><div style="font-size:14px">Nenhum resultado para "<strong>${busca}</strong>"</div></div>`;
+  }
+
+  const ultimaSync=S._instrKUltimoSync?new Date(S._instrKUltimoSync).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+  setMain(`${secTitle('⛽','KM/L — Por Veículo',back)}
+    <div class="filtros">${tabBar}</div>
+    ${subTabs}
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <span style="font-size:11px;color:var(--text4);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;white-space:nowrap">🔄 Atualizado: ${ultimaSync}</span>
+      <div style="display:flex;gap:4px">${periodoBar}</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px">
+      <input id="instr-k-busca" class="fi" placeholder="🔍 Buscar por veículo (ex: 02.275) ou linha (ex: 110)..."
+        value="${busca.toLowerCase()}"
+        oninput="S._instrKBusca=this.value.toUpperCase();renderFerrInstrutor('kml');setTimeout(()=>{const e=document.getElementById('instr-k-busca');if(e){e.focus();e.setSelectionRange(e.value.length,e.value.length)}},30)"
+        style="flex:1;max-width:500px">
+      ${busca?`<button onclick="S._instrKBusca='';renderFerrInstrutor('kml')" style="background:transparent;border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text4);cursor:pointer">✕ Limpar</button>`:''}
+    </div>
+    <div>${resultHtml}</div>
+    <div style="margin-top:12px;font-size:11px;color:var(--text4);text-align:center">
+      ⚖️ Km/L sempre ponderado (km total / litro total) · ⛽ Oracle VW_LANCAMENTOABASTECIMENTO · ${kg.length} registros · últimos ${dias} dias
+    </div>
+  `);
+}
+
+async function _instrKmlHistorico(gid,back,tabBar,subTabs){
   const{data:registros}=await sb.from('instrutor_kml').select('*').eq('garagem_id',gid).order('data',{ascending:false}).limit(30);
 
   const rows=(registros||[]).map(r=>{
@@ -16739,7 +16886,7 @@ async function _instrKml(gid,back,tabBar){
 
   setMain(`${secTitle('⛽','KM/L — Histórico',back)}
     <div class="filtros">${tabBar}</div>
-
+    ${subTabs}
     <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
       <button onclick="document.getElementById('kml-file-in').click()" style="padding:7px 14px;border-radius:8px;border:1px solid var(--blue);background:#3B82F618;color:var(--blue);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">📥 Importar KM/L (BI)</button>
       <input type="file" id="kml-file-in" accept=".xlsx,.csv" style="display:none" onchange="_instrProcessarKmlFile(this,'${gid}')">
@@ -17038,8 +17185,9 @@ async function _instrViagens(gid,back,tabBar){
   const ultimaSync=S._instrVUltimoSync?new Date(S._instrVUltimoSync).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
   setMain(`${secTitle('🚌','Viagens — CITTATI',back)}
     <div class="filtros">${tabBar}</div>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
       <span style="font-size:11px;color:var(--text4);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;white-space:nowrap">🔄 Atualizado: ${ultimaSync}</span>
+      <div style="display:flex;gap:4px">${periodoBar}</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px">
       <input id="instr-v-busca" class="fi" placeholder="🔍 Buscar por linha (ex: 110) ou veículo (ex: 02.275)..."
@@ -17050,17 +17198,19 @@ async function _instrViagens(gid,back,tabBar){
     </div>
     <div>${resultHtml}</div>
     <div style="margin-top:12px;font-size:11px;color:var(--text4);text-align:center">
-      📡 CITTATI/JSON_VIAGENS · ${vg.length} registros · últimos 7 dias
+      📡 CITTATI/JSON_VIAGENS · ${vg.length} registros · últimos ${dias} dias
     </div>
   `);
 }
 
 async function _instrPontualidade(gid,back,tabBar){
+  const dias=S._instrPDias||7;
+  const dataMin=new Date(Date.now()-dias*86400000).toISOString().slice(0,10);
   setMain(`${secTitle('📍','Pontualidade',back)}<div class="filtros">${tabBar}</div><div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando dados...</div>`);
 
   const{data:rows}=await sb.from('viagens_resumo')
     .select('data,linha,viagens_programadas,viagens_realizadas,viagens_pontuais,viagens_adiantadas,viagens_atrasadas,updated_at')
-    .eq('garagem_id',gid).order('data');
+    .eq('garagem_id',gid).gte('data',dataMin).order('data');
 
   const vg=rows||[];
 
@@ -17101,6 +17251,9 @@ async function _instrPontualidade(gid,back,tabBar){
 
   const uts=vg.map(r=>r.updated_at).filter(Boolean).sort();
   const ultimaSync=uts.length?new Date(uts[uts.length-1]).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+  const periodoBar=[7,15,30,60].map(d=>
+    `<button class="filtro-btn${dias===d?' active':''}" onclick="S._instrPDias=${d};renderFerrInstrutor('pontualidade')">${d} dias</button>`
+  ).join('');
 
   const linhaRows=Object.entries(byLinha).sort((a,b)=>b[1].prog-a[1].prog).map(([linha,v])=>{
     const pp=v.real>0?((v.pont/v.real)*100).toFixed(1):'—';
@@ -17118,8 +17271,9 @@ async function _instrPontualidade(gid,back,tabBar){
 
   setMain(`${secTitle('📍','Pontualidade',back)}
     <div class="filtros">${tabBar}</div>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
       <span style="font-size:11px;color:var(--text4);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;white-space:nowrap">🔄 Atualizado: ${ultimaSync}</span>
+      <div style="display:flex;gap:4px">${periodoBar}</div>
     </div>
     <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin-bottom:20px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px">
       <div style="display:flex;flex-direction:column;align-items:center">${gauge}</div>
@@ -17168,7 +17322,7 @@ async function _instrPontualidade(gid,back,tabBar){
         <tbody>${linhaRows||`<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--text4)">Sem dados de pontualidade — aguardando próximo sync</td></tr>`}</tbody>
       </table>
     </div>
-    <div style="margin-top:12px;font-size:11px;color:var(--text4);text-align:center">⏱️ Tolerância: ±10 min · 📡 CITTATI/JSON_VIAGENS · últimos 7 dias</div>
+    <div style="margin-top:12px;font-size:11px;color:var(--text4);text-align:center">⏱️ Tolerância: ±11 min · 📡 CITTATI/JSON_VIAGENS · últimos ${dias} dias</div>
   `);
 }
 
