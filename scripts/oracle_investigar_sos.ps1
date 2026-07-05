@@ -1,11 +1,13 @@
-# Investiga o campo SOS (nunca explorado) e testa filtro SEQ=1 pra ver se
-# aproxima o total do PI_MAN dos 65 reais do painel oficial de Pendencias de OS.
+# Busca a definicao real da view VW_LANCAMENTOABASTECIMENTO pra entender
+# exatamente o que causa "ORA-01476: divisor e igual a zero" -- objetivo e
+# contornar so o calculo problematico, sem descartar o dia inteiro (isso
+# estava causando motoristas sumirem do cruzamento com viagens).
 # RODAR NO SERVIDOR. Senha vem de $env:JTP_ORACLE_PWD.
 
 $DSN = "GLOBUSSERVER"
 $UID = if ($env:JTP_ORACLE_UID) { $env:JTP_ORACLE_UID } else { "CONSULTA868" }
 $PWD_ORACLE = if ($env:JTP_ORACLE_PWD) { $env:JTP_ORACLE_PWD } else { "COLE_AQUI" }
-$OUT_FILE = "C:\sync_praxio\relatorios\investigar_sos.txt"
+$OUT_FILE = "C:\sync_praxio\relatorios\definicao_view_abastecimento.txt"
 
 $connStr = "DSN=$DSN;UID=$UID;PWD=$PWD_ORACLE"
 New-Item -ItemType Directory -Path (Split-Path $OUT_FILE) -Force | Out-Null
@@ -18,58 +20,79 @@ $conn.ConnectionString = $connStr
 $conn.Open()
 Log "Conectado -- $(Get-Date)"
 
-function Roda-Query($sql, $timeout = 120) {
+function Roda-Query($sql, $timeout = 60) {
     $cmd = $conn.CreateCommand()
     $cmd.CommandText = $sql
     $cmd.CommandTimeout = $timeout
     $reader = $cmd.ExecuteReader()
-    $colCount = $reader.FieldCount
-    $colNames = @()
-    for ($c = 0; $c -lt $colCount; $c++) { $colNames += $reader.GetName($c) }
-    $resultados = [System.Collections.Generic.List[object]]::new()
-    while ($reader.Read()) {
-        $obj = [ordered]@{}
-        for ($c = 0; $c -lt $colCount; $c++) {
-            try { $val = $reader.GetValue($c); if ($val -is [DBNull]) { $val = $null } }
-            catch { $val = $null }
-            $obj[$colNames[$c]] = $val
+    try {
+        $colCount = $reader.FieldCount
+        $colNames = @()
+        for ($c = 0; $c -lt $colCount; $c++) { $colNames += $reader.GetName($c) }
+        $resultados = [System.Collections.Generic.List[object]]::new()
+        while ($reader.Read()) {
+            $obj = [ordered]@{}
+            for ($c = 0; $c -lt $colCount; $c++) {
+                try { $val = $reader.GetValue($c); if ($val -is [DBNull]) { $val = $null } }
+                catch { $val = $null }
+                $obj[$colNames[$c]] = $val
+            }
+            $resultados.Add([PSCustomObject]$obj)
         }
-        $resultados.Add([PSCustomObject]$obj)
+        return $resultados
+    } finally {
+        if (-not $reader.IsClosed) { $reader.Close() }
     }
-    $reader.Close()
-    return $resultados
 }
 
-$whereBase = @"
-WHERE FILIAL LIKE '%PORTO VELHO%'
-  AND DATA_OS >= TO_DATE('2026-06-01','YYYY-MM-DD')
-  AND DATA_OS <  TO_DATE('2026-07-01','YYYY-MM-DD')
-"@
+Log ""
+Log "=== Texto da view VW_LANCAMENTOABASTECIMENTO ==="
+try {
+    $r1 = Roda-Query "SELECT TEXT FROM ALL_VIEWS WHERE OWNER = 'GLOBUS868' AND VIEW_NAME = 'VW_LANCAMENTOABASTECIMENTO'"
+    if ($r1.Count -gt 0) {
+        Log $r1[0].TEXT
+    } else {
+        Log "(nao encontrado em ALL_VIEWS -- tentando LONG via DBMS_METADATA)"
+        $r2 = Roda-Query "SELECT DBMS_METADATA.GET_DDL('VIEW','VW_LANCAMENTOABASTECIMENTO','GLOBUS868') AS DDL FROM DUAL"
+        Log $r2[0].DDL
+    }
+} catch {
+    Log "Falhou: $($_.Exception.Message)"
+}
 
 Log ""
-Log "=== Distribuicao do campo SOS (nunca explorado) ==="
-$r1 = Roda-Query "SELECT SOS, COUNT(*) AS QTD FROM GLOBUS868.PI_MAN $whereBase GROUP BY SOS"
-$r1 | Format-Table -AutoSize | Out-String -Width 200 | ForEach-Object { Log $_ }
+Log "=== Achar um dia especifico que sabemos que falha (pra achar a linha exata) ==="
+Log "Testando dia a dia dentro de uma semana conhecida com erro (maio/2026)..."
+foreach ($dia in @("2026-05-11","2026-05-12","2026-05-13")) {
+    try {
+        $r3 = Roda-Query "SELECT COUNT(*) AS QTD FROM GLOBUS868.VW_LANCAMENTOABASTECIMENTO WHERE DATA_ABASTECIMENTO >= TO_DATE('$dia','YYYY-MM-DD') AND DATA_ABASTECIMENTO < TO_DATE('$dia','YYYY-MM-DD')+1 AND PLACA IS NOT NULL"
+        Log "  $dia -- OK, count sem KM_POR_L: $($r3[0].QTD)"
+    } catch {
+        Log "  $dia -- FALHOU mesmo sem tocar KM_POR_L: $($_.Exception.Message)"
+    }
+}
 
 Log ""
-Log "=== Distribuicao de TIPOOS ==="
-$r2 = Roda-Query "SELECT TIPOOS, COUNT(*) AS QTD, COUNT(DISTINCT CODINTOS) AS QTD_OS FROM GLOBUS868.PI_MAN $whereBase GROUP BY TIPOOS"
-$r2 | Format-Table -AutoSize | Out-String -Width 200 | ForEach-Object { Log $_ }
+Log "=== Teste: incluindo KM_POR_L, mas filtrando QUANTIDADE_COMBUSTIVEL <> 0 ==="
+foreach ($dia in @("2026-05-11","2026-05-12","2026-05-13")) {
+    try {
+        $r4 = Roda-Query "SELECT COUNT(*) AS QTD FROM GLOBUS868.VW_LANCAMENTOABASTECIMENTO WHERE DATA_ABASTECIMENTO >= TO_DATE('$dia','YYYY-MM-DD') AND DATA_ABASTECIMENTO < TO_DATE('$dia','YYYY-MM-DD')+1 AND PLACA IS NOT NULL AND QUANTIDADE_COMBUSTIVEL <> 0 AND KM_POR_L IS NOT NULL"
+        Log "  $dia -- OK, count com KM_POR_L (QUANTIDADE_COMBUSTIVEL<>0): $($r4[0].QTD)"
+    } catch {
+        Log "  $dia -- FALHOU: $($_.Exception.Message)"
+    }
+}
 
 Log ""
-Log "=== Teste: filtrando so SEQ = 1 (1a linha de cada OS) ==="
-$r3 = Roda-Query "SELECT COUNT(DISTINCT CODINTOS) AS QTD_OS, COUNT(*) AS TOTAL FROM GLOBUS868.PI_MAN $whereBase AND SEQ = 1"
-Log "Qtd OS (SEQ=1): $($r3[0].QTD_OS) | Total linhas: $($r3[0].TOTAL)"
-
-Log ""
-Log "=== Teste: so onde ORIGEM = GARAGEM (maior grupo do Excel oficial) ==="
-$r4 = Roda-Query "SELECT COUNT(DISTINCT CODINTOS) AS QTD_OS FROM GLOBUS868.PI_MAN $whereBase AND ORIGEM = 'GARAGEM' AND SEQ = 1"
-Log "Qtd OS (ORIGEM=GARAGEM, SEQ=1): $($r4[0].QTD_OS)"
-
-Log ""
-Log "=== Distribuicao de ORIGEM (pra comparar com Excel: GARAGEM 40, RECOLHA ANORMAL 13, RECOLHA NORMAL 13, RECOLHA OPERACIONAL 2, SOCORRO 1) ==="
-$r5 = Roda-Query "SELECT ORIGEM, COUNT(DISTINCT CODINTOS) AS QTD_OS FROM GLOBUS868.PI_MAN $whereBase GROUP BY ORIGEM"
-$r5 | Format-Table -AutoSize | Out-String -Width 200 | ForEach-Object { Log $_ }
+Log "=== Teste alternativo: filtrando so por HODOMETRO_FINAL <> HODOMETRO_INICIAL ==="
+foreach ($dia in @("2026-05-11","2026-05-12","2026-05-13")) {
+    try {
+        $r5 = Roda-Query "SELECT COUNT(*) AS QTD FROM GLOBUS868.VW_LANCAMENTOABASTECIMENTO WHERE DATA_ABASTECIMENTO >= TO_DATE('$dia','YYYY-MM-DD') AND DATA_ABASTECIMENTO < TO_DATE('$dia','YYYY-MM-DD')+1 AND PLACA IS NOT NULL AND KM_PERCORRIDO IS NOT NULL AND KM_POR_L IS NOT NULL"
+        Log "  $dia -- OK, count com KM_POR_L (so IS NOT NULL): $($r5[0].QTD)"
+    } catch {
+        Log "  $dia -- FALHOU: $($_.Exception.Message)"
+    }
+}
 
 $conn.Close()
 Log ""

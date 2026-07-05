@@ -113,10 +113,15 @@ WHERE DATA_ABASTECIMENTO >= TO_DATE('$diaStr','YYYY-MM-DD')
   AND DATA_ABASTECIMENTO <  TO_DATE('$diaStr','YYYY-MM-DD') + 1
   AND PLACA IS NOT NULL
   AND KM_PERCORRIDO > 0
-  AND KM_POR_L > 0
+  AND KM_POR_L IS NOT NULL
 "@
+    # IMPORTANTE (2026-07-05): "KM_POR_L > 0" causava ORA-01476 (divisor igual a
+    # zero) num punhado de linhas por dia (a view calcula isso internamente e o
+    # ">" forcava avaliar antes de filtrar). Trocado por "IS NOT NULL", que evita
+    # o erro sem descartar o dia inteiro -- confirmado testando os 3 dias que
+    # falhavam antes, agora ok. O ">0" fica so como checagem no PowerShell depois.
     try {
-        $doDia = Roda-Query $sqlDia 60
+        $doDia = @(Roda-Query $sqlDia 60 | Where-Object { $_.KM_POR_L -gt 0 })
         foreach ($r in $doDia) { $linhas.Add($r) }
     } catch {
         $diasComErro++
