@@ -19,6 +19,14 @@ $SUPABASE_KEY = "sb_publishable_SvC1D0cMk94sZ_9kYv41QQ_RJVrSuUV"
 $BATCH        = 400
 $JANELA_DIAS  = 60
 
+# Teto de plausibilidade para KM_POR_L (2026-07-05): achados registros isolados
+# (ex: 918km/114L=8.04, 828km/98L=8.44) muito acima do padrao real do veiculo
+# (~2.0-2.5, confirmado contra painel oficial). Provavel gap de hodometro entre
+# abastecimentos (varios dias sem abastecer, litros nao acompanha a distancia
+# acumulada). Descartar esses registros do agregado -- mesmo espirito do
+# MINIMO_ABAST em motor_kml.ps1 (nao usar dado que sabidamente distorce a media).
+$MAX_KML_PLAUSIVEL = 5.0
+
 $TABELA_ORACLE = "GLOBUS868.VW_LANCAMENTOABASTECIMENTO"
 
 # Prefixo de frota -> garagem no Supabase (mesma logica ja usada no motor_kml.ps1:
@@ -121,7 +129,7 @@ WHERE DATA_ABASTECIMENTO >= TO_DATE('$diaStr','YYYY-MM-DD')
     # o erro sem descartar o dia inteiro -- confirmado testando os 3 dias que
     # falhavam antes, agora ok. O ">0" fica so como checagem no PowerShell depois.
     try {
-        $doDia = @(Roda-Query $sqlDia 60 | Where-Object { $_.KM_POR_L -gt 0 })
+        $doDia = @(Roda-Query $sqlDia 60 | Where-Object { $_.KM_POR_L -gt 0 -and $_.KM_POR_L -le $MAX_KML_PLAUSIVEL })
         foreach ($r in $doDia) { $linhas.Add($r) }
     } catch {
         $diasComErro++

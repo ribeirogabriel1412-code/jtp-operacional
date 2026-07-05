@@ -17038,8 +17038,8 @@ async function _instrViagens(gid,back,tabBar){
       // sem tentar repartir por motorista (testado e descartado: atribuicao por
       // dia+viagem ficava incompleta quando faltava abastecimento nalgum dia)
       sb.from('instrutor_kml_detalhado')
-        .select('veiculo,km_percorrido,litros')
-        .eq('garagem_id',gid).gte('data',dataMin),
+        .select('veiculo,data,km_percorrido,litros')
+        .eq('garagem_id',gid).gte('data',dataMin).order('data'),
     ]);
     S._instrVRows=rows||[];
     S._instrVRowsDias=dias;
@@ -17047,16 +17047,25 @@ async function _instrViagens(gid,back,tabBar){
     const uts=(rows||[]).map(r=>r.updated_at).filter(Boolean).sort();
     S._instrVUltimoSync=uts.length?uts[uts.length-1]:null;
 
-    // Km/L por veiculo: SEMPRE SUM(km)/SUM(litros), nunca media das medias
-    const kmlPorVeiculo={};
+    // Km/L por veiculo: SEMPRE SUM(km)/SUM(litros), nunca media das medias.
+    // Descarta o 1o abastecimento do periodo por veiculo (km_percorrido nele
+    // e a distancia rodada DESDE o abastecimento anterior -- que comecou antes
+    // da janela escolhida, entao "vaza" km/litros de fora pra dentro do periodo).
+    // Validado em 2026-07-05 contra planilha oficial (CTAPLUS): sem descartar,
+    // 02.188 dava 1.55 km/l (oficial 1.35); descartando o 1o registro bateu
+    // exato (772km/569.80L = 1.35) e o mesmo pro 02.203 (1177km/640.31L=1.84).
+    const porVeiculo={};
     (kmlRows||[]).forEach(r=>{
-      if(!kmlPorVeiculo[r.veiculo]) kmlPorVeiculo[r.veiculo]={km:0,lt:0};
-      kmlPorVeiculo[r.veiculo].km+=r.km_percorrido||0;
-      kmlPorVeiculo[r.veiculo].lt+=r.litros||0;
+      if(!porVeiculo[r.veiculo]) porVeiculo[r.veiculo]=[];
+      porVeiculo[r.veiculo].push(r);
     });
     S._instrVKml={};
-    Object.entries(kmlPorVeiculo).forEach(([v,agg])=>{
-      S._instrVKml[v]=agg.lt>0?agg.km/agg.lt:null;
+    Object.entries(porVeiculo).forEach(([v,lista])=>{
+      const ordenada=lista.slice().sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
+      const validos=ordenada.length>1?ordenada.slice(1):ordenada;
+      const km=validos.reduce((s,r)=>s+(r.km_percorrido||0),0);
+      const lt=validos.reduce((s,r)=>s+(r.litros||0),0);
+      S._instrVKml[v]=lt>0?km/lt:null;
     });
   }
   const vg=S._instrVRows;
