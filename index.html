@@ -17115,10 +17115,30 @@ async function _instrViagens(gid,back,tabBar){
   const matchCarros=busca?carros.filter(c=>c.toUpperCase().includes(busca)):[];
 
   if(!busca){
-    resultHtml=`<div style="text-align:center;padding:40px;color:var(--text4)">
+    // Ranking de veiculos por Km/L, do mais gastao (pior) pro menos gastao (melhor) --
+    // clicavel, preenche a busca com o prefixo pra abrir o detalhe direto
+    const rankKml=carros
+      .filter(c=>kmlPorVeiculo[c]!=null)
+      .map(c=>[c,kmlPorVeiculo[c]])
+      .sort((a,b)=>a[1]-b[1]);
+    const rankHtml=rankKml.length?`<div style="margin-top:20px;text-align:left">
+      <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:8px">RANKING KM/L — MAIS GASTÃO PRO MENOS GASTÃO (clique pra ver o carro)</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${rankKml.map(([c,kml],i)=>{
+          const cor=kml>=2.5?'var(--green)':kml>=2.1?'var(--amber)':'var(--red)';
+          return`<div onclick="S._instrVBusca='${c}';document.getElementById('instr-v-busca').value='${c}';renderFerrInstrutor('viagens')" style="display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 14px;cursor:pointer">
+            <span style="font-size:11px;color:var(--text4);min-width:22px">${i+1}°</span>
+            <span style="font-family:'DM Mono',monospace;font-weight:700;flex:1">${c}</span>
+            <span style="font-family:'DM Mono',monospace;font-weight:800;color:${cor}">${kml.toFixed(2)} km/l</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`:'';
+    resultHtml=`<div style="text-align:center;padding:24px;color:var(--text4)">
       <div style="font-size:36px;margin-bottom:10px">🔍</div>
       <div style="font-size:14px;font-weight:600;color:var(--text2)">Busque por linha ou veículo acima</div>
       <div style="font-size:12px;margin-top:6px;color:var(--text4)">${linhas.length} linhas · ${carros.length} veículos nos últimos ${dias} dias</div>
+      ${rankHtml}
     </div>`;
   } else if(matchLinhas.length>0){
     resultHtml=matchLinhas.map(linha=>{
