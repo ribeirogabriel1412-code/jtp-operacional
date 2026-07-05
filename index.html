@@ -16737,21 +16737,68 @@ async function _instrKmlDetalhado(gid,back,tabBar,subTabs){
 
   if(!S._instrKRows||S._instrKRowsDias!==dias||S._instrKRowsGid!==gid){
     setMain(`${secTitle('⛽','KM/L — Por Veículo',back)}<div class="filtros">${tabBar}</div>${subTabs}<div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando dados...</div>`);
-    const[{data:rows},{data:kmlMeta}]=await Promise.all([
+    const[{data:rows},{data:kmlMeta},{data:vrows}]=await Promise.all([
       sb.from('instrutor_kml_detalhado')
         .select('data,veiculo,motorista_cod,motorista_nome,linha,linha_nome,km_percorrido,litros,updated_at')
         .eq('garagem_id',gid).gte('data',dataMin).order('data'),
       sb.from('instrutor_kml').select('meta').eq('garagem_id',gid).order('data',{ascending:false}).limit(1),
+      // Viagens do mesmo periodo -- usado so pra atribuir Km/L por motorista
+      // (a fonte do Oracle nem sempre tem motorista preenchido no abastecimento;
+      // a % de viagens de cada motorista naquele carro naquele dia resolve isso)
+      sb.from('viagens_resumo')
+        .select('data,veiculo,motorista_cod,viagens_realizadas')
+        .eq('garagem_id',gid).gte('data',dataMin),
     ]);
     S._instrKRows=rows||[];
     S._instrKRowsDias=dias;
     S._instrKRowsGid=gid;
     S._instrKMeta=kmlMeta?.[0]?.meta||2.76;
+    S._instrKViagens=vrows||[];
     const uts=(rows||[]).map(r=>r.updated_at).filter(Boolean).sort();
     S._instrKUltimoSync=uts.length?uts[uts.length-1]:null;
   }
   const kg=S._instrKRows;
   const meta=S._instrKMeta;
+  const vgKml=S._instrKViagens;
+
+  // Indice: data -> veiculo -> {motorista_cod: viagens_realizadas}
+  const viagensPorDiaVeiculo={};
+  vgKml.forEach(r=>{
+    const m=r.motorista_cod||'SEM_MOTORISTA';
+    if(!viagensPorDiaVeiculo[r.data]) viagensPorDiaVeiculo[r.data]={};
+    if(!viagensPorDiaVeiculo[r.data][r.veiculo]) viagensPorDiaVeiculo[r.data][r.veiculo]={};
+    viagensPorDiaVeiculo[r.data][r.veiculo][m]=(viagensPorDiaVeiculo[r.data][r.veiculo][m]||0)+(r.viagens_realizadas||0);
+  });
+
+  // Atribui Km/L por motorista: pra cada dia, reparte o km/litro do carro
+  // naquele dia proporcionalmente a quanto cada motorista rodou (% de viagens
+  // realizadas naquele dia especifico) -- SEMPRE soma km e litro atribuidos
+  // primeiro, calcula km/l depois. Nunca fazer media dos km/l diarios.
+  function motoristasPorViagem(registrosVeiculo,veiculo){
+    const porDia={};
+    registrosVeiculo.forEach(r=>{
+      if(!porDia[r.data]) porDia[r.data]={km:0,lt:0};
+      porDia[r.data].km+=r.km_percorrido||0;
+      porDia[r.data].lt+=r.litros||0;
+    });
+    const acumulado={};
+    Object.entries(porDia).forEach(([data,agg])=>{
+      const motDia=(viagensPorDiaVeiculo[data]||{})[veiculo];
+      if(!motDia){
+        if(!acumulado['SEM DADO DE VIAGEM']) acumulado['SEM DADO DE VIAGEM']=[];
+        acumulado['SEM DADO DE VIAGEM'].push({km_percorrido:agg.km,litros:agg.lt});
+        return;
+      }
+      const totalViagensDia=Object.values(motDia).reduce((s,v)=>s+v,0);
+      if(totalViagensDia<=0) return;
+      Object.entries(motDia).forEach(([mot,viagensMot])=>{
+        const pct=viagensMot/totalViagensDia;
+        if(!acumulado[mot]) acumulado[mot]=[];
+        acumulado[mot].push({km_percorrido:agg.km*pct,litros:agg.lt*pct});
+      });
+    });
+    return acumulado;
+  }
 
   // IMPORTANTE: Km/L sempre por SUM(km)/SUM(litros), nunca media das medias
   // (validado em 2026-07-04/05 -- media ingenua distorce o resultado)
@@ -16825,8 +16872,9 @@ async function _instrKmlDetalhado(gid,back,tabBar,subTabs){
         <div style="font-size:12px;color:var(--text3);margin-bottom:12px">${Math.round(geral.km)} km rodado nos últimos ${dias} dias</div>
         <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px">LINHAS QUE ESTE CARRO SERVIU</div>
         ${colmeia(v.linhas)}
-        <div style="font-size:11px;color:var(--text3);font-weight:600;margin-top:14px;margin-bottom:4px">MOTORISTAS DESTE CARRO</div>
-        ${colmeia(v.motoristas)}
+        <div style="font-size:11px;color:var(--text3);font-weight:600;margin-top:14px;margin-bottom:4px">MOTORISTAS DESTE CARRO — ESTIMADO VIA % DE VIAGENS</div>
+        <div style="font-size:10px;color:var(--text4);margin-bottom:4px">Km/L do carro repartido entre os motoristas do dia, proporcional a quanto cada um dirigiu — não é medição direta por turno</div>
+        ${colmeia(motoristasPorViagem(v.registros,veiculo))}
       </div>`;
     }).join('');
   } else if(matchLinhas.length>0){
