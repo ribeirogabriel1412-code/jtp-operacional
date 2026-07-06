@@ -17143,11 +17143,56 @@ async function _instrViagens(gid,back,tabBar){
         }).join('')}
       </div>
     </div>`:'';
+
+    // Ranking de linhas por concentracao de carros ruins -- reaproveita o Km/L
+    // por veiculo ja validado (SUM/SUM), NAO cria media nova por linha (evita o
+    // mesmo risco de "media das medias" ja descartado no calculo por motorista).
+    // So conta/lista quais veiculos ruins rodam em cada linha, com os motoristas.
+    const LIMIAR_RUIM=2.1;
+    const linhaRuins=linhas.map(l=>{
+      const veicsDaLinha=Object.keys(byLV[l]);
+      const ruins=veicsDaLinha
+        .filter(v=>kmlPorVeiculo[v]!=null&&kmlPorVeiculo[v]<LIMIAR_RUIM)
+        .map(v=>[v,kmlPorVeiculo[v]])
+        .sort((a,b)=>a[1]-b[1]);
+      return[l,ruins];
+    }).filter(([,ruins])=>ruins.length>0).sort((a,b)=>b[1].length-a[1].length);
+
+    const linhaRuimHtml=linhaRuins.length?`<div style="margin-top:20px;text-align:left">
+      <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:8px">LINHAS COM MAIS CARROS RUINS EM KM/L (abaixo de ${LIMIAR_RUIM} km/l)</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${linhaRuins.map(([l,ruins])=>{
+          const motoristasLinha={};
+          ruins.forEach(([v])=>{
+            Object.entries((byLVM[l]||{})[v]||{}).forEach(([mot,vv])=>{
+              if(!motoristasLinha[mot])motoristasLinha[mot]=0;
+              motoristasLinha[mot]+=vv.prog||0;
+            });
+          });
+          const motoristasOrdenados=Object.entries(motoristasLinha).sort((a,b)=>b[1]-a[1]).slice(0,6);
+          return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+              <span style="font-family:'DM Mono',monospace;font-weight:800;font-size:15px">L.${l}</span>
+              <span style="font-size:11px;color:var(--red);font-weight:700">${ruins.length} carro${ruins.length>1?'s':''} ruim${ruins.length>1?'s':''}</span>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+              ${ruins.map(([v,kml])=>`<span onclick="S._instrVBusca='${v}';document.getElementById('instr-v-busca').value='${v}';renderFerrInstrutor('viagens')" style="cursor:pointer;font-family:'DM Mono',monospace;font-size:12px;font-weight:700;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--red)">${v} · ${kml.toFixed(2)} km/l</span>`).join('')}
+            </div>
+            ${motoristasOrdenados.length?`<div style="font-size:10px;color:var(--text4);font-weight:600;letter-spacing:0.5px;margin-bottom:4px">MOTORISTAS MAIS FREQUENTES NESSES CARROS NESSA LINHA</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              ${motoristasOrdenados.map(([mot,prog])=>`<span style="font-family:'DM Mono',monospace;font-size:11px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:3px 8px;color:var(--text2)">${mot} (${prog})</span>`).join('')}
+            </div>`:''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`:'';
+
     resultHtml=`<div style="text-align:center;padding:24px;color:var(--text4)">
       <div style="font-size:36px;margin-bottom:10px">🔍</div>
       <div style="font-size:14px;font-weight:600;color:var(--text2)">Busque por linha ou veículo acima</div>
       <div style="font-size:12px;margin-top:6px;color:var(--text4)">${linhas.length} linhas · ${carros.length} veículos nos últimos ${dias} dias</div>
       ${rankHtml}
+      ${linhaRuimHtml}
     </div>`;
   } else if(matchLinhas.length>0){
     resultHtml=matchLinhas.map(linha=>{
