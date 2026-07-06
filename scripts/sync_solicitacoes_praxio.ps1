@@ -1,9 +1,10 @@
 # Sincroniza requisicoes_compra a partir da requisicao oficial do PRAXIO/Oracle --
 # em vez do PCM digitar a peca manualmente no app, o item nasce direto da
 # requisicao formal (PI_MAN + EST_REQUISICAO + EST_ITENSREQUISICAO) assim que
-# o PCM formaliza ela no sistema oficial. O Almoxarifado ve na mesma tela de
-# sempre ("Solicitacoes de OS"), sem mudanca nenhuma la -- so muda quem cria a
-# linha em requisicoes_compra.
+# o PCM formaliza ela no sistema oficial. Cobre QUALQUER OS dentro da janela
+# (aberta ou ja fechada) -- o Almoxarifado ve as abertas na tela de sempre
+# ("Solicitacoes de OS"), e o PCM confere aberta+fechada na aba "Peças PRAXIO"
+# (Ferramentas > Painel PCM).
 #
 # Roda periodicamente (Task Scheduler, poucos minutos) a partir de 2026-07-06.
 #
@@ -17,7 +18,7 @@
 # RODAR NO SERVIDOR. Senha vem de $env:JTP_ORACLE_PWD.
 
 param(
-    [int]$JanelaDias = 60
+    [int]$JanelaDias = 3
 )
 
 $DSN = "GLOBUSSERVER"
@@ -85,7 +86,7 @@ function Roda-Query($sql, $timeout = 180) {
 }
 
 $dataMinOracle = (Get-Date).AddDays(-$JanelaDias).ToString("yyyy-MM-dd")
-Write-Host "Consultando Oracle (OS abertas, filial $FILIAL_PVH, desde $dataMinOracle)..." -ForegroundColor Cyan
+Write-Host "Consultando Oracle (todas as OS, abertas e fechadas, filial $FILIAL_PVH, desde $dataMinOracle)..." -ForegroundColor Cyan
 
 # IMPORTANTE (2026-07-06): CODIGOMATINT e codigo INTERNO da Oracle, nao e o
 # mesmo que o cod_sap (8 digitos, tipo 30016636) usado no app. O campo que
@@ -94,10 +95,11 @@ Write-Host "Consultando Oracle (OS abertas, filial $FILIAL_PVH, desde $dataMinOr
 # (isso esta certo, e a chave real entre EST_ITENSREQUISICAO e EST_CADMATERIAL)
 # -- so trocamos qual coluna exportamos pra comparar/gravar como cod_sap.
 #
-# Filtro de "OS aberta" (NOT FECHADA / NOT CANCELADA) e o MESMO ja usado em
-# producao pela tela "OS PRAXIO" (index.html, renderManutencao) -- evita
-# reinventar a definicao de "aberta" com um criterio novo e potencialmente
-# divergente do que o app ja usa.
+# MUDANCA (2026-07-06, tarde): antes so trazia OS aberta (usando o mesmo
+# filtro de renderManutencao). Daniel pediu pra trazer TODAS as OS da janela,
+# abertas ou fechadas -- o uso real e o PCM validar a peca usada em qualquer
+# OS, nao so rastrear pendencia de OS ainda aberta. Por isso o filtro de
+# CONDICAO_OS foi removido daqui; so resta a janela de data + filial.
 $sql = @"
 SELECT p.NUMERO_OS, p.PREFIXO_VEIC, c.CODIGOINTERNOMATERIAL AS COD_SAP, c.DESCRICAOMAT,
        SUM(it.QTDEITREQ) AS QTD_ORACLE
@@ -106,8 +108,6 @@ FROM (
     FROM GLOBUS868.PI_MAN
     WHERE DATA_OS >= TO_DATE('$dataMinOracle','YYYY-MM-DD')
       AND FILIAL LIKE '%$FILIAL_PVH%'
-      AND CONDICAO_OS NOT LIKE '%FECHAD%'
-      AND CONDICAO_OS NOT LIKE '%CANCELAD%'
     GROUP BY CODINTOS
 ) p
 JOIN GLOBUS868.EST_REQUISICAO r ON r.CODINTOS = p.CODINTOS
