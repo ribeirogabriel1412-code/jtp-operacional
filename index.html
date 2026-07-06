@@ -1387,6 +1387,7 @@ function toggleSolturaDetalhe(){
 
 let _praxioCache=null;
 let _praxioCostCache=null;
+let _praxioPecasCache=null;
 let _praxioHerdadas=[];
 let _praxioInicioFluxo=null;
 function praxioDedupOS(rows){const m=new Map();rows.forEach(r=>{const k=`${r.filial}|${r.numero_os}`;if(!m.has(k))m.set(k,r)});return Array.from(m.values())}
@@ -1467,8 +1468,9 @@ function praxioRenderConteudo(){
   const tipoFiltro=S._praxioTipo||'__todos';
   const el=document.getElementById('praxio-conteudo');
   if(!el)return;
-  const tabsHtml=`<div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid var(--border)"><button onclick="S._praxioTab='os';praxioRenderConteudo()" style="padding:10px 22px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:3px solid ${tab==='os'?'var(--blue)':'transparent'};margin-bottom:-2px;color:${tab==='os'?'var(--blue)':'var(--text3)'}">📋 OS</button><button onclick="S._praxioTab='custos';S._praxioTipo='__todos';praxioRenderConteudo()" style="padding:10px 22px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:3px solid ${tab==='custos'?'var(--blue)':'transparent'};margin-bottom:-2px;color:${tab==='custos'?'var(--blue)':'var(--text3)'}">💰 Custos</button></div>`;
+  const tabsHtml=`<div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid var(--border)"><button onclick="S._praxioTab='os';praxioRenderConteudo()" style="padding:10px 22px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:3px solid ${tab==='os'?'var(--blue)':'transparent'};margin-bottom:-2px;color:${tab==='os'?'var(--blue)':'var(--text3)'}">📋 OS</button><button onclick="S._praxioTab='custos';S._praxioTipo='__todos';praxioRenderConteudo()" style="padding:10px 22px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:3px solid ${tab==='custos'?'var(--blue)':'transparent'};margin-bottom:-2px;color:${tab==='custos'?'var(--blue)':'var(--text3)'}">💰 Custos</button><button onclick="S._praxioTab='pecas';praxioRenderConteudo()" style="padding:10px 22px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;border-bottom:3px solid ${tab==='pecas'?'var(--blue)':'transparent'};margin-bottom:-2px;color:${tab==='pecas'?'var(--blue)':'var(--text3)'}">📦 Peças</button></div>`;
   if(tab==='custos'){praxioRenderCustos(el,tabsHtml);return}
+  if(tab==='pecas'){praxioRenderPecas(el,tabsHtml);return}
   // ---- ABA OS ----
   const garagens=[...new Set(rows.map(r=>r.garagem).filter(Boolean))].sort();
   const porGar=garFiltro==='__todos'?rows:rows.filter(r=>r.garagem===garFiltro);
@@ -1595,6 +1597,74 @@ async function praxioRenderCustos(el,tabsHtml){
       </table>
     </div>`;
 }
+// Aba "Peças" -- double-check do PCM: mostra o que ja sincronizou de
+// requisicoes_compra (scripts/sync_solicitacoes_praxio.ps1) pra cada OS
+// aberta, sem o PCM precisar digitar nada. So leitura.
+async function praxioRenderPecas(el,tabsHtml){
+  const rows=_praxioCache||[];
+  const garagens=[...new Set(rows.map(r=>r.garagem).filter(Boolean))].sort();
+  const garFiltro=S._praxioGar||'__todos';
+  const porGar=garFiltro==='__todos'?rows:rows.filter(r=>r.garagem===garFiltro);
+  const abertas=praxioDedupOS(porGar).filter(praxioAberta).sort((a,b)=>(parseInt(b.numero_os)||0)-(parseInt(a.numero_os)||0));
+
+  if(!_praxioPecasCache){
+    el.innerHTML=tabsHtml+'<div class="loading"><div class="spinner"></div></div>';
+    const osNumeros=[...new Set(abertas.map(r=>r.numero_os).filter(Boolean))];
+    _praxioPecasCache={};
+    if(osNumeros.length){
+      const{data:reqs}=await sb.from('requisicoes_compra').select('os_numero,cod_sap,peca,quantidade,status,criado_por').in('os_numero',osNumeros);
+      (reqs||[]).forEach(r=>{
+        if(!_praxioPecasCache[r.os_numero])_praxioPecasCache[r.os_numero]=[];
+        _praxioPecasCache[r.os_numero].push(r);
+      });
+    }
+  }
+
+  const statusLabel=s=>({solicitado_pcm:'Aguardando',pendente:'Pendente',aprovado:'Aprovado',separado:'Separado',pedido_compra:'Compra',comprado:'Chegou',cancelado:'Cancelado'}[s]||s||'—');
+  const abertaOs=S._praxioPecasAberta||null;
+  el.innerHTML=tabsHtml+`
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+      <select id="praxio-sel-gar" onchange="S._praxioGar=this.value;_praxioPecasCache=null;praxioRenderConteudo()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;cursor:pointer;outline:none">
+        <option value="__todos"${garFiltro==='__todos'?' selected':''}>🏢 Todas as garagens</option>
+        ${garagens.map(g=>`<option value="${g.replace(/"/g,'&quot;')}"${garFiltro===g?' selected':''}>${g}</option>`).join('')}
+      </select>
+      <button onclick="_praxioPecasCache=null;praxioRenderConteudo()" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;cursor:pointer">🔄 Atualizar</button>
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:8px">${abertas.length.toLocaleString('pt-BR')} OS aberta${abertas.length===1?'':'s'} — peças vindas direto da requisição oficial do PRAXIO (sync automático, sem digitação do PCM)</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${abertas.length===0?`<div style="text-align:center;padding:32px;color:var(--text3)">Nenhuma OS aberta</div>`:abertas.map(r=>{
+        const itens=_praxioPecasCache[r.numero_os]||[];
+        const aberto=abertaOs===r.numero_os;
+        return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px">
+          <div style="display:flex;align-items:center;gap:12px;cursor:pointer" onclick="S._praxioPecasAberta='${aberto?'':r.numero_os}';praxioRenderConteudo()">
+            <span style="font-family:monospace;font-weight:700;min-width:72px">${r.prefixo_veic||r.codigoveic||'—'}</span>
+            <span style="font-family:monospace;font-weight:700;color:var(--blue);min-width:70px">Nº ${escHtml(r.numero_os)}</span>
+            <span style="flex:1;color:var(--text2);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.defeito||'—'}</span>
+            <span style="font-size:12px;font-weight:700;color:${itens.length?'var(--blue)':'var(--text4)'}">${itens.length?itens.length+(itens.length>1?' itens':' item'):'sem requisição ainda'}</span>
+            <span style="color:var(--text4);font-size:14px">${aberto?'▲':'▼'}</span>
+          </div>
+          ${aberto&&itens.length?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+            <table style="width:100%;border-collapse:collapse;font-size:12px">
+              <thead><tr>
+                <th style="padding:6px 8px;color:var(--text3);font-weight:600;text-align:left">SAP</th>
+                <th style="padding:6px 8px;color:var(--text3);font-weight:600;text-align:left">Peça</th>
+                <th style="padding:6px 8px;color:var(--text3);font-weight:600;text-align:right">Qtd</th>
+                <th style="padding:6px 8px;color:var(--text3);font-weight:600;text-align:left">Status</th>
+                <th style="padding:6px 8px;color:var(--text3);font-weight:600;text-align:left">Origem</th>
+              </tr></thead>
+              <tbody>${itens.map(i=>`<tr style="border-top:1px solid var(--border)">
+                <td style="padding:6px 8px;font-family:monospace;color:var(--text2)">${i.cod_sap||'—'}</td>
+                <td style="padding:6px 8px">${escHtml(i.peca||'—')}</td>
+                <td style="padding:6px 8px;text-align:right">${i.quantidade??'—'}</td>
+                <td style="padding:6px 8px">${statusLabel(i.status)}</td>
+                <td style="padding:6px 8px;color:${i.criado_por==='Sync PRAXIO'?'var(--green)':'var(--text3)'}">${i.criado_por==='Sync PRAXIO'?'🔄 PRAXIO':escHtml(i.criado_por||'—')}</td>
+              </tr>`).join('')}</tbody>
+            </table>
+          </div>`:''}
+        </div>`;
+      }).join('')}
+    </div>`;
+}
 async function renderManutencao(){
   setMain(`${secTitle('🔧','OS PRAXIO')}<div class="loading"><div class="spinner"></div></div>`);
   const d12=new Date();d12.setFullYear(d12.getFullYear()-1);const d12s=d12.toISOString().substring(0,10);
@@ -1602,6 +1672,7 @@ async function renderManutencao(){
   if(error||!rows){setMain(`${secTitle('🔧','OS PRAXIO')}<div class="info-blue info-banner">❌ Erro ao carregar dados do PRAXIO: ${error?.message||'verifique a conexão'}</div>`);return}
   _praxioCache=rows;
   _praxioCostCache=null;
+  _praxioPecasCache=null;
 
   // OS abertas no turno anterior (ainda não fechadas) — validação/habilitação de turno
   const janOS=janelaOperacional(S.turno||'dia');
