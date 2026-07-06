@@ -2274,6 +2274,18 @@ async function telaAlmoxMobSolicitacoes(){
   const lista=[...(recsRecentes||[]),...(recsAntigos||[])].filter(r=>r.os_numero&&String(r.os_numero).trim());
   window._solItemsMap={};lista.forEach(i=>{window._solItemsMap[i.id]=i;});
 
+  // Divergencias com o PRAXIO (motor sync_divergencias_pecas.ps1) -- avisa
+  // aqui mesmo, na tela onde o Almox trabalha, quando um item lancado no app
+  // ainda nao foi achado na requisicao oficial da Oracle.
+  let divergMap={};
+  if(lista.length){
+    const{data:divergs}=await sb.from('divergencias_pecas_praxio')
+      .select('requisicao_id,tipo_divergencia,qtd_app,qtd_oracle')
+      .eq('resolvido',false)
+      .in('requisicao_id',lista.map(r=>r.id));
+    (divergs||[]).forEach(d=>{divergMap[d.requisicao_id]=d;});
+  }
+
   // Pedidos de compra para FUP
   const _compraIds=lista.filter(r=>r.status==='pedido_compra').map(r=>r.id);
   let pedidosMap={};
@@ -2314,6 +2326,8 @@ async function telaAlmoxMobSolicitacoes(){
         </div>
         ${its.map(i=>{
           const entregaDif=i.item_entregue&&i.item_entregue!==i.peca;
+          const diverg=divergMap[i.id];
+          const divergBadge=diverg?`<div style="font-size:10px;color:var(--red);font-weight:800;margin-top:4px">⚠️ ${diverg.tipo_divergencia==='sem_match_oracle'?'Não achei essa peça na requisição do PRAXIO ainda':`PRAXIO registra qtd ${diverg.qtd_oracle} (app tem ${diverg.qtd_app})`}</div>`:'';
           const entregaBlock=i.item_entregue?`
             <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:6px">
               <div style="background:var(--surface2);border-left:3px solid var(--amber);border-radius:6px;padding:6px 8px">
@@ -2328,11 +2342,11 @@ async function telaAlmoxMobSolicitacoes(){
                 ${i.cod_sap_entregue?`<div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--amber);margin-top:2px">${escHtml(i.cod_sap_entregue)}</div>`:''}
                 <div style="font-size:10px;color:var(--text3);margin-top:2px">${i.qtd_entregue||i.quantidade||1}x</div>
               </div>
-            </div>`:'';
+            </div>${divergBadge}`:'';
           return`<div style="padding:9px 0;border-top:1px solid var(--border2)">
             ${i.item_entregue?entregaBlock:`<div style="display:grid;grid-template-columns:34px 1fr;gap:8px;font-size:13px;color:var(--text)">
               <b style="font-family:'DM Mono',monospace;color:var(--amber)">${i.quantidade||1}x</b>
-              <span>${escHtml(i.peca)}${i.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-top:2px">${escHtml(i.cod_sap)}</div>`:''}${i.status==='pedido_compra'?`<div style="font-size:10px;color:var(--red);font-weight:800;margin-top:4px">🛒 ${pedidosMap[i.id]?.data_previsao_entrega?`Prazo: ${pedidosMap[i.id].data_previsao_entrega.split('-').reverse().join('/')}`:'Aguardando suprimentos'}${pedidosMap[i.id]?.fup_logs?.length?` · ${pedidosMap[i.id].fup_logs[0].nota}`:''}</div>`:''}</span>
+              <span>${escHtml(i.peca)}${i.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-top:2px">${escHtml(i.cod_sap)}</div>`:''}${i.status==='pedido_compra'?`<div style="font-size:10px;color:var(--red);font-weight:800;margin-top:4px">🛒 ${pedidosMap[i.id]?.data_previsao_entrega?`Prazo: ${pedidosMap[i.id].data_previsao_entrega.split('-').reverse().join('/')}`:'Aguardando suprimentos'}${pedidosMap[i.id]?.fup_logs?.length?` · ${pedidosMap[i.id].fup_logs[0].nota}`:''}</div>`:''}${divergBadge}</span>
             </div>`}
             ${somenteLeitura?'':`<div style="display:flex;gap:6px;margin-top:8px;align-items:center;justify-content:space-between">
               <span style="font-size:10px;font-weight:800;color:${statusCor(i.status||'')}">${statusLabel(i.status||'solicitado_pcm')}</span>

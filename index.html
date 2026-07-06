@@ -16750,8 +16750,21 @@ async function _instrKmlDetalhado(gid,back,tabBar,subTabs){
     const uts=(rows||[]).map(r=>r.updated_at).filter(Boolean).sort();
     S._instrKUltimoSync=uts.length?uts[uts.length-1]:null;
   }
-  const kg=S._instrKRows;
   const meta=S._instrKMeta;
+
+  // Descarta o 1o dia de cada veiculo dentro da janela -- esse km "vaza" de
+  // fora pra dentro do periodo (o ciclo do abastecimento comecou antes da
+  // janela escolhida). Mesmo criterio ja validado em _instrViagens contra a
+  // planilha oficial (2026-07-05); antes esta tela nao aplicava o descarte e
+  // divergia da _instrViagens e do relatorio oficial em janelas curtas.
+  const porVeicOrd={};
+  (S._instrKRows||[]).forEach(r=>{ (porVeicOrd[r.veiculo]=porVeicOrd[r.veiculo]||[]).push(r); });
+  const kg=[];
+  Object.values(porVeicOrd).forEach(lista=>{
+    const ordenada=lista.slice().sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
+    const validos=ordenada.length>1?ordenada.slice(1):ordenada;
+    kg.push(...validos);
+  });
 
   // IMPORTANTE: Km/L sempre por SUM(km)/SUM(litros), nunca media das medias
   // (validado em 2026-07-04/05 -- media ingenua distorce o resultado)
