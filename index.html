@@ -18827,17 +18827,19 @@ async function confirmarPassagemTurno(turnoSai,turnoEntra,liderSai,liderEntra){
 // requisicoes_compra (scripts/sync_solicitacoes_praxio.ps1) pra cada OS
 // aberta, sem o PCM precisar digitar nada. So leitura.
 async function renderFerrPCMPecas(back,tabs,gid){
-  setMain(`${secTitle('📦','Peças PRAXIO',back)}<div class="filtros">${tabs}</div><div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando OS abertas...</div>`);
+  setMain(`${secTitle('📦','Peças PRAXIO',back)}<div class="filtros">${tabs}</div><div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando OS...</div>`);
 
   const garNome=(S.garagens.find(g=>g.id===gid)?.nome||'').replace(/garagem\s*/i,'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().trim();
   const d90=new Date();d90.setDate(d90.getDate()-90);const d90s=d90.toISOString().substring(0,10);
-  let qOS=sb.from('praxio_os').select('numero_os,codigoveic,prefixo_veic,defeito,data_os,garagem').gte('data_os',d90s).not('condicao_os','ilike','%FECHAD%').not('condicao_os','ilike','%CANCELAD%').order('data_os',{ascending:false}).limit(500);
+  // Traz OS abertas E fechadas -- o PCM usa essa tela pra validar as peças
+  // usadas na OS, independente dela ja ter fechado ou nao.
+  let qOS=sb.from('praxio_os').select('numero_os,codigoveic,prefixo_veic,defeito,data_os,garagem,condicao_os').gte('data_os',d90s).order('data_os',{ascending:false}).limit(500);
   if(garNome) qOS=qOS.ilike('garagem','%'+garNome+'%');
   const{data:osRows,error}=await qOS;
   if(error){setMain(`${secTitle('📦','Peças PRAXIO',back)}<div class="filtros">${tabs}</div><div class="info-blue info-banner">❌ Erro ao carregar OS do PRAXIO: ${error.message}</div>`);return}
 
-  const abertas=praxioDedupOS(osRows||[]).sort((a,b)=>(parseInt(b.numero_os)||0)-(parseInt(a.numero_os)||0));
-  const osNumeros=[...new Set(abertas.map(r=>r.numero_os).filter(Boolean))];
+  const todas=praxioDedupOS(osRows||[]).sort((a,b)=>(parseInt(b.numero_os)||0)-(parseInt(a.numero_os)||0));
+  const osNumeros=[...new Set(todas.map(r=>r.numero_os).filter(Boolean))];
 
   const pecasPorOs={};
   if(osNumeros.length){
@@ -18851,13 +18853,16 @@ async function renderFerrPCMPecas(back,tabs,gid){
   const statusLabel=s=>({solicitado_pcm:'Aguardando',pendente:'Pendente',aprovado:'Aprovado',separado:'Separado',pedido_compra:'Compra',comprado:'Chegou',cancelado:'Cancelado'}[s]||s||'—');
   const abertaOs=S._pcmPecasAberta||null;
 
-  const corpo=abertas.length===0?`<div style="text-align:center;padding:32px;color:var(--text3)">Nenhuma OS aberta</div>`:abertas.map(r=>{
+  const corpo=todas.length===0?`<div style="text-align:center;padding:32px;color:var(--text3)">Nenhuma OS encontrada</div>`:todas.map(r=>{
     const itens=pecasPorOs[r.numero_os]||[];
     const aberto=abertaOs===r.numero_os;
+    const osAberta=praxioAberta(r);
+    const stBadge=osAberta?`<span style="font-size:10px;font-weight:700;color:var(--amber);background:#F59E0B18;border-radius:20px;padding:2px 8px;white-space:nowrap">Aberta</span>`:`<span style="font-size:10px;font-weight:700;color:var(--green);background:#00C48C18;border-radius:20px;padding:2px 8px;white-space:nowrap">Fechada</span>`;
     return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px">
       <div style="display:flex;align-items:center;gap:12px;cursor:pointer" onclick="S._pcmPecasAberta='${aberto?'':r.numero_os}';renderFerrPCM('pecas_praxio')">
         <span style="font-family:monospace;font-weight:700;min-width:72px">${r.prefixo_veic||r.codigoveic||'—'}</span>
         <span style="font-family:monospace;font-weight:700;color:var(--blue);min-width:70px">Nº ${escHtml(r.numero_os)}</span>
+        ${stBadge}
         <span style="flex:1;color:var(--text2);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.defeito||'—'}</span>
         <span style="font-size:12px;font-weight:700;color:${itens.length?'var(--blue)':'var(--text4)'}">${itens.length?itens.length+(itens.length>1?' itens':' item'):'sem requisição ainda'}</span>
         <span style="color:var(--text4);font-size:14px">${aberto?'▲':'▼'}</span>
@@ -18887,7 +18892,7 @@ async function renderFerrPCMPecas(back,tabs,gid){
     <div class="filtros">${tabs}</div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
       <button onclick="renderFerrPCM('pecas_praxio')" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;cursor:pointer">🔄 Atualizar</button>
-      <span style="font-size:12px;color:var(--text3)">${abertas.length.toLocaleString('pt-BR')} OS aberta${abertas.length===1?'':'s'} — peças vindas direto da requisição oficial do PRAXIO (sync automático, sem digitação do PCM)</span>
+      <span style="font-size:12px;color:var(--text3)">${todas.length.toLocaleString('pt-BR')} OS (últimos 90 dias, abertas e fechadas) — peças vindas direto da requisição oficial do PRAXIO (sync automático, sem digitação do PCM)</span>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px">${corpo}</div>`);
 }
