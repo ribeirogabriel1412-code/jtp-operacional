@@ -16730,6 +16730,27 @@ async function _instrKml(gid,back,tabBar){
   return _instrKmlHistorico(gid,back,tabBar,subTabs);
 }
 
+// Supabase/PostgREST tem teto fixo de 1000 linhas por requisicao (confirmado:
+// pedir Range maior nao adianta, o servidor corta em 0-999 igual). Sem isso,
+// consultas de instrutor_kml_detalhado com 30/60 dias e ~127 veiculos passam
+// de 1000 linhas e o SDK trunca silenciosamente pelas primeiras datas da janela
+// (order('data') asc), cortando o resto do periodo fora -- foi isso que fez o
+// Km/L do app divergir muito do relatorio oficial (achado em 2026-07-06: pedido
+// de 02.220 vinha truncado logo apos um unico dia com leitura ruim de hodometro,
+// gerando 1.77 km/l em vez do ~2.12 real).
+async function _sbFetchAll(buildQuery){
+  const PAGE=1000;
+  let all=[],offset=0;
+  while(true){
+    const{data,error}=await buildQuery().range(offset,offset+PAGE-1);
+    if(error){console.error('[_sbFetchAll]',error);break;}
+    all=all.concat(data||[]);
+    if(!data||data.length<PAGE)break;
+    offset+=PAGE;
+  }
+  return all;
+}
+
 async function _instrKmlDetalhado(gid,back,tabBar,subTabs){
   const dias=S._instrKDias||7;
   const busca=(S._instrKBusca||'').trim().toUpperCase();
@@ -16737,10 +16758,10 @@ async function _instrKmlDetalhado(gid,back,tabBar,subTabs){
 
   if(!S._instrKRows||S._instrKRowsDias!==dias||S._instrKRowsGid!==gid){
     setMain(`${secTitle('⛽','KM/L — Por Veículo',back)}<div class="filtros">${tabBar}</div>${subTabs}<div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando dados...</div>`);
-    const[{data:rows},{data:kmlMeta}]=await Promise.all([
-      sb.from('instrutor_kml_detalhado')
+    const[rows,{data:kmlMeta}]=await Promise.all([
+      _sbFetchAll(()=>sb.from('instrutor_kml_detalhado')
         .select('data,veiculo,motorista_cod,motorista_nome,linha,linha_nome,km_percorrido,litros,updated_at')
-        .eq('garagem_id',gid).gte('data',dataMin).order('data'),
+        .eq('garagem_id',gid).gte('data',dataMin).order('data').order('id')),
       sb.from('instrutor_kml').select('meta').eq('garagem_id',gid).order('data',{ascending:false}).limit(1),
     ]);
     S._instrKRows=rows||[];
@@ -17043,16 +17064,16 @@ async function _instrViagens(gid,back,tabBar){
   // Cache por período — evita re-query ao digitar na busca
   if(!S._instrVRows||S._instrVRowsDias!==dias||S._instrVRowsGid!==gid){
     setMain(`${secTitle('🚌','Viagens — CITTATI',back)}<div class="filtros">${tabBar}</div><div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando dados...</div>`);
-    const[{data:rows},{data:kmlRows}]=await Promise.all([
-      sb.from('viagens_resumo')
+    const[rows,kmlRows]=await Promise.all([
+      _sbFetchAll(()=>sb.from('viagens_resumo')
         .select('data,linha,veiculo,motorista_cod,viagens_programadas,viagens_realizadas,updated_at')
-        .eq('garagem_id',gid).gte('data',dataMin).order('data'),
+        .eq('garagem_id',gid).gte('data',dataMin).order('data').order('id')),
       // Km/L do carro (Oracle VW_LANCAMENTOABASTECIMENTO) -- so nivel veiculo,
       // sem tentar repartir por motorista (testado e descartado: atribuicao por
       // dia+viagem ficava incompleta quando faltava abastecimento nalgum dia)
-      sb.from('instrutor_kml_detalhado')
+      _sbFetchAll(()=>sb.from('instrutor_kml_detalhado')
         .select('veiculo,data,km_percorrido,litros')
-        .eq('garagem_id',gid).gte('data',dataMin).order('data'),
+        .eq('garagem_id',gid).gte('data',dataMin).order('data').order('id')),
     ]);
     S._instrVRows=rows||[];
     S._instrVRowsDias=dias;
@@ -17316,9 +17337,9 @@ async function _instrPontualidade(gid,back,tabBar){
   const dataMin=new Date(Date.now()-dias*86400000).toISOString().slice(0,10);
   setMain(`${secTitle('📍','Pontualidade',back)}<div class="filtros">${tabBar}</div><div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando dados...</div>`);
 
-  const{data:rows}=await sb.from('viagens_resumo')
+  const rows=await _sbFetchAll(()=>sb.from('viagens_resumo')
     .select('data,linha,viagens_programadas,viagens_realizadas,viagens_pontuais,viagens_adiantadas,viagens_atrasadas,updated_at')
-    .eq('garagem_id',gid).gte('data',dataMin).order('data');
+    .eq('garagem_id',gid).gte('data',dataMin).order('data').order('id'));
 
   const vg=rows||[];
 
