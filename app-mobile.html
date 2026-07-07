@@ -3451,12 +3451,19 @@ async function telaMonitorMeus(){
   const gid=getGid(),mid=S.perfil?.id;
   render(`<div style="padding:30px;text-align:center;color:var(--text3)">Carregando...</div>`);
   const hojeIso=hoje();
-  const[{data:motoristas},{data:minhasHoje},{data:escalados}]=await Promise.all([
+  const[{data:motoristas},{data:minhasHoje},{data:escalados},{data:escalaSemanal}]=await Promise.all([
     sb.from('instrutor_ranking').select('*').eq('garagem_id',gid).eq('monitor_id',mid).order('posicao'),
     sb.from('monitoria_registros').select('motorista_nome,matricula').eq('garagem_id',gid).eq('monitor_id',mid).eq('data',hojeIso),
     sb.from('instrutor_atribuicoes').select('*').eq('garagem_id',gid).eq('monitor_id',mid).eq('tipo','motorista').eq('data',hojeIso),
+    sb.from('monitor_escala_semanal').select('tipo').eq('garagem_id',gid).eq('monitor_id',mid).eq('dia_semana',new Date().getDay()),
   ]);
   const jaMonitH=new Set((minhasHoje||[]).map(m=>m.matricula));
+  const TIPO_LABEL={campo:'🚌 Campo (acompanhar motorista)',linha:'📋 Linha',carro:'🔧 Carro'};
+  const tiposHoje=(escalaSemanal||[]).map(e=>TIPO_LABEL[e.tipo]||e.tipo);
+  const escalaBanner=`<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--purple);border-radius:10px;padding:12px 14px;margin:0 14px 14px">
+    <div style="font-size:10px;font-weight:900;color:var(--purple);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">📅 Sua escala de hoje</div>
+    <div style="font-size:13px;font-weight:700">${tiposHoje.length?escHtml(tiposHoje.join(' · ')):'Nenhuma escala definida pro instrutor pra hoje'}</div>
+  </div>`;
 
   const cards=(motoristas||[]).map(r=>{
     const feito=jaMonitH.has(r.matricula);
@@ -3502,6 +3509,7 @@ async function telaMonitorMeus(){
       <button onclick="telaMonitor()" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">🔄</button>
     </div>
     ${monMobTabNav('meus')}
+    ${escalaBanner}
     <div style="padding:0 14px 4px;font-size:12px;color:var(--text3)">${(motoristas||[]).length} do ranking · ${escaladosSemDuplicar.length} escalado(s) hoje · ${jaMonitH.size} monitorado(s) hoje</div>
     <div style="padding:10px 14px 0">
       ${cards}${cardsEscalados}

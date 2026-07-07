@@ -16508,12 +16508,13 @@ async function deleteCronograma(id){
 async function renderFerrInstrutor(aba='painel'){
   const gid=getGid();
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
-  const tabs=['painel','viagens','pontualidade','ranking','kml','monitorias','relatorios'];
-  const tabLabels={painel:'📊 Painel',viagens:'🎯 Escala',pontualidade:'📍 Pontualidade',ranking:'🏆 Ranking',kml:'⛽ KM/L',monitorias:'👁️ Monitorias',relatorios:'📋 Relatórios'};
+  const tabs=['painel','viagens','escala_semanal','pontualidade','ranking','kml','monitorias','relatorios'];
+  const tabLabels={painel:'📊 Painel',viagens:'🎯 Escala',escala_semanal:'📅 Escala Semanal',pontualidade:'📍 Pontualidade',ranking:'🏆 Ranking',kml:'⛽ KM/L',monitorias:'👁️ Monitorias',relatorios:'📋 Relatórios'};
   const tabBar=tabs.map(t=>`<button class="filtro-btn${aba===t?' active':''}" onclick="renderFerrInstrutor('${t}')">${tabLabels[t]}</button>`).join('');
 
   if(aba==='painel') return _instrPainel(gid,back,tabBar);
   if(aba==='viagens') return _instrViagens(gid,back,tabBar);
+  if(aba==='escala_semanal') return _instrEscalaSemanal(gid,back,tabBar);
   if(aba==='pontualidade') return _instrPontualidade(gid,back,tabBar);
   if(aba==='ranking') return _instrRanking(gid,back,tabBar);
   if(aba==='kml') return _instrKml(gid,back,tabBar);
@@ -17119,6 +17120,66 @@ async function _instrSalvarEscala(id,monitorId){
   toast(`✅ Escalado pro monitor ${monitor?.nome||''}!`);
 }
 
+async function _instrEscalaSemanal(gid,back,tabBar){
+  setMain(`${secTitle('📅','Escala Semanal',back)}<div class="filtros">${tabBar}</div><div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando...</div>`);
+  const[{data:monitores},{data:escala}]=await Promise.all([
+    sb.from('perfis').select('id,nome').eq('garagem_id',gid).eq('cargo','monitor').order('nome'),
+    sb.from('monitor_escala_semanal').select('*').eq('garagem_id',gid),
+  ]);
+  S._instrMonitoresCache=monitores||[];
+  S._instrMonitoresCacheGid=gid;
+
+  const DIAS=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const TIPOS={'':'—',campo:'🚌 Campo',linha:'📋 Linha',carro:'🔧 Carro'};
+  const mapa={};
+  (escala||[]).forEach(e=>{
+    if(!mapa[e.monitor_id])mapa[e.monitor_id]={};
+    mapa[e.monitor_id][e.dia_semana]=e.tipo;
+  });
+
+  const linhas=(monitores||[]).length?(monitores||[]).map(m=>{
+    const nomeSafe=String(m.nome||'').replace(/'/g,"\\'");
+    return`<tr>
+      <td style="font-weight:700;padding:8px 12px;white-space:nowrap">${escHtml(m.nome)}</td>
+      ${DIAS.map((d,i)=>{
+        const tipoAtual=(mapa[m.id]||{})[i]||'';
+        return`<td style="padding:6px 8px;text-align:center">
+          <select onchange="_instrSalvarEscalaSemanal('${gid}','${m.id}','${nomeSafe}',${i},this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 6px;color:var(--text);font-size:11px;font-family:'DM Sans',sans-serif">
+            ${Object.entries(TIPOS).map(([v,l])=>`<option value="${v}" ${tipoAtual===v?'selected':''}>${l}</option>`).join('')}
+          </select>
+        </td>`;
+      }).join('')}
+    </tr>`;
+  }).join(''):`<tr><td colspan="8" style="text-align:center;color:var(--text4);padding:24px">Nenhum monitor cadastrado. Crie um usuário com cargo "Monitor" em Configurações.</td></tr>`;
+
+  setMain(`${secTitle('📅','Escala Semanal',back)}
+    <div class="filtros">${tabBar}</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Define o padrão fixo de cada monitor por dia da semana — vale toda semana até você mudar aqui. O monitor vê isso no celular dele como "hoje você está escalado pra...".</div>
+    <div class="tbl-wrap">
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Monitor</th>${DIAS.map(d=>`<th style="text-align:center">${d}</th>`).join('')}</tr></thead>
+          <tbody>${linhas}</tbody>
+        </table>
+      </div>
+    </div>
+  `);
+}
+
+async function _instrSalvarEscalaSemanal(gid,monitorId,monitorNome,diaSemana,tipo){
+  // Remove qualquer atribuicao existente desse monitor nesse dia antes de
+  // gravar a nova -- cada monitor tem 1 tipo por dia nessa tela, mesmo que o
+  // schema (UNIQUE garagem+monitor+dia+tipo) permita mais de um em teoria.
+  await sb.from('monitor_escala_semanal').delete().eq('garagem_id',gid).eq('monitor_id',monitorId).eq('dia_semana',diaSemana);
+  if(!tipo){toast('Removido da escala nesse dia');return;}
+  const{error}=await sb.from('monitor_escala_semanal').insert({
+    garagem_id:gid,monitor_id:monitorId,monitor_nome:monitorNome,
+    dia_semana:diaSemana,tipo,criado_por:S.perfil?.nome||null,
+  });
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('✅ Escala salva!');
+}
+
 async function _instrViagens(gid,back,tabBar){
   const dias=S._instrVDias||7;
   const busca=(S._instrVBusca||'').trim().toUpperCase();
@@ -17131,6 +17192,28 @@ async function _instrViagens(gid,back,tabBar){
     S._instrMonitoresCache=mons||[];
     S._instrMonitoresCacheGid=gid;
   }
+
+  // Ultima monitoria por carro/linha (pra "quando foi a ultima vez que isso
+  // foi checado") + escala semanal de hoje (pra "quem esta programado hoje")
+  // -- pedido do Daniel pra deixar a decisao de escalar menos no escuro.
+  let ultimaMonCarro={},ultimaMonLinha={},hojeEscala={campo:[],linha:[],carro:[]};
+  if(!S._instrUltimaMonCache||S._instrUltimaMonGid!==gid){
+    const diaHoje=new Date().getDay();
+    const[{data:relCarro},{data:relLinha},{data:escSemanal}]=await Promise.all([
+      sb.from('monitor_relatorio_carro').select('prefixo,data,monitor_nome').eq('garagem_id',gid).order('data',{ascending:false}).limit(500),
+      sb.from('monitor_relatorio_linha').select('linha,data,monitor_nome').eq('garagem_id',gid).order('data',{ascending:false}).limit(500),
+      sb.from('monitor_escala_semanal').select('*').eq('garagem_id',gid).eq('dia_semana',diaHoje),
+    ]);
+    const uCarro={};(relCarro||[]).forEach(r=>{if(!uCarro[r.prefixo])uCarro[r.prefixo]=r;});
+    const uLinha={};(relLinha||[]).forEach(r=>{if(!uLinha[r.linha])uLinha[r.linha]=r;});
+    const hEsc={campo:[],linha:[],carro:[]};
+    (escSemanal||[]).forEach(e=>{if(hEsc[e.tipo])hEsc[e.tipo].push(e.monitor_nome);});
+    S._instrUltimaMonCache={uCarro,uLinha,hEsc};
+    S._instrUltimaMonGid=gid;
+  }
+  ultimaMonCarro=S._instrUltimaMonCache.uCarro;
+  ultimaMonLinha=S._instrUltimaMonCache.uLinha;
+  hojeEscala=S._instrUltimaMonCache.hEsc;
 
   // Cache por período — evita re-query ao digitar na busca
   if(!S._instrVRows||S._instrVRowsDias!==dias||S._instrVRowsGid!==gid){
@@ -17241,10 +17324,15 @@ async function _instrViagens(gid,back,tabBar){
         ${rankKml.map(([c,kml],i)=>{
           const cor=kml>=2.5?'var(--green)':kml>=2.1?'var(--amber)':'var(--red)';
           const escId=_instrEscKey({garagem_id:gid,tipo:'carro',data:hojeEsc,veiculo:c,km_l:kml});
+          const ultima=ultimaMonCarro[c];
+          const ultimaHtml=ultima
+            ?`<span style="font-size:10px;color:var(--text4);white-space:nowrap">Última: ${ultima.data.split('-').reverse().join('/')} (${escHtml(ultima.monitor_nome||'—')})</span>`
+            :`<span style="font-size:10px;color:var(--red);white-space:nowrap">Nunca monitorado</span>`;
           return`<div style="display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 14px">
             <span onclick="S._instrVBusca='${c}';document.getElementById('instr-v-busca').value='${c}';renderFerrInstrutor('viagens')" style="cursor:pointer;font-size:11px;color:var(--text4);min-width:22px">${i+1}°</span>
             <span onclick="S._instrVBusca='${c}';document.getElementById('instr-v-busca').value='${c}';renderFerrInstrutor('viagens')" style="cursor:pointer;font-family:'DM Mono',monospace;font-weight:700;flex:1">${c}</span>
             <span style="font-family:'DM Mono',monospace;font-weight:800;color:${cor}">${kml.toFixed(2)} km/l</span>
+            ${ultimaHtml}
             ${_instrSelectEscalar(escId,'🚌 Escalar carro...')}
           </div>`;
         }).join('')}
@@ -17278,11 +17366,16 @@ async function _instrViagens(gid,back,tabBar){
           });
           const motoristasOrdenados=Object.entries(motoristasLinha).sort((a,b)=>b[1]-a[1]).slice(0,6);
           const escLinhaId=_instrEscKey({garagem_id:gid,tipo:'linha',data:hojeEsc,linha:l});
+          const ultimaL=ultimaMonLinha[l];
+          const ultimaLHtml=ultimaL
+            ?`<span style="font-size:10px;color:var(--text4);white-space:nowrap">Última: ${ultimaL.data.split('-').reverse().join('/')} (${escHtml(ultimaL.monitor_nome||'—')})</span>`
+            :`<span style="font-size:10px;color:var(--red);white-space:nowrap">Nunca monitorada</span>`;
           return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
               <span style="font-family:'DM Mono',monospace;font-weight:800;font-size:15px">L.${l}</span>
               <span style="font-size:11px;color:var(--red);font-weight:700">${ruins.length} carro${ruins.length>1?'s':''} ruim${ruins.length>1?'s':''}</span>
-              <span style="margin-left:auto">${_instrSelectEscalar(escLinhaId,'📋 Escalar linha...')}</span>
+              <span style="margin-left:auto">${ultimaLHtml}</span>
+              ${_instrSelectEscalar(escLinhaId,'📋 Escalar linha...')}
             </div>
             <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
               ${ruins.map(([v,kml])=>`<span onclick="S._instrVBusca='${v}';document.getElementById('instr-v-busca').value='${v}';renderFerrInstrutor('viagens')" style="cursor:pointer;font-family:'DM Mono',monospace;font-size:12px;font-weight:700;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--red)">${v} · ${kml.toFixed(2)} km/l</span>`).join('')}
@@ -17393,8 +17486,17 @@ async function _instrViagens(gid,back,tabBar){
   }
 
   const ultimaSync=S._instrVUltimoSync?new Date(S._instrVUltimoSync).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+  const DIAS_NOME=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+  const hojeBanner=`<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--purple);border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;gap:18px;flex-wrap:wrap;align-items:center">
+    <span style="font-size:11px;font-weight:800;color:var(--purple);text-transform:uppercase;letter-spacing:.5px">📅 Hoje (${DIAS_NOME[new Date().getDay()]})</span>
+    <span style="font-size:12px;color:var(--text2)">🚌 Campo: ${hojeEscala.campo.length?escHtml(hojeEscala.campo.join(', ')):'—'}</span>
+    <span style="font-size:12px;color:var(--text2)">📋 Linha: ${hojeEscala.linha.length?escHtml(hojeEscala.linha.join(', ')):'—'}</span>
+    <span style="font-size:12px;color:var(--text2)">🔧 Carro: ${hojeEscala.carro.length?escHtml(hojeEscala.carro.join(', ')):'—'}</span>
+    <button onclick="renderFerrInstrutor('escala_semanal')" style="margin-left:auto;padding:5px 12px;border-radius:8px;border:1px solid var(--purple);background:#8B5CF618;color:var(--purple);font-size:11px;font-weight:700;cursor:pointer">Editar escala semanal</button>
+  </div>`;
   setMain(`${secTitle('🎯','Escala — Viagens CITTATI',back)}
     <div class="filtros">${tabBar}</div>
+    ${hojeBanner}
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
       <span style="font-size:11px;color:var(--text4);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;white-space:nowrap">🔄 Atualizado: ${ultimaSync}</span>
       <div style="display:flex;gap:4px">${periodoBar}</div>
