@@ -17133,17 +17133,135 @@ function _instrPlanoAddDias(dataIso,delta){
   return d.toISOString().slice(0,10);
 }
 
+// Mesma logica de ranking ja validada na aba Escala (rankKml/linhaRuins/byVM)
+// -- reescrita aqui de forma independente (nao usa o cache da _instrViagens)
+// pra poder rodar a geracao de sugestao sem precisar visitar aquela aba antes.
+async function _instrComputeRankings(gid){
+  const dataMin=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+  const[kmlRows,vgRows]=await Promise.all([
+    _sbFetchAll(()=>sb.from('instrutor_kml_detalhado').select('veiculo,data,km_percorrido,litros').eq('garagem_id',gid).gte('data',dataMin).order('data').order('id')),
+    _sbFetchAll(()=>sb.from('viagens_resumo').select('data,linha,veiculo,motorista_cod,viagens_programadas').eq('garagem_id',gid).gte('data',dataMin).order('data').order('id')),
+  ]);
+  const porVeiculo={};
+  kmlRows.forEach(r=>{if(!porVeiculo[r.veiculo])porVeiculo[r.veiculo]=[];porVeiculo[r.veiculo].push(r);});
+  const kmlPorVeiculo={};
+  Object.entries(porVeiculo).forEach(([v,lista])=>{
+    const ordenada=lista.slice().sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
+    const validos=ordenada.length>1?ordenada.slice(1):ordenada;
+    const km=validos.reduce((s,r)=>s+(r.km_percorrido||0),0);
+    const lt=validos.reduce((s,r)=>s+(r.litros||0),0);
+    kmlPorVeiculo[v]=lt>0?km/lt:null;
+  });
+  const carrosRanking=Object.entries(kmlPorVeiculo).filter(([,k])=>k!=null).sort((a,b)=>a[1]-b[1]).map(([v])=>v);
+
+  const byLV={},byVM={};
+  vgRows.forEach(r=>{
+    const m=r.motorista_cod||'SEM_MOTORISTA';
+    if(!byLV[r.linha])byLV[r.linha]={};
+    byLV[r.linha][r.veiculo]=true;
+    if(!byVM[r.veiculo])byVM[r.veiculo]={};
+    byVM[r.veiculo][m]=(byVM[r.veiculo][m]||0)+(r.viagens_programadas||0);
+  });
+  const LIMIAR_RUIM=2.1;
+  const linhasRanking=Object.entries(byLV).map(([l,veics])=>{
+    const ruins=Object.keys(veics).filter(v=>kmlPorVeiculo[v]!=null&&kmlPorVeiculo[v]<LIMIAR_RUIM);
+    return[l,ruins.length];
+  }).filter(([,n])=>n>0).sort((a,b)=>b[1]-a[1]).map(([l])=>l);
+
+  function motoristasDoVeiculo(v){
+    return Object.entries(byVM[v]||{}).sort((a,b)=>b[1]-a[1]).map(([m])=>m).filter(m=>m!=='SEM_MOTORISTA');
+  }
+  return{carrosRanking,linhasRanking,motoristasDoVeiculo};
+}
+
+// Gera a sugestao da semana (Seg-Sex): 1 carro pior por dia, 1 linha pior por
+// dia, motoristas mais frequentes nos carros ruins pro monitor de campo (2
+// por monitor por dia) -- pedido do Daniel espelhando o padrao ja usado no
+// Planejamento de Preventivas (motor sugere, instrutor so ajusta/remove).
+async function _instrGerarSugestaoSemana(gid){
+  if(!confirm('Gerar sugestão da semana (Seg-Sex) com os piores carros/linhas e motoristas mais frequentes? Isso adiciona itens ao Plano do Dia — você pode remover ou ajustar depois.'))return;
+  toast('⏳ Gerando sugestão...');
+  const{carrosRanking,linhasRanking,motoristasDoVeiculo}=await _instrComputeRankings(gid);
+  if(!carrosRanking.length){toast('Sem dados de KM/L suficientes pra gerar sugestão','err');return;}
+
+  const hoje=new Date();
+  const diaSemanaHoje=hoje.getDay();
+  const deltaSegunda=diaSemanaHoje===0?-6:1-diaSemanaHoje;
+  const segunda=new Date(hoje);segunda.setDate(hoje.getDate()+deltaSegunda);
+  const semanaDatas=[0,1,2,3,4].map(i=>{const d=new Date(segunda);d.setDate(segunda.getDate()+i);return d.toISOString().slice(0,10);});
+
+  const{data:escalaTudo}=await sb.from('monitor_escala_semanal').select('*').eq('garagem_id',gid);
+  const escalaPorDia={};
+  (escalaTudo||[]).forEach(e=>{
+    if(!escalaPorDia[e.dia_semana])escalaPorDia[e.dia_semana]={campo:[],linha:[],carro:[]};
+    if(escalaPorDia[e.dia_semana][e.tipo])escalaPorDia[e.dia_semana][e.tipo].push(e);
+  });
+
+  const{data:existentes}=await sb.from('instrutor_atribuicoes').select('data,tipo,monitor_id,motorista_cod,linha,veiculo').eq('garagem_id',gid).in('data',semanaDatas);
+  const jaExiste=new Set((existentes||[]).map(e=>`${e.data}|${e.tipo}|${e.monitor_id}|${e.motorista_cod||e.linha||e.veiculo}`));
+
+  const novos=[];
+  const sufixo=' (sugestão automática)';
+  semanaDatas.forEach((dataStr,i)=>{
+    const diaSemana=new Date(dataStr+'T00:00:00').getDay();
+    const escDia=escalaPorDia[diaSemana]||{campo:[],linha:[],carro:[]};
+    const carroDoDia=carrosRanking[i%carrosRanking.length];
+    const linhaDoDia=linhasRanking.length?linhasRanking[i%linhasRanking.length]:null;
+
+    escDia.carro.forEach(m=>{
+      const chave=`${dataStr}|carro|${m.monitor_id}|${carroDoDia}`;
+      if(jaExiste.has(chave))return;
+      novos.push({garagem_id:gid,tipo:'carro',data:dataStr,veiculo:carroDoDia,monitor_id:m.monitor_id,monitor_nome:m.monitor_nome,atribuido_por:(S.perfil?.nome||'')+sufixo});
+      jaExiste.add(chave);
+    });
+    escDia.linha.forEach(m=>{
+      if(!linhaDoDia)return;
+      const chave=`${dataStr}|linha|${m.monitor_id}|${linhaDoDia}`;
+      if(jaExiste.has(chave))return;
+      novos.push({garagem_id:gid,tipo:'linha',data:dataStr,linha:linhaDoDia,monitor_id:m.monitor_id,monitor_nome:m.monitor_nome,atribuido_por:(S.perfil?.nome||'')+sufixo});
+      jaExiste.add(chave);
+    });
+    if(escDia.campo.length){
+      const pool=[...motoristasDoVeiculo(carroDoDia),...carrosRanking.slice(0,5).flatMap(v=>motoristasDoVeiculo(v))];
+      const usados=new Set();
+      escDia.campo.forEach(m=>{
+        let atribuidosMonitor=0;
+        for(const mot of pool){
+          if(atribuidosMonitor>=2)break;
+          if(usados.has(mot))continue;
+          const chave=`${dataStr}|motorista|${m.monitor_id}|${mot}`;
+          if(jaExiste.has(chave))continue;
+          novos.push({garagem_id:gid,tipo:'motorista',data:dataStr,motorista_cod:mot,monitor_id:m.monitor_id,monitor_nome:m.monitor_nome,atribuido_por:(S.perfil?.nome||'')+sufixo});
+          jaExiste.add(chave);usados.add(mot);atribuidosMonitor++;
+        }
+      });
+    }
+  });
+
+  if(!novos.length){toast('Nada novo pra sugerir — confere se a Escala Semanal está preenchida','err');return;}
+  const{error}=await sb.from('instrutor_atribuicoes').insert(novos);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast(`✅ ${novos.length} sugestões geradas pra semana!`);
+  renderFerrInstrutor('plano_dia');
+}
+
 async function _instrPlanoDia(gid,back,tabBar){
   const dataP=S._instrPlanoData||new Date().toISOString().slice(0,10);
   setMain(`${secTitle('📅','Plano do Dia',back)}<div class="filtros">${tabBar}</div><div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando...</div>`);
 
   const diaSemana=new Date(dataP+'T00:00:00').getDay();
-  const[{data:escala},{data:planos},{data:monRegs},{data:relLinha},{data:relCarro}]=await Promise.all([
+  const[{data:escala},{data:planos},{data:monRegs},{data:relLinha},{data:relCarro},{data:histMotorista},{data:histLinha},{data:histCarro}]=await Promise.all([
     sb.from('monitor_escala_semanal').select('*').eq('garagem_id',gid).eq('dia_semana',diaSemana),
     sb.from('instrutor_atribuicoes').select('*').eq('garagem_id',gid).eq('data',dataP).order('criado_em'),
     sb.from('monitoria_registros').select('monitor_id,motorista_nome,matricula').eq('garagem_id',gid).eq('data',dataP),
     sb.from('monitor_relatorio_linha').select('monitor_id,linha').eq('garagem_id',gid).eq('data',dataP),
     sb.from('monitor_relatorio_carro').select('monitor_id,prefixo').eq('garagem_id',gid).eq('data',dataP),
+    // Acompanhamento: quando foi a ultima vez (em qualquer data, nao so hoje)
+    // que cada motorista/linha/carro foi monitorado -- pedido do Daniel pra
+    // ver isso direto na tela de montar o plano, nao so na aba Escala.
+    sb.from('monitoria_registros').select('matricula,motorista_nome,data,monitor_nome').eq('garagem_id',gid).order('data',{ascending:false}).limit(1000),
+    sb.from('monitor_relatorio_linha').select('linha,data,monitor_nome').eq('garagem_id',gid).order('data',{ascending:false}).limit(1000),
+    sb.from('monitor_relatorio_carro').select('prefixo,data,monitor_nome').eq('garagem_id',gid).order('data',{ascending:false}).limit(1000),
   ]);
 
   const feitoCampo=new Set();
@@ -17151,6 +17269,15 @@ async function _instrPlanoDia(gid,back,tabBar){
   const feitoLinha=new Set((relLinha||[]).map(r=>r.monitor_id+'|'+r.linha));
   const feitoCarro=new Set((relCarro||[]).map(r=>r.monitor_id+'|'+r.prefixo));
   const feitoPorTipo={campo:feitoCampo,linha:feitoLinha,carro:feitoCarro};
+
+  const ultimaMotorista={};(histMotorista||[]).forEach(r=>{
+    const k1=r.matricula,k2=r.motorista_nome;
+    if(k1&&!ultimaMotorista[k1])ultimaMotorista[k1]=r;
+    if(k2&&!ultimaMotorista[k2])ultimaMotorista[k2]=r;
+  });
+  const ultimaLinha={};(histLinha||[]).forEach(r=>{if(!ultimaLinha[r.linha])ultimaLinha[r.linha]=r;});
+  const ultimaCarro={};(histCarro||[]).forEach(r=>{if(!ultimaCarro[r.prefixo])ultimaCarro[r.prefixo]=r;});
+  const ultimaPorTipo={campo:ultimaMotorista,linha:ultimaLinha,carro:ultimaCarro};
 
   const escalaPorTipo={campo:[],linha:[],carro:[]};
   (escala||[]).forEach(e=>{if(escalaPorTipo[e.tipo])escalaPorTipo[e.tipo].push(e);});
@@ -17170,6 +17297,7 @@ async function _instrPlanoDia(gid,back,tabBar){
     const monitores=escalaPorTipo[tipo];
     const feitoSet=feitoPorTipo[tipo];
     const campoValor=CAMPO_VALOR[tipo];
+    const ultimaMap=ultimaPorTipo[tipo];
     if(!monitores.length)return`<div style="background:var(--surface);border:1px dashed var(--border);border-radius:10px;padding:16px;color:var(--text4);font-size:12px;text-align:center">Nenhum monitor escalado pra ${label} nesse dia — defina na Escala Semanal</div>`;
     return monitores.map(m=>{
       const itens=planosPorMonitorTipo[tipo+'|'+m.monitor_id]||[];
@@ -17180,10 +17308,18 @@ async function _instrPlanoDia(gid,back,tabBar){
         ${itens.length?itens.map(it=>{
           const valor=it[campoValor]||'—';
           const feito=feitoSet.has(it.monitor_id+'|'+valor);
-          return`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border2)">
-            <span style="flex:1;font-size:13px">${escHtml(valor)}</span>
-            <span style="font-size:11px;font-weight:700;color:${feito?'var(--green)':'var(--amber)'}">${feito?'✅ Feito':'⏳ Pendente'}</span>
-            <button onclick="_instrPlanoRemover('${it.id}')" style="background:transparent;border:none;color:var(--text4);cursor:pointer">🗑️</button>
+          const sugerido=(it.atribuido_por||'').includes('sugestão automática');
+          const ultima=ultimaMap[valor];
+          const ultimaHtml=ultima
+            ?`<span style="font-size:10px;color:var(--text4);white-space:nowrap">Última: ${ultima.data.split('-').reverse().join('/')} (${escHtml(ultima.monitor_nome||'—')})</span>`
+            :`<span style="font-size:10px;color:var(--red);white-space:nowrap">Nunca monitorado</span>`;
+          return`<div style="padding:6px 0;border-top:1px solid var(--border2)">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="flex:1;font-size:13px">${sugerido?'🤖 ':''}${escHtml(valor)}</span>
+              <span style="font-size:11px;font-weight:700;color:${feito?'var(--green)':'var(--amber)'}">${feito?'✅ Feito':'⏳ Pendente'}</span>
+              <button onclick="_instrPlanoRemover('${it.id}')" style="background:transparent;border:none;color:var(--text4);cursor:pointer">🗑️</button>
+            </div>
+            <div style="margin-top:2px">${ultimaHtml}</div>
           </div>`;
         }).join(''):'<div style="font-size:12px;color:var(--text4);padding:4px 0">Nada planejado ainda</div>'}
         <div style="display:flex;gap:6px;margin-top:8px">
@@ -17199,12 +17335,14 @@ async function _instrPlanoDia(gid,back,tabBar){
 
   setMain(`${secTitle('📅','Plano do Dia',back)}
     <div class="filtros">${tabBar}</div>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
       <button onclick="S._instrPlanoData='${_instrPlanoAddDias(dataP,-1)}';renderFerrInstrutor('plano_dia')" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">◀</button>
       <span style="font-size:14px;font-weight:700;text-transform:capitalize">${dataFmt}</span>
       <button onclick="S._instrPlanoData='${_instrPlanoAddDias(dataP,1)}';renderFerrInstrutor('plano_dia')" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">▶</button>
       <button onclick="S._instrPlanoData=new Date().toISOString().slice(0,10);renderFerrInstrutor('plano_dia')" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:12px;cursor:pointer">Hoje</button>
+      <button onclick="_instrGerarSugestaoSemana('${gid}')" style="margin-left:auto;padding:8px 14px;border-radius:8px;border:1px solid var(--purple);background:#8B5CF618;color:var(--purple);font-size:12px;font-weight:800;cursor:pointer">🎲 Gerar Sugestão da Semana</button>
     </div>
+    <div style="font-size:11px;color:var(--text4);margin-bottom:14px">🤖 = sugestão automática (5 piores carros e linhas, motoristas mais frequentes nos carros ruins — 1 por dia, Seg-Sex)</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
       <div>
         <div style="font-size:12px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🚌 Campo</div>
