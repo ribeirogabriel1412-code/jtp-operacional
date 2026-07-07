@@ -38,3 +38,13 @@ ALTER TABLE monitoria_registros
   ADD COLUMN IF NOT EXISTS tel_faixa_verde   smallint,
   ADD COLUMN IF NOT EXISTS tel_faixa_amarela smallint,
   ADD COLUMN IF NOT EXISTS tel_inercia       smallint;
+
+-- monitor_relatorio_linha (2026-07-07): checklist da linha -- itens que dao
+-- pra contar (semaforo, cruzamento) viram numero; o resto (tempo de
+-- percurso, problema de via) vira uma lista de relatos livres que o monitor
+-- vai adicionando durante o percurso, guardada como array json
+-- ({tipo, texto}[]) -- nao precisa de tabela filha pra uma lista curta.
+ALTER TABLE monitor_relatorio_linha
+  ADD COLUMN IF NOT EXISTS semaforos_problema    integer,
+  ADD COLUMN IF NOT EXISTS cruzamentos_perigosos integer,
+  ADD COLUMN IF NOT EXISTS relatos               jsonb NOT NULL DEFAULT '[]'::jsonb;
