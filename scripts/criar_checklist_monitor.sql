@@ -16,13 +16,25 @@ ALTER TABLE monitor_relatorio_carro
   ADD COLUMN IF NOT EXISTS chk_limpeza         text,
   ADD COLUMN IF NOT EXISTS chk_pneus           text;
 
--- monitoria_registros: infracoes novas -- conducao (marcha/ultrapassagem/
--- parada) e motorista (uniforme/cordialidade/avisos), complementando as 6
--- que ja existiam (velocidade/frenagem/aceleracao/celular/cinto/postura).
+-- monitoria_registros: infracoes de conducao (marcha/ultrapassagem/parada),
+-- complementando as 3 que ja existiam (velocidade/frenagem/aceleracao).
 ALTER TABLE monitoria_registros
   ADD COLUMN IF NOT EXISTS inf_marcha        boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS inf_ultrapassagem boolean NOT NULL DEFAULT false,
-  ADD COLUMN IF NOT EXISTS inf_parada        boolean NOT NULL DEFAULT false,
-  ADD COLUMN IF NOT EXISTS inf_uniforme      boolean NOT NULL DEFAULT false,
-  ADD COLUMN IF NOT EXISTS inf_cordialidade  boolean NOT NULL DEFAULT false,
-  ADD COLUMN IF NOT EXISTS inf_avisos        boolean NOT NULL DEFAULT false;
+  ADD COLUMN IF NOT EXISTS inf_parada        boolean NOT NULL DEFAULT false;
+
+-- inf_uniforme/inf_cordialidade/inf_avisos (2026-07-07, tarde) foram
+-- substituidos pelos indicadores de telemetria abaixo antes de irem pra
+-- producao -- as colunas booleanas ficam de fora do INSERT (nunca chegaram a
+-- ser usadas de verdade), sem necessidade de dropar nada.
+
+-- Motorista: ao inves de checkbox sim/nao, o monitor agora avalia 4
+-- indicadores do mesmo tipo que o sistema de telemetria da empresa ja usa
+-- (marcha lenta, faixa verde, faixa amarela, inercia), cada um de 1 a 5
+-- estrelas (5 = melhor). Fica lado a lado com a nota geral (1-10) que ja
+-- existia.
+ALTER TABLE monitoria_registros
+  ADD COLUMN IF NOT EXISTS tel_marcha_lenta  smallint,
+  ADD COLUMN IF NOT EXISTS tel_faixa_verde   smallint,
+  ADD COLUMN IF NOT EXISTS tel_faixa_amarela smallint,
+  ADD COLUMN IF NOT EXISTS tel_inercia       smallint;

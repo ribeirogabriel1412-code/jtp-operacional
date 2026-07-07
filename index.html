@@ -17008,10 +17008,29 @@ async function _instrMonitorias(gid,back,tabBar){
 
 async function _instrRelatorios(gid,back,tabBar){
   const set7=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
-  const[{data:linhas},{data:carros}]=await Promise.all([
+  const[{data:linhas},{data:carros},{data:monitorias}]=await Promise.all([
     sb.from('monitor_relatorio_linha').select('*').eq('garagem_id',gid).gte('data',set7).order('data',{ascending:false}),
     sb.from('monitor_relatorio_carro').select('*').eq('garagem_id',gid).gte('data',set7).order('data',{ascending:false}),
+    sb.from('monitoria_registros').select('*').eq('garagem_id',gid).gte('data',set7).order('data',{ascending:false}),
   ]);
+
+  // Comentarios de todos os monitores, juntando as 3 origens (motorista/campo,
+  // linha, carro) num so lugar -- pro Instrutor montar o relatorio de
+  // supervisao sem precisar abrir as 3 abas separadas.
+  const comentarios=[
+    ...(monitorias||[]).filter(r=>r.observacao?.trim()).map(r=>({data:r.data,monitor:r.monitor_nome,contexto:`👤 ${r.motorista_nome||'—'}${r.prefixo?' · '+r.prefixo:''}${r.linha?' · L.'+r.linha:''}`,texto:r.observacao})),
+    ...(linhas||[]).filter(r=>r.observacao?.trim()).map(r=>({data:r.data,monitor:r.monitor_nome,contexto:`📋 Linha ${r.linha||'—'}`,texto:r.observacao})),
+    ...(carros||[]).filter(r=>r.observacao?.trim()).map(r=>({data:r.data,monitor:r.monitor_nome,contexto:`🚌 ${r.prefixo||'—'}`,texto:r.observacao})),
+  ].sort((a,b)=>a.data<b.data?1:a.data>b.data?-1:0);
+
+  const comentariosHtml=comentarios.length?comentarios.map(c=>`
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px">
+        <span style="font-size:12px;font-weight:700">${escHtml(c.contexto)}</span>
+        <span style="font-size:11px;color:var(--text4);white-space:nowrap">${c.data} · ${escHtml(c.monitor||'—')}</span>
+      </div>
+      <div style="font-size:13px;color:var(--text2)">${escHtml(c.texto)}</div>
+    </div>`).join(''):'<div style="text-align:center;color:var(--text4);padding:16px">Nenhum comentário nos últimos 7 dias</div>';
 
   const rowsLinha=(linhas||[]).map(r=>`
     <tr>
@@ -17046,12 +17065,15 @@ async function _instrRelatorios(gid,back,tabBar){
     </div>
 
     <div style="font-size:13px;font-weight:700;margin-bottom:8px">Relatórios de Carro — últimos 7 dias</div>
-    <div class="tbl-wrap">
+    <div class="tbl-wrap" style="margin-bottom:16px">
       <table>
         <thead><tr><th>Data</th><th>Prefixo</th><th style="text-align:center">KM/L</th><th>Condição</th><th>Observação</th><th>Monitor</th></tr></thead>
         <tbody>${rowsCarro}</tbody>
       </table>
     </div>
+
+    <div style="font-size:13px;font-weight:700;margin-bottom:8px">💬 Comentários dos Monitores — últimos 7 dias (${comentarios.length})</div>
+    <div>${comentariosHtml}</div>
   `);
 }
 

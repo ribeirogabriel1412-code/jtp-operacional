@@ -3512,21 +3512,50 @@ async function telaMonitorMeus(){
 
 const MON_CHK_ITENS_CONDUCAO=[['velocidade','⚡ Velocidade'],['frenagem','🛑 Frenagem'],['aceleracao','🚀 Aceleração'],['marcha','⚙️ Troca de marcha'],['ultrapassagem','↔️ Ultrapassagem indevida'],['parada','🚏 Encostada no ponto']];
 
+// Indicadores de telemetria (mesma nomenclatura do sistema de telemetria da
+// empresa) -- 1 a 5 estrelas, 5 = melhor. Substitui o checklist antigo de
+// comportamento do motorista (celular/cinto/postura/etc).
+const MON_TELEMETRIA_ITENS=[['marcha_lenta','🕐 Marcha Lenta'],['faixa_verde','🟢 Faixa Verde'],['faixa_amarela','🟡 Faixa Amarela'],['inercia','🌀 Inércia']];
+window._monStarState={};
+function _monStarRow(key,label){
+  return`<div style="margin-bottom:10px">
+    <label class="fl">${label}</label>
+    <div id="star-${key}" style="display:flex;gap:4px">
+      ${[1,2,3,4,5].map(n=>`<button type="button" onclick="_monStarSet('${key}',${n})" data-n="${n}" style="flex:1;padding:10px 0;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text4);font-size:19px;line-height:1;font-family:inherit;cursor:pointer">☆</button>`).join('')}
+    </div>
+  </div>`;
+}
+function _monStarSet(key,n){
+  window._monStarState[key]=n;
+  const row=document.getElementById('star-'+key);
+  if(!row)return;
+  row.querySelectorAll('button').forEach(b=>{
+    const filled=parseInt(b.dataset.n)<=n;
+    b.textContent=filled?'★':'☆';
+    b.style.color=filled?'var(--amber)':'var(--text4)';
+    b.style.borderColor=filled?'var(--amber)':'var(--border)';
+  });
+}
+
 async function telaMonitorRegistrar(){
   const gid=getGid(),mid=S.perfil?.id;
   render(`<div style="padding:30px;text-align:center;color:var(--text3)">Carregando...</div>`);
   const hojeIso=hoje();
   window._monChkState={};
+  window._monStarState={};
   const{data:minhas}=await sb.from('monitoria_registros').select('*').eq('garagem_id',gid).eq('monitor_id',mid).eq('data',hojeIso).order('created_at',{ascending:false});
 
-  const CAMPOS_INF=['inf_velocidade','inf_frenagem','inf_aceleracao','inf_marcha','inf_ultrapassagem','inf_parada','inf_celular','inf_cinto','inf_postura','inf_uniforme','inf_cordialidade','inf_avisos'];
+  const CAMPOS_INF=['inf_velocidade','inf_frenagem','inf_aceleracao','inf_marcha','inf_ultrapassagem','inf_parada'];
+  const CAMPOS_TEL=['tel_marcha_lenta','tel_faixa_verde','tel_faixa_amarela','tel_inercia'];
   const cards=(minhas||[]).map(r=>{
     const qtdInf=CAMPOS_INF.filter(c=>r[c]).length;
+    const telValores=CAMPOS_TEL.map(c=>r[c]).filter(v=>v!=null);
+    const telMedia=telValores.length?(telValores.reduce((s,v)=>s+v,0)/telValores.length):null;
     return`<div class="card" style="margin-bottom:8px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <div style="flex:1;min-width:0">
         <div style="font-weight:800;font-size:14px">${escHtml(r.motorista_nome||'—')}</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">${escHtml(r.linha||'—')}${r.prefixo?' · '+escHtml(r.prefixo):''} · <span style="background:var(--border);border-radius:5px;padding:1px 6px">${escHtml(r.tipo||'—')}</span>${qtdInf?` · <span style="color:var(--red)">${qtdInf} infração${qtdInf>1?'ões':''}</span>`:''}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">${escHtml(r.linha||'—')}${r.prefixo?' · '+escHtml(r.prefixo):''} · <span style="background:var(--border);border-radius:5px;padding:1px 6px">${escHtml(r.tipo||'—')}</span>${qtdInf?` · <span style="color:var(--red)">${qtdInf} infração${qtdInf>1?'ões':''}</span>`:''}${telMedia!=null?` · <span style="color:var(--amber)">⭐ ${telMedia.toFixed(1)}</span>`:''}</div>
       </div>
       <div style="text-align:right">
         <div style="font-weight:900;font-size:16px;color:${r.nota>=8?'var(--green)':r.nota>=6?'var(--amber)':'var(--red)'}">${r.nota}</div>
@@ -3571,15 +3600,8 @@ async function telaMonitorRegistrar(){
       <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🚌 Checklist de Condução</div>
       ${MON_CHK_ITENS_CONDUCAO.map(([k,lb])=>_monChkRow(k,lb)).join('')}
 
-      <label class="fl" style="margin-bottom:8px;margin-top:4px">👤 Motorista</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-cel"> 📱 Celular</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-cinto"> 🔒 Cinto</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-postura"> 🪑 Postura</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-uniforme"> 👔 Uniforme/crachá</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-cordial"> 🤝 Cordialidade</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-avisos"> 📢 Avisos de parada</label>
-      </div>
+      <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;margin-top:4px">⭐ Telemetria (1 a 5 estrelas, 5 = melhor)</div>
+      ${MON_TELEMETRIA_ITENS.map(([k,lb])=>_monStarRow(k,lb)).join('')}
 
       <label class="fl">📝 Observações do Monitor <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text4)">(qualquer coisa que não coube nos itens acima)</span></label>
       <textarea id="mon-obs" class="fi" placeholder="Escreva livremente aqui..." rows="4" style="resize:vertical;margin-bottom:14px"></textarea>
@@ -3615,12 +3637,10 @@ async function monMobSalvarMonitoria(gid,mid){
     inf_marcha:_monChkFlag('marcha'),
     inf_ultrapassagem:_monChkFlag('ultrapassagem'),
     inf_parada:_monChkFlag('parada'),
-    inf_celular:get('mon-inf-cel')?.checked||false,
-    inf_cinto:get('mon-inf-cinto')?.checked||false,
-    inf_postura:get('mon-inf-postura')?.checked||false,
-    inf_uniforme:get('mon-inf-uniforme')?.checked||false,
-    inf_cordialidade:get('mon-inf-cordial')?.checked||false,
-    inf_avisos:get('mon-inf-avisos')?.checked||false,
+    tel_marcha_lenta:window._monStarState.marcha_lenta||null,
+    tel_faixa_verde:window._monStarState.faixa_verde||null,
+    tel_faixa_amarela:window._monStarState.faixa_amarela||null,
+    tel_inercia:window._monStarState.inercia||null,
     observacao:get('mon-obs')?.value?.trim()||null,
   };
 
@@ -3628,6 +3648,7 @@ async function monMobSalvarMonitoria(gid,mid){
   if(error){toast('Erro: '+error.message,'err');return;}
   _monMobPreNome='';_monMobPreMat='';
   window._monChkState={};
+  window._monStarState={};
   toast('✅ Monitoria registrada!');
   telaMonitorRegistrar();
 }
