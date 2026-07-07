@@ -18920,8 +18920,10 @@ async function renderFerrPCMPecas(back,tabs,gid){
   const osNumeros=[...new Set(todas.map(r=>r.numero_os).filter(Boolean))];
 
   const pecasPorOs={};
+  let erroReqs=null;
   if(osNumeros.length){
-    const{data:reqs}=await sb.from('requisicoes_compra').select('os_numero,cod_sap,peca,quantidade,status,criado_por').in('os_numero',osNumeros);
+    const{data:reqs,error:errReqs}=await sb.from('requisicoes_compra').select('id,os_numero,cod_sap,peca,quantidade,status,criado_por,validado_pcm,validado_pcm_por').in('os_numero',osNumeros);
+    erroReqs=errReqs;
     (reqs||[]).forEach(r=>{
       if(!pecasPorOs[r.os_numero])pecasPorOs[r.os_numero]=[];
       pecasPorOs[r.os_numero].push(r);
@@ -18953,6 +18955,7 @@ async function renderFerrPCMPecas(back,tabs,gid){
             <th style="padding:6px 8px;color:var(--text3);font-weight:600;text-align:right">Qtd</th>
             <th style="padding:6px 8px;color:var(--text3);font-weight:600;text-align:left">Status</th>
             <th style="padding:6px 8px;color:var(--text3);font-weight:600;text-align:left">Origem</th>
+            <th style="padding:6px 8px;color:var(--text3);font-weight:600;text-align:center">Validado PCM</th>
           </tr></thead>
           <tbody>${itens.map(i=>`<tr style="border-top:1px solid var(--border)">
             <td style="padding:6px 8px;font-family:monospace;color:var(--text2)">${i.cod_sap||'—'}</td>
@@ -18960,6 +18963,12 @@ async function renderFerrPCMPecas(back,tabs,gid){
             <td style="padding:6px 8px;text-align:right">${i.quantidade??'—'}</td>
             <td style="padding:6px 8px">${statusLabel(i.status)}</td>
             <td style="padding:6px 8px;color:${i.criado_por==='Sync PRAXIO'?'var(--green)':'var(--text3)'}">${i.criado_por==='Sync PRAXIO'?'🔄 PRAXIO':escHtml(i.criado_por||'—')}</td>
+            <td style="padding:6px 8px;text-align:center" onclick="event.stopPropagation()">
+              <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+                <input type="checkbox" ${i.validado_pcm?'checked':''} onchange="_pcmValidarPeca('${i.id}',this.checked)">
+                ${i.validado_pcm&&i.validado_pcm_por?`<span style="font-size:10px;color:var(--text4)">${escHtml(i.validado_pcm_por)}</span>`:''}
+              </label>
+            </td>
           </tr>`).join('')}</tbody>
         </table>
       </div>`:''}
@@ -18972,7 +18981,18 @@ async function renderFerrPCMPecas(back,tabs,gid){
       <button onclick="renderFerrPCM('pecas_praxio')" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;cursor:pointer">🔄 Atualizar</button>
       <span style="font-size:12px;color:var(--text3)">${todas.length.toLocaleString('pt-BR')} OS (últimos 3 dias, abertas e fechadas) — peças vindas direto da requisição oficial do PRAXIO (sync automático, sem digitação do PCM)</span>
     </div>
+    ${erroReqs?`<div class="info-blue info-banner" style="margin-bottom:14px">❌ Erro ao carregar peças: ${erroReqs.message}</div>`:''}
     <div style="display:flex;flex-direction:column;gap:8px">${corpo}</div>`);
+}
+
+async function _pcmValidarPeca(id,checked){
+  const{error}=await sb.from('requisicoes_compra').update({
+    validado_pcm:checked,
+    validado_pcm_por:checked?(S.perfil?.nome||null):null,
+    validado_pcm_em:checked?new Date().toISOString():null,
+  }).eq('id',id);
+  if(error){toast('Erro ao validar: '+error.message,'err');return;}
+  toast(checked?'✅ Peça validada!':'Validação removida');
 }
 
 async function renderFerrOsTurno(dataRef=null,backArg='',tabsArg=''){
