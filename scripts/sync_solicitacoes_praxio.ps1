@@ -125,7 +125,12 @@ if ($oracleRows.Count -eq 0) {
 }
 
 $osNumeros = @($oracleRows | Select-Object -ExpandProperty NUMERO_OS -Unique)
-$listaOs = ($osNumeros | ForEach-Object { "'$_'" }) -join ','
+# IMPORTANTE (2026-07-07): o filtro in.() do PostgREST NAO usa aspas simples
+# como delimitador de string -- ele trata a aspa como parte literal do valor.
+# "in.('16685')" busca a string "'16685'" (com aspas) e nunca acha nada,
+# "in.(16685)" busca o valor certo. Envolver em aspas aqui fazia a checagem de
+# "ja existe" sempre voltar vazia, e o sync duplicava tudo a cada execucao.
+$listaOs = $osNumeros -join ','
 
 # -- 2) Busca o que ja existe no Supabase pras mesmas OS ---------------------
 # So compara (os_numero, cod_sap) -- nao importa quem criou a linha (sync ou

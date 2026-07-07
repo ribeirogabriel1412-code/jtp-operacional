@@ -3510,8 +3510,6 @@ async function telaMonitorMeus(){
   `);
 }
 
-const MON_CHK_ITENS_CONDUCAO=[['velocidade','⚡ Velocidade'],['frenagem','🛑 Frenagem'],['aceleracao','🚀 Aceleração'],['marcha','⚙️ Troca de marcha'],['ultrapassagem','↔️ Ultrapassagem indevida'],['parada','🚏 Encostada no ponto']];
-
 // Indicadores de telemetria (mesma nomenclatura do sistema de telemetria da
 // empresa) -- 1 a 5 estrelas, 5 = melhor. Substitui o checklist antigo de
 // comportamento do motorista (celular/cinto/postura/etc).
@@ -3541,21 +3539,18 @@ async function telaMonitorRegistrar(){
   const gid=getGid(),mid=S.perfil?.id;
   render(`<div style="padding:30px;text-align:center;color:var(--text3)">Carregando...</div>`);
   const hojeIso=hoje();
-  window._monChkState={};
   window._monStarState={};
   const{data:minhas}=await sb.from('monitoria_registros').select('*').eq('garagem_id',gid).eq('monitor_id',mid).eq('data',hojeIso).order('created_at',{ascending:false});
 
-  const CAMPOS_INF=['inf_velocidade','inf_frenagem','inf_aceleracao','inf_marcha','inf_ultrapassagem','inf_parada'];
   const CAMPOS_TEL=['tel_marcha_lenta','tel_faixa_verde','tel_faixa_amarela','tel_inercia'];
   const cards=(minhas||[]).map(r=>{
-    const qtdInf=CAMPOS_INF.filter(c=>r[c]).length;
     const telValores=CAMPOS_TEL.map(c=>r[c]).filter(v=>v!=null);
     const telMedia=telValores.length?(telValores.reduce((s,v)=>s+v,0)/telValores.length):null;
     return`<div class="card" style="margin-bottom:8px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <div style="flex:1;min-width:0">
         <div style="font-weight:800;font-size:14px">${escHtml(r.motorista_nome||'—')}</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">${escHtml(r.linha||'—')}${r.prefixo?' · '+escHtml(r.prefixo):''} · <span style="background:var(--border);border-radius:5px;padding:1px 6px">${escHtml(r.tipo||'—')}</span>${qtdInf?` · <span style="color:var(--red)">${qtdInf} infração${qtdInf>1?'ões':''}</span>`:''}${telMedia!=null?` · <span style="color:var(--amber)">⭐ ${telMedia.toFixed(1)}</span>`:''}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">${escHtml(r.linha||'—')}${r.prefixo?' · '+escHtml(r.prefixo):''} · <span style="background:var(--border);border-radius:5px;padding:1px 6px">${escHtml(r.tipo||'—')}</span>${telMedia!=null?` · <span style="color:var(--amber)">⭐ ${telMedia.toFixed(1)}</span>`:''}</div>
       </div>
       <div style="text-align:right">
         <div style="font-weight:900;font-size:16px;color:${r.nota>=8?'var(--green)':r.nota>=6?'var(--amber)':'var(--red)'}">${r.nota}</div>
@@ -3597,10 +3592,7 @@ async function telaMonitorRegistrar(){
       <label class="fl">Nota (1 a 10)</label>
       <input type="number" inputmode="numeric" id="mon-nota" class="fi" min="1" max="10" placeholder="Ex: 7" style="margin-bottom:12px">
 
-      <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🚌 Checklist de Condução</div>
-      ${MON_CHK_ITENS_CONDUCAO.map(([k,lb])=>_monChkRow(k,lb)).join('')}
-
-      <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;margin-top:4px">⭐ Telemetria (1 a 5 estrelas, 5 = melhor)</div>
+      <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">⭐ Telemetria (1 a 5 estrelas, 5 = melhor)</div>
       ${MON_TELEMETRIA_ITENS.map(([k,lb])=>_monStarRow(k,lb)).join('')}
 
       <label class="fl">📝 Observações do Monitor <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text4)">(qualquer coisa que não coube nos itens acima)</span></label>
@@ -3631,12 +3623,6 @@ async function monMobSalvarMonitoria(gid,mid){
     data:get('mon-data')?.value||hoje(),
     tipo:get('mon-tipo')?.value||'campo',
     nota,
-    inf_velocidade:_monChkFlag('velocidade'),
-    inf_frenagem:_monChkFlag('frenagem'),
-    inf_aceleracao:_monChkFlag('aceleracao'),
-    inf_marcha:_monChkFlag('marcha'),
-    inf_ultrapassagem:_monChkFlag('ultrapassagem'),
-    inf_parada:_monChkFlag('parada'),
     tel_marcha_lenta:window._monStarState.marcha_lenta||null,
     tel_faixa_verde:window._monStarState.faixa_verde||null,
     tel_faixa_amarela:window._monStarState.faixa_amarela||null,
@@ -3647,7 +3633,6 @@ async function monMobSalvarMonitoria(gid,mid){
   const{error}=await sb.from('monitoria_registros').insert(payload);
   if(error){toast('Erro: '+error.message,'err');return;}
   _monMobPreNome='';_monMobPreMat='';
-  window._monChkState={};
   window._monStarState={};
   toast('✅ Monitoria registrada!');
   telaMonitorRegistrar();
@@ -3754,10 +3739,6 @@ function _monChkRow(key,label){
       ${opts.map(([val,lb])=>`<button type="button" onclick="_monChkSet('${key}','${val}')" data-val="${val}" style="flex:1;padding:9px 4px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:11px;font-weight:800;font-family:inherit;cursor:pointer">${lb}</button>`).join('')}
     </div>
   </div>`;
-}
-function _monChkFlag(key){
-  const v=(window._monChkState||{})[key];
-  return v==='atencao'||v==='critico';
 }
 function _monChkSet(key,val){
   window._monChkState[key]=val;
