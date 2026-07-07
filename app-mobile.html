@@ -3510,10 +3510,13 @@ async function telaMonitorMeus(){
   `);
 }
 
+const MON_CHK_ITENS_CONDUCAO=[['velocidade','⚡ Velocidade'],['frenagem','🛑 Frenagem'],['aceleracao','🚀 Aceleração'],['marcha','⚙️ Troca de marcha'],['ultrapassagem','↔️ Ultrapassagem indevida'],['parada','🚏 Encostada no ponto']];
+
 async function telaMonitorRegistrar(){
   const gid=getGid(),mid=S.perfil?.id;
   render(`<div style="padding:30px;text-align:center;color:var(--text3)">Carregando...</div>`);
   const hojeIso=hoje();
+  window._monChkState={};
   const{data:minhas}=await sb.from('monitoria_registros').select('*').eq('garagem_id',gid).eq('monitor_id',mid).eq('data',hojeIso).order('created_at',{ascending:false});
 
   const CAMPOS_INF=['inf_velocidade','inf_frenagem','inf_aceleracao','inf_marcha','inf_ultrapassagem','inf_parada','inf_celular','inf_cinto','inf_postura','inf_uniforme','inf_cordialidade','inf_avisos'];
@@ -3565,17 +3568,10 @@ async function telaMonitorRegistrar(){
       <label class="fl">Nota (1 a 10)</label>
       <input type="number" inputmode="numeric" id="mon-nota" class="fi" min="1" max="10" placeholder="Ex: 7" style="margin-bottom:12px">
 
-      <label class="fl" style="margin-bottom:8px">🚌 Condução</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-vel"> ⚡ Velocidade</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-fren"> 🛑 Frenagem</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-acel"> 🚀 Aceleração</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-marcha"> ⚙️ Troca de marcha</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-ultrap"> ↔️ Ultrapassagem indevida</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-parada"> 🚏 Encostada no ponto</label>
-      </div>
+      <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🚌 Checklist de Condução</div>
+      ${MON_CHK_ITENS_CONDUCAO.map(([k,lb])=>_monChkRow(k,lb)).join('')}
 
-      <label class="fl" style="margin-bottom:8px">👤 Motorista</label>
+      <label class="fl" style="margin-bottom:8px;margin-top:4px">👤 Motorista</label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-cel"> 📱 Celular</label>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-cinto"> 🔒 Cinto</label>
@@ -3585,8 +3581,8 @@ async function telaMonitorRegistrar(){
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-avisos"> 📢 Avisos de parada</label>
       </div>
 
-      <label class="fl">Observação</label>
-      <textarea id="mon-obs" class="fi" placeholder="Pontos observados..." rows="3" style="resize:vertical;margin-bottom:14px"></textarea>
+      <label class="fl">📝 Observações do Monitor <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text4)">(qualquer coisa que não coube nos itens acima)</span></label>
+      <textarea id="mon-obs" class="fi" placeholder="Escreva livremente aqui..." rows="4" style="resize:vertical;margin-bottom:14px"></textarea>
 
       <button onclick="monMobSalvarMonitoria('${gid}','${mid}')" class="btn-success" style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--green);color:#fff;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer">✓ Salvar Monitoria</button>
     </div>
@@ -3613,12 +3609,12 @@ async function monMobSalvarMonitoria(gid,mid){
     data:get('mon-data')?.value||hoje(),
     tipo:get('mon-tipo')?.value||'campo',
     nota,
-    inf_velocidade:get('mon-inf-vel')?.checked||false,
-    inf_frenagem:get('mon-inf-fren')?.checked||false,
-    inf_aceleracao:get('mon-inf-acel')?.checked||false,
-    inf_marcha:get('mon-inf-marcha')?.checked||false,
-    inf_ultrapassagem:get('mon-inf-ultrap')?.checked||false,
-    inf_parada:get('mon-inf-parada')?.checked||false,
+    inf_velocidade:_monChkFlag('velocidade'),
+    inf_frenagem:_monChkFlag('frenagem'),
+    inf_aceleracao:_monChkFlag('aceleracao'),
+    inf_marcha:_monChkFlag('marcha'),
+    inf_ultrapassagem:_monChkFlag('ultrapassagem'),
+    inf_parada:_monChkFlag('parada'),
     inf_celular:get('mon-inf-cel')?.checked||false,
     inf_cinto:get('mon-inf-cinto')?.checked||false,
     inf_postura:get('mon-inf-postura')?.checked||false,
@@ -3631,6 +3627,7 @@ async function monMobSalvarMonitoria(gid,mid){
   const{error}=await sb.from('monitoria_registros').insert(payload);
   if(error){toast('Erro: '+error.message,'err');return;}
   _monMobPreNome='';_monMobPreMat='';
+  window._monChkState={};
   toast('✅ Monitoria registrada!');
   telaMonitorRegistrar();
 }
@@ -3736,6 +3733,10 @@ function _monChkRow(key,label){
       ${opts.map(([val,lb])=>`<button type="button" onclick="_monChkSet('${key}','${val}')" data-val="${val}" style="flex:1;padding:9px 4px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:11px;font-weight:800;font-family:inherit;cursor:pointer">${lb}</button>`).join('')}
     </div>
   </div>`;
+}
+function _monChkFlag(key){
+  const v=(window._monChkState||{})[key];
+  return v==='atencao'||v==='critico';
 }
 function _monChkSet(key,val){
   window._monChkState[key]=val;
