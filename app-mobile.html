@@ -3347,13 +3347,15 @@ async function salvarTrocaValetAlmox(id){
 // (renderFerrMonitor/index.html) -- monitor de campo usa celular, entao esse
 // e o fluxo real de lancamento; o desktop continua existindo mas na pratica
 // quem alimenta monitoria_registros/monitor_relatorio_linha/carro e aqui.
-var _monMobTab='meus',_monMobPreNome='',_monMobPreMat='';
+var _monMobTab='meus',_monMobPreNome='',_monMobPreMat='',_monMobPreLinha='',_monMobPrePrefixo='';
 
 function monMobTabNav(tab){
   const s=t=>`white-space:nowrap;padding:7px 14px;border-radius:8px;font-size:12px;font-weight:800;font-family:inherit;cursor:pointer;border:1px solid ${tab===t?'var(--blue)':'var(--border)'};${tab===t?'background:var(--blue);color:#fff':'background:var(--surface);color:var(--text3)'}`;
   const b=(t,ic,lb)=>`<button onclick="_monMobTab='${t}';telaMonitor()" style="${s(t)}">${ic} ${lb}</button>`;
   return`<div style="display:flex;gap:6px;padding:4px 14px 10px;overflow-x:auto">
     ${b('meus','👥','Meus Motoristas')}
+    ${b('minhas_linhas','📋','Minhas Linhas')}
+    ${b('meus_carros','🚌','Meus Carros')}
     ${b('registrar','➕','Registrar')}
     ${b('rel_linha','📋','Rel. Linha')}
     ${b('rel_carro','🚌','Rel. Carro')}
@@ -3364,16 +3366,95 @@ async function telaMonitor(){
   if(_monMobTab==='registrar'){await telaMonitorRegistrar();return;}
   if(_monMobTab==='rel_linha'){await telaMonitorRelLinha();return;}
   if(_monMobTab==='rel_carro'){await telaMonitorRelCarro();return;}
+  if(_monMobTab==='minhas_linhas'){await telaMonitorMinhasLinhas();return;}
+  if(_monMobTab==='meus_carros'){await telaMonitorMeusCarros();return;}
   await telaMonitorMeus();
+}
+
+async function telaMonitorMinhasLinhas(){
+  const gid=getGid(),mid=S.perfil?.id;
+  render(`<div style="padding:30px;text-align:center;color:var(--text3)">Carregando...</div>`);
+  const hojeIso=hoje();
+  const[{data:escaladas},{data:feitas}]=await Promise.all([
+    sb.from('instrutor_atribuicoes').select('*').eq('garagem_id',gid).eq('monitor_id',mid).eq('tipo','linha').eq('data',hojeIso).order('criado_em',{ascending:false}),
+    sb.from('monitor_relatorio_linha').select('linha').eq('garagem_id',gid).eq('monitor_id',mid).eq('data',hojeIso),
+  ]);
+  const jaFeitas=new Set((feitas||[]).map(f=>f.linha));
+
+  const cards=(escaladas||[]).map(r=>{
+    const feito=jaFeitas.has(r.linha);
+    return`<div class="card" style="margin-bottom:8px;${feito?'opacity:0.6':''}">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:800;font-size:15px;font-family:'DM Mono',monospace">L.${escHtml(r.linha||'—')}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Escalado por ${escHtml(r.atribuido_por||'—')}</div>
+        </div>
+        ${feito
+          ?`<span style="font-size:11px;color:var(--green);white-space:nowrap">✅ Feito</span>`
+          :`<button onclick="_monMobPreLinha='${String(r.linha||'').replace(/'/g,"\\'")}';_monMobTab='rel_linha';telaMonitor()" style="padding:7px 12px;border-radius:8px;border:1px solid var(--blue);background:#3B82F618;color:var(--blue);font-size:12px;font-weight:800;font-family:inherit;white-space:nowrap">Registrar</button>`}
+      </div>
+    </div>`;
+  }).join('');
+
+  render(`
+    <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div style="font-weight:800;font-size:17px">📋 Minhas Linhas</div>
+      <button onclick="telaMonitor()" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">🔄</button>
+    </div>
+    ${monMobTabNav('minhas_linhas')}
+    <div style="padding:0 14px 4px;font-size:12px;color:var(--text3)">${(escaladas||[]).length} linha(s) escalada(s) hoje pelo instrutor</div>
+    <div style="padding:10px 14px 0">
+      ${cards||'<div class="empty"><div class="empty-ic">📋</div><div style="font-weight:700">Nenhuma linha escalada hoje</div><div style="font-size:12px;color:var(--text3);margin-top:4px">Aguarde o instrutor escalar pelo Painel de Viagens</div></div>'}
+    </div>
+  `);
+}
+
+async function telaMonitorMeusCarros(){
+  const gid=getGid(),mid=S.perfil?.id;
+  render(`<div style="padding:30px;text-align:center;color:var(--text3)">Carregando...</div>`);
+  const hojeIso=hoje();
+  const[{data:escaladas},{data:feitas}]=await Promise.all([
+    sb.from('instrutor_atribuicoes').select('*').eq('garagem_id',gid).eq('monitor_id',mid).eq('tipo','carro').eq('data',hojeIso).order('criado_em',{ascending:false}),
+    sb.from('monitor_relatorio_carro').select('prefixo').eq('garagem_id',gid).eq('monitor_id',mid).eq('data',hojeIso),
+  ]);
+  const jaFeitos=new Set((feitas||[]).map(f=>f.prefixo));
+
+  const cards=(escaladas||[]).map(r=>{
+    const feito=jaFeitos.has(r.veiculo);
+    return`<div class="card" style="margin-bottom:8px;${feito?'opacity:0.6':''}">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:800;font-size:15px;font-family:'DM Mono',monospace">${escHtml(r.veiculo||'—')}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${r.km_l!=null?`KM/L referência: <b style="color:var(--red)">${r.km_l}</b> · `:''}Escalado por ${escHtml(r.atribuido_por||'—')}</div>
+        </div>
+        ${feito
+          ?`<span style="font-size:11px;color:var(--green);white-space:nowrap">✅ Feito</span>`
+          :`<button onclick="_monMobPrePrefixo='${String(r.veiculo||'').replace(/'/g,"\\'")}';_monMobTab='rel_carro';telaMonitor()" style="padding:7px 12px;border-radius:8px;border:1px solid var(--blue);background:#3B82F618;color:var(--blue);font-size:12px;font-weight:800;font-family:inherit;white-space:nowrap">Registrar</button>`}
+      </div>
+    </div>`;
+  }).join('');
+
+  render(`
+    <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div style="font-weight:800;font-size:17px">🚌 Meus Carros</div>
+      <button onclick="telaMonitor()" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">🔄</button>
+    </div>
+    ${monMobTabNav('meus_carros')}
+    <div style="padding:0 14px 4px;font-size:12px;color:var(--text3)">${(escaladas||[]).length} carro(s) escalado(s) hoje pelo instrutor</div>
+    <div style="padding:10px 14px 0">
+      ${cards||'<div class="empty"><div class="empty-ic">🚌</div><div style="font-weight:700">Nenhum carro escalado hoje</div><div style="font-size:12px;color:var(--text3);margin-top:4px">Aguarde o instrutor escalar pelo Painel de Viagens</div></div>'}
+    </div>
+  `);
 }
 
 async function telaMonitorMeus(){
   const gid=getGid(),mid=S.perfil?.id;
   render(`<div style="padding:30px;text-align:center;color:var(--text3)">Carregando...</div>`);
   const hojeIso=hoje();
-  const[{data:motoristas},{data:minhasHoje}]=await Promise.all([
+  const[{data:motoristas},{data:minhasHoje},{data:escalados}]=await Promise.all([
     sb.from('instrutor_ranking').select('*').eq('garagem_id',gid).eq('monitor_id',mid).order('posicao'),
     sb.from('monitoria_registros').select('motorista_nome,matricula').eq('garagem_id',gid).eq('monitor_id',mid).eq('data',hojeIso),
+    sb.from('instrutor_atribuicoes').select('*').eq('garagem_id',gid).eq('monitor_id',mid).eq('tipo','motorista').eq('data',hojeIso),
   ]);
   const jaMonitH=new Set((minhasHoje||[]).map(m=>m.matricula));
 
@@ -3395,15 +3476,36 @@ async function telaMonitorMeus(){
     </div>`;
   }).join('');
 
+  // Escalas do dia vindas do Painel de Viagens do instrutor (so tem o codigo
+  // do motorista, sem nome/km-l do ranking) -- dedup pra nao duplicar quando o
+  // mesmo motorista ja aparece no ranking importado (Excel) acima.
+  const jaNaLista=new Set((motoristas||[]).map(m=>m.matricula));
+  const escaladosSemDuplicar=(escalados||[]).filter(e=>!jaNaLista.has(e.motorista_cod));
+  const cardsEscalados=escaladosSemDuplicar.map(r=>{
+    const feito=jaMonitH.has(r.motorista_cod);
+    return`<div class="card" style="margin-bottom:8px;${feito?'opacity:0.6':''}">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:800;font-size:14px;font-family:'DM Mono',monospace">${escHtml(r.motorista_cod||'—')}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${r.linha?'Linha '+escHtml(r.linha)+' · ':''}Escalado por ${escHtml(r.atribuido_por||'—')}</div>
+        </div>
+        ${feito
+          ?`<span style="font-size:11px;color:var(--green);white-space:nowrap">✅ Feito</span>`
+          :`<button onclick="_monMobPreNome='';_monMobPreMat='${String(r.motorista_cod||'').replace(/'/g,"\\'")}';_monMobTab='registrar';telaMonitor()" style="padding:7px 12px;border-radius:8px;border:1px solid var(--blue);background:#3B82F618;color:var(--blue);font-size:12px;font-weight:800;font-family:inherit;white-space:nowrap">Registrar</button>`}
+      </div>
+    </div>`;
+  }).join('');
+
   render(`
     <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
       <div style="font-weight:800;font-size:17px">👁️ Monitor</div>
       <button onclick="telaMonitor()" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">🔄</button>
     </div>
     ${monMobTabNav('meus')}
-    <div style="padding:0 14px 4px;font-size:12px;color:var(--text3)">${(motoristas||[]).length} motorista(s) atribuído(s) · ${jaMonitH.size} monitorado(s) hoje</div>
+    <div style="padding:0 14px 4px;font-size:12px;color:var(--text3)">${(motoristas||[]).length} do ranking · ${escaladosSemDuplicar.length} escalado(s) hoje · ${jaMonitH.size} monitorado(s) hoje</div>
     <div style="padding:10px 14px 0">
-      ${cards||'<div class="empty"><div class="empty-ic">👥</div><div style="font-weight:700">Nenhum motorista atribuído</div><div style="font-size:12px;color:var(--text3);margin-top:4px">Aguarde o instrutor distribuir o ranking</div></div>'}
+      ${cards}${cardsEscalados}
+      ${(!cards&&!cardsEscalados)?'<div class="empty"><div class="empty-ic">👥</div><div style="font-weight:700">Nenhum motorista atribuído</div><div style="font-size:12px;color:var(--text3);margin-top:4px">Aguarde o instrutor distribuir o ranking ou escalar pelo Painel de Viagens</div></div>':''}
     </div>
   `);
 }
@@ -3546,7 +3648,7 @@ async function telaMonitorRelLinha(){
     ${monMobTabNav('rel_linha')}
     <div class="card" style="margin:0 14px 14px">
       <label class="fl">Linha</label>
-      <input id="rlin-linha" class="fi" placeholder="Ex: 720 — Centro/Bairro..." style="margin-bottom:10px">
+      <input id="rlin-linha" class="fi" placeholder="Ex: 720 — Centro/Bairro..." style="margin-bottom:10px" value="${escHtml(_monMobPreLinha||'')}">
 
       <label class="fl">Data</label>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
@@ -3590,6 +3692,7 @@ async function monMobSalvarRelLinha(gid,mid){
     observacao:get('rlin-obs')||null,
   });
   if(error){toast('Erro: '+error.message,'err');return;}
+  _monMobPreLinha='';
   toast('✅ Relatório de linha salvo!');
   telaMonitorRelLinha();
 }
@@ -3632,7 +3735,7 @@ async function telaMonitorRelCarro(){
     ${monMobTabNav('rel_carro')}
     <div class="card" style="margin:0 14px 14px">
       <label class="fl">Prefixo do Veículo</label>
-      <input id="rcar-pref" class="fi" placeholder="Ex: 02.001..." style="margin-bottom:10px">
+      <input id="rcar-pref" class="fi" placeholder="Ex: 02.001..." style="margin-bottom:10px" value="${escHtml(_monMobPrePrefixo||'')}">
 
       <label class="fl">Data</label>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
@@ -3673,6 +3776,7 @@ async function monMobSalvarRelCarro(gid,mid){
     observacao:get('rcar-obs')?.value?.trim()||null,
   });
   if(error){toast('Erro: '+error.message,'err');return;}
+  _monMobPrePrefixo='';
   toast('✅ Relatório de carro salvo!');
   telaMonitorRelCarro();
 }

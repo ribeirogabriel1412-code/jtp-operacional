@@ -17059,11 +17059,56 @@ async function _instrRelatorios(gid,back,tabBar){
 // INSTRUTOR — Viagens CITTATI (Azure Blob)
 // ══════════════════════════════════════════════════════════════
 
+// Registro temporario usado pelos dropdowns de "Escalar" -- guarda o payload
+// completo (tipo/data/motorista/linha/veiculo/km_l) sob uma chave curta pra
+// nao precisar serializar JSON dentro de atributo onchange.
+window._instrEscReg=window._instrEscReg||{};
+let _instrEscSeq=0;
+function _instrEscKey(payload){
+  const id='esc'+(_instrEscSeq++);
+  window._instrEscReg[id]=payload;
+  return id;
+}
+function _instrSelectEscalar(id,label){
+  const monitores=S._instrMonitoresCache||[];
+  return`<select onchange="_instrSalvarEscala('${id}',this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:3px 8px;color:var(--text3);font-size:11px;font-family:'DM Sans',sans-serif">
+    <option value="">${label}</option>
+    ${monitores.map(m=>`<option value="${m.id}">${escHtml(m.nome)}</option>`).join('')}
+  </select>`;
+}
+async function _instrSalvarEscala(id,monitorId){
+  if(!monitorId)return;
+  const payload=window._instrEscReg[id];
+  if(!payload){toast('Escala expirada, recarregue a tela','err');return;}
+  const monitor=(S._instrMonitoresCache||[]).find(m=>m.id===monitorId);
+  const{error}=await sb.from('instrutor_atribuicoes').insert({
+    garagem_id:payload.garagem_id,
+    tipo:payload.tipo,
+    data:payload.data,
+    motorista_cod:payload.motorista_cod||null,
+    linha:payload.linha||null,
+    veiculo:payload.veiculo||null,
+    km_l:payload.km_l??null,
+    monitor_id:monitorId,
+    monitor_nome:monitor?.nome||null,
+    atribuido_por:S.perfil?.nome||null,
+  });
+  if(error){toast('Erro ao escalar: '+error.message,'err');return;}
+  toast(`✅ Escalado pro monitor ${monitor?.nome||''}!`);
+}
+
 async function _instrViagens(gid,back,tabBar){
   const dias=S._instrVDias||7;
   const busca=(S._instrVBusca||'').trim().toUpperCase();
   const carroSeL=S._instrVCarro||null;
   const dataMin=new Date(Date.now()-dias*86400000).toISOString().slice(0,10);
+  const hojeEsc=new Date().toISOString().slice(0,10);
+
+  if(!S._instrMonitoresCache||S._instrMonitoresCacheGid!==gid){
+    const{data:mons}=await sb.from('perfis').select('id,nome').eq('garagem_id',gid).eq('cargo','monitor').order('nome');
+    S._instrMonitoresCache=mons||[];
+    S._instrMonitoresCacheGid=gid;
+  }
 
   // Cache por período — evita re-query ao digitar na busca
   if(!S._instrVRows||S._instrVRowsDias!==dias||S._instrVRowsGid!==gid){
@@ -17173,10 +17218,12 @@ async function _instrViagens(gid,back,tabBar){
       <div style="display:flex;flex-direction:column;gap:6px">
         ${rankKml.map(([c,kml],i)=>{
           const cor=kml>=2.5?'var(--green)':kml>=2.1?'var(--amber)':'var(--red)';
-          return`<div onclick="S._instrVBusca='${c}';document.getElementById('instr-v-busca').value='${c}';renderFerrInstrutor('viagens')" style="display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 14px;cursor:pointer">
-            <span style="font-size:11px;color:var(--text4);min-width:22px">${i+1}°</span>
-            <span style="font-family:'DM Mono',monospace;font-weight:700;flex:1">${c}</span>
+          const escId=_instrEscKey({garagem_id:gid,tipo:'carro',data:hojeEsc,veiculo:c,km_l:kml});
+          return`<div style="display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 14px">
+            <span onclick="S._instrVBusca='${c}';document.getElementById('instr-v-busca').value='${c}';renderFerrInstrutor('viagens')" style="cursor:pointer;font-size:11px;color:var(--text4);min-width:22px">${i+1}°</span>
+            <span onclick="S._instrVBusca='${c}';document.getElementById('instr-v-busca').value='${c}';renderFerrInstrutor('viagens')" style="cursor:pointer;font-family:'DM Mono',monospace;font-weight:700;flex:1">${c}</span>
             <span style="font-family:'DM Mono',monospace;font-weight:800;color:${cor}">${kml.toFixed(2)} km/l</span>
+            ${_instrSelectEscalar(escId,'🚌 Escalar carro...')}
           </div>`;
         }).join('')}
       </div>
@@ -17208,17 +17255,25 @@ async function _instrViagens(gid,back,tabBar){
             });
           });
           const motoristasOrdenados=Object.entries(motoristasLinha).sort((a,b)=>b[1]-a[1]).slice(0,6);
+          const escLinhaId=_instrEscKey({garagem_id:gid,tipo:'linha',data:hojeEsc,linha:l});
           return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
               <span style="font-family:'DM Mono',monospace;font-weight:800;font-size:15px">L.${l}</span>
               <span style="font-size:11px;color:var(--red);font-weight:700">${ruins.length} carro${ruins.length>1?'s':''} ruim${ruins.length>1?'s':''}</span>
+              <span style="margin-left:auto">${_instrSelectEscalar(escLinhaId,'📋 Escalar linha...')}</span>
             </div>
             <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
               ${ruins.map(([v,kml])=>`<span onclick="S._instrVBusca='${v}';document.getElementById('instr-v-busca').value='${v}';renderFerrInstrutor('viagens')" style="cursor:pointer;font-family:'DM Mono',monospace;font-size:12px;font-weight:700;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--red)">${v} · ${kml.toFixed(2)} km/l</span>`).join('')}
             </div>
             ${motoristasOrdenados.length?`<div style="font-size:10px;color:var(--text4);font-weight:600;letter-spacing:0.5px;margin-bottom:4px">MOTORISTAS MAIS FREQUENTES NESSES CARROS NESSA LINHA</div>
-            <div style="display:flex;flex-wrap:wrap;gap:6px">
-              ${motoristasOrdenados.map(([mot,prog])=>`<span style="font-family:'DM Mono',monospace;font-size:11px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:3px 8px;color:var(--text2)">${mot} (${prog})</span>`).join('')}
+            <div style="display:flex;flex-direction:column;gap:6px">
+              ${motoristasOrdenados.map(([mot,prog])=>{
+                const escMotId=_instrEscKey({garagem_id:gid,tipo:'motorista',data:hojeEsc,motorista_cod:mot,linha:l});
+                return`<div style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:3px 6px 3px 10px">
+                  <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text2);flex:1">${mot} (${prog})</span>
+                  ${_instrSelectEscalar(escMotId,'🚌 Escalar campo...')}
+                </div>`;
+              }).join('')}
             </div>`:''}
           </div>`;
         }).join('')}
