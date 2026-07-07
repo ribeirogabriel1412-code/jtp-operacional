@@ -16509,7 +16509,7 @@ async function renderFerrInstrutor(aba='painel'){
   const gid=getGid();
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
   const tabs=['painel','viagens','pontualidade','ranking','kml','monitorias','relatorios'];
-  const tabLabels={painel:'📊 Painel',viagens:'🚌 Viagens',pontualidade:'📍 Pontualidade',ranking:'🏆 Ranking',kml:'⛽ KM/L',monitorias:'👁️ Monitorias',relatorios:'📋 Relatórios'};
+  const tabLabels={painel:'📊 Painel',viagens:'🎯 Escala',pontualidade:'📍 Pontualidade',ranking:'🏆 Ranking',kml:'⛽ KM/L',monitorias:'👁️ Monitorias',relatorios:'📋 Relatórios'};
   const tabBar=tabs.map(t=>`<button class="filtro-btn${aba===t?' active':''}" onclick="renderFerrInstrutor('${t}')">${tabLabels[t]}</button>`).join('');
 
   if(aba==='painel') return _instrPainel(gid,back,tabBar);
@@ -17112,7 +17112,7 @@ async function _instrViagens(gid,back,tabBar){
 
   // Cache por período — evita re-query ao digitar na busca
   if(!S._instrVRows||S._instrVRowsDias!==dias||S._instrVRowsGid!==gid){
-    setMain(`${secTitle('🚌','Viagens — CITTATI',back)}<div class="filtros">${tabBar}</div><div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando dados...</div>`);
+    setMain(`${secTitle('🎯','Escala — Viagens CITTATI',back)}<div class="filtros">${tabBar}</div><div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando dados...</div>`);
     const[rows,kmlRows]=await Promise.all([
       _sbFetchAll(()=>sb.from('viagens_resumo')
         .select('data,linha,veiculo,motorista_cod,viagens_programadas,viagens_realizadas,updated_at')
@@ -17371,7 +17371,7 @@ async function _instrViagens(gid,back,tabBar){
   }
 
   const ultimaSync=S._instrVUltimoSync?new Date(S._instrVUltimoSync).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
-  setMain(`${secTitle('🚌','Viagens — CITTATI',back)}
+  setMain(`${secTitle('🎯','Escala — Viagens CITTATI',back)}
     <div class="filtros">${tabBar}</div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
       <span style="font-size:11px;color:var(--text4);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;white-space:nowrap">🔄 Atualizado: ${ultimaSync}</span>
