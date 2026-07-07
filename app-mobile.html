@@ -2274,6 +2274,15 @@ async function telaAlmoxMobSolicitacoes(){
   const lista=[...(recsRecentes||[]),...(recsAntigos||[])].filter(r=>r.os_numero&&String(r.os_numero).trim());
   window._solItemsMap={};lista.forEach(i=>{window._solItemsMap[i.id]=i;});
 
+  // Itens que vieram do sync do PRAXIO (scripts/sync_solicitacoes_praxio.ps1) e
+  // ainda nao foram confirmados -- aparecem numa lista propria, sem filtro de
+  // turno (igual a tela "Pecas PRAXIO" do Painel PCM), pra qualquer almox de
+  // qualquer turno poder confirmar a entrega assim que ver. Uma vez confirmado
+  // (vira 'separado'), some daqui e entra no fluxo normal de Inventario Rotativo.
+  const listaSyncPendente=lista.filter(r=>r.criado_por==='Sync PRAXIO'&&r.status==='solicitado_pcm')
+    .sort((a,b)=>(parseInt(b.os_numero)||0)-(parseInt(a.os_numero)||0));
+  const listaTurno=lista.filter(r=>!(r.criado_por==='Sync PRAXIO'&&r.status==='solicitado_pcm'));
+
   // Divergencias com o PRAXIO (motor sync_divergencias_pecas.ps1) -- avisa
   // aqui mesmo, na tela onde o Almox trabalha, quando um item lancado no app
   // ainda nao foi achado na requisicao oficial da Oracle.
@@ -2294,10 +2303,10 @@ async function telaAlmoxMobSolicitacoes(){
   // Classificar itens por seção
   const emJan=(r,jan)=>{const dt=new Date(r.criado_em);return dt>=new Date(jan.ini)&&dt<new Date(jan.fim);};
   // T-1: criados no turno anterior E já resolvidos
-  const itensPrev=lista.filter(r=>emJan(r,janPrev)&&['separado','comprado'].includes(r.status||''));
+  const itensPrev=listaTurno.filter(r=>emJan(r,janPrev)&&['separado','comprado'].includes(r.status||''));
   const idsPrev=new Set(itensPrev.map(r=>r.id));
   // Turno atual: apenas itens do turno em curso + backlog antigo ainda pendente
-  const itensAtual=lista.filter(r=>{
+  const itensAtual=listaTurno.filter(r=>{
     if(idsPrev.has(r.id))return false;
     if(emJan(r,janAtual))return true;
     if(!emJan(r,janPrev)&&['solicitado_pcm','pendente','aprovado'].includes(r.status||''))return true;
@@ -2365,6 +2374,37 @@ async function telaAlmoxMobSolicitacoes(){
     }).join('');
   }
 
+  // Cards da lista PRAXIO -- todas as OS (aberta ou fechada), sem filtro de
+  // turno. Clicar em "Confirmar Entrega" abre a mesma modal de sempre (item ja
+  // vem preenchido com o que a Oracle mandou) -- o proprio almox conta o
+  // fisico ali. Uma vez confirmado, some daqui e entra no fluxo normal de
+  // Inventario Rotativo pro proximo turno conferir de novo.
+  function renderSyncCards(itens){
+    const grupos={};
+    itens.forEach(r=>{const k=r.os_numero;if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
+    if(!Object.keys(grupos).length)return'';
+    return Object.entries(grupos).map(([os,its])=>{
+      const pref=its[0]?.prefixo||'—';
+      return`<div class="card" style="margin-bottom:10px;border-left:4px solid var(--purple)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+          <div>
+            <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">OS</div>
+            <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:800;color:var(--blue)">${escHtml(os)}</div>
+            <div style="font-size:12px;color:var(--text3)">Prefixo: ${escHtml(pref)}</div>
+          </div>
+          <div style="font-size:11px;font-weight:900;color:var(--purple)">${its.length} ${its.length>1?'itens':'item'}</div>
+        </div>
+        ${its.map(i=>`<div style="padding:9px 0;border-top:1px solid var(--border2);display:flex;align-items:center;gap:8px;justify-content:space-between">
+          <div style="display:grid;grid-template-columns:34px 1fr;gap:8px;font-size:13px;color:var(--text);flex:1;min-width:0">
+            <b style="font-family:'DM Mono',monospace;color:var(--amber)">${i.quantidade||1}x</b>
+            <span>${escHtml(i.peca)}${i.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-top:2px">${escHtml(i.cod_sap)}</div>`:''}</span>
+          </div>
+          <button onclick="almoxMobAbrirConfEntrega('${i.id}')" style="padding:8px 12px;border-radius:8px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;font-family:inherit;white-space:nowrap">✅ Confirmar</button>
+        </div>`).join('')}
+      </div>`;
+    }).join('');
+  }
+
   const turnoIcon=t=>t==='dia'?'☀️':'🌙';
   const fmtData=d=>d?d.split('-').reverse().join('/'):'';
   const pendentes=itensAtual.filter(r=>r.status==='solicitado_pcm').length;
@@ -2372,6 +2412,7 @@ async function telaAlmoxMobSolicitacoes(){
 
   const secAtual=renderCards(itensAtual,false);
   const secPrev=renderCards(itensPrev,true);
+  const secSyncPendente=renderSyncCards(listaSyncPendente);
 
   render(`
     <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
@@ -2385,6 +2426,12 @@ async function telaAlmoxMobSolicitacoes(){
       <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--blue);border-radius:10px;padding:10px;text-align:center"><b style="color:var(--blue);font-family:'DM Mono',monospace">${itensPrev.length}</b><div style="font-size:10px;color:var(--text3)">T-1 Inv.</div></div>
     </div>
     <div style="padding:0 14px">
+      ${listaSyncPendente.length?`
+      <div style="margin-bottom:16px;padding-bottom:14px;border-bottom:2px dashed var(--purple)">
+        <div style="font-size:12px;font-weight:800;color:var(--purple);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">🔄 Itens PRAXIO a confirmar — ${listaSyncPendente.length} (todas as OS)</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Vieram direto da requisição oficial do PRAXIO, sem digitação do PCM — confirme a entrega pra contar o físico</div>
+        ${secSyncPendente}
+      </div>`:''}
       <div style="font-size:12px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">${turnoIcon(turnoAtual)} Turno ${turnoAtual==='dia'?'Dia':'Noite'} — ${fmtData(dataAtual)}</div>
       ${secAtual||'<div style="text-align:center;color:var(--text3);padding:20px 0;font-size:13px">Nenhuma solicitação neste turno</div>'}
       ${itensPrev.length?`

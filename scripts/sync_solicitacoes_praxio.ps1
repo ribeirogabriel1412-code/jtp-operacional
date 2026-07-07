@@ -163,15 +163,55 @@ foreach ($o in $oracleRows) {
 Write-Host ""
 Write-Host "$($novos.Count) item(ns) novo(s) pra inserir (de $($oracleRows.Count) da Oracle)." -ForegroundColor $(if ($novos.Count -gt 0) { "Cyan" } else { "Green" })
 
+# Invoke-RestMethod no Windows PowerShell 5.1 nao manda o -Body (string) como
+# UTF-8 de verdade quando tem acento/cedilha -- o Supabase recebe bytes
+# corrompidos e responde "empty or invalid json" (PGRST102). Por isso convertemos
+# o JSON pra bytes UTF-8 explicitamente antes de mandar.
+function Post-SupabaseJson($uri, $headers, $bodyObj) {
+    $json = $bodyObj | ConvertTo-Json -Depth 3
+    if ($bodyObj.Count -eq 1 -or $bodyObj -isnot [array]) { $json = "[$json]" }
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+    Invoke-RestMethod -Method POST -Uri $uri -Headers $headers -Body $bytes -ContentType "application/json; charset=utf-8"
+}
+
 if ($novos.Count -gt 0) {
     $novos | Format-Table os_numero, prefixo, cod_sap, quantidade, peca -AutoSize
-    $body = $novos | ConvertTo-Json -Depth 3
-    if ($novos.Count -eq 1) { $body = "[$body]" }
+    $uriInsert = "$SUPABASE_URL/rest/v1/requisicoes_compra"
     try {
-        Invoke-RestMethod -Method POST -Uri "$SUPABASE_URL/rest/v1/requisicoes_compra" -Headers $hdrWrite -Body $body | Out-Null
+        Post-SupabaseJson $uriInsert $hdrWrite $novos | Out-Null
         Write-Host "Inseridos em requisicoes_compra." -ForegroundColor Green
     } catch {
         Write-Warning "Erro inserindo: $($_.Exception.Message)"
+        $respBody = $null
+        try {
+            if ($_.ErrorDetails -and $_.ErrorDetails.Message) {
+                $respBody = $_.ErrorDetails.Message
+            } elseif ($_.Exception.Response) {
+                $stream = $_.Exception.Response.GetResponseStream()
+                $stream.Position = 0
+                $reader = New-Object System.IO.StreamReader($stream)
+                $respBody = $reader.ReadToEnd()
+            }
+        } catch {}
+        if ($respBody) { Write-Warning "Detalhe do Supabase: $respBody" }
+
+        Write-Host "Tentando inserir item a item pra achar o(s) registro(s) com problema..." -ForegroundColor Yellow
+        foreach ($n in $novos) {
+            try {
+                Post-SupabaseJson $uriInsert $hdrWrite @($n) | Out-Null
+                Write-Host "  OK  os=$($n.os_numero) cod_sap=$($n.cod_sap)" -ForegroundColor Green
+            } catch {
+                $detalhe = $null
+                try {
+                    if ($_.ErrorDetails -and $_.ErrorDetails.Message) { $detalhe = $_.ErrorDetails.Message }
+                    elseif ($_.Exception.Response) {
+                        $s = $_.Exception.Response.GetResponseStream(); $s.Position = 0
+                        $detalhe = (New-Object System.IO.StreamReader($s)).ReadToEnd()
+                    }
+                } catch {}
+                Write-Host "  FALHOU os=$($n.os_numero) cod_sap=$($n.cod_sap) peca=$($n.peca) -- $detalhe" -ForegroundColor Red
+            }
+        }
     }
 }
 
