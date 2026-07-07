@@ -3516,18 +3516,22 @@ async function telaMonitorRegistrar(){
   const hojeIso=hoje();
   const{data:minhas}=await sb.from('monitoria_registros').select('*').eq('garagem_id',gid).eq('monitor_id',mid).eq('data',hojeIso).order('created_at',{ascending:false});
 
-  const cards=(minhas||[]).map(r=>`<div class="card" style="margin-bottom:8px">
+  const CAMPOS_INF=['inf_velocidade','inf_frenagem','inf_aceleracao','inf_marcha','inf_ultrapassagem','inf_parada','inf_celular','inf_cinto','inf_postura','inf_uniforme','inf_cordialidade','inf_avisos'];
+  const cards=(minhas||[]).map(r=>{
+    const qtdInf=CAMPOS_INF.filter(c=>r[c]).length;
+    return`<div class="card" style="margin-bottom:8px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <div style="flex:1;min-width:0">
         <div style="font-weight:800;font-size:14px">${escHtml(r.motorista_nome||'—')}</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">${escHtml(r.linha||'—')}${r.prefixo?' · '+escHtml(r.prefixo):''} · <span style="background:var(--border);border-radius:5px;padding:1px 6px">${escHtml(r.tipo||'—')}</span></div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">${escHtml(r.linha||'—')}${r.prefixo?' · '+escHtml(r.prefixo):''} · <span style="background:var(--border);border-radius:5px;padding:1px 6px">${escHtml(r.tipo||'—')}</span>${qtdInf?` · <span style="color:var(--red)">${qtdInf} infração${qtdInf>1?'ões':''}</span>`:''}</div>
       </div>
       <div style="text-align:right">
         <div style="font-weight:900;font-size:16px;color:${r.nota>=8?'var(--green)':r.nota>=6?'var(--amber)':'var(--red)'}">${r.nota}</div>
         <button onclick="monMobDelMonitoria('${r.id}')" style="background:transparent;border:none;color:var(--text4);font-size:16px;cursor:pointer">🗑️</button>
       </div>
     </div>
-  </div>`).join('') || '<div class="empty"><div class="empty-ic">➕</div><div style="font-weight:700">Nenhuma monitoria hoje</div></div>';
+  </div>`;
+  }).join('') || '<div class="empty"><div class="empty-ic">➕</div><div style="font-weight:700">Nenhuma monitoria hoje</div></div>';
 
   render(`
     <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
@@ -3561,14 +3565,24 @@ async function telaMonitorRegistrar(){
       <label class="fl">Nota (1 a 10)</label>
       <input type="number" inputmode="numeric" id="mon-nota" class="fi" min="1" max="10" placeholder="Ex: 7" style="margin-bottom:12px">
 
-      <label class="fl" style="margin-bottom:8px">Infrações observadas</label>
+      <label class="fl" style="margin-bottom:8px">🚌 Condução</label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-vel"> ⚡ Velocidade</label>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-fren"> 🛑 Frenagem</label>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-acel"> 🚀 Aceleração</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-marcha"> ⚙️ Troca de marcha</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-ultrap"> ↔️ Ultrapassagem indevida</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-parada"> 🚏 Encostada no ponto</label>
+      </div>
+
+      <label class="fl" style="margin-bottom:8px">👤 Motorista</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-cel"> 📱 Celular</label>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-cinto"> 🔒 Cinto</label>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-postura"> 🪑 Postura</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-uniforme"> 👔 Uniforme/crachá</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-cordial"> 🤝 Cordialidade</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="mon-inf-avisos"> 📢 Avisos de parada</label>
       </div>
 
       <label class="fl">Observação</label>
@@ -3602,9 +3616,15 @@ async function monMobSalvarMonitoria(gid,mid){
     inf_velocidade:get('mon-inf-vel')?.checked||false,
     inf_frenagem:get('mon-inf-fren')?.checked||false,
     inf_aceleracao:get('mon-inf-acel')?.checked||false,
+    inf_marcha:get('mon-inf-marcha')?.checked||false,
+    inf_ultrapassagem:get('mon-inf-ultrap')?.checked||false,
+    inf_parada:get('mon-inf-parada')?.checked||false,
     inf_celular:get('mon-inf-cel')?.checked||false,
     inf_cinto:get('mon-inf-cinto')?.checked||false,
     inf_postura:get('mon-inf-postura')?.checked||false,
+    inf_uniforme:get('mon-inf-uniforme')?.checked||false,
+    inf_cordialidade:get('mon-inf-cordial')?.checked||false,
+    inf_avisos:get('mon-inf-avisos')?.checked||false,
     observacao:get('mon-obs')?.value?.trim()||null,
   };
 
@@ -3703,20 +3723,51 @@ async function monMobDelRelLinha(id){
   telaMonitorRelLinha();
 }
 
+// Checklist item-a-item (carro) e infracoes (monitoria) usam o mesmo padrao
+// de botao-tri-estado -- rapido de tocar com o onibus em movimento, sem
+// precisar digitar nada pros itens padrao.
+window._monChkState={};
+const MON_CHK_ITENS_CARRO=[['freios','🛑 Freios'],['ar_condicionado','❄️ Ar-condicionado'],['portas','🚪 Portas'],['ruidos','🔊 Ruídos anormais'],['painel','📟 Painel/instrumentos'],['limpeza','🧹 Limpeza interna'],['pneus','⚙️ Pneus']];
+function _monChkRow(key,label){
+  const opts=[['ok','✅ OK'],['atencao','⚠️ Atenção'],['critico','❌ Crítico']];
+  return`<div style="margin-bottom:10px">
+    <label class="fl">${label}</label>
+    <div id="chk-${key}" style="display:flex;gap:6px">
+      ${opts.map(([val,lb])=>`<button type="button" onclick="_monChkSet('${key}','${val}')" data-val="${val}" style="flex:1;padding:9px 4px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:11px;font-weight:800;font-family:inherit;cursor:pointer">${lb}</button>`).join('')}
+    </div>
+  </div>`;
+}
+function _monChkSet(key,val){
+  window._monChkState[key]=val;
+  const row=document.getElementById('chk-'+key);
+  if(!row)return;
+  const cores={ok:'var(--green)',atencao:'var(--amber)',critico:'var(--red)'};
+  const bgs={ok:'#00C48C18',atencao:'#F59E0B18',critico:'#EF444418'};
+  row.querySelectorAll('button').forEach(b=>{
+    const sel=b.dataset.val===val;
+    b.style.borderColor=sel?cores[b.dataset.val]:'var(--border)';
+    b.style.background=sel?bgs[b.dataset.val]:'var(--surface2)';
+    b.style.color=sel?cores[b.dataset.val]:'var(--text3)';
+  });
+}
+
 async function telaMonitorRelCarro(){
   const gid=getGid(),mid=S.perfil?.id;
   render(`<div style="padding:30px;text-align:center;color:var(--text3)">Carregando...</div>`);
   const hojeIso=hoje();
+  window._monChkState={};
   const{data:minhas}=await sb.from('monitor_relatorio_carro').select('*').eq('garagem_id',gid).eq('monitor_id',mid).order('data',{ascending:false}).limit(20);
 
   const cards=(minhas||[]).map(r=>{
     const corCond=r.condicao_interna==='ok'?'var(--green)':r.condicao_interna==='atencao'?'var(--amber)':'var(--red)';
     const bgCond=r.condicao_interna==='ok'?'#00C48C20':r.condicao_interna==='atencao'?'#F59E0B20':'#EF444420';
+    const itensRuins=MON_CHK_ITENS_CARRO.filter(([k])=>r['chk_'+k]&&r['chk_'+k]!=='ok').map(([k,lb])=>lb.split(' ').slice(1).join(' ')+' ('+r['chk_'+k]+')');
     return`<div class="card" style="margin-bottom:8px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
         <div style="flex:1;min-width:0">
           <div style="font-weight:800;font-size:14px;font-family:'DM Mono',monospace">${escHtml(r.prefixo||'—')}</div>
           <div style="font-size:11px;color:var(--text3);margin-top:2px">${r.data} · KM/L <b style="font-family:'DM Mono',monospace">${r.km_l??'—'}</b></div>
+          ${itensRuins.length?`<div style="font-size:11px;color:var(--amber);margin-top:4px">${itensRuins.join(' · ')}</div>`:''}
           ${r.observacao?`<div style="font-size:11px;color:var(--text3);margin-top:4px">${escHtml(r.observacao)}</div>`:''}
         </div>
         <div style="text-align:right">
@@ -3738,23 +3789,19 @@ async function telaMonitorRelCarro(){
       <input id="rcar-pref" class="fi" placeholder="Ex: 02.001..." style="margin-bottom:10px" value="${escHtml(_monMobPrePrefixo||'')}">
 
       <label class="fl">Data</label>
-      <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:14px">
         <input type="date" id="rcar-data" class="fi" style="margin-bottom:0" value="${hojeIso}">
         <button onclick="document.getElementById('rcar-data').showPicker()" style="padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">📅</button>
       </div>
 
       <label class="fl">KM/L Observado</label>
-      <input type="number" inputmode="decimal" step="0.01" id="rcar-kml" class="fi" placeholder="Ex: 3.25" style="margin-bottom:10px">
+      <input type="number" inputmode="decimal" step="0.01" id="rcar-kml" class="fi" placeholder="Ex: 3.25" style="margin-bottom:14px">
 
-      <label class="fl">Condição Interna</label>
-      <select id="rcar-cond" class="fi2" style="margin-bottom:10px;width:100%">
-        <option value="ok">✅ OK</option>
-        <option value="atencao">⚠️ Atenção</option>
-        <option value="ruim">❌ Ruim</option>
-      </select>
+      <div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">✅ Checklist do veículo</div>
+      ${MON_CHK_ITENS_CARRO.map(([k,lb])=>_monChkRow(k,lb)).join('')}
 
-      <label class="fl">Infrações / Observações</label>
-      <textarea id="rcar-obs" class="fi" placeholder="Infrações do condutor, condição geral..." rows="3" style="resize:vertical;margin-bottom:14px"></textarea>
+      <label class="fl" style="margin-top:4px">Observações gerais</label>
+      <textarea id="rcar-obs" class="fi" placeholder="Detalhes do que foi observado..." rows="3" style="resize:vertical;margin-bottom:14px"></textarea>
 
       <button onclick="monMobSalvarRelCarro('${gid}','${mid}')" class="btn-success" style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--green);color:#fff;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer">✓ Salvar Relatório</button>
     </div>
@@ -3768,15 +3815,26 @@ async function monMobSalvarRelCarro(gid,mid){
   const pref=get('rcar-pref')?.value?.trim();
   if(!pref){toast('Informe o prefixo','err');return;}
 
-  const{error}=await sb.from('monitor_relatorio_carro').insert({
+  const chk=window._monChkState||{};
+  const valores=MON_CHK_ITENS_CARRO.map(([k])=>chk[k]).filter(Boolean);
+  // condicao_interna geral = pior item do checklist (critico>atencao>ok) --
+  // mantem o mesmo campo/valores que a tela do Instrutor ja le hoje
+  // (index.html _instrRelatorios), so que agora calculado, nao digitado solto.
+  const condicaoGeral=valores.includes('critico')?'ruim':valores.includes('atencao')?'atencao':'ok';
+
+  const payload={
     garagem_id:gid,monitor_id:mid,monitor_nome:S.perfil?.nome,
     prefixo:pref,data:get('rcar-data')?.value||hoje(),
     km_l:parseFloat(get('rcar-kml')?.value)||null,
-    condicao_interna:get('rcar-cond')?.value||'ok',
+    condicao_interna:condicaoGeral,
     observacao:get('rcar-obs')?.value?.trim()||null,
-  });
+  };
+  MON_CHK_ITENS_CARRO.forEach(([k])=>{payload['chk_'+k]=chk[k]||null;});
+
+  const{error}=await sb.from('monitor_relatorio_carro').insert(payload);
   if(error){toast('Erro: '+error.message,'err');return;}
   _monMobPrePrefixo='';
+  window._monChkState={};
   toast('✅ Relatório de carro salvo!');
   telaMonitorRelCarro();
 }
