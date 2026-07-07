@@ -16508,12 +16508,13 @@ async function deleteCronograma(id){
 async function renderFerrInstrutor(aba='painel'){
   const gid=getGid();
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
-  const tabs=['painel','viagens','escala_semanal','pontualidade','ranking','kml','monitorias','relatorios'];
-  const tabLabels={painel:'📊 Painel',viagens:'🎯 Escala',escala_semanal:'📅 Escala Semanal',pontualidade:'📍 Pontualidade',ranking:'🏆 Ranking',kml:'⛽ KM/L',monitorias:'👁️ Monitorias',relatorios:'📋 Relatórios'};
+  const tabs=['painel','viagens','plano_dia','escala_semanal','pontualidade','ranking','kml','monitorias','relatorios'];
+  const tabLabels={painel:'📊 Painel',viagens:'🎯 Escala',plano_dia:'📅 Plano do Dia',escala_semanal:'🗓️ Escala Semanal',pontualidade:'📍 Pontualidade',ranking:'🏆 Ranking',kml:'⛽ KM/L',monitorias:'👁️ Monitorias',relatorios:'📋 Relatórios'};
   const tabBar=tabs.map(t=>`<button class="filtro-btn${aba===t?' active':''}" onclick="renderFerrInstrutor('${t}')">${tabLabels[t]}</button>`).join('');
 
   if(aba==='painel') return _instrPainel(gid,back,tabBar);
   if(aba==='viagens') return _instrViagens(gid,back,tabBar);
+  if(aba==='plano_dia') return _instrPlanoDia(gid,back,tabBar);
   if(aba==='escala_semanal') return _instrEscalaSemanal(gid,back,tabBar);
   if(aba==='pontualidade') return _instrPontualidade(gid,back,tabBar);
   if(aba==='ranking') return _instrRanking(gid,back,tabBar);
@@ -17118,6 +17119,128 @@ async function _instrSalvarEscala(id,monitorId){
   });
   if(error){toast('Erro ao escalar: '+error.message,'err');return;}
   toast(`✅ Escalado pro monitor ${monitor?.nome||''}!`);
+}
+
+// Mapa entre o "tipo de trabalho" da escala semanal (campo/linha/carro,
+// nomenclatura do monitor) e o "tipo de alvo" gravado em instrutor_atribuicoes
+// (motorista/linha/carro, ja usado pelos dropdowns "Escalar" da aba Ranking) --
+// mesma tabela, dois vocabularios diferentes por historico.
+const INSTR_TIPO_TRABALHO_PARA_DB={campo:'motorista',linha:'linha',carro:'carro'};
+
+function _instrPlanoAddDias(dataIso,delta){
+  const d=new Date(dataIso+'T00:00:00');
+  d.setDate(d.getDate()+delta);
+  return d.toISOString().slice(0,10);
+}
+
+async function _instrPlanoDia(gid,back,tabBar){
+  const dataP=S._instrPlanoData||new Date().toISOString().slice(0,10);
+  setMain(`${secTitle('📅','Plano do Dia',back)}<div class="filtros">${tabBar}</div><div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando...</div>`);
+
+  const diaSemana=new Date(dataP+'T00:00:00').getDay();
+  const[{data:escala},{data:planos},{data:monRegs},{data:relLinha},{data:relCarro}]=await Promise.all([
+    sb.from('monitor_escala_semanal').select('*').eq('garagem_id',gid).eq('dia_semana',diaSemana),
+    sb.from('instrutor_atribuicoes').select('*').eq('garagem_id',gid).eq('data',dataP).order('criado_em'),
+    sb.from('monitoria_registros').select('monitor_id,motorista_nome,matricula').eq('garagem_id',gid).eq('data',dataP),
+    sb.from('monitor_relatorio_linha').select('monitor_id,linha').eq('garagem_id',gid).eq('data',dataP),
+    sb.from('monitor_relatorio_carro').select('monitor_id,prefixo').eq('garagem_id',gid).eq('data',dataP),
+  ]);
+
+  const feitoCampo=new Set();
+  (monRegs||[]).forEach(r=>{feitoCampo.add(r.monitor_id+'|'+r.matricula);feitoCampo.add(r.monitor_id+'|'+r.motorista_nome);});
+  const feitoLinha=new Set((relLinha||[]).map(r=>r.monitor_id+'|'+r.linha));
+  const feitoCarro=new Set((relCarro||[]).map(r=>r.monitor_id+'|'+r.prefixo));
+  const feitoPorTipo={campo:feitoCampo,linha:feitoLinha,carro:feitoCarro};
+
+  const escalaPorTipo={campo:[],linha:[],carro:[]};
+  (escala||[]).forEach(e=>{if(escalaPorTipo[e.tipo])escalaPorTipo[e.tipo].push(e);});
+
+  // planos vem com tipo='motorista'|'linha'|'carro' (vocabulario do DB) --
+  // reagrupa pelo tipo de trabalho (campo/linha/carro) pra casar com a escala
+  const CAMPO_VALOR={campo:'motorista_cod',linha:'linha',carro:'veiculo'};
+  const planosPorMonitorTipo={};
+  (planos||[]).forEach(p=>{
+    const tipoTrabalho=p.tipo==='motorista'?'campo':p.tipo;
+    const k=tipoTrabalho+'|'+p.monitor_id;
+    if(!planosPorMonitorTipo[k])planosPorMonitorTipo[k]=[];
+    planosPorMonitorTipo[k].push(p);
+  });
+
+  function secaoTipo(tipo,label,placeholder){
+    const monitores=escalaPorTipo[tipo];
+    const feitoSet=feitoPorTipo[tipo];
+    const campoValor=CAMPO_VALOR[tipo];
+    if(!monitores.length)return`<div style="background:var(--surface);border:1px dashed var(--border);border-radius:10px;padding:16px;color:var(--text4);font-size:12px;text-align:center">Nenhum monitor escalado pra ${label} nesse dia — defina na Escala Semanal</div>`;
+    return monitores.map(m=>{
+      const itens=planosPorMonitorTipo[tipo+'|'+m.monitor_id]||[];
+      const inputId=`plano-${tipo}-${m.monitor_id}`;
+      const nomeSafe=String(m.monitor_nome||'').replace(/'/g,"\\'");
+      return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:8px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">${escHtml(m.monitor_nome||'—')}</div>
+        ${itens.length?itens.map(it=>{
+          const valor=it[campoValor]||'—';
+          const feito=feitoSet.has(it.monitor_id+'|'+valor);
+          return`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border2)">
+            <span style="flex:1;font-size:13px">${escHtml(valor)}</span>
+            <span style="font-size:11px;font-weight:700;color:${feito?'var(--green)':'var(--amber)'}">${feito?'✅ Feito':'⏳ Pendente'}</span>
+            <button onclick="_instrPlanoRemover('${it.id}')" style="background:transparent;border:none;color:var(--text4);cursor:pointer">🗑️</button>
+          </div>`;
+        }).join(''):'<div style="font-size:12px;color:var(--text4);padding:4px 0">Nada planejado ainda</div>'}
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <input id="${inputId}" placeholder="${placeholder}" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px">
+          <button onclick="_instrPlanoAdd('${gid}','${dataP}','${tipo}','${m.monitor_id}','${nomeSafe}','${inputId}')" style="padding:6px 12px;border-radius:6px;border:none;background:var(--blue);color:#fff;font-size:12px;font-weight:700;cursor:pointer">+</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  const dataObj=new Date(dataP+'T00:00:00');
+  const dataFmt=dataObj.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'});
+
+  setMain(`${secTitle('📅','Plano do Dia',back)}
+    <div class="filtros">${tabBar}</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <button onclick="S._instrPlanoData='${_instrPlanoAddDias(dataP,-1)}';renderFerrInstrutor('plano_dia')" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">◀</button>
+      <span style="font-size:14px;font-weight:700;text-transform:capitalize">${dataFmt}</span>
+      <button onclick="S._instrPlanoData='${_instrPlanoAddDias(dataP,1)}';renderFerrInstrutor('plano_dia')" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">▶</button>
+      <button onclick="S._instrPlanoData=new Date().toISOString().slice(0,10);renderFerrInstrutor('plano_dia')" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:12px;cursor:pointer">Hoje</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
+      <div>
+        <div style="font-size:12px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🚌 Campo</div>
+        ${secaoTipo('campo','Campo','Nome ou matrícula...')}
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">📋 Linha</div>
+        ${secaoTipo('linha','Linha','Ex: 117...')}
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🔧 Carro</div>
+        ${secaoTipo('carro','Carro','Ex: 02.020...')}
+      </div>
+    </div>
+  `);
+}
+
+async function _instrPlanoAdd(gid,data,tipoTrabalho,monitorId,monitorNome,inputId){
+  const el=document.getElementById(inputId);
+  const valor=el?.value?.trim();
+  if(!valor){toast('Escreva um valor antes de adicionar','err');return;}
+  const tipoDb=INSTR_TIPO_TRABALHO_PARA_DB[tipoTrabalho]||tipoTrabalho;
+  const payload={garagem_id:gid,tipo:tipoDb,data,monitor_id:monitorId,monitor_nome:monitorNome,atribuido_por:S.perfil?.nome||null};
+  if(tipoTrabalho==='campo')payload.motorista_cod=valor;
+  else if(tipoTrabalho==='linha')payload.linha=valor;
+  else if(tipoTrabalho==='carro')payload.veiculo=valor;
+  const{error}=await sb.from('instrutor_atribuicoes').insert(payload);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('✅ Adicionado ao plano!');
+  renderFerrInstrutor('plano_dia');
+}
+
+async function _instrPlanoRemover(id){
+  if(!confirm('Remover do plano?'))return;
+  await sb.from('instrutor_atribuicoes').delete().eq('id',id);
+  renderFerrInstrutor('plano_dia');
 }
 
 async function _instrEscalaSemanal(gid,back,tabBar){
