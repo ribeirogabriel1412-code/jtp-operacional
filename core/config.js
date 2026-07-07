@@ -9,7 +9,8 @@ const CARGOS = {
   lider_operacional:'L. Operacional', lider_suprimentos:'L. Suprimentos',
   operacoes_seguras:'Op. Seguras', lider_oficina:'L. Oficina',
   lider_patio:'L. Pátio', lavador:'Lavador', manobrista:'Manobrista',
-  frentista:'Frentista', plantao:'Plantão', lubrificador:'Lubrificador'
+  frentista:'Frentista', plantao:'Plantão', lubrificador:'Lubrificador',
+  monitor:'Monitor', instrutor:'Instrutor'
 };
 
 const TELA_INICIO = {
@@ -18,7 +19,8 @@ const TELA_INICIO = {
   lider_almoxarifado:'valet_almox', lider_suprimentos:'valet_almox',
   coordenador:'fech21', supervisor:'fech21', lider_operacional:'ronda33',
   manobrista:'patio_man', frentista:'abastecimento', plantao:'recolha',
-  gerente_garagem:'fech21', gerente_operacional:'fech21', lubrificador:'lubrificacao'
+  gerente_garagem:'fech21', gerente_operacional:'fech21', lubrificador:'lubrificacao',
+  monitor:'monitor', instrutor:'monitor'
 };
 
 const NAV = {
@@ -39,6 +41,8 @@ const NAV = {
   frentista:     [{id:'abastecimento',ic:'⛽',lb:'Abastecer'},{id:'home',ic:'🏠',lb:'Início'}],
   plantao:       [{id:'recolha',ic:'🔑',lb:'Recolha'},{id:'home',ic:'🏠',lb:'Início'}],
   lubrificador:  [{id:'lubrificacao',ic:'🛢️',lb:'Lubr.'},{id:'lubri_rel',ic:'📋',lb:'Relatório'},{id:'home',ic:'🏠',lb:'Início'}],
+  monitor:       [{id:'monitor',ic:'👁️',lb:'Monitor'},{id:'home',ic:'🏠',lb:'Início'}],
+  instrutor:     [{id:'monitor',ic:'👁️',lb:'Monitor'},{id:'home',ic:'🏠',lb:'Início'}],
 };
 
 const NAV_DEF = [{id:'home',ic:'🏠',lb:'Início'}];
