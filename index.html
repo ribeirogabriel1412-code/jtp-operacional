@@ -5120,18 +5120,27 @@ function confMotorExportarPDF(){
   `,'Conferência SAP × PRAXIO');
 }
 
+// Texto plano da tratativa de um desvio — usado no Excel e no PDF de exportação
+function confTratTexto(t){
+  if(!t) return '—';
+  if(t.tipo==='recebimento') return `Recebimento — NF ${t.nota_fiscal||'—'} · +${t.qtd_recebida??'—'}`;
+  if(t.tipo==='contagem_errada') return `Contagem errada — corrigido p/ ${t.qtd_corrigida??'—'}`;
+  if(t.tipo==='desvio') return 'Desvio confirmado (tratar no inventário oficial)';
+  return t.tipo;
+}
+
 function confRotExportarXLSX(){
   const itens=window._confRotItens;
   if(!itens?.length){toast('Sem dados para exportar.','err');return;}
   const garagem=window._confRotGaragem||'Garagem';
   const dataRef=window._confRotDataRef||new Date().toISOString().slice(0,10);
-  const header=[['#','Status','Código','Descrição','Físico (Rot.)','PRAXIO','Δ Fís.↔PRAX','SAP','Δ Fís.↔SAP','Almoxarife','Data']];
+  const header=[['#','Status','Justificativa','Código','Descrição','Físico (Rot.)','PRAXIO','Δ Fís.↔PRAX','SAP','Δ Fís.↔SAP','Almoxarife','Data']];
   const body=itens.map((d,i)=>{
     const temDesvio=(d.difSap!=null&&d.difSap!==0)||(d.difPrax!=null&&d.difPrax!==0);
-    return[i+1,temDesvio?'Desvio':'Conforme',d.cod,d.nome,d.fis??'',d.saldoPrax??'',d.difPrax??'',d.saldoSap??'',d.difSap??'',d.almoxarife,d.data];
+    return[i+1,temDesvio?'Desvio':'Conforme',temDesvio?confTratTexto(d.trat):'—',d.cod,d.nome,d.fis??'',d.saldoPrax??'',d.difPrax??'',d.saldoSap??'',d.difSap??'',d.almoxarife,d.data];
   });
   const ws=XLSX.utils.aoa_to_sheet([...header,...body]);
-  ws['!cols']=[{wch:4},{wch:10},{wch:12},{wch:40},{wch:12},{wch:10},{wch:12},{wch:10},{wch:12},{wch:30},{wch:12}];
+  ws['!cols']=[{wch:4},{wch:10},{wch:34},{wch:12},{wch:40},{wch:12},{wch:10},{wch:12},{wch:10},{wch:12},{wch:30},{wch:12}];
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'Inventário Rotativo');
 
@@ -5199,6 +5208,7 @@ function confRotExportarPDF(){
       <td style="${B}text-align:right">${d.difCadeia==null?'—':(d.difCadeia>0?'+':'')+N(d.difCadeia)}</td>
       <td style="${B}font-size:9px">${esc(d.almoxarife)}</td>
       <td style="${B}">${esc(d.data)}</td>
+      <td style="${B}font-size:9px">${temDesvio?esc(confTratTexto(d.trat))+(d.trat?.observacao?` — ${esc(d.trat.observacao)}`:''):'—'}</td>
     </tr>`;
   }).join('');
   const quadroFisico=`
@@ -5208,7 +5218,7 @@ function confRotExportarPDF(){
         <th style="${BH}">#</th><th style="${BH}">Status</th><th style="${BH}">Código</th><th style="${BH}">Descrição</th>
         <th style="${BH}text-align:right">Físico (Rot.)</th><th style="${BH}text-align:right">SAP</th><th style="${BH}text-align:right">Δ Fís.↔SAP</th>
         <th style="${BH}text-align:right">T-1 (conf. seguinte)</th><th style="${BH}text-align:right">Δ Cadeia</th>
-        <th style="${BH}">Almoxarife</th><th style="${BH}">Data</th>
+        <th style="${BH}">Almoxarife</th><th style="${BH}">Data</th><th style="${BH}">Justificativa</th>
       </tr></thead><tbody>${rowsFisico}</tbody></table>`
       :`<div style="padding:8px 0;color:#555;font-size:9px">Sem inventário rotativo cruzado nesta sessão.</div>`}
   `;
