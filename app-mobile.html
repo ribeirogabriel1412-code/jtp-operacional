@@ -2835,6 +2835,12 @@ async function telaAlmoxMobConferencia(){
   const totT1=listaT1.length;
   const confAt=listaAtual.filter(i=>invMap[i.id]).length;
 
+  // Dupla contagem já resolvida: itens do T-1 que o entregador contou (self-check
+  // no próprio turno) E o turno seguinte contou de novo (conferência) -- em vez
+  // de só sumir da lista pendente, mostra as duas contagens lado a lado aqui.
+  const listaT1Comparada=listaT1.filter(i=>invMapMine[i.id]&&invMapOther[i.id]);
+  const totDivergComparada=listaT1Comparada.filter(i=>parseFloat(invMapMine[i.id].qtd_fisica)!==parseFloat(invMapOther[i.id].qtd_fisica)).length;
+
   const renderCard=i=>{
     const inv=invMapMine[i.id]||null;
     const invRef=invMapOther[i.id]||null;
@@ -2870,8 +2876,24 @@ async function telaAlmoxMobConferencia(){
     </div>`;
   };
 
+  const renderComparacao=i=>{
+    const meu=invMapMine[i.id],outro=invMapOther[i.id];
+    const vMeu=parseFloat(meu.qtd_fisica),vOutro=parseFloat(outro.qtd_fisica);
+    const bate=vMeu===vOutro;
+    const cor=bate?'var(--green)':'var(--red)';
+    return`<div style="margin-bottom:8px;background:var(--surface);border:1px solid ${cor};border-left:4px solid ${cor};border-radius:12px;padding:12px 14px">
+      <div style="font-size:13px;font-weight:800;word-break:break-word;margin-bottom:8px">${escHtml(i.item_entregue||i.peca||'—')}</div>
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+        <div style="font-size:11px;color:var(--text3)">📋 ${escHtml(outro.almoxarife_nome||'Turno anterior')}: <b style="font-family:'DM Mono',monospace;color:var(--purple);font-size:14px">${outro.qtd_fisica}</b></div>
+        <div style="font-size:11px;color:var(--text3)">✅ ${escHtml(meu.almoxarife_nome||'Você')}: <b style="font-family:'DM Mono',monospace;color:var(--blue);font-size:14px">${meu.qtd_fisica}</b></div>
+        <span style="margin-left:auto;font-size:11px;font-weight:900;color:${cor};white-space:nowrap">${bate?'✅ Bate':'⚠️ Diverge ('+Math.abs(vMeu-vOutro)+')'}</span>
+      </div>
+    </div>`;
+  };
+
   const cardsT1=listaT1Pendente.map(renderCard).join('');
   const cardsAtual=listaAtual.map(renderCard).join('');
+  const cardsComparacao=listaT1Comparada.map(renderComparacao).join('');
   const fmtH=t=>t||'—';
   const secaoHeader=(titulo,cor,conf,tot,dev)=>`
     <div style="display:flex;align-items:center;gap:8px;padding:10px 14px 6px;flex-wrap:wrap">
@@ -2901,6 +2923,11 @@ async function telaAlmoxMobConferencia(){
     <div style="padding:0 14px">
       ${cardsT1||'<div style="padding:16px;text-align:center;color:var(--text3);font-size:12px">Nenhum item no turno anterior</div>'}
     </div>
+    ${listaT1Comparada.length?`
+    ${secaoHeader('🔍 Dupla Contagem — Resolvidos','var(--amber)',listaT1Comparada.length-totDivergComparada,listaT1Comparada.length,totDivergComparada)}
+    <div style="padding:0 14px">
+      ${cardsComparacao}
+    </div>`:''}
     ${secaoHeader('Turno Atual','var(--blue)',confAt,listaAtual.length,0)}
     <div style="padding:0 14px 100px">
       ${cardsAtual||'<div style="padding:16px;text-align:center;color:var(--text3);font-size:12px">Nenhum item no turno atual ainda</div>'}
@@ -3112,80 +3139,6 @@ ${totDev>0?`
 </body></html>`;
   const dtFile=agora.toISOString().replace(/[-:T]/g,'').slice(0,12);
   await downloadPDF(html,`JTP_InvRotativo_${dtFile}_${garNome.replace(/\s/g,'_')}.pdf`);
-}
-
-async function telaAlmoxMobInvT1(){
-  const gid=getGid();
-  const hojeIso=hoje();
-  render(`<div style="padding:30px;text-align:center;color:var(--text3)">Carregando...</div>`);
-  const[{data:saidas},{data:invExist}]=await Promise.all([
-    sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).in('status',['separado','comprado']).eq('data',hojeIso).order('prefixo'),
-    sb.from('almoxo_inventario_t1').select('*').eq('garagem_id',gid).eq('turno_data',hojeIso)
-  ]);
-  const invMap={};
-  (invExist||[]).forEach(i=>{const k=(i.cod_sap||'')+':'+(i.nome_item||'');invMap[k]=i;});
-  const itensMapa={};
-  (saidas||[]).forEach(r=>{
-    const k=(r.cod_sap||'')+'_'+(r.peca||r.id);
-    if(!itensMapa[k])itensMapa[k]={cod_sap:r.cod_sap,nome:r.peca,qtd:0,prefixos:[]};
-    itensMapa[k].qtd+=parseFloat(r.quantidade||1);
-    if(r.prefixo)itensMapa[k].prefixos.push(r.prefixo);
-  });
-  const itensUni=Object.values(itensMapa);
-  const cards=itensUni.map((it,idx)=>{
-    const mk=(it.cod_sap||'')+':'+(it.nome||'');
-    const inv=invMap[mk]||null;
-    const acur=inv?.acuracia!=null?parseFloat(inv.acuracia):null;
-    const corA=acur==null?'var(--text3)':acur>=95?'var(--green)':acur>=80?'var(--amber)':'var(--red)';
-    const idRow=`mob-t1-${idx}`;
-    const nomeSafe=(it.nome||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    return`<div class="card" style="margin-bottom:10px">
-      <div style="font-weight:800;font-size:14px;color:var(--text);margin-bottom:4px">${escHtml(it.nome||'—')}</div>
-      ${it.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--amber);margin-bottom:6px">SAP: ${escHtml(it.cod_sap)}</div>`:''}
-      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Saiu: <b style="color:var(--amber);font-family:'DM Mono',monospace">${it.qtd}</b> · Para: ${escHtml(it.prefixos.join(', ')||'—')}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
-        <div>
-          <div style="font-size:10px;font-weight:800;color:var(--text3);margin-bottom:4px">QTD SAP</div>
-          <input id="${idRow}-sap" type="number" inputmode="decimal" value="${inv?.qtd_sap||''}" placeholder="0" step="0.01" min="0" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:16px;font-family:'DM Mono',monospace;font-weight:800;text-align:center;box-sizing:border-box">
-        </div>
-        <div>
-          <div style="font-size:10px;font-weight:800;color:var(--text3);margin-bottom:4px">QTD FÍSICO</div>
-          <input id="${idRow}-fis" type="number" inputmode="decimal" value="${inv?.qtd_fisica||''}" placeholder="0" step="0.01" min="0" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:16px;font-family:'DM Mono',monospace;font-weight:800;text-align:center;box-sizing:border-box">
-        </div>
-      </div>
-      ${acur!=null?`<div style="text-align:center;font-family:'DM Mono',monospace;font-size:20px;font-weight:900;color:${corA};margin-bottom:8px">${acur}% acurácia</div>`:''}
-      <button onclick="almoxMobSalvarT1('${idRow}','${escHtml(it.cod_sap||'')}','${nomeSafe}')" style="width:100%;background:var(--green);color:#fff;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">✔ Salvar conferência</button>
-    </div>`;
-  }).join('');
-  render(`
-    <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
-      <div style="font-weight:800;font-size:17px">📋 Inventário T-1</div>
-      <button onclick="telaAlmoxMobInvT1()" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">🔄</button>
-    </div>
-    ${almoxMobTabNav('inv-t1')}
-    <div class="sl">${hojeIso} · ${itensUni.length} item(ns) para conferir</div>
-    ${cards||'<div class="empty"><div class="empty-ic">📋</div><div style="font-weight:700">Nenhum item separado hoje</div><div style="font-size:12px;color:var(--text3);margin-top:4px">O inventário T-1 usa os itens separados no dia atual</div></div>'}
-  `);
-}
-
-async function almoxMobSalvarT1(idRow,codSap,nomeItem){
-  const sap=parseFloat(document.getElementById(idRow+'-sap')?.value??'');
-  const fis=parseFloat(document.getElementById(idRow+'-fis')?.value??'');
-  if(isNaN(sap)||isNaN(fis)){toast('Preencha SAP e Físico');return;}
-  const gid=getGid();const hojeIso=hoje();
-  const{error}=await sb.from('almoxo_inventario_t1').insert({
-    garagem_id:gid,turno_data:hojeIso,
-    cod_sap:codSap||null,nome_item:nomeItem||null,
-    qtd_sap:sap,qtd_fisica:fis,
-    conferido_por:S.user?.id
-  });
-  if(error){toast('Erro: '+error.message);return;}
-  if(Math.abs(sap-fis)>0.001){
-    const acur=sap>0?Math.round((fis/sap)*1000)/10:0;
-    await sb.from('almoxo_divergencias').insert({garagem_id:gid,origem:'t1',cod_sap:codSap||null,nome_item:nomeItem||null,qtd_sap:sap,qtd_fisica:fis,acuracia:acur});
-    toast('Salvo ⚠️ divergência registrada');
-  } else {toast('T-1 conferido ✔');}
-  telaAlmoxMobInvT1();
 }
 
 async function telaAlmoxMobInvRua(){
