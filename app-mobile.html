@@ -1273,22 +1273,61 @@ async function telaAcompManutencao(){
   var porOs={};
   (r2.data||[]).forEach(function(x){ (porOs[x.ocorrencia_id]=porOs[x.ocorrencia_id]||[]).push(x); });
   _ACOMP_LISTA=ocs.map(function(o){return {oc:o,rodadas:porOs[o.id]||[]};});
+  var turnoLbl=S.turno==='noite'?'Noite':'Dia';
   html+='<div class="sl">⏱️ '+ocs.length+' OS em acompanhamento · '+jan.label+'</div>'+
-    '<button data-action="pdf-turno" style="width:calc(100% - 28px);margin:0 14px 14px;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-weight:800;font-size:13px;cursor:pointer">📄 Gerar PDF do turno</button>';
-  ocs.forEach(function(o){
-    var rds=porOs[o.id]||[];
-    var ult=rds[rds.length-1];
-    var fechado=rds.some(function(x){return x.fechamento;});
-    html+='<div data-ocid="'+o.id+'" data-action="abrir-acomp" class="card" style="cursor:pointer;border-left:3px solid '+(fechado?'var(--green)':'var(--amber)')+'">'+
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'+
-        '<div class="prefixo">'+o.prefixo+'</div>'+
-        '<span class="badge" style="border-color:'+(rds.length?'#2563EB40':'var(--border)')+';color:'+(rds.length?'var(--blue)':'var(--text3)')+'">'+(rds.length?rds.length+' rodada'+(rds.length>1?'s':''):'Sem rodada')+'</span>'+
-      '</div>'+
-      '<div style="font-size:11px;color:var(--text3)">'+(o.tipo||'').replace(/_/g,' ')+' · O.S '+(o.numero||'—')+'</div>'+
-      (ult?'<div style="font-size:12px;color:var(--text2);margin-top:6px"><b>Rodada '+ult.rodada+'</b> · '+new Date(ult.hora_registro).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'})+(ult.registro?' · '+escHtml(ult.registro.slice(0,60))+(ult.registro.length>60?'…':''):'')+'</div>':'')+
-      (fechado?'<div style="margin-top:6px;font-size:11px;color:var(--green);font-weight:700">✅ Fechamento registrado</div>':'')+
-    '</div>';
-  });
+    '<div style="margin:0 14px 10px;font-size:11px;color:var(--text3);display:flex;flex-wrap:wrap;gap:10px">'+
+      '<span><b style="color:var(--text2)">Turno:</b> '+turnoLbl+'</span>'+
+      '<span><b style="color:var(--text2)">Data:</b> '+new Date().toLocaleDateString('pt-BR')+'</span>'+
+      '<span><b style="color:var(--text2)">Líder:</b> '+escHtml((S.perfil&&S.perfil.nome)||'—')+'</span>'+
+    '</div>'+
+    '<button data-action="pdf-turno" style="width:calc(100% - 28px);margin:0 14px 12px;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-weight:800;font-size:13px;cursor:pointer">📄 Gerar PDF do turno</button>';
+
+  var maxRodadas=ocs.reduce(function(m,o){return Math.max(m,(porOs[o.id]||[]).length);},0);
+  var colW=128;
+  html+='<div style="margin:0 14px 14px;border:1px solid var(--border);border-radius:12px;overflow:auto;max-height:60vh">'+
+    '<table style="border-collapse:collapse;font-size:11px;white-space:normal">'+
+    '<thead><tr>'+
+      '<th style="position:sticky;left:0;top:0;z-index:3;background:var(--surface2);padding:8px;text-align:left;border-bottom:1px solid var(--border);border-right:1px solid var(--border);min-width:80px">Campo</th>'+
+      ocs.map(function(o){
+        var rds=porOs[o.id]||[];
+        var fechado=rds.some(function(x){return x.fechamento;});
+        return '<th style="position:sticky;top:0;z-index:2;background:var(--surface2);padding:8px;text-align:center;border-bottom:1px solid var(--border);border-left:1px solid var(--border2);min-width:'+colW+'px">'+
+          '<div class="prefixo" style="font-size:14px;color:'+(fechado?'var(--green)':'var(--text)')+'">'+o.prefixo+'</div>'+
+          '<div style="font-size:9px;color:var(--text3);font-weight:500">'+(o.tipo||'').replace(/_/g,' ')+' · OS '+(o.numero||'—')+'</div>'+
+        '</th>';
+      }).join('')+
+    '</tr></thead><tbody>';
+
+  for(var i=0;i<maxRodadas;i++){
+    var horaRodada='';
+    ocs.forEach(function(o){ var rd=(porOs[o.id]||[])[i]; if(rd&&!horaRodada) horaRodada=new Date(rd.hora_registro).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}); });
+    html+='<tr>'+
+      '<td style="position:sticky;left:0;background:var(--surface);padding:8px;font-weight:700;border-bottom:1px solid var(--border2);border-right:1px solid var(--border)">Rodada '+(i+1)+(horaRodada?'<br><span style="font-weight:400;color:var(--text3)">'+horaRodada+'</span>':'')+'</td>'+
+      ocs.map(function(o){
+        var rd=(porOs[o.id]||[])[i];
+        var podeAbrir=rd||i===(porOs[o.id]||[]).length;
+        return '<td'+(podeAbrir?' data-ocid="'+o.id+'" data-action="abrir-acomp"':'')+' style="padding:8px;border-left:1px solid var(--border2);border-bottom:1px solid var(--border2);vertical-align:top;'+(podeAbrir?'cursor:pointer':'')+'">'+
+          (rd?('<div style="color:var(--text2)">'+escHtml((rd.registro||'').slice(0,50))+((rd.registro||'').length>50?'…':'')+'</div>'+(rd.prev_liberacao?'<div style="color:var(--text3);margin-top:3px">⏱ '+escHtml(rd.prev_liberacao)+'</div>':''))
+            :(podeAbrir?'<span style="color:var(--blue)">+ registrar</span>':'<span style="color:var(--text4)">—</span>'))+
+        '</td>';
+      }).join('')+
+    '</tr>';
+  }
+
+  html+='<tr>'+
+    '<td style="position:sticky;left:0;background:var(--surface);padding:8px;font-weight:700;border-right:1px solid var(--border)">Fechamento</td>'+
+    ocs.map(function(o){
+      var rds=porOs[o.id]||[];
+      var f=rds.slice().reverse().find(function(r){return r.fechamento;});
+      return '<td data-ocid="'+o.id+'" data-action="abrir-acomp" style="padding:8px;border-left:1px solid var(--border2);vertical-align:top;cursor:pointer">'+
+        (f?'<div style="color:var(--green);font-weight:700">'+escHtml(f.status_final||'')+'</div>'+(f.pendencias?'<div style="color:var(--text3);margin-top:3px">'+escHtml(f.pendencias)+'</div>':''):'<span style="color:var(--text4)">—</span>')+
+      '</td>';
+    }).join('')+
+  '</tr>';
+
+  html+='</tbody></table></div>'+
+    '<div style="margin:0 14px 14px;font-size:11px;color:var(--text3);text-align:center">Toque em qualquer célula da coluna do veículo para ver o histórico e registrar</div>';
+
   render(html);
   document.getElementById('content').addEventListener('click', function handler(e){
     var el=e.target.closest('[data-action]');
