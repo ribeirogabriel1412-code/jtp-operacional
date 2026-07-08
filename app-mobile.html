@@ -1253,6 +1253,190 @@ async function telaOficina(){
     document.getElementById('content').insertAdjacentHTML('beforeend','<button class="fab" onclick="abrirNovaOS()">＋</button>');
 }
 
+// ── ACOMPANHAMENTO DE MANUTENÇÃO (hora a hora) ─────────────
+var _ACOMP={ocId:null,oc:null,rodadas:[]};
+var _ACOMP_LISTA=[];
+
+async function telaAcompManutencao(){
+  var gid=getGid();
+  var jan=janelaTurnoOficina();
+  var r=await sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado').order('hora_entrada',{ascending:true});
+  var ocs=r.data||[];
+  var html='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px"><button onclick="S.turno=\'dia\';telaAcompManutencao()" style="padding:10px;border-radius:10px;border:1px solid '+(S.turno!=='noite'?'var(--blue)':'var(--border)')+';background:'+(S.turno!=='noite'?'#2563EB18':'transparent')+';color:'+(S.turno!=='noite'?'var(--blue)':'var(--text3)')+';font-family:inherit;font-weight:800">☀️ Dia</button><button onclick="S.turno=\'noite\';telaAcompManutencao()" style="padding:10px;border-radius:10px;border:1px solid '+(S.turno==='noite'?'var(--blue)':'var(--border)')+';background:'+(S.turno==='noite'?'#2563EB18':'transparent')+';color:'+(S.turno==='noite'?'var(--blue)':'var(--text3)')+';font-family:inherit;font-weight:800">🌙 Noite</button></div>';
+  if(!ocs.length){
+    _ACOMP_LISTA=[];
+    render(html+'<div class="empty"><div class="empty-ic">⏱️</div><div style="font-weight:700;font-size:16px">Nenhuma OS em manutenção</div></div>');
+    return;
+  }
+  var ids=ocs.map(function(o){return o.id;});
+  var r2=await sb.from('acompanhamento_manutencao').select('*').in('ocorrencia_id',ids).order('rodada',{ascending:true});
+  var porOs={};
+  (r2.data||[]).forEach(function(x){ (porOs[x.ocorrencia_id]=porOs[x.ocorrencia_id]||[]).push(x); });
+  _ACOMP_LISTA=ocs.map(function(o){return {oc:o,rodadas:porOs[o.id]||[]};});
+  html+='<div class="sl">⏱️ '+ocs.length+' OS em acompanhamento · '+jan.label+'</div>'+
+    '<button data-action="pdf-turno" style="width:calc(100% - 28px);margin:0 14px 14px;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-weight:800;font-size:13px;cursor:pointer">📄 Gerar PDF do turno</button>';
+  ocs.forEach(function(o){
+    var rds=porOs[o.id]||[];
+    var ult=rds[rds.length-1];
+    var fechado=rds.some(function(x){return x.fechamento;});
+    html+='<div data-ocid="'+o.id+'" data-action="abrir-acomp" class="card" style="cursor:pointer;border-left:3px solid '+(fechado?'var(--green)':'var(--amber)')+'">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'+
+        '<div class="prefixo">'+o.prefixo+'</div>'+
+        '<span class="badge" style="border-color:'+(rds.length?'#2563EB40':'var(--border)')+';color:'+(rds.length?'var(--blue)':'var(--text3)')+'">'+(rds.length?rds.length+' rodada'+(rds.length>1?'s':''):'Sem rodada')+'</span>'+
+      '</div>'+
+      '<div style="font-size:11px;color:var(--text3)">'+(o.tipo||'').replace(/_/g,' ')+' · O.S '+(o.numero||'—')+'</div>'+
+      (ult?'<div style="font-size:12px;color:var(--text2);margin-top:6px"><b>Rodada '+ult.rodada+'</b> · '+new Date(ult.hora_registro).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'})+(ult.etapa_atual?' · '+escHtml(ult.etapa_atual):'')+(ult.evolucao?' · '+escHtml(ult.evolucao):'')+'</div>':'')+
+      (fechado?'<div style="margin-top:6px;font-size:11px;color:var(--green);font-weight:700">✅ Fechamento registrado</div>':'')+
+    '</div>';
+  });
+  render(html);
+  document.getElementById('content').addEventListener('click', function handler(e){
+    var el=e.target.closest('[data-action]');
+    if(!el) return;
+    document.getElementById('content').removeEventListener('click',handler);
+    if(el.dataset.action==='abrir-acomp') abrirAcompOS(el.dataset.ocid);
+    else if(el.dataset.action==='pdf-turno') gerarPDFAcompManutencao();
+  });
+}
+
+async function abrirAcompOS(ocId){
+  var r1=await sb.from('ocorrencias_22').select('*').eq('id',ocId).single();
+  var oc=r1.data;
+  if(!oc){toast('OS não encontrada','err');return;}
+  var r2=await sb.from('acompanhamento_manutencao').select('*').eq('ocorrencia_id',ocId).order('rodada',{ascending:true});
+  _ACOMP={ocId:ocId,oc:oc,rodadas:r2.data||[]};
+  _renderAcompSheet();
+}
+
+function _renderAcompSheet(){
+  var oc=_ACOMP.oc, rds=_ACOMP.rodadas;
+  var prox=rds.length+1;
+  var hist=rds.map(function(r){
+    return '<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:8px">'+
+      '<div style="display:flex;justify-content:space-between;margin-bottom:4px"><b style="font-size:12px">Rodada '+r.rodada+'</b><span style="font-size:11px;color:var(--text3)">'+new Date(r.hora_registro).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'})+'</span></div>'+
+      (r.etapa_atual?'<div style="font-size:12px;margin-bottom:2px"><b>Etapa:</b> '+escHtml(r.etapa_atual)+'</div>':'')+
+      (r.evolucao?'<div style="font-size:12px;margin-bottom:2px"><b>Evolução:</b> '+escHtml(r.evolucao)+'</div>':'')+
+      (r.problema?'<div style="font-size:12px;margin-bottom:2px;color:var(--amber)"><b>Problema:</b> '+escHtml(r.problema)+'</div>':'')+
+      (r.acao_imediata?'<div style="font-size:12px;margin-bottom:2px"><b>Ação imediata:</b> '+escHtml(r.acao_imediata)+'</div>':'')+
+      (r.prev_liberacao?'<div style="font-size:12px"><b>Prev. liberação:</b> '+escHtml(r.prev_liberacao)+'</div>':'')+
+      (r.fechamento?'<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-size:12px;color:var(--green)"><b>Fechamento:</b> '+escHtml(r.status_final||'')+(r.pendencias?' · '+escHtml(r.pendencias):'')+'</div>':'')+
+    '</div>';
+  }).join('');
+
+  var body=
+    (hist?'<div class="fl" style="margin-bottom:8px">Histórico</div>'+hist:'<div style="font-size:12px;color:var(--text3);text-align:center;padding:10px 0 16px">Nenhuma rodada registrada ainda</div>')+
+    '<div class="fl" style="margin-top:6px">Nova rodada · #'+prox+'</div>'+
+    '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px">'+
+      '<div><label class="fl">Etapa atual</label><input class="fi2" id="ac-etapa" placeholder="Ex: Troca de embreagem, teste de rodagem..."></div>'+
+      '<div><label class="fl">Evolução</label><input class="fi2" id="ac-evolucao" placeholder="Ex: 40%, aguardando peça..."></div>'+
+      '<div><label class="fl">Problema encontrado</label><textarea class="fi2" id="ac-problema" rows="2" placeholder="Opcional"></textarea></div>'+
+      '<div><label class="fl">Ação imediata</label><textarea class="fi2" id="ac-acao" rows="2" placeholder="Opcional"></textarea></div>'+
+      '<div><label class="fl">Previsão de liberação</label><div style="display:flex;gap:8px"><input class="fi2" type="time" id="ac-prev"><button onclick="document.getElementById(\'ac-prev\').showPicker()" style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:0 14px;color:var(--text);font-size:16px">🕐</button></div></div>'+
+    '</div>'+
+    '<label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--text2);margin-bottom:10px"><input type="checkbox" id="ac-fechar"> Registrar fechamento do turno com esta rodada</label>'+
+    '<div id="ac-fechar-box" style="display:none;flex-direction:column;gap:10px;margin-bottom:14px;background:var(--surface2);border-radius:12px;padding:12px">'+
+      '<div><label class="fl">Status final</label><select class="fi2" id="ac-status-final">'+
+        '<option value="Segue em manutenção">Segue em manutenção</option>'+
+        '<option value="Aguardando peça">Aguardando peça</option>'+
+        '<option value="Aguardando aprovação">Aguardando aprovação</option>'+
+        '<option value="Liberado">Liberado</option>'+
+      '</select></div>'+
+      '<div><label class="fl">Pendências / Observações</label><textarea class="fi2" id="ac-pendencias" rows="2"></textarea></div>'+
+      '<div style="font-size:11px;color:var(--text3)">Assinatura: <b style="color:var(--text)">'+escHtml((S.perfil&&S.perfil.nome)||'—')+'</b></div>'+
+    '</div>'+
+    '<button data-action="salvar-rodada" style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--green);color:#fff;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">Salvar rodada</button>';
+
+  openSheet(oc.prefixo+' — Acompanhamento','<div>'+body+'</div>');
+
+  document.getElementById('ac-fechar').onchange=function(){
+    document.getElementById('ac-fechar-box').style.display=this.checked?'flex':'none';
+  };
+  document.getElementById('shbody').onclick=async function(e){
+    var el=e.target.closest('[data-action]');
+    if(!el) return;
+    if(el.dataset.action==='salvar-rodada'){
+      document.getElementById('shbody').onclick=null;
+      await salvarRodadaAcomp();
+    }
+  };
+}
+
+async function salvarRodadaAcomp(){
+  var oc=_ACOMP.oc;
+  var gid=getGid();
+  var turnoAtual=S.turno==='noite'?'noite':'dia';
+  var fechar=document.getElementById('ac-fechar').checked;
+  var etapa=document.getElementById('ac-etapa').value.trim();
+  var evolucao=document.getElementById('ac-evolucao').value.trim();
+  var problema=document.getElementById('ac-problema').value.trim();
+  var acao=document.getElementById('ac-acao').value.trim();
+  var prev=document.getElementById('ac-prev').value;
+  var statusFinal=fechar?document.getElementById('ac-status-final').value:null;
+  var pendencias=fechar?document.getElementById('ac-pendencias').value.trim():null;
+  if(!etapa && !evolucao && !problema && !acao && !fechar){
+    toast('Preencha ao menos um campo da rodada','err');
+    return;
+  }
+  var payload={
+    ocorrencia_id:oc.id, garagem_id:gid, turno:turnoAtual, data_turno:dataOperacionalAtual(turnoAtual),
+    rodada:_ACOMP.rodadas.length+1, prefixo:oc.prefixo, numero_os:oc.numero, tipo_os:oc.tipo,
+    etapa_atual:etapa||null, evolucao:evolucao||null, problema:problema||null, acao_imediata:acao||null,
+    prev_liberacao:prev||null, fechamento:fechar, status_final:statusFinal, pendencias:pendencias,
+    criado_por:S.perfil&&S.perfil.nome
+  };
+  var res=await sb.from('acompanhamento_manutencao').insert(payload);
+  if(res.error){toast('Erro: '+res.error.message,'err');return;}
+  toast('✅ Rodada salva!');
+  closeSheet(true);
+  telaAcompManutencao();
+}
+
+async function gerarPDFAcompManutencao(){
+  try{
+    var lista=_ACOMP_LISTA||[];
+    if(!lista.length){toast('Nada para gerar','err');return;}
+    var maxRodadas=lista.reduce(function(m,x){return Math.max(m,x.rodadas.length);},0);
+    var garagem=(S.garagens||[]).find(function(x){return x.id===getGid();});
+    var g=escHtml(garagem&&garagem.nome||'Garagem');
+    var turnoAtual=S.turno==='noite'?'noite':'dia';
+    var turnoLbl=turnoAtual==='noite'?'Noite':'Dia';
+    var dataLbl=new Date().toLocaleDateString('pt-BR');
+    var css='<style>@page{size:A4 landscape;margin:7mm}body{font-family:Arial,sans-serif;color:#000;font-size:9px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #111;padding:4px;vertical-align:top;text-align:left}.head{border:2px solid #111;text-align:center;font-weight:900;font-size:13px;padding:6px;margin-bottom:5px}.no-print{position:sticky;top:0;background:#1f2937;padding:8px;text-align:right}@media print{.no-print{display:none}}</style>';
+    var headTbl='<table style="margin-bottom:5px"><tr>'+
+      '<td><b>Turno:</b> '+turnoLbl+'</td>'+
+      '<td><b>Data:</b> '+dataLbl+'</td>'+
+      '<td><b>Líder Responsável:</b> '+escHtml((S.perfil&&S.perfil.nome)||'—')+'</td>'+
+      '<td><b>Gerado:</b> '+new Date().toLocaleString('pt-BR')+'</td>'+
+    '</tr></table>';
+    var thPrefixo='<tr><th>Campo</th>'+lista.map(function(x){return '<th>'+escHtml(x.oc.prefixo)+'</th>';}).join('')+'</tr>';
+    var thOs='<tr><td>N° O.S (Tipo)</td>'+lista.map(function(x){return '<td>'+escHtml(x.oc.numero||'—')+' ('+escHtml((x.oc.tipo||'').replace(/_/g,' '))+')</td>';}).join('')+'</tr>';
+    var rodadasHtml='';
+    var campos=[['Hora','hora_registro','h'],['Etapa Atual','etapa_atual'],['Evolução','evolucao'],['Problema','problema'],['Ação Imediata','acao_imediata'],['Prev. Liberação','prev_liberacao']];
+    for(var i=0;i<maxRodadas;i++){
+      rodadasHtml+='<tr style="background:#eee"><td colspan="'+(lista.length+1)+'"><b>Rodada '+(i+1)+'</b></td></tr>';
+      campos.forEach(function(c){
+        rodadasHtml+='<tr><td>'+c[0]+'</td>'+lista.map(function(x){
+          var rr=x.rodadas[i];
+          if(!rr) return '<td></td>';
+          var v=c[2]==='h'?new Date(rr.hora_registro).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):(rr[c[1]]||'');
+          return '<td>'+escHtml(v)+'</td>';
+        }).join('')+'</tr>';
+      });
+    }
+    var fechHtml='<tr style="background:#eee"><td colspan="'+(lista.length+1)+'"><b>Fechamento do turno</b></td></tr>'+
+      '<tr><td>Status Final</td>'+lista.map(function(x){var f=x.rodadas.slice().reverse().find(function(r){return r.fechamento;});return '<td>'+escHtml(f?f.status_final:'')+'</td>';}).join('')+'</tr>'+
+      '<tr><td>Pendências / Obs</td>'+lista.map(function(x){var f=x.rodadas.slice().reverse().find(function(r){return r.fechamento;});return '<td>'+escHtml(f?f.pendencias:'')+'</td>';}).join('')+'</tr>'+
+      '<tr><td>Assinatura Líder de Oficina</td>'+lista.map(function(x){var f=x.rodadas.slice().reverse().find(function(r){return r.fechamento;})||x.rodadas[x.rodadas.length-1];return '<td>'+escHtml(f?f.criado_por:'')+'</td>';}).join('')+'</tr>';
+    var html='<!doctype html><html><head><meta charset="utf-8">'+css+'</head><body>'+
+      '<div class="no-print"><button onclick="window.print()" style="background:#2563eb;color:#fff;border:0;border-radius:6px;padding:8px 14px;font-weight:800">🖨️ Imprimir / PDF</button></div>'+
+      '<div class="head">GRUPO JTP | OPERAÇÃO GARAGEM | Acompanhamento de Manutenção de Veículos | '+g+'</div>'+
+      headTbl+
+      '<table>'+thPrefixo+thOs+rodadasHtml+fechHtml+'</table>'+
+    '</body></html>';
+    await downloadPDF(html,'JTP_AcompManutencao_'+dataOperacionalAtual(turnoAtual).replace(/-/g,'')+'_'+turnoAtual+'.pdf');
+  }catch(e){toast('Erro ao gerar PDF: '+(e.message||e),'err');}
+}
+
 // ── Estado global da OS aberta ─────────────────────────────
 var _OS={id:'',aba:'qual',dados38:{},oc:null,ckl:[]};
 
@@ -8587,7 +8771,7 @@ async function salvarAvaria(id){
 }
 
 // ─────────────────────────────────────────────────────────────────
-const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,prev26:telaPrev26,valet_oficina:telaValetOficina,prev_oficina:telaPrevOficina,valet_almox:telaValetAlmox,ronda33:telaRonda33,patio_man:telaPatioMan,recolha:telaRecolha,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip,sos218:telaSOS218,fech21:telaFech21,lubrificacao:telaLubrificacao,lubri_rel:telaLubriRel,avarias:telaAvariasDashboard,monitor:telaMonitor};
+const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,acomp_manut:telaAcompManutencao,prev26:telaPrev26,valet_oficina:telaValetOficina,prev_oficina:telaPrevOficina,valet_almox:telaValetAlmox,ronda33:telaRonda33,patio_man:telaPatioMan,recolha:telaRecolha,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip,sos218:telaSOS218,fech21:telaFech21,lubrificacao:telaLubrificacao,lubri_rel:telaLubriRel,avarias:telaAvariasDashboard,monitor:telaMonitor};
 
 // ── INIT ───────────────────────────────────────────────────
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login').style.display!=='none')doLogin()});
