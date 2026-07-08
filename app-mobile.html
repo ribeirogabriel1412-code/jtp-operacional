@@ -2243,6 +2243,57 @@ function almoxMobTabNav(tab){
   </div>`;
 }
 
+// Cards da lista PRAXIO -- todas as OS (aberta ou fechada), sem filtro de
+// turno. Clicar em "Confirmar Entrega" abre a mesma modal de sempre (item ja
+// vem preenchido com o que a Oracle mandou) -- o proprio almox conta o
+// fisico ali. Uma vez confirmado, some daqui e entra no fluxo normal de
+// Inventario Rotativo pro proximo turno conferir de novo.
+function renderSolSyncCards(itens){
+  const grupos={};
+  itens.forEach(r=>{const k=r.os_numero;if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
+  if(!Object.keys(grupos).length)return'<div style="padding:16px;text-align:center;color:var(--text3);font-size:12px">Nenhum resultado</div>';
+  return Object.entries(grupos).map(([os,its])=>{
+    const pref=its[0]?.prefixo||'—';
+    return`<div class="card" style="margin-bottom:10px;border-left:4px solid var(--purple)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+        <div>
+          <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">OS</div>
+          <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:800;color:var(--blue)">${escHtml(os)}</div>
+          <div style="font-size:12px;color:var(--text3)">Prefixo: ${escHtml(pref)}</div>
+        </div>
+        <div style="font-size:11px;font-weight:900;color:var(--purple)">${its.length} ${its.length>1?'itens':'item'}</div>
+      </div>
+      ${its.map(i=>`<div style="padding:9px 0;border-top:1px solid var(--border2);display:flex;align-items:center;gap:8px;justify-content:space-between">
+        <div style="display:grid;grid-template-columns:34px 1fr;gap:8px;font-size:13px;color:var(--text);flex:1;min-width:0">
+          <b style="font-family:'DM Mono',monospace;color:var(--amber)">${i.quantidade||1}x</b>
+          <span>${escHtml(i.peca)}${i.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-top:2px">${escHtml(i.cod_sap)}</div>`:''}</span>
+        </div>
+        <button onclick="almoxMobAbrirConfEntrega('${i.id}')" style="padding:8px 12px;border-radius:8px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;font-family:inherit;white-space:nowrap">✅ Confirmar</button>
+      </div>`).join('')}
+    </div>`;
+  }).join('');
+}
+
+const SOL_SYNC_LOTE_PADRAO=20;
+
+// Busca client-side no backlog PRAXIO -- a lista completa já veio na tela
+// (window._solSyncPendente), então filtrar aqui não gera round-trip novo.
+// Sem termo digitado, mostra só o recorte mais recente (evita renderizar as
+// 248+ OS de uma vez); com termo, varre a lista inteira por OS/prefixo/peça/SAP.
+function almoxMobFiltrarSync(q){
+  const full=window._solSyncPendente||[];
+  const termo=(q||'').trim().toLowerCase();
+  const lista=termo
+    ?full.filter(r=>[r.os_numero,r.prefixo,r.peca,r.cod_sap].some(v=>String(v||'').toLowerCase().includes(termo)))
+    :full.slice(0,SOL_SYNC_LOTE_PADRAO);
+  const info=document.getElementById('sol-sync-info');
+  if(info)info.textContent=termo
+    ?`${lista.length} resultado(s) para "${q.trim()}"`
+    :(full.length>lista.length?`Mostrando ${lista.length} de ${full.length} mais recentes — busque por OS, prefixo ou peça pra achar outras`:`${full.length} item(ns)`);
+  const el=document.getElementById('sol-sync-list');
+  if(el)el.innerHTML=renderSolSyncCards(lista);
+}
+
 async function telaAlmoxMobSolicitacoes(){
   const gid=getGid();
   render(`<div style="padding:30px;text-align:center;color:var(--text3)">Carregando...</div>`);
@@ -2282,7 +2333,7 @@ async function telaAlmoxMobSolicitacoes(){
   // qualquer turno poder confirmar a entrega assim que ver. Uma vez confirmado
   // (vira 'separado'), some daqui e entra no fluxo normal de Inventario Rotativo.
   const listaSyncPendente=lista.filter(r=>r.criado_por==='Sync PRAXIO'&&r.status==='solicitado_pcm')
-    .sort((a,b)=>(parseInt(b.os_numero)||0)-(parseInt(a.os_numero)||0));
+    .sort((a,b)=>new Date(b.criado_em)-new Date(a.criado_em));
   const listaTurno=lista.filter(r=>!(r.criado_por==='Sync PRAXIO'&&r.status==='solicitado_pcm'));
 
   // Divergencias com o PRAXIO (motor sync_divergencias_pecas.ps1) -- avisa
@@ -2376,36 +2427,9 @@ async function telaAlmoxMobSolicitacoes(){
     }).join('');
   }
 
-  // Cards da lista PRAXIO -- todas as OS (aberta ou fechada), sem filtro de
-  // turno. Clicar em "Confirmar Entrega" abre a mesma modal de sempre (item ja
-  // vem preenchido com o que a Oracle mandou) -- o proprio almox conta o
-  // fisico ali. Uma vez confirmado, some daqui e entra no fluxo normal de
-  // Inventario Rotativo pro proximo turno conferir de novo.
-  function renderSyncCards(itens){
-    const grupos={};
-    itens.forEach(r=>{const k=r.os_numero;if(!grupos[k])grupos[k]=[];grupos[k].push(r);});
-    if(!Object.keys(grupos).length)return'';
-    return Object.entries(grupos).map(([os,its])=>{
-      const pref=its[0]?.prefixo||'—';
-      return`<div class="card" style="margin-bottom:10px;border-left:4px solid var(--purple)">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
-          <div>
-            <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">OS</div>
-            <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:800;color:var(--blue)">${escHtml(os)}</div>
-            <div style="font-size:12px;color:var(--text3)">Prefixo: ${escHtml(pref)}</div>
-          </div>
-          <div style="font-size:11px;font-weight:900;color:var(--purple)">${its.length} ${its.length>1?'itens':'item'}</div>
-        </div>
-        ${its.map(i=>`<div style="padding:9px 0;border-top:1px solid var(--border2);display:flex;align-items:center;gap:8px;justify-content:space-between">
-          <div style="display:grid;grid-template-columns:34px 1fr;gap:8px;font-size:13px;color:var(--text);flex:1;min-width:0">
-            <b style="font-family:'DM Mono',monospace;color:var(--amber)">${i.quantidade||1}x</b>
-            <span>${escHtml(i.peca)}${i.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-top:2px">${escHtml(i.cod_sap)}</div>`:''}</span>
-          </div>
-          <button onclick="almoxMobAbrirConfEntrega('${i.id}')" style="padding:8px 12px;border-radius:8px;border:1px solid var(--green);background:#00C48C18;color:var(--green);font-size:11px;font-weight:800;font-family:inherit;white-space:nowrap">✅ Confirmar</button>
-        </div>`).join('')}
-      </div>`;
-    }).join('');
-  }
+  // Guarda a lista completa (já ordenada por mais recente) pra busca poder
+  // varrer tudo, mesmo o que não está sendo exibido no recorte padrão.
+  window._solSyncPendente=listaSyncPendente;
 
   const turnoIcon=t=>t==='dia'?'☀️':'🌙';
   const fmtData=d=>d?d.split('-').reverse().join('/'):'';
@@ -2414,7 +2438,11 @@ async function telaAlmoxMobSolicitacoes(){
 
   const secAtual=renderCards(itensAtual,false);
   const secPrev=renderCards(itensPrev,true);
-  const secSyncPendente=renderSyncCards(listaSyncPendente);
+  const syncVisivel=listaSyncPendente.slice(0,SOL_SYNC_LOTE_PADRAO);
+  const secSyncPendente=renderSolSyncCards(syncVisivel);
+  const syncInfoTxt=listaSyncPendente.length>syncVisivel.length
+    ?`Mostrando ${syncVisivel.length} de ${listaSyncPendente.length} mais recentes — busque por OS, prefixo ou peça pra achar outras`
+    :`${listaSyncPendente.length} item(ns)`;
 
   render(`
     <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
@@ -2432,7 +2460,9 @@ async function telaAlmoxMobSolicitacoes(){
       <div style="margin-bottom:16px;padding-bottom:14px;border-bottom:2px dashed var(--purple)">
         <div style="font-size:12px;font-weight:800;color:var(--purple);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">🔄 Itens PRAXIO a confirmar — ${listaSyncPendente.length} (todas as OS)</div>
         <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Vieram direto da requisição oficial do PRAXIO, sem digitação do PCM — confirme a entrega pra contar o físico</div>
-        ${secSyncPendente}
+        <input id="sol-sync-busca" placeholder="🔎 Buscar por OS, prefixo ou peça..." oninput="almoxMobFiltrarSync(this.value)" autocomplete="off" style="width:100%;margin-bottom:8px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:11px 14px;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box">
+        <div id="sol-sync-info" style="font-size:11px;color:var(--text3);margin-bottom:10px">${syncInfoTxt}</div>
+        <div id="sol-sync-list">${secSyncPendente}</div>
       </div>`:''}
       <div style="font-size:12px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">${turnoIcon(turnoAtual)} Turno ${turnoAtual==='dia'?'Dia':'Noite'} — ${fmtData(dataAtual)}</div>
       ${secAtual||'<div style="text-align:center;color:var(--text3);padding:20px 0;font-size:13px">Nenhuma solicitação neste turno</div>'}
@@ -3227,7 +3257,7 @@ async function telaAlmoxMobBaixaRotacao(){
   // Todo mundo já contou tudo neste ciclo -- reinicia sozinho, sem precisar de ação manual
   if(!pendentes.length){ciclo+=1;pendentes=todos;}
 
-  const LOTE=5;
+  const LOTE=10;
   const meuLote=pendentes.slice(0,LOTE);
   window._baixaRotItens={};
   todos.forEach(i=>{window._baixaRotItens[i.id]=i;});
@@ -3239,8 +3269,7 @@ async function telaAlmoxMobBaixaRotacao(){
       <div style="font-size:13px;font-weight:800;word-break:break-word;margin-bottom:4px">${escHtml(i.nome_item||'—')}</div>
       <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-bottom:6px">${escHtml(i.cod_sap||'')}</div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        ${i.wms_localizacao?`<span style="font-size:11px;color:var(--text3)">📍 WMS: <b>${escHtml(i.wms_localizacao)}</b></span>`:''}
-        <span style="font-size:11px;color:var(--text3)">Sistema: <b style="font-family:'DM Mono',monospace;color:var(--blue)">${i.estoque_sistema??'—'}</b></span>
+        ${i.wms_localizacao?`<span style="font-size:11px;color:var(--text3)">📍 WMS: <b>${escHtml(i.wms_localizacao)}</b></span>`:'<span style="font-size:11px;color:var(--text4)">Sem localização WMS</span>'}
       </div>
     </div>`).join('');
 
@@ -3280,7 +3309,7 @@ function almoxMobAbrirBaixaRotacao(itemId){
         <div style="font-size:14px;font-weight:700">${escHtml(item.nome_item||'—')}</div>
         <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--amber);margin-top:3px">${escHtml(item.cod_sap||'')}</div>
         <div style="font-size:12px;color:var(--text3);margin-top:4px">
-          ${item.wms_localizacao?`📍 WMS: <b>${escHtml(item.wms_localizacao)}</b> · `:''}Sistema: <b style="color:var(--blue)">${item.estoque_sistema??'—'}</b>
+          ${item.wms_localizacao?`📍 WMS: <b>${escHtml(item.wms_localizacao)}</b>`:'Sem localização WMS'}
         </div>
       </div>
       <div style="margin-bottom:20px">
