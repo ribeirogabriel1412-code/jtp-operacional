@@ -2699,11 +2699,27 @@ async function almoxMobSalvarEntrega(id){
   _almoxMobTab='sol';telaValetAlmox();
 }
 
+// Monta a janela [inicio,fim] da ocorrencia mais recente de um turno (row do
+// almoxo_quadro_turno), usando `ref` como "agora" -- reaproveitada tanto pro
+// meu turno quanto pro turno anterior (com ref = inicio do meu turno).
+function _invRotJanelaTurno(turnoRow,ref){
+  const [hE,mE]=turnoRow.hora_entrada.split(':').map(Number);
+  const [hS,mS]=turnoRow.hora_saida.split(':').map(Number);
+  const entrada=new Date(ref);
+  entrada.setHours(hE,mE,0,0);
+  if(entrada>ref) entrada.setDate(entrada.getDate()-1);
+  let durMin=(hS*60+mS)-(hE*60+mE);
+  if(durMin<=0) durMin+=24*60;
+  return{ini:entrada,fim:new Date(entrada.getTime()+durMin*60000)};
+}
+
 async function telaAlmoxMobConferencia(){
   const gid=getGid();
   render(`<div style="padding:30px;text-align:center;color:var(--text3)">Carregando...</div>`);
-  const{data:turno}=await sb.from('almoxo_quadro_turno')
-    .select('*').eq('garagem_id',gid).eq('perfil_id',S.user?.id).maybeSingle();
+  const[{data:turno},{data:todosTurnos}]=await Promise.all([
+    sb.from('almoxo_quadro_turno').select('*').eq('garagem_id',gid).eq('perfil_id',S.user?.id).maybeSingle(),
+    sb.from('almoxo_quadro_turno').select('*,perfis(nome)').eq('garagem_id',gid),
+  ]);
   if(!turno){
     render(`
       <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
@@ -2718,37 +2734,42 @@ async function telaAlmoxMobConferencia(){
     `);
     return;
   }
-  // Calcula janela do turno atual e anterior baseado no quadro do almoxarife
-  const [hE,mE]=turno.hora_entrada.split(':').map(Number);
-  const [hS,mS]=turno.hora_saida.split(':').map(Number);
   const agora=new Date();
-  const entradaHoje=new Date(agora);
-  entradaHoje.setHours(hE,mE,0,0);
-  if(entradaHoje>agora) entradaHoje.setDate(entradaHoje.getDate()-1);
-  let durMin=(hS*60+mS)-(hE*60+mE);
-  if(durMin<=0) durMin+=24*60;
-  const durMs=durMin*60*1000;
-  const windowFim=new Date(entradaHoje);
-  const windowIni=new Date(entradaHoje.getTime()-durMs);
-  const agora2=new Date();
+  const minhaJanela=_invRotJanelaTurno(turno,agora);
 
-  // Janela de 48h para capturar trocas de turno sem risco de fuso/horário
-  const ultimas48h=new Date(agora.getTime()-48*60*60*1000).toISOString();
+  // Acha quem trabalhou no turno IMEDIATAMENTE anterior ao meu, pelo Quadro
+  // de Turnos (nao mais "quem nao sou eu") -- pega quem tem a saida mais
+  // proxima (ciclica, considerando virada de dia) da minha entrada.
+  const paraMin=t=>{const[h,m]=String(t).split(':').map(Number);return h*60+m;};
+  const minhaEntradaMin=paraMin(turno.hora_entrada);
+  // Distancia ciclica absoluta (nao so "antes") -- turnos de handoff as vezes
+  // se sobrepoem um pouco (ex: saida as 07:20 de quem cobre a madrugada,
+  // enquanto o turno da manha ja comecou as 06:00), entao o predecessor real
+  // pode ter saida numericamente "depois" da minha entrada.
+  let turnoAnterior=null,menorDist=Infinity;
+  (todosTurnos||[]).forEach(t=>{
+    if(t.perfil_id===turno.perfil_id)return;
+    const diff=Math.abs(minhaEntradaMin-paraMin(t.hora_saida));
+    const dist=Math.min(diff,24*60-diff);
+    if(dist<menorDist){menorDist=dist;turnoAnterior=t;}
+  });
+  const janelaAnterior=turnoAnterior?_invRotJanelaTurno(turnoAnterior,minhaJanela.ini):null;
 
   // Busca itens (T-1 e turno atual) + inventários existentes em paralelo
-  // T-1  = itens entregues por OUTROS almoxes (separado_por != eu)
-  // Atual = itens entregues pelo PRÓPRIO almox (separado_por = eu)
-  // Discriminador: QUEM entregou, não o horário — elimina problema de janela de turno
+  // T-1   = itens separados pela pessoa do turno anterior (Quadro de Turnos),
+  //         dentro da janela exata do turno dela
+  // Atual = itens separados por mim, dentro da janela do meu turno
   const[{data:rawT1},{data:rawAtual},{data:invExist}]=await Promise.all([
-    sb.from('requisicoes_compra').select('*').eq('garagem_id',gid)
-      .not('separado_por','is',null)
-      .neq('separado_por',S.user?.id)
-      .gte('entregue_em',ultimas48h)
-      .order('entregue_em',{ascending:false}).limit(50),
+    turnoAnterior
+      ? sb.from('requisicoes_compra').select('*').eq('garagem_id',gid)
+          .eq('separado_por',turnoAnterior.perfil_id)
+          .gte('entregue_em',janelaAnterior.ini.toISOString())
+          .lte('entregue_em',janelaAnterior.fim.toISOString())
+          .order('entregue_em',{ascending:false}).limit(50)
+      : Promise.resolve({data:[]}),
     sb.from('requisicoes_compra').select('*').eq('garagem_id',gid)
       .eq('separado_por',S.user?.id)
-      .not('entregue_em','is',null)
-      .gte('entregue_em',ultimas48h)
+      .gte('entregue_em',minhaJanela.ini.toISOString())
       .order('entregue_em',{ascending:false}).limit(50),
     // Todos os inventários da garagem para montar os dois mapas
     // (a tabela não tem coluna de criado_em — usa turno_data pra pegar a contagem mais recente)
@@ -2855,6 +2876,7 @@ async function telaAlmoxMobConferencia(){
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 14px">
         <div style="color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;margin-bottom:4px">Seu turno</div>
         <div style="font-family:'DM Mono',monospace;font-weight:800"><span style="color:var(--green)">${fmtH(turno.hora_entrada)}</span> <span style="color:var(--text3)">→</span> <span style="color:var(--amber)">${fmtH(turno.hora_saida)}</span></div>
+        ${turnoAnterior?`<div style="font-size:11px;color:var(--text3);margin-top:6px">Turno anterior: <b style="color:var(--purple)">${escHtml(turnoAnterior.perfis?.nome||'—')}</b> (${fmtH(turnoAnterior.hora_entrada)} → ${fmtH(turnoAnterior.hora_saida)})</div>`:`<div style="font-size:11px;color:var(--text4);margin-top:6px">Nenhum outro turno cadastrado no Quadro</div>`}
       </div>
     </div>
     ${secaoHeader('T-1 — Turno Anterior','var(--purple)',totT1-listaT1Pendente.length,totT1,0)}
@@ -3280,6 +3302,15 @@ async function atualizarValetMobile(id,status){
     const base=String(item.justificativa||'Lista líder oficina');
     payload.justificativa=base.includes(historico)?base:`${base} · ${historico}`;
   }
+  // mesmo motivo do fix em salvarTrocaValetAlmox: sem separado_por/entregue_em
+  // o item nunca aparece no Inventario Rotativo (T-1/Turno Atual) pra ninguem.
+  if(status==='separado'){
+    payload.item_entregue=item.peca||null;
+    payload.cod_sap_entregue=item.cod_sap||null;
+    payload.qtd_entregue=item.quantidade||1;
+    payload.entregue_em=new Date().toISOString();
+    payload.separado_por=S.user?.id;
+  }
   const{error}=await sb.from('requisicoes_compra').update(payload).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
   await notificarFluxoValetMobile(status,{...item,...payload,id});
@@ -3338,7 +3369,15 @@ async function salvarTrocaValetAlmox(id){
   const qtd=parseInt(document.getElementById('troca-qtd')?.value)||1;
   const valor=parseFloat(document.getElementById('troca-valor')?.value)||0;
   if(!peca){toast('Escolha ou escreva o item','err');return;}
-  const{error}=await sb.from('requisicoes_compra').update({cod_sap:cod,peca,quantidade:qtd,valor_estimado:valor||null,status:'separado'}).eq('id',id);
+  // separado_por/entregue_em/item_entregue tem que ser gravados aqui tambem
+  // (igual ja acontece em almoxMobSalvarEntrega) -- sem isso o item some do
+  // Inventario Rotativo pra sempre, pra qualquer almox, porque aquela tela
+  // so busca linha com separado_por preenchido pra decidir T-1 vs Turno Atual.
+  const{error}=await sb.from('requisicoes_compra').update({
+    cod_sap:cod,peca,quantidade:qtd,valor_estimado:valor||null,status:'separado',
+    item_entregue:peca,cod_sap_entregue:cod,qtd_entregue:qtd,
+    entregue_em:new Date().toISOString(),separado_por:S.user?.id,
+  }).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
   closeSheet(true);toast('✅ Item trocado e separado');telaValetAlmox();
 }
