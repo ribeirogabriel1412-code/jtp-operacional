@@ -4831,12 +4831,16 @@ async function confCruzarRotativo(){
   const dataRef=window._confDataRef||hoje();
   const janelaDias=window._confRotJanela||3;
   const dataIni=opAddDays(dataRef,-(janelaDias-1));
-  const [{data:rotRaw,error},{data:t1Raw,error:t1Error}]=await Promise.all([
+  const [{data:rotRaw,error},{data:t1Raw,error:t1Error},{data:tratRaw}]=await Promise.all([
     sb.from('almoxo_inventario_turno').select('*').eq('garagem_id',gid)
       .gte('turno_data',dataIni).lte('turno_data',dataRef).order('turno_data',{ascending:false}),
     sb.from('almoxo_inventario_t1').select('*').eq('garagem_id',gid)
-      .gte('turno_data',dataIni).lte('turno_data',dataRef).order('turno_data',{ascending:false})
+      .gte('turno_data',dataIni).lte('turno_data',dataRef).order('turno_data',{ascending:false}),
+    sb.from('almoxo_inventario_tratativas').select('*').eq('garagem_id',gid)
+      .gte('turno_data',dataIni).lte('turno_data',dataRef)
   ]);
+  const tratMap={};
+  (tratRaw||[]).forEach(t=>{ tratMap[confNormCod(t.cod_sap)+'|'+(t.turno_data||'')]=t; });
   const janelaSelect=`<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3)">
     <span>Janela:</span>
     <select onchange="window._confRotJanela=parseInt(this.value);confCruzarRotativo()" style="padding:5px 8px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px">
@@ -4888,6 +4892,7 @@ async function confCruzarRotativo(){
       // Encadeamento — conferência do turno seguinte (T-1) sobre a contagem de origem
       fisT1:t1?t1.qtd_fisica??null:null,
       difCadeia:t1&&t1.qtd_fisica!=null&&fis!=null?Math.round((t1.qtd_fisica-fis)*1000)/1000:null,
+      trat:tratMap[k]||null,
     };
   }).sort((a,b)=>b.data.localeCompare(a.data)||a.cod.localeCompare(b.cod));
 
@@ -4908,8 +4913,32 @@ async function confCruzarRotativo(){
   const itensExibidos=soDesvio?itens.filter(d=>d.temDesvio):itens;
 
   const thead=`<tr style="background:var(--surface2)">
-    ${thH('#')}${thH('Status')}${thH('Código')}${thH('Descrição')}${thR('Físico (Rot.)')}${thR('SAP')}${thR('Δ Fís.↔SAP')}${thR('T-1 (conf. seguinte)')}${thR('Δ Cadeia')}${thH('Almoxarife')}${thH('Data')}
+    ${thH('#')}${thH('Status')}${thH('Tratativa')}${thH('Código')}${thH('Descrição')}${thR('Físico (Rot.)')}${thR('SAP')}${thR('Δ Fís.↔SAP')}${thR('T-1 (conf. seguinte)')}${thR('Δ Cadeia')}${thH('Almoxarife')}${thH('Data')}
   </tr>`;
+
+  const TRAT_LB={recebimento:'📦 Recebimento',contagem_errada:'✏️ Recontagem',desvio:'⚠️ Desvio confirmado'};
+  const tratCell=d=>{
+    if(!d.temDesvio) return `<td style="padding:7px 10px;color:var(--text4)">—</td>`;
+    const t=d.trat;
+    if(t){
+      let detalhe='';
+      if(t.tipo==='recebimento') detalhe=`NF ${escHtml(t.nota_fiscal||'—')} · +${N(t.qtd_recebida)}`;
+      else if(t.tipo==='contagem_errada') detalhe=`Corrigido p/ ${N(t.qtd_corrigida)}`;
+      return `<td style="padding:7px 10px;font-size:11px;white-space:nowrap">
+        <div style="font-weight:700">${TRAT_LB[t.tipo]||t.tipo}</div>
+        ${detalhe?`<div style="color:var(--text3);margin-top:2px">${detalhe}</div>`:''}
+        <button onclick="confAbrirTratativa('${d.cod}','${d.data}','${t.tipo}')" style="margin-top:3px;font-size:10px;color:var(--blue);background:none;border:none;cursor:pointer;padding:0;text-decoration:underline">editar</button>
+      </td>`;
+    }
+    return `<td style="padding:7px 10px">
+      <select onchange="confSelecionarTratativa(this,'${d.cod}','${d.data}')" style="padding:5px 7px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px">
+        <option value="">Selecionar…</option>
+        <option value="recebimento">📦 Recebimento</option>
+        <option value="contagem_errada">✏️ Contagem errada</option>
+        <option value="desvio">⚠️ Desvio</option>
+      </select>
+    </td>`;
+  };
 
   const rows=itensExibidos.map((d,i)=>{
     const statusBadge=d.temDesvio
@@ -4918,6 +4947,7 @@ async function confCruzarRotativo(){
     return`<tr style="border-bottom:1px solid var(--border);${d.temDesvio?'background:#EF444406':'background:#00C48C03'}">
       <td style="padding:7px 10px;font-size:11px;color:var(--text3)">${i+1}</td>
       <td style="padding:7px 10px">${statusBadge}</td>
+      ${tratCell(d)}
       <td style="padding:7px 10px;font-family:monospace;font-size:12px;font-weight:700">${escHtml(d.cod)}</td>
       <td style="padding:7px 10px;font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.nome)}">${escHtml(d.nome)}</td>
       <td style="padding:7px 10px;text-align:right;font-family:monospace;font-weight:800;color:var(--green)">${N(d.fis)}</td>
@@ -4955,9 +4985,85 @@ async function confCruzarRotativo(){
         <button onclick="confRotExportarPDF()" class="btn-sec" style="padding:6px 14px;font-size:12px">📄 PDF</button>
       </div>
     </div>
-    ${itensExibidos.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:1000px"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>`
+    ${itensExibidos.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:1150px"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>`
       :`<div style="padding:20px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhum item com desvio nessa janela. 🎉</div>`}
   `;
+}
+
+// Tratativa de desvio — selecionou no <select> da linha
+function confSelecionarTratativa(sel,cod,turnoData){
+  const tipo=sel.value;
+  if(!tipo)return;
+  if(tipo==='desvio'){
+    confSalvarTratativaDireto(cod,turnoData,'desvio');
+    return;
+  }
+  confAbrirTratativa(cod,turnoData,tipo);
+}
+
+// "Desvio" não tem campo extra — formaliza direto, sem abrir modal
+async function confSalvarTratativaDireto(cod,turnoData,tipo){
+  const gid=getGid();
+  const payload={garagem_id:gid,cod_sap:cod,turno_data:turnoData,tipo,criado_por:S.perfil?.nome||null};
+  const{error}=await sb.from('almoxo_inventario_tratativas').upsert(payload,{onConflict:'garagem_id,cod_sap,turno_data'});
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('⚠️ Desvio formalizado — será tratado no inventário oficial');
+  confCruzarRotativo();
+}
+
+// Recebimento / Contagem errada — abre o modal genérico de Almoxarifado com o formulário certo
+function confAbrirTratativa(cod,turnoData,tipo){
+  const item=(window._confRotItens||[]).find(x=>x.cod===cod&&x.data===turnoData);
+  const existente=item?.trat&&item.trat.tipo===tipo?item.trat:null;
+  let campos='';
+  if(tipo==='recebimento'){
+    campos=`
+      <label class="fl">Nota Fiscal</label>
+      <input class="fi" id="trat-nf" value="${escHtml(existente?.nota_fiscal||'')}" placeholder="Ex: 123456" style="margin-bottom:14px">
+      <label class="fl">Quantidade recebida</label>
+      <input class="fi" id="trat-qtd" type="number" step="0.01" value="${existente?.qtd_recebida??''}" placeholder="Ex: 8" style="margin-bottom:14px">
+    `;
+  } else if(tipo==='contagem_errada'){
+    campos=`
+      <label class="fl">Quantidade correta (recontagem)</label>
+      <input class="fi" id="trat-qtd-corr" type="number" step="0.01" value="${existente?.qtd_corrigida??''}" placeholder="Ex: 17" style="margin-bottom:14px">
+    `;
+  }
+  document.getElementById('modal-alm-title').textContent='Tratativa de desvio — '+cod;
+  document.getElementById('modal-alm-body').innerHTML=`
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px">${escHtml(item?.nome||'')} · Físico ${N2(item?.fis)} × SAP ${N2(item?.saldoSap)} · ${escHtml(turnoData)}</div>
+    ${campos}
+    <label class="fl">Observação (opcional)</label>
+    <textarea class="fi" id="trat-obs" rows="2" style="margin-bottom:16px">${escHtml(existente?.observacao||'')}</textarea>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn-sec" onclick="closeM('modal-alm')">Cancelar</button>
+      <button class="btn-success" onclick="confSalvarTratativa('${cod}','${turnoData}','${tipo}')">💾 Salvar tratativa</button>
+    </div>
+  `;
+  document.getElementById('modal-alm').style.display='flex';
+}
+function N2(v){return v==null?'—':Number.isInteger(v)?v:v.toFixed(2);}
+
+async function confSalvarTratativa(cod,turnoData,tipo){
+  const gid=getGid();
+  const payload={garagem_id:gid,cod_sap:cod,turno_data:turnoData,tipo,criado_por:S.perfil?.nome||null,
+    observacao:document.getElementById('trat-obs')?.value?.trim()||null};
+  if(tipo==='recebimento'){
+    const nf=document.getElementById('trat-nf')?.value?.trim();
+    const qtd=parseFloat(document.getElementById('trat-qtd')?.value);
+    if(!nf){toast('Informe a nota fiscal','err');return;}
+    if(!qtd&&qtd!==0){toast('Informe a quantidade recebida','err');return;}
+    payload.nota_fiscal=nf;payload.qtd_recebida=qtd;
+  } else if(tipo==='contagem_errada'){
+    const qtd=document.getElementById('trat-qtd-corr')?.value;
+    if(qtd===''||qtd==null){toast('Informe a quantidade correta','err');return;}
+    payload.qtd_corrigida=parseFloat(qtd);
+  }
+  const{error}=await sb.from('almoxo_inventario_tratativas').upsert(payload,{onConflict:'garagem_id,cod_sap,turno_data'});
+  if(error){toast('Erro: '+error.message,'err');return;}
+  closeM('modal-alm');
+  toast('✅ Tratativa salva!');
+  confCruzarRotativo();
 }
 
 function confMotorExportarPDF(){
