@@ -4831,16 +4831,19 @@ async function confCruzarRotativo(){
   const dataRef=window._confDataRef||hoje();
   const janelaDias=window._confRotJanela||3;
   const dataIni=opAddDays(dataRef,-(janelaDias-1));
-  const [{data:rotRaw,error},{data:t1Raw,error:t1Error},{data:tratRaw}]=await Promise.all([
+  const [{data:rotRaw,error},{data:t1Raw,error:t1Error},{data:tratRaw},{data:wmsRaw}]=await Promise.all([
     sb.from('almoxo_inventario_turno').select('*').eq('garagem_id',gid)
       .gte('turno_data',dataIni).lte('turno_data',dataRef).order('turno_data',{ascending:false}),
     sb.from('almoxo_inventario_t1').select('*').eq('garagem_id',gid)
       .gte('turno_data',dataIni).lte('turno_data',dataRef).order('turno_data',{ascending:false}),
     sb.from('almoxo_inventario_tratativas').select('*').eq('garagem_id',gid)
-      .gte('turno_data',dataIni).lte('turno_data',dataRef)
+      .gte('turno_data',dataIni).lte('turno_data',dataRef),
+    sb.from('almoxo_wms_enderecos').select('cod_sap,localizacao').eq('garagem_id',gid)
   ]);
   const tratMap={};
   (tratRaw||[]).forEach(t=>{ tratMap[confNormCod(t.cod_sap)+'|'+(t.turno_data||'')]=t; });
+  const wmsMap={};
+  (wmsRaw||[]).forEach(w=>{ const k=confNormCod(w.cod_sap); (wmsMap[k]=wmsMap[k]||[]).push(w.localizacao); });
   const janelaSelect=`<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3)">
     <span>Janela:</span>
     <select onchange="window._confRotJanela=parseInt(this.value);confCruzarRotativo()" style="padding:5px 8px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px">
@@ -4893,6 +4896,7 @@ async function confCruzarRotativo(){
       fisT1:t1?t1.qtd_fisica??null:null,
       difCadeia:t1&&t1.qtd_fisica!=null&&fis!=null?Math.round((t1.qtd_fisica-fis)*1000)/1000:null,
       trat:tratMap[k]||null,
+      wms:wmsMap[cod]||null,
     };
   }).sort((a,b)=>b.data.localeCompare(a.data)||a.cod.localeCompare(b.cod));
 
@@ -4913,8 +4917,9 @@ async function confCruzarRotativo(){
   const itensExibidos=soDesvio?itens.filter(d=>d.temDesvio):itens;
 
   const thead=`<tr style="background:var(--surface2)">
-    ${thH('#')}${thH('Status')}${thH('Tratativa')}${thH('Código')}${thH('Descrição')}${thR('Físico (Rot.)')}${thR('SAP')}${thR('Δ Fís.↔SAP')}${thR('T-1 (conf. seguinte)')}${thR('Δ Cadeia')}${thH('Almoxarife')}${thH('Data')}
+    ${thH('#')}${thH('Status')}${thH('Tratativa')}${thH('Código')}${thH('Descrição')}${thH('WMS')}${thR('Físico (Rot.)')}${thR('SAP')}${thR('Δ Fís.↔SAP')}${thR('T-1 (conf. seguinte)')}${thR('Δ Cadeia')}${thH('Almoxarife')}${thH('Data')}
   </tr>`;
+  const wmsCell=d=>`<td style="padding:7px 10px;font-family:monospace;font-size:11px;color:var(--blue);white-space:nowrap">${d.wms&&d.wms.length?escHtml(d.wms.join(', ')):'<span style="color:var(--text4);font-family:inherit">—</span>'}</td>`;
 
   const TRAT_LB={recebimento:'📦 Recebimento',contagem_errada:'✏️ Recontagem',desvio:'⚠️ Desvio confirmado'};
   const tratCell=d=>{
@@ -4950,6 +4955,7 @@ async function confCruzarRotativo(){
       ${tratCell(d)}
       <td style="padding:7px 10px;font-family:monospace;font-size:12px;font-weight:700">${escHtml(d.cod)}</td>
       <td style="padding:7px 10px;font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.nome)}">${escHtml(d.nome)}</td>
+      ${wmsCell(d)}
       <td style="padding:7px 10px;text-align:right;font-family:monospace;font-weight:800;color:var(--green)">${N(d.fis)}</td>
       <td style="padding:7px 10px;text-align:right;font-family:monospace">${N(d.saldoSap)}</td>
       ${difCell(d.difSap)}
@@ -4985,7 +4991,7 @@ async function confCruzarRotativo(){
         <button onclick="confRotExportarPDF()" class="btn-sec" style="padding:6px 14px;font-size:12px">📄 PDF</button>
       </div>
     </div>
-    ${itensExibidos.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:1150px"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>`
+    ${itensExibidos.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:1280px"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>`
       :`<div style="padding:20px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhum item com desvio nessa janela. 🎉</div>`}
   `;
 }
@@ -5029,9 +5035,17 @@ function confAbrirTratativa(cod,turnoData,tipo){
       <input class="fi" id="trat-qtd-corr" type="number" step="0.01" value="${existente?.qtd_corrigida??''}" placeholder="Ex: 17" style="margin-bottom:14px">
     `;
   }
+  const temWms=item?.wms&&item.wms.length;
+  const wmsAviso=tipo==='contagem_errada'&&temWms
+    ?`<div style="background:#2563EB18;border:1px solid #2563EB50;border-radius:8px;padding:10px 12px;margin-bottom:14px">
+        <div style="font-size:10px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">📍 Ir até o endereço pra reconferir</div>
+        <div style="font-family:monospace;font-size:15px;font-weight:800;color:var(--blue)">${escHtml(item.wms.join(' · '))}</div>
+      </div>`
+    :'';
   document.getElementById('modal-alm-title').textContent='Tratativa de desvio — '+cod;
   document.getElementById('modal-alm-body').innerHTML=`
-    <div style="font-size:12px;color:var(--text3);margin-bottom:14px">${escHtml(item?.nome||'')} · Físico ${N2(item?.fis)} × SAP ${N2(item?.saldoSap)} · ${escHtml(turnoData)}</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px">${escHtml(item?.nome||'')} · Físico ${N2(item?.fis)} × SAP ${N2(item?.saldoSap)} · ${escHtml(turnoData)}${temWms?` · 📍 WMS ${escHtml(item.wms.join(', '))}`:''}</div>
+    ${wmsAviso}
     ${campos}
     <label class="fl">Observação (opcional)</label>
     <textarea class="fi" id="trat-obs" rows="2" style="margin-bottom:16px">${escHtml(existente?.observacao||'')}</textarea>
@@ -5134,13 +5148,13 @@ function confRotExportarXLSX(){
   if(!itens?.length){toast('Sem dados para exportar.','err');return;}
   const garagem=window._confRotGaragem||'Garagem';
   const dataRef=window._confRotDataRef||new Date().toISOString().slice(0,10);
-  const header=[['#','Status','Justificativa','Código','Descrição','Físico (Rot.)','PRAXIO','Δ Fís.↔PRAX','SAP','Δ Fís.↔SAP','Almoxarife','Data']];
+  const header=[['#','Status','Justificativa','Código','Descrição','WMS','Físico (Rot.)','PRAXIO','Δ Fís.↔PRAX','SAP','Δ Fís.↔SAP','Almoxarife','Data']];
   const body=itens.map((d,i)=>{
     const temDesvio=(d.difSap!=null&&d.difSap!==0)||(d.difPrax!=null&&d.difPrax!==0);
-    return[i+1,temDesvio?'Desvio':'Conforme',temDesvio?confTratTexto(d.trat):'—',d.cod,d.nome,d.fis??'',d.saldoPrax??'',d.difPrax??'',d.saldoSap??'',d.difSap??'',d.almoxarife,d.data];
+    return[i+1,temDesvio?'Desvio':'Conforme',temDesvio?confTratTexto(d.trat):'—',d.cod,d.nome,d.wms&&d.wms.length?d.wms.join(', '):'—',d.fis??'',d.saldoPrax??'',d.difPrax??'',d.saldoSap??'',d.difSap??'',d.almoxarife,d.data];
   });
   const ws=XLSX.utils.aoa_to_sheet([...header,...body]);
-  ws['!cols']=[{wch:4},{wch:10},{wch:34},{wch:12},{wch:40},{wch:12},{wch:10},{wch:12},{wch:10},{wch:12},{wch:30},{wch:12}];
+  ws['!cols']=[{wch:4},{wch:10},{wch:34},{wch:12},{wch:40},{wch:16},{wch:12},{wch:10},{wch:12},{wch:10},{wch:12},{wch:30},{wch:12}];
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'Inventário Rotativo');
 
@@ -5201,6 +5215,7 @@ function confRotExportarPDF(){
       <td style="${B}text-align:center">${temDesvio?'⚠️ Desvio':'✅ Conforme'}</td>
       <td style="${B}font-family:monospace;font-weight:700">${esc(d.cod)}</td>
       <td style="${B}">${esc(d.nome)}</td>
+      <td style="${B}font-family:monospace;font-size:9px">${d.wms&&d.wms.length?esc(d.wms.join(', ')):'—'}</td>
       <td style="${B}text-align:right;font-weight:700">${N(d.fis)}</td>
       <td style="${B}text-align:right">${N(d.saldoSap)}</td>
       <td style="${B}text-align:right;font-weight:700">${d.difSap==null?'—':(d.difSap>0?'+':'')+N(d.difSap)}</td>
@@ -5215,7 +5230,7 @@ function confRotExportarPDF(){
     <div class="sec-header">■ DIVERGÊNCIA SAP × FÍSICO — INVENTÁRIO ROTATIVO (${itens.length} registro${itens.length!==1?'s':''} · ${desvioFisCount} desvio${desvioFisCount!==1?'s':''})</div>
     ${itens.length?`<table>
       <thead><tr>
-        <th style="${BH}">#</th><th style="${BH}">Status</th><th style="${BH}">Código</th><th style="${BH}">Descrição</th>
+        <th style="${BH}">#</th><th style="${BH}">Status</th><th style="${BH}">Código</th><th style="${BH}">Descrição</th><th style="${BH}">WMS</th>
         <th style="${BH}text-align:right">Físico (Rot.)</th><th style="${BH}text-align:right">SAP</th><th style="${BH}text-align:right">Δ Fís.↔SAP</th>
         <th style="${BH}text-align:right">T-1 (conf. seguinte)</th><th style="${BH}text-align:right">Δ Cadeia</th>
         <th style="${BH}">Almoxarife</th><th style="${BH}">Data</th><th style="${BH}">Justificativa</th>
