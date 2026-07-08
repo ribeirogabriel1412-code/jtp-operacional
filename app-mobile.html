@@ -1285,7 +1285,7 @@ async function telaAcompManutencao(){
         '<span class="badge" style="border-color:'+(rds.length?'#2563EB40':'var(--border)')+';color:'+(rds.length?'var(--blue)':'var(--text3)')+'">'+(rds.length?rds.length+' rodada'+(rds.length>1?'s':''):'Sem rodada')+'</span>'+
       '</div>'+
       '<div style="font-size:11px;color:var(--text3)">'+(o.tipo||'').replace(/_/g,' ')+' · O.S '+(o.numero||'—')+'</div>'+
-      (ult?'<div style="font-size:12px;color:var(--text2);margin-top:6px"><b>Rodada '+ult.rodada+'</b> · '+new Date(ult.hora_registro).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'})+(ult.etapa_atual?' · '+escHtml(ult.etapa_atual):'')+(ult.evolucao?' · '+escHtml(ult.evolucao):'')+'</div>':'')+
+      (ult?'<div style="font-size:12px;color:var(--text2);margin-top:6px"><b>Rodada '+ult.rodada+'</b> · '+new Date(ult.hora_registro).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'})+(ult.registro?' · '+escHtml(ult.registro.slice(0,60))+(ult.registro.length>60?'…':''):'')+'</div>':'')+
       (fechado?'<div style="margin-top:6px;font-size:11px;color:var(--green);font-weight:700">✅ Fechamento registrado</div>':'')+
     '</div>';
   });
@@ -1314,10 +1314,7 @@ function _renderAcompSheet(){
   var hist=rds.map(function(r){
     return '<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:8px">'+
       '<div style="display:flex;justify-content:space-between;margin-bottom:4px"><b style="font-size:12px">Rodada '+r.rodada+'</b><span style="font-size:11px;color:var(--text3)">'+new Date(r.hora_registro).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'})+'</span></div>'+
-      (r.etapa_atual?'<div style="font-size:12px;margin-bottom:2px"><b>Etapa:</b> '+escHtml(r.etapa_atual)+'</div>':'')+
-      (r.evolucao?'<div style="font-size:12px;margin-bottom:2px"><b>Evolução:</b> '+escHtml(r.evolucao)+'</div>':'')+
-      (r.problema?'<div style="font-size:12px;margin-bottom:2px;color:var(--amber)"><b>Problema:</b> '+escHtml(r.problema)+'</div>':'')+
-      (r.acao_imediata?'<div style="font-size:12px;margin-bottom:2px"><b>Ação imediata:</b> '+escHtml(r.acao_imediata)+'</div>':'')+
+      (r.registro?'<div style="font-size:12px;margin-bottom:2px;white-space:pre-wrap">'+escHtml(r.registro)+'</div>':'')+
       (r.prev_liberacao?'<div style="font-size:12px"><b>Prev. liberação:</b> '+escHtml(r.prev_liberacao)+'</div>':'')+
       (r.fechamento?'<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-size:12px;color:var(--green)"><b>Fechamento:</b> '+escHtml(r.status_final||'')+(r.pendencias?' · '+escHtml(r.pendencias):'')+'</div>':'')+
     '</div>';
@@ -1327,10 +1324,7 @@ function _renderAcompSheet(){
     (hist?'<div class="fl" style="margin-bottom:8px">Histórico</div>'+hist:'<div style="font-size:12px;color:var(--text3);text-align:center;padding:10px 0 16px">Nenhuma rodada registrada ainda</div>')+
     '<div class="fl" style="margin-top:6px">Nova rodada · #'+prox+'</div>'+
     '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px">'+
-      '<div><label class="fl">Etapa atual</label><input class="fi2" id="ac-etapa" placeholder="Ex: Troca de embreagem, teste de rodagem..."></div>'+
-      '<div><label class="fl">Evolução</label><input class="fi2" id="ac-evolucao" placeholder="Ex: 40%, aguardando peça..."></div>'+
-      '<div><label class="fl">Problema encontrado</label><textarea class="fi2" id="ac-problema" rows="2" placeholder="Opcional"></textarea></div>'+
-      '<div><label class="fl">Ação imediata</label><textarea class="fi2" id="ac-acao" rows="2" placeholder="Opcional"></textarea></div>'+
+      '<div><label class="fl">Registro da rodada</label><textarea class="fi2" id="ac-registro" rows="4" placeholder="Ex: Motor desmontado, aguardando peça do almox, previsão de retorno amanhã..."></textarea></div>'+
       '<div><label class="fl">Previsão de liberação</label><div style="display:flex;gap:8px"><input class="fi2" type="time" id="ac-prev"><button onclick="document.getElementById(\'ac-prev\').showPicker()" style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:0 14px;color:var(--text);font-size:16px">🕐</button></div></div>'+
     '</div>'+
     '<label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--text2);margin-bottom:10px"><input type="checkbox" id="ac-fechar"> Registrar fechamento do turno com esta rodada</label>'+
@@ -1366,21 +1360,18 @@ async function salvarRodadaAcomp(){
   var gid=getGid();
   var turnoAtual=S.turno==='noite'?'noite':'dia';
   var fechar=document.getElementById('ac-fechar').checked;
-  var etapa=document.getElementById('ac-etapa').value.trim();
-  var evolucao=document.getElementById('ac-evolucao').value.trim();
-  var problema=document.getElementById('ac-problema').value.trim();
-  var acao=document.getElementById('ac-acao').value.trim();
+  var registro=document.getElementById('ac-registro').value.trim();
   var prev=document.getElementById('ac-prev').value;
   var statusFinal=fechar?document.getElementById('ac-status-final').value:null;
   var pendencias=fechar?document.getElementById('ac-pendencias').value.trim():null;
-  if(!etapa && !evolucao && !problema && !acao && !fechar){
-    toast('Preencha ao menos um campo da rodada','err');
+  if(!registro && !fechar){
+    toast('Escreva o registro da rodada','err');
     return;
   }
   var payload={
     ocorrencia_id:oc.id, garagem_id:gid, turno:turnoAtual, data_turno:dataOperacionalAtual(turnoAtual),
     rodada:_ACOMP.rodadas.length+1, prefixo:oc.prefixo, numero_os:oc.numero, tipo_os:oc.tipo,
-    etapa_atual:etapa||null, evolucao:evolucao||null, problema:problema||null, acao_imediata:acao||null,
+    registro:registro||null,
     prev_liberacao:prev||null, fechamento:fechar, status_final:statusFinal, pendencias:pendencias,
     criado_por:S.perfil&&S.perfil.nome
   };
@@ -1411,7 +1402,7 @@ async function gerarPDFAcompManutencao(){
     var thPrefixo='<tr><th>Campo</th>'+lista.map(function(x){return '<th>'+escHtml(x.oc.prefixo)+'</th>';}).join('')+'</tr>';
     var thOs='<tr><td>N° O.S (Tipo)</td>'+lista.map(function(x){return '<td>'+escHtml(x.oc.numero||'—')+' ('+escHtml((x.oc.tipo||'').replace(/_/g,' '))+')</td>';}).join('')+'</tr>';
     var rodadasHtml='';
-    var campos=[['Hora','hora_registro','h'],['Etapa Atual','etapa_atual'],['Evolução','evolucao'],['Problema','problema'],['Ação Imediata','acao_imediata'],['Prev. Liberação','prev_liberacao']];
+    var campos=[['Hora','hora_registro','h'],['Registro','registro','txt'],['Prev. Liberação','prev_liberacao']];
     for(var i=0;i<maxRodadas;i++){
       rodadasHtml+='<tr style="background:#eee"><td colspan="'+(lista.length+1)+'"><b>Rodada '+(i+1)+'</b></td></tr>';
       campos.forEach(function(c){
@@ -1419,7 +1410,8 @@ async function gerarPDFAcompManutencao(){
           var rr=x.rodadas[i];
           if(!rr) return '<td></td>';
           var v=c[2]==='h'?new Date(rr.hora_registro).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Manaus'}):(rr[c[1]]||'');
-          return '<td>'+escHtml(v)+'</td>';
+          var estilo=c[2]==='txt'?' style="white-space:pre-wrap"':'';
+          return '<td'+estilo+'>'+escHtml(v)+'</td>';
         }).join('')+'</tr>';
       });
     }

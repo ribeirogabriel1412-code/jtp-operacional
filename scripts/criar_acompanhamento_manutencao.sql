@@ -1,8 +1,8 @@
 -- ── Acompanhamento de Manutenção de Veículos (hora a hora) ──────────────────
 -- Digitaliza o relatório em papel "GRUPO JTP | OPERAÇÃO GARAGEM — Acompanhamento
 -- de Manutenção de Veículos": a cada rodada (~1h), o líder de oficina registra
--- etapa atual, evolução, problema, ação imediata e previsão de liberação de
--- cada OS em andamento. Rode este arquivo no Supabase SQL Editor.
+-- em texto livre o andamento de cada OS aberta, mais a previsão de liberação.
+-- Rode este arquivo no Supabase SQL Editor.
 -- Seguro re-executar (IF NOT EXISTS).
 
 CREATE TABLE IF NOT EXISTS acompanhamento_manutencao (
@@ -16,10 +16,7 @@ CREATE TABLE IF NOT EXISTS acompanhamento_manutencao (
   prefixo         text,
   numero_os       text,
   tipo_os         text,
-  etapa_atual     text,
-  evolucao        text,
-  problema        text,
-  acao_imediata   text,
+  registro        text,
   prev_liberacao  text,
   fechamento      boolean DEFAULT false,
   status_final    text,
