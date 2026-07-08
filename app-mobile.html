@@ -2820,6 +2820,33 @@ async function telaAlmoxMobConferencia(){
   window._invRotT1=listaT1;
   window._invRotAtual=listaAtual;
   window._invRotTurno=turno;
+  window._invRotGrupos={};
+
+  // Agrupa por cod_sap: a mesma peça costuma sair em várias OS no mesmo turno
+  // (ex.: um filtro usado em 4 veículos diferentes) -- fisicamente é UM estoque
+  // só, então em vez de pedir o físico 4x (o que gerava contagens divergentes
+  // pra "duplicatas" que nem eram duplicatas), agrupa numa única contagem
+  // aplicada a todas as requisições do grupo de uma vez.
+  const agruparPorSap=(lista,prefixoId)=>{
+    const grupos={};
+    const ordem=[];
+    lista.forEach(i=>{
+      const chave=i.cod_sap_entregue||i.cod_sap||i.item_entregue||i.peca||i.id;
+      if(!grupos[chave]){grupos[chave]={itens:[],nome:i.item_entregue||i.peca,codSap:i.cod_sap_entregue||i.cod_sap};ordem.push(chave);}
+      grupos[chave].itens.push(i);
+    });
+    return ordem.map((chave,idx)=>{
+      const g=grupos[chave];
+      const id=`${prefixoId}-${idx}`;
+      window._invRotGrupos[id]=g.itens.map(i=>i.id);
+      return{
+        id,nome:g.nome,codSap:g.codSap,itens:g.itens,
+        qtdTotal:g.itens.reduce((s,i)=>s+parseFloat(i.qtd_entregue||i.quantidade||1),0),
+        osList:[...new Set(g.itens.map(i=>i.os_numero).filter(Boolean))],
+        prefixoList:[...new Set(g.itens.map(i=>i.prefixo).filter(Boolean))]
+      };
+    });
+  };
 
   // T-1 pendente: só mostra itens que EU não contei E que nenhum outro almox (≠ entregador) já verificou
   // → uma vez verificado por qualquer almox, some do T-1 de todos os turnos seguintes
@@ -2841,33 +2868,40 @@ async function telaAlmoxMobConferencia(){
   const listaT1Comparada=listaT1.filter(i=>invMapMine[i.id]&&invMapOther[i.id]);
   const totDivergComparada=listaT1Comparada.filter(i=>parseFloat(invMapMine[i.id].qtd_fisica)!==parseFloat(invMapOther[i.id].qtd_fisica)).length;
 
-  const renderCard=i=>{
-    const inv=invMapMine[i.id]||null;
-    const invRef=invMapOther[i.id]||null;
-    const conforme=inv!=null;
-    const bordaCor=conforme?'var(--green)':'var(--border2)';
-    const badge=inv
+  // Cards agrupados por cod_sap -- uma única contagem física cobre todas as
+  // OS que pediram a mesma peça naquele turno. Grupo só conta como "Contado"
+  // quando TODAS as OS do grupo já têm o físico lançado por mim.
+  const renderCardGrupo=g=>{
+    const multi=g.itens.length>1;
+    const todosContados=g.itens.every(i=>invMapMine[i.id]);
+    const inv=todosContados?invMapMine[g.itens[0].id]:null;
+    const invRef=!todosContados?(g.itens.map(i=>invMapOther[i.id]).find(Boolean)||null):null;
+    const bordaCor=todosContados?'var(--green)':'var(--border2)';
+    const badge=todosContados
       ?`<span style="background:#00C48C20;color:var(--green);border:1px solid #00C48C60;border-radius:99px;padding:2px 8px;font-size:9px;font-weight:900;white-space:nowrap">✅ Contado</span>`
       :`<span style="background:var(--surface2);color:var(--text3);border:1px solid var(--border);border-radius:99px;padding:2px 8px;font-size:9px;font-weight:700;white-space:nowrap">→ Lançar</span>`;
-    const entregaDif=i.item_entregue&&i.item_entregue!==i.peca;
-    const refHtml=!inv&&invRef&&invRef.qtd_fisica!=null
+    const osTxt=g.osList.join(', ')||'—';
+    const prefixoTxt=g.prefixoList.join(', ')||'—';
+    const refHtml=!todosContados&&invRef&&invRef.qtd_fisica!=null
       ?`<div style="margin-top:6px;padding:5px 8px;background:#7C3AED15;border:1px solid #7C3AED40;border-radius:6px;font-size:10px;color:var(--purple)">
           📋 T-anterior contou: <b style="font-family:'DM Mono',monospace">${invRef.qtd_fisica}</b> físico${invRef.almoxarife_nome?' · '+escHtml(invRef.almoxarife_nome):''}
         </div>`
       :'';
-    return`<div onclick="almoxMobAbrirInvRotativo('${i.id}')" style="margin-bottom:8px;background:var(--surface);border:1px solid ${bordaCor};border-left:4px solid ${bordaCor};border-radius:12px;padding:12px 14px;cursor:pointer;active-opacity:.7">
+    return`<div onclick="almoxMobAbrirInvRotativo('${g.id}')" style="margin-bottom:8px;background:var(--surface);border:1px solid ${bordaCor};border-left:4px solid ${bordaCor};border-radius:12px;padding:12px 14px;cursor:pointer;active-opacity:.7">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px">
         <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:800;word-break:break-word">${escHtml(i.item_entregue||i.peca||'—')}</div>
-          ${(i.cod_sap_entregue||i.cod_sap)?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber)">${escHtml(i.cod_sap_entregue||i.cod_sap)}</div>`:''}
-          ${entregaDif?`<div style="font-size:10px;color:var(--text3);margin-top:2px">Pedido: ${escHtml(i.peca||'—')}</div>`:''}
+          <div style="font-size:13px;font-weight:800;word-break:break-word">${escHtml(g.nome||'—')}</div>
+          ${g.codSap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber)">${escHtml(g.codSap)}</div>`:''}
         </div>
-        ${badge}
+        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+          ${multi?`<span style="background:#3B82F620;color:var(--blue);border:1px solid #3B82F640;border-radius:99px;padding:2px 8px;font-size:9px;font-weight:900;white-space:nowrap">🔗 ${g.itens.length}x OS</span>`:''}
+          ${badge}
+        </div>
       </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        ${i.prefixo?`<span style="font-size:11px;color:var(--text3)">Prefixo: <b>${escHtml(i.prefixo)}</b></span>`:''}
-        ${i.os_numero?`<span style="font-size:11px;color:var(--text3)">OS: <b>${escHtml(i.os_numero)}</b></span>`:''}
-        <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--blue);font-weight:800">${i.qtd_entregue||i.quantidade||1}x saiu</span>
+        ${g.prefixoList.length?`<span style="font-size:11px;color:var(--text3)">Prefixo${multi?'s':''}: <b>${escHtml(prefixoTxt)}</b></span>`:''}
+        ${g.osList.length?`<span style="font-size:11px;color:var(--text3)">OS: <b>${escHtml(osTxt)}</b></span>`:''}
+        <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--blue);font-weight:800">${g.qtdTotal}x saiu${multi?' (total)':''}</span>
       </div>
       ${refHtml}
       ${inv?`<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border2)">
@@ -2876,13 +2910,19 @@ async function telaAlmoxMobConferencia(){
     </div>`;
   };
 
-  const renderComparacao=i=>{
-    const meu=invMapMine[i.id],outro=invMapOther[i.id];
+  // Comparação de dupla contagem também agrupada por cod_sap -- evita mostrar
+  // a mesma comparação repetida uma vez por OS.
+  const gruposComparacao=agruparPorSap(listaT1Comparada,'cmp');
+  const renderComparacaoGrupo=g=>{
+    const primeiro=g.itens[0];
+    const meu=invMapMine[primeiro.id],outro=invMapOther[primeiro.id];
     const vMeu=parseFloat(meu.qtd_fisica),vOutro=parseFloat(outro.qtd_fisica);
     const bate=vMeu===vOutro;
     const cor=bate?'var(--green)':'var(--red)';
+    const osTxt=g.osList.join(', ');
     return`<div style="margin-bottom:8px;background:var(--surface);border:1px solid ${cor};border-left:4px solid ${cor};border-radius:12px;padding:12px 14px">
-      <div style="font-size:13px;font-weight:800;word-break:break-word;margin-bottom:8px">${escHtml(i.item_entregue||i.peca||'—')}</div>
+      <div style="font-size:13px;font-weight:800;word-break:break-word;margin-bottom:2px">${escHtml(g.nome||'—')}</div>
+      ${osTxt?`<div style="font-size:10px;color:var(--text3);margin-bottom:6px">OS: ${escHtml(osTxt)}</div>`:''}
       <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
         <div style="font-size:11px;color:var(--text3)">📋 ${escHtml(outro.almoxarife_nome||'Turno anterior')}: <b style="font-family:'DM Mono',monospace;color:var(--purple);font-size:14px">${outro.qtd_fisica}</b></div>
         <div style="font-size:11px;color:var(--text3)">✅ ${escHtml(meu.almoxarife_nome||'Você')}: <b style="font-family:'DM Mono',monospace;color:var(--blue);font-size:14px">${meu.qtd_fisica}</b></div>
@@ -2891,9 +2931,11 @@ async function telaAlmoxMobConferencia(){
     </div>`;
   };
 
-  const cardsT1=listaT1Pendente.map(renderCard).join('');
-  const cardsAtual=listaAtual.map(renderCard).join('');
-  const cardsComparacao=listaT1Comparada.map(renderComparacao).join('');
+  const gruposT1=agruparPorSap(listaT1Pendente,'t1');
+  const gruposAtual=agruparPorSap(listaAtual,'at');
+  const cardsT1=gruposT1.map(renderCardGrupo).join('');
+  const cardsAtual=gruposAtual.map(renderCardGrupo).join('');
+  const cardsComparacao=gruposComparacao.map(renderComparacaoGrupo).join('');
   const fmtH=t=>t||'—';
   const secaoHeader=(titulo,cor,conf,tot,dev)=>`
     <div style="display:flex;align-items:center;gap:8px;padding:10px 14px 6px;flex-wrap:wrap">
@@ -2936,24 +2978,37 @@ async function telaAlmoxMobConferencia(){
 }
 
 // ── Inventário Rotativo — Modal de Lançamento ─────────────────────────────────
-function almoxMobAbrirInvRotativo(reqId){
-  const item=window._invRotItems?.[reqId];
-  if(!item){toast('Item não encontrado','err');return;}
-  const inv=window._invRotMap?.[reqId]||null;
+function almoxMobAbrirInvRotativo(grupoId){
+  const ids=window._invRotGrupos?.[grupoId]||[];
+  const itens=ids.map(id=>window._invRotItems?.[id]).filter(Boolean);
+  if(!itens.length){toast('Item não encontrado','err');return;}
   document.getElementById('inv-rot-overlay')?.remove();
   const ov=document.createElement('div');
   ov.id='inv-rot-overlay';
   ov.style.cssText='position:fixed;inset:0;background:#000a;z-index:9999;display:flex;flex-direction:column;justify-content:flex-end';
-  const nomeItem=escHtml(item.item_entregue||item.peca||'—');
-  const codItem=escHtml(item.cod_sap_entregue||item.cod_sap||'');
-  const qtdSaiu=item.qtd_entregue||item.quantidade||1;
-  const invRef=window._invRotMapOther?.[reqId]||null; // contagem do turno anterior
+  const first=itens[0];
+  const multi=itens.length>1;
+  const nomeItem=escHtml(first.item_entregue||first.peca||'—');
+  const codItem=escHtml(first.cod_sap_entregue||first.cod_sap||'');
+  const qtdTotal=itens.reduce((s,i)=>s+parseFloat(i.qtd_entregue||i.quantidade||1),0);
+  const osList=[...new Set(itens.map(i=>i.os_numero).filter(Boolean))];
+  const prefixoList=[...new Set(itens.map(i=>i.prefixo).filter(Boolean))];
+  // referência do turno anterior e minha própria contagem prévia -- iguais
+  // pra todo o grupo (é a mesma peça), então pega a primeira que existir
+  const inv=itens.map(i=>window._invRotMap?.[i.id]).find(Boolean)||null;
+  const invRef=itens.map(i=>window._invRotMapOther?.[i.id]).find(Boolean)||null;
   const preFilFis=inv?.qtd_fisica??invRef?.qtd_fisica??'';
   const refBlock=invRef&&!inv?`
     <div style="background:#7C3AED15;border:1px solid #7C3AED50;border-left:4px solid var(--purple);border-radius:10px;padding:10px 14px;margin-bottom:14px">
       <div style="font-size:10px;font-weight:900;color:var(--purple);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">📋 Turno anterior — ${escHtml(invRef.almoxarife_nome||'—')}</div>
       <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:900;color:var(--text)">Físico: <span style="color:var(--green)">${invRef.qtd_fisica??'—'}</span></div>
       <div style="font-size:10px;color:var(--text3);margin-top:4px">Pré-preenchido abaixo — confirme ou corrija o físico real</div>
+    </div>`:'';
+  const multiBlock=multi?`
+    <div style="background:#3B82F615;border:1px solid #3B82F640;border-radius:10px;padding:10px 14px;margin-bottom:14px">
+      <div style="font-size:10px;font-weight:900;color:var(--blue);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">🔗 Mesma peça em ${itens.length} OS — uma contagem só, aplicada a todas</div>
+      ${osList.length?`<div style="font-size:11px;color:var(--text3)">OS: <b>${escHtml(osList.join(', '))}</b></div>`:''}
+      ${prefixoList.length?`<div style="font-size:11px;color:var(--text3);margin-top:2px">Prefixos: <b>${escHtml(prefixoList.join(', '))}</b></div>`:''}
     </div>`:'';
   ov.innerHTML=`
     <div style="background:var(--bg);border-radius:18px 18px 0 0;padding:20px 16px 32px;max-height:90vh;overflow-y:auto">
@@ -2965,11 +3020,12 @@ function almoxMobAbrirInvRotativo(reqId){
         <div style="font-size:14px;font-weight:700">${nomeItem}</div>
         ${codItem?`<div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--amber);margin-top:3px">${codItem}</div>`:''}
         <div style="font-size:12px;color:var(--text3);margin-top:4px">
-          Qtd saiu: <b style="color:var(--blue)">${qtdSaiu}</b>
-          ${item.prefixo?` · Prefixo: <b>${escHtml(item.prefixo)}</b>`:''}
-          ${item.os_numero?` · OS: <b>${escHtml(item.os_numero)}</b>`:''}
+          Qtd saiu${multi?' (total)':''}: <b style="color:var(--blue)">${qtdTotal}</b>
+          ${!multi&&first.prefixo?` · Prefixo: <b>${escHtml(first.prefixo)}</b>`:''}
+          ${!multi&&first.os_numero?` · OS: <b>${escHtml(first.os_numero)}</b>`:''}
         </div>
       </div>
+      ${multiBlock}
       ${refBlock}
       <div style="margin-bottom:20px">
         <div style="font-size:11px;font-weight:900;color:var(--green);text-transform:uppercase;text-align:center;letter-spacing:.5px;margin-bottom:10px">🟢 Quantidade física em estoque</div>
@@ -2977,49 +3033,40 @@ function almoxMobAbrirInvRotativo(reqId){
       </div>
       <div style="display:flex;gap:8px">
         <button onclick="document.getElementById('inv-rot-overlay').remove()" style="flex:1;padding:13px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">Cancelar</button>
-        <button onclick="almoxMobSalvarInvRotativo('${reqId}')" style="flex:2;padding:13px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">💾 Salvar</button>
+        <button onclick="almoxMobSalvarInvRotativo('${grupoId}')" style="flex:2;padding:13px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">💾 Salvar${multi?' ('+itens.length+')':''}</button>
       </div>
     </div>`;
   ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
   document.body.appendChild(ov);
-  invRotCalcAcur();
 }
 
-function invRotCalcAcur(){
-  const sap=parseFloat(document.getElementById('inv-rot-sap')?.value??'');
-  const fis=parseFloat(document.getElementById('inv-rot-fis')?.value??'');
-  const el=document.getElementById('inv-rot-acur');
-  if(!el)return;
-  if(isNaN(sap)||isNaN(fis)){el.textContent='—';el.style.color='var(--text3)';return;}
-  const acur=sap>0?Math.round((fis/sap)*1000)/10:fis===0?100:0;
-  const cor=acur>=98?'var(--green)':acur>=90?'var(--amber)':'var(--red)';
-  el.textContent=`Acurácia SAP/Físico: ${acur}%`;el.style.color=cor;
-}
-
-async function almoxMobSalvarInvRotativo(reqId){
+async function almoxMobSalvarInvRotativo(grupoId){
   const fis=parseFloat(document.getElementById('inv-rot-fis')?.value??'');
   if(isNaN(fis)){toast('Informe a quantidade física','err');return;}
+  const ids=window._invRotGrupos?.[grupoId]||[];
+  const itens=ids.map(id=>window._invRotItems?.[id]).filter(Boolean);
+  if(!itens.length){toast('Grupo não encontrado','err');return;}
   const gid=window._invRotGid||getGid();
   const hojeIso=hoje();
-  const item=window._invRotItems?.[reqId]||{};
-  const codSap=item.cod_sap_entregue||item.cod_sap||null;
-  const nomeItem=item.item_entregue||item.peca||null;
-  const existing=window._invRotMap?.[reqId]||null;
   const turnoAtual=window._invRotTurno||{};
   // upsert por (req_id, almoxarife_id) — evita duplicar registro se o cache
-  // local não sabia que já existia contagem (cache desatualizado/duplo clique)
-  const payload={
-    garagem_id:gid,
-    turno_data:existing?.turno_data||hojeIso,
-    req_id:reqId,
-    cod_sap:codSap,
-    nome_item:nomeItem,
-    hora_turno_ini:existing?.hora_turno_ini??(turnoAtual.hora_entrada||null),
-    hora_turno_fim:existing?.hora_turno_fim??(turnoAtual.hora_saida||null),
-    qtd_fisica:fis,
-    almoxarife_id:S.user?.id,
-    almoxarife_nome:S.perfil?.nome||null
-  };
+  // local não sabia que já existia contagem (cache desatualizado/duplo clique).
+  // Um payload por req_id do grupo, todos com o mesmo físico, num único round-trip.
+  const payload=itens.map(item=>{
+    const existing=window._invRotMap?.[item.id]||null;
+    return{
+      garagem_id:gid,
+      turno_data:existing?.turno_data||hojeIso,
+      req_id:item.id,
+      cod_sap:item.cod_sap_entregue||item.cod_sap||null,
+      nome_item:item.item_entregue||item.peca||null,
+      hora_turno_ini:existing?.hora_turno_ini??(turnoAtual.hora_entrada||null),
+      hora_turno_fim:existing?.hora_turno_fim??(turnoAtual.hora_saida||null),
+      qtd_fisica:fis,
+      almoxarife_id:S.user?.id,
+      almoxarife_nome:S.perfil?.nome||null
+    };
+  });
   const {error:err}=await sb.from('almoxo_inventario_turno').upsert(payload,{onConflict:'req_id,almoxarife_id'});
   if(err){
     console.error('[InvRotativo] Erro Supabase:',JSON.stringify(err));
@@ -3027,7 +3074,7 @@ async function almoxMobSalvarInvRotativo(reqId){
     return;
   }
   document.getElementById('inv-rot-overlay')?.remove();
-  toast('✅ Físico registrado: '+fis);
+  toast(itens.length>1?`✅ Físico registrado em ${itens.length} OS: ${fis}`:'✅ Físico registrado: '+fis);
   _almoxMobTab='conf';telaValetAlmox();
 }
 
