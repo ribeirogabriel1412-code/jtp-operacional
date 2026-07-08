@@ -2169,6 +2169,7 @@ async function telaValetAlmox(){
   if(_tab==='conf'){await telaAlmoxMobConferencia();return;}
   if(_tab==='inv-rua'){await telaAlmoxMobInvRua();return;}
   if(_tab==='sol'){await telaAlmoxMobSolicitacoes();return;}
+  if(_tab==='baixa-rot'){await telaAlmoxMobBaixaRotacao();return;}
   const gid=getGid(),data=await resolverDataValetMobile(getGid(),_valetMobData||proximoSabadoISO(),!!_valetMobData);
   const cdHabilitado=fluxoCdMobileHabilitado(gid);
   const{data:reqs}=await sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).eq('data',data).order('prefixo',{ascending:true}).order('criado_em',{ascending:true});
@@ -2238,6 +2239,7 @@ function almoxMobTabNav(tab){
     ${b('sol','🔧','Solicitações')}
     ${b('conf','📦','Inv. Rotativo')}
     ${b('inv-rua','🏠','Inv. Rua')}
+    ${b('baixa-rot','🔎','Baixa Rotação')}
   </div>`;
 }
 
@@ -3186,6 +3188,146 @@ ${totDev>0?`
 </body></html>`;
   const dtFile=agora.toISOString().replace(/[-:T]/g,'').slice(0,12);
   await downloadPDF(html,`JTP_InvRotativo_${dtFile}_${garNome.replace(/\s/g,'_')}.pdf`);
+}
+
+// ── Inventário Cíclico de Baixa Rotação ──────────────────────────────────────
+// Lista fixa importada da curva ABC (curva C -- itens quase sem saída nos
+// últimos 3 meses). Em vez de depender de alguém pedir a peça (o que nunca
+// acontece pra esses itens), conta um lote pequeno por turno até fechar o
+// catálogo inteiro (o "ciclo"); contado por qualquer almox = resolvido pra
+// todo mundo, e ao zerar a lista o ciclo reinicia sozinho.
+async function telaAlmoxMobBaixaRotacao(){
+  const gid=getGid();
+  render(`<div style="padding:30px;text-align:center;color:var(--text3)">Carregando...</div>`);
+  const{data:itens}=await sb.from('almoxo_baixa_rotacao_itens').select('*').eq('garagem_id',gid).eq('ativo',true).order('valor_estimado_3m',{ascending:false});
+  const todos=itens||[];
+  if(!todos.length){
+    render(`
+      <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div style="font-weight:800;font-size:17px">🔎 Baixa Rotação</div>
+      </div>
+      ${almoxMobTabNav('baixa-rot')}
+      <div class="empty" style="margin:40px 14px">
+        <div class="empty-ic">🔎</div>
+        <div style="font-weight:700;margin-bottom:8px">Nenhum item cadastrado</div>
+        <div style="font-size:12px;color:var(--text3)">Peça ao Líder de Suprimentos para importar a lista de baixa rotação</div>
+      </div>
+    `);
+    return;
+  }
+
+  // Ciclo atual = maior ciclo já usado (1 se nunca contou nada nessa garagem)
+  const{data:maxCicloRow}=await sb.from('almoxo_baixa_rotacao_contagem').select('ciclo').eq('garagem_id',gid).order('ciclo',{ascending:false}).limit(1).maybeSingle();
+  let ciclo=maxCicloRow?.ciclo||1;
+
+  const{data:contadosCiclo}=await sb.from('almoxo_baixa_rotacao_contagem').select('item_id').eq('garagem_id',gid).eq('ciclo',ciclo);
+  const idsContados=new Set((contadosCiclo||[]).map(c=>c.item_id));
+  let pendentes=todos.filter(i=>!idsContados.has(i.id));
+
+  // Todo mundo já contou tudo neste ciclo -- reinicia sozinho, sem precisar de ação manual
+  if(!pendentes.length){ciclo+=1;pendentes=todos;}
+
+  const LOTE=5;
+  const meuLote=pendentes.slice(0,LOTE);
+  window._baixaRotItens={};
+  todos.forEach(i=>{window._baixaRotItens[i.id]=i;});
+  window._baixaRotGid=gid;
+  window._baixaRotCiclo=ciclo;
+
+  const cards=meuLote.map(i=>`
+    <div onclick="almoxMobAbrirBaixaRotacao('${i.id}')" style="margin-bottom:8px;background:var(--surface);border:1px solid var(--border2);border-left:4px solid var(--border2);border-radius:12px;padding:12px 14px;cursor:pointer;active-opacity:.7">
+      <div style="font-size:13px;font-weight:800;word-break:break-word;margin-bottom:4px">${escHtml(i.nome_item||'—')}</div>
+      <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);margin-bottom:6px">${escHtml(i.cod_sap||'')}</div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        ${i.wms_localizacao?`<span style="font-size:11px;color:var(--text3)">📍 WMS: <b>${escHtml(i.wms_localizacao)}</b></span>`:''}
+        <span style="font-size:11px;color:var(--text3)">Sistema: <b style="font-family:'DM Mono',monospace;color:var(--blue)">${i.estoque_sistema??'—'}</b></span>
+      </div>
+    </div>`).join('');
+
+  render(`
+    <div style="padding:14px 14px 0;display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div style="font-weight:800;font-size:17px">🔎 Baixa Rotação</div>
+      <button onclick="telaAlmoxMobBaixaRotacao()" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:9px 12px;color:var(--text);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">🔄</button>
+    </div>
+    ${almoxMobTabNav('baixa-rot')}
+    <div style="padding:0 14px 10px">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 14px">
+        <div style="color:var(--text3);font-size:10px;font-weight:800;text-transform:uppercase;margin-bottom:4px">Ciclo ${ciclo}</div>
+        <div style="font-family:'DM Mono',monospace;font-weight:800">${todos.length-pendentes.length}/${todos.length} contados</div>
+      </div>
+    </div>
+    <div class="sl">Seu lote de hoje (${meuLote.length})</div>
+    <div style="padding:0 14px 100px">
+      ${cards||'<div style="padding:16px;text-align:center;color:var(--text3);font-size:12px">Nenhum item pendente neste ciclo</div>'}
+    </div>
+  `);
+}
+
+function almoxMobAbrirBaixaRotacao(itemId){
+  const item=window._baixaRotItens?.[itemId];
+  if(!item){toast('Item não encontrado','err');return;}
+  document.getElementById('baixa-rot-overlay')?.remove();
+  const ov=document.createElement('div');
+  ov.id='baixa-rot-overlay';
+  ov.style.cssText='position:fixed;inset:0;background:#000a;z-index:9999;display:flex;flex-direction:column;justify-content:flex-end';
+  ov.innerHTML=`
+    <div style="background:var(--bg);border-radius:18px 18px 0 0;padding:20px 16px 32px;max-height:90vh;overflow-y:auto">
+      <div style="text-align:center;margin-bottom:16px">
+        <div style="width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px"></div>
+        <div style="font-weight:900;font-size:16px">Contar Item</div>
+      </div>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:10px;padding:12px 14px;margin-bottom:14px">
+        <div style="font-size:14px;font-weight:700">${escHtml(item.nome_item||'—')}</div>
+        <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--amber);margin-top:3px">${escHtml(item.cod_sap||'')}</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:4px">
+          ${item.wms_localizacao?`📍 WMS: <b>${escHtml(item.wms_localizacao)}</b> · `:''}Sistema: <b style="color:var(--blue)">${item.estoque_sistema??'—'}</b>
+        </div>
+      </div>
+      <div style="margin-bottom:20px">
+        <div style="font-size:11px;font-weight:900;color:var(--green);text-transform:uppercase;text-align:center;letter-spacing:.5px;margin-bottom:10px">🟢 Quantidade física em estoque</div>
+        <input id="baixa-rot-fis" type="number" inputmode="decimal" placeholder="0" step="1" min="0" style="width:100%;background:var(--surface2);border:2px solid var(--green);border-radius:12px;color:var(--text);padding:18px 12px;font-size:32px;font-family:'DM Mono',monospace;font-weight:900;text-align:center;box-sizing:border-box;outline:none">
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="document.getElementById('baixa-rot-overlay').remove()" style="flex:1;padding:13px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">Cancelar</button>
+        <button onclick="almoxMobSalvarBaixaRotacao('${itemId}')" style="flex:2;padding:13px;border-radius:10px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">💾 Salvar</button>
+      </div>
+    </div>`;
+  ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+  document.body.appendChild(ov);
+}
+
+async function almoxMobSalvarBaixaRotacao(itemId){
+  const fis=parseFloat(document.getElementById('baixa-rot-fis')?.value??'');
+  if(isNaN(fis)){toast('Informe a quantidade física','err');return;}
+  const item=window._baixaRotItens?.[itemId];
+  if(!item){toast('Item não encontrado','err');return;}
+  const gid=window._baixaRotGid||getGid();
+  const ciclo=window._baixaRotCiclo||1;
+  const sistema=parseFloat(item.estoque_sistema??0)||0;
+  const acur=sistema>0?Math.round((fis/sistema)*1000)/10:(fis===0?100:0);
+  const payload={
+    garagem_id:gid,
+    item_id:itemId,
+    ciclo,
+    qtd_sistema:item.estoque_sistema,
+    qtd_fisica:fis,
+    acuracia:acur,
+    almoxarife_id:S.user?.id,
+    almoxarife_nome:S.perfil?.nome||null,
+    turno_data:hoje()
+  };
+  const{error:err}=await sb.from('almoxo_baixa_rotacao_contagem').upsert(payload,{onConflict:'item_id,ciclo'});
+  if(err){
+    console.error('[BaixaRotacao] Erro Supabase:',JSON.stringify(err));
+    toast('Erro '+err.code+': '+err.message,'err');
+    return;
+  }
+  if(Math.abs(fis-sistema)>0.001){
+    await sb.from('almoxo_divergencias').insert({garagem_id:gid,origem:'baixa_rotacao',cod_sap:item.cod_sap,nome_item:item.nome_item,qtd_fisica:fis,qtd_sap:sistema,acuracia:acur}).then(()=>{});
+  }
+  document.getElementById('baixa-rot-overlay')?.remove();
+  toast('✅ Físico registrado: '+fis);
+  telaAlmoxMobBaixaRotacao();
 }
 
 async function telaAlmoxMobInvRua(){
