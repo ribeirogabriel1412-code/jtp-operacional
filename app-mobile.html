@@ -2699,18 +2699,28 @@ async function almoxMobSalvarEntrega(id){
   _almoxMobTab='sol';telaValetAlmox();
 }
 
-// Monta a janela [inicio,fim] da ocorrencia mais recente de um turno (row do
-// almoxo_quadro_turno), usando `ref` como "agora" -- reaproveitada tanto pro
-// meu turno quanto pro turno anterior (com ref = inicio do meu turno).
-function _invRotJanelaTurno(turnoRow,ref){
-  const [hE,mE]=turnoRow.hora_entrada.split(':').map(Number);
-  const [hS,mS]=turnoRow.hora_saida.split(':').map(Number);
-  const entrada=new Date(ref);
-  entrada.setHours(hE,mE,0,0);
-  if(entrada>ref) entrada.setDate(entrada.getDate()-1);
-  let durMin=(hS*60+mS)-(hE*60+mE);
-  if(durMin<=0) durMin+=24*60;
-  return{ini:entrada,fim:new Date(entrada.getTime()+durMin*60000)};
+// Monta a janela [inicio,fim] de UMA ocorrencia de turno (row do
+// almoxo_quadro_turno) que comeca no dia `dataIniIso` (YYYY-MM-DD) -- usa
+// opDateTimeISO (fuso operacional fixo, ex. America/Manaus UTC-4) em vez de
+// new Date().setHours(), que dependeria do fuso do APARELHO de cada pessoa e
+// podia bater a janela alguns minutos/horas errada perto da virada de turno.
+function _invRotJanelaTurno(turnoRow,dataIniIso,tz){
+  const iniISO=opDateTimeISO(dataIniIso,turnoRow.hora_entrada,tz);
+  const cruzaMeiaNoite=turnoRow.hora_saida<=turnoRow.hora_entrada;
+  const dataFimIso=cruzaMeiaNoite?opAddDays(dataIniIso,1):dataIniIso;
+  const fimISO=opDateTimeISO(dataFimIso,turnoRow.hora_saida,tz);
+  return{ini:new Date(iniISO),fim:new Date(fimISO)};
+}
+
+// Entre as ocorrencias de `turnoRow` que comecam no dia de `minhaIni` ou no
+// dia anterior, escolhe a que termina mais perto do inicio do MEU turno --
+// cobre tanto o caso normal (termina um pouco antes) quanto handoff com leve
+// sobreposicao (termina um pouco depois).
+function _invRotEscolherOcorrencia(turnoRow,minhaIni,tz){
+  const dataBase=opISODate(minhaIni,tz);
+  const candidatos=[opAddDays(dataBase,-1),dataBase].map(d=>_invRotJanelaTurno(turnoRow,d,tz));
+  candidatos.sort((a,b)=>Math.abs(minhaIni-a.fim)-Math.abs(minhaIni-b.fim));
+  return candidatos[0];
 }
 
 async function telaAlmoxMobConferencia(){
@@ -2734,8 +2744,16 @@ async function telaAlmoxMobConferencia(){
     `);
     return;
   }
-  const agora=new Date();
-  const minhaJanela=_invRotJanelaTurno(turno,agora);
+  const tz=opTimezone(gid);
+  // Dia (no fuso operacional) em que o MEU turno atual comecou -- se a hora
+  // agora (no fuso operacional) ainda nao chegou na minha entrada, meu turno
+  // comecou ontem (turno da madrugada, ex: entrada 23:00).
+  const agoraParts=opParts(new Date(),tz);
+  const minAgora=agoraParts.H*60+agoraParts.M;
+  const[hE,mE]=turno.hora_entrada.split(':').map(Number);
+  const hojeOp=opISODate(new Date(),tz);
+  const minhaDataIni=(minAgora<hE*60+mE)?opAddDays(hojeOp,-1):hojeOp;
+  const minhaJanela=_invRotJanelaTurno(turno,minhaDataIni,tz);
 
   // Acha quem trabalhou no turno IMEDIATAMENTE anterior ao meu, pelo Quadro
   // de Turnos (nao mais "quem nao sou eu") -- pega quem tem a saida mais
@@ -2753,7 +2771,7 @@ async function telaAlmoxMobConferencia(){
     const dist=Math.min(diff,24*60-diff);
     if(dist<menorDist){menorDist=dist;turnoAnterior=t;}
   });
-  const janelaAnterior=turnoAnterior?_invRotJanelaTurno(turnoAnterior,minhaJanela.ini):null;
+  const janelaAnterior=turnoAnterior?_invRotEscolherOcorrencia(turnoAnterior,minhaJanela.ini,tz):null;
 
   // Busca itens (T-1 e turno atual) + inventários existentes em paralelo
   // T-1   = itens separados pela pessoa do turno anterior (Quadro de Turnos),
