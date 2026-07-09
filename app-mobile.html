@@ -5529,17 +5529,22 @@ async function telaPlantaoSOS(){
   `);
 }
 
-function renderPlantaoSOSForm(){
+async function renderPlantaoSOSForm(){
+  render('<div class="loading"><div class="sp"></div></div>');
+  const gid=getGid();
+  const{data:frota}=await sb.from('frota').select('prefixo,modelo,status').eq('garagem_id',gid).order('prefixo');
+  window._sosFrotaLista=frota||[];
   render(`
     <div style="padding:14px 14px 0"><div style="font-weight:800;font-size:17px;margin-bottom:12px">🆘 Novo SOS</div></div>
     <div class="card" style="margin:0 14px 14px">
       <label class="fl">Prefixo</label>
-      <div style="display:flex;gap:6px;margin-bottom:12px">
-        <input id="psos-prefixo" class="fi" placeholder="Ex: 02.188" style="text-transform:uppercase;margin-bottom:0" oninput="this.value=this.value.toUpperCase()">
-        <button onclick="buscarHistoricoSOS()" style="padding:0 16px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap">🔍 Buscar</button>
+      <div style="position:relative;margin-bottom:12px">
+        <input id="psos-prefixo" class="fi" placeholder="🔍 Digite o prefixo..." style="margin-bottom:0;font-family:'DM Mono',monospace;font-size:15px;text-transform:uppercase"
+          oninput="filtrarPrefixoSOS(this.value)" onblur="setTimeout(()=>{const l=document.getElementById('psos-pref-lista');if(l)l.style.display='none'},200)" autocomplete="off">
+        <div id="psos-pref-lista" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;max-height:180px;overflow-y:auto;z-index:100;box-shadow:0 4px 20px rgba(0,0,0,.3)"></div>
       </div>
       <div id="psos-historico" style="margin-bottom:14px;padding:10px 12px;background:var(--surface2);border-radius:10px">
-        <div style="font-size:12px;color:var(--text4);text-align:center">Informe o prefixo e busque o histórico</div>
+        <div style="font-size:12px;color:var(--text4);text-align:center">Selecione o veículo pra ver o histórico</div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
         <div><label class="fl">Linha</label><input id="psos-linha" class="fi" placeholder="Opcional"></div>
@@ -5562,6 +5567,32 @@ function renderPlantaoSOSForm(){
       <button onclick="window._psosMode='lista';telaPlantaoSOS()" style="width:100%;margin-top:8px;padding:11px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-family:inherit;cursor:pointer">← Cancelar</button>
     </div>
   `);
+}
+
+function filtrarPrefixoSOS(busca){
+  const lista=document.getElementById('psos-pref-lista');
+  if(!lista)return;
+  const b=busca.toUpperCase().trim();
+  const frota=window._sosFrotaLista||[];
+  const filtrada=b?frota.filter(v=>v.prefixo?.includes(b)):[];
+  if(!filtrada.length||!b){lista.style.display='none';return;}
+  const STATUS_COR={disponivel:'var(--green)',manutencao:'var(--red)'};
+  lista.style.display='block';
+  lista.innerHTML=filtrada.slice(0,10).map(v=>`
+    <div onclick="selecionarPrefixoSOS('${v.prefixo}')"
+      style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border2);display:flex;align-items:center;gap:8px">
+      <span style="font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${v.prefixo}</span>
+      <span style="font-size:11px;color:var(--text3)">${v.modelo||''}</span>
+      <span style="margin-left:auto;font-size:10px;color:${STATUS_COR[v.status]||'var(--amber)'}">${v.status||''}</span>
+    </div>`).join('');
+}
+
+function selecionarPrefixoSOS(prefixo){
+  const el=document.getElementById('psos-prefixo');
+  if(el)el.value=prefixo;
+  const lista=document.getElementById('psos-pref-lista');
+  if(lista)lista.style.display='none';
+  buscarHistoricoSOS();
 }
 
 async function buscarHistoricoSOS(){
