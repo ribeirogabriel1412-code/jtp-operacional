@@ -183,10 +183,10 @@ async function telaHome(){
   const lavPend=lavList.filter(l=>l.status!=='executado'&&l.tipo_lavagem!=='leve');
 
   // Queries dos Pontos de Controle
-  let recList=[],abList=[],escalaD1=[],avariasList=[],dobrasList=[],absList=[],sosList=[];
+  let recList=[],abList=[],escalaD1=[],avariasList=[],dobrasList=[],absList=[],sosList=[],trocasList=[];
   if(temPainel){
     const dSol=opAddDays(dRef,1);
-    [recList,abList,escalaD1,avariasList,dobrasList,absList,sosList]=await Promise.all([
+    [recList,abList,escalaD1,avariasList,dobrasList,absList,sosList,trocasList]=await Promise.all([
       sb.from('recolha_checklist').select('prefixo,horario_real,status,linha,tabela,motorista').eq('garagem_id',gid).eq('data_recolha',dRef).then(r=>r.data||[]),
       sb.from('abastecimento_checklist').select('prefixo,horario').eq('garagem_id',gid).eq('data',dRef).then(r=>r.data||[]),
       sb.from('soltura_2_10').select('prefixo,linha,horario_programado').eq('garagem_id',gid).eq('data',dSol).then(r=>r.data||[]),
@@ -194,6 +194,7 @@ async function telaHome(){
       sb.from('plantao_dobras').select('motorista,prefixo,linha,motivo,created_at').eq('garagem_id',gid).eq('data',dRef).order('created_at',{ascending:false}).then(r=>r.data||[]),
       sb.from('plantao_absenteismo').select('motorista,prefixo,linha,motivo,cobertura,created_at').eq('garagem_id',gid).eq('data',dRef).order('created_at',{ascending:false}).then(r=>r.data||[]),
       sb.from('plantao_sos').select('id,prefixo,motorista,linha,problema,status,created_at').eq('garagem_id',gid).eq('data',dRef).eq('status','aberto').order('created_at',{ascending:false}).then(r=>r.data||[]),
+      sb.from('plantao_trocas').select('tipo,prefixo,linha,original,substituto,motivo,created_at').eq('garagem_id',gid).eq('data',dRef).order('created_at',{ascending:false}).then(r=>r.data||[]),
     ]);
   }
 
@@ -266,6 +267,21 @@ async function telaHome(){
     </div>`;
   }).join('');
 
+  // Cards Trocas de Linha (Plantão)
+  const totTrocas=trocasList.length;
+  const trocasCards=trocasList.map(t=>{
+    const isCarro=t.tipo==='carro';
+    const cor=isCarro?'var(--blue)':'#8B5CF6';
+    return`<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:8px;border-left:3px solid ${cor}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+        <span style="font-family:'DM Mono',monospace;font-weight:800;font-size:13px">${escHtml(t.prefixo)}</span>
+        <span style="font-size:10px;font-weight:700;color:${cor};background:${cor}20;padding:2px 8px;border-radius:20px">${isCarro?'CARRO':'MOTORISTA'}</span>
+      </div>
+      <div style="font-size:10px;color:var(--text4);margin-bottom:3px">${t.linha?escHtml(t.linha):''}</div>
+      <div style="font-size:11px;color:var(--text3)">${escHtml(t.original)} → ${escHtml(t.substituto)}</div>
+    </div>`;
+  }).join('');
+
   // Header accordion
   const hdr=(id,icon,label,badge,cor)=>`
     <div onclick="_toggleHomePanel('${id}')" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;cursor:pointer;${id!=='rec'?'border-top:1px solid var(--border2)':''}">
@@ -288,6 +304,9 @@ async function telaHome(){
       </div>
       ${hdr('sos','🆘','SOS',totSos?totSos+' aberto(s)':null,'var(--red)')}
         ${sosCards||'<div style="font-size:12px;color:var(--green);text-align:center;padding:8px 0">✅ Nenhum SOS aberto</div>'}
+      </div>
+      ${hdr('trocas','🔄','Trocas de Linha',totTrocas?totTrocas+' hoje':null,'var(--blue)')}
+        ${trocasCards||'<div style="font-size:12px;color:var(--text4);text-align:center;padding:8px 0">Nenhuma troca hoje</div>'}
       </div>
       ${hdr('dobras','🔁','Dobras & Absenteísmo',(totDobras+totAbsent)?`${totDobras} dobra(s) · ${totAbsent} falta(s)`:null,'var(--amber)')}
         ${dobrasAbsCards||'<div style="font-size:12px;color:var(--text4);text-align:center;padding:8px 0">Nenhum registro do plantão hoje</div>'}
@@ -5744,6 +5763,157 @@ async function gerarPDFPlantaoSOS(id){
 }
 
 // ══════════════════════════════════════════════════════════
+// PLANTÃO — TROCAS DE LINHA (Carro / Motorista)
+// ══════════════════════════════════════════════════════════
+const PLANTAO_MOTIVO_TROCA_CARRO={quebra_avaria:'Quebra/Avaria',preventiva:'Preventiva',acidente:'Acidente',outro:'Outro'};
+const PLANTAO_MOTIVO_TROCA_MOTORISTA={falta:'Falta',atraso:'Atraso',acidente:'Acidente',outro:'Outro'};
+
+async function carregarFrotaPlantao(){
+  if(window._plantaoFrota)return window._plantaoFrota;
+  const gid=getGid();
+  const{data}=await sb.from('frota').select('prefixo,modelo,status').eq('garagem_id',gid).order('prefixo');
+  window._plantaoFrota=data||[];
+  return window._plantaoFrota;
+}
+
+function filtrarPrefixoFrota(busca,inputId,listId){
+  const lista=document.getElementById(listId);
+  if(!lista)return;
+  const b=busca.toUpperCase().trim();
+  const frota=window._plantaoFrota||[];
+  const filtrada=b?frota.filter(v=>v.prefixo?.includes(b)):[];
+  if(!filtrada.length||!b){lista.style.display='none';return;}
+  const STATUS_COR={disponivel:'var(--green)',manutencao:'var(--red)'};
+  lista.style.display='block';
+  lista.innerHTML=filtrada.slice(0,10).map(v=>`
+    <div onclick="document.getElementById('${inputId}').value='${v.prefixo}';document.getElementById('${listId}').style.display='none'"
+      style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border2);display:flex;align-items:center;gap:8px">
+      <span style="font-family:'DM Mono',monospace;font-weight:700;color:var(--blue)">${v.prefixo}</span>
+      <span style="font-size:11px;color:var(--text3)">${v.modelo||''}</span>
+      <span style="margin-left:auto;font-size:10px;color:${STATUS_COR[v.status]||'var(--amber)'}">${v.status||''}</span>
+    </div>`).join('');
+}
+
+async function telaPlantaoTrocas(){
+  const gid=getGid();
+  window._ptrTipo=window._ptrTipo||'carro';
+  render('<div class="loading"><div class="sp"></div></div>');
+  await carregarFrotaPlantao();
+
+  const{data:lista}=await sb.from('plantao_trocas').select('*').eq('garagem_id',gid).eq('data',hoje()).order('created_at',{ascending:false});
+  window._ptrLista=lista||[];
+
+  const cardsHoje=window._ptrLista.map(t=>{
+    const isCarro=t.tipo==='carro';
+    const cor=isCarro?'var(--blue)':'#8B5CF6';
+    const motivoLbl=isCarro?(PLANTAO_MOTIVO_TROCA_CARRO[t.motivo]||t.motivo||'—'):(PLANTAO_MOTIVO_TROCA_MOTORISTA[t.motivo]||t.motivo||'—');
+    return`<div class="card" style="margin-bottom:8px;border-left:3px solid ${cor}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span style="font-family:'DM Mono',monospace;font-weight:800;font-size:14px">${escHtml(t.prefixo)}</span>
+        <span style="font-size:10px;font-weight:700;color:${cor};background:${cor}20;padding:2px 8px;border-radius:20px">${isCarro?'TROCA DE CARRO':'TROCA DE MOTORISTA'}</span>
+      </div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:2px">${t.linha?escHtml(t.linha)+' · ':''}${motivoLbl}</div>
+      <div style="font-size:12px;color:var(--text2)">${escHtml(t.original)} → ${escHtml(t.substituto)}</div>
+    </div>`;
+  }).join('');
+
+  const tabBtn=(t,ic,lb)=>`<button onclick="window._ptrTipo='${t}';telaPlantaoTrocas()" style="flex:1;padding:12px;border-radius:10px;border:1px solid ${window._ptrTipo===t?'var(--blue)':'var(--border)'};background:${window._ptrTipo===t?'#2563EB18':'var(--surface)'};color:${window._ptrTipo===t?'var(--blue)':'var(--text3)'};font-size:13px;font-weight:800;font-family:inherit;cursor:pointer">${ic} ${lb}</button>`;
+
+  const campoFrota=(id,label)=>`
+    <label class="fl">${label}</label>
+    <div style="position:relative;margin-bottom:12px">
+      <input id="${id}" class="fi" placeholder="🔍 Digite o prefixo..." style="margin-bottom:0;font-family:'DM Mono',monospace;font-size:15px;text-transform:uppercase"
+        oninput="filtrarPrefixoFrota(this.value,'${id}','${id}-lista')" onblur="setTimeout(()=>{const l=document.getElementById('${id}-lista');if(l)l.style.display='none'},200)" autocomplete="off">
+      <div id="${id}-lista" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;max-height:180px;overflow-y:auto;z-index:100;box-shadow:0 4px 20px rgba(0,0,0,.3)"></div>
+    </div>`;
+
+  const formCarro=`
+    <label class="fl">Data</label>
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:12px">
+      <input type="date" id="ptr-data" class="fi" style="margin-bottom:0" value="${hoje()}">
+      <button onclick="document.getElementById('ptr-data').showPicker()" style="padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">📅</button>
+    </div>
+    <label class="fl">Linha</label>
+    <input id="ptr-linha" class="fi" placeholder="Opcional" style="margin-bottom:12px">
+    ${campoFrota('ptr-original','Carro original')}
+    ${campoFrota('ptr-substituto','Carro substituto')}
+    <label class="fl">Motivo</label>
+    <div id="ptr-motivos-carro" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">
+      ${Object.entries(PLANTAO_MOTIVO_TROCA_CARRO).map(([v,lb])=>`<button onclick="selPlantaoChip('ptr-motivos-carro','ptr-motivo','${v}',this)" style="padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">${lb}</button>`).join('')}
+    </div>
+    <input type="hidden" id="ptr-motivo" value="">
+    <label class="fl">Autorizado por</label>
+    <input id="ptr-autorizado" class="fi" placeholder="Opcional" style="margin-bottom:16px">
+    <button onclick="salvarPlantaoTroca('carro')" style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">🔄 Registrar Troca de Carro</button>
+  `;
+
+  const formMotorista=`
+    <label class="fl">Data</label>
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:12px">
+      <input type="date" id="ptr-data" class="fi" style="margin-bottom:0" value="${hoje()}">
+      <button onclick="document.getElementById('ptr-data').showPicker()" style="padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">📅</button>
+    </div>
+    <label class="fl">Linha</label>
+    <input id="ptr-linha" class="fi" placeholder="Opcional" style="margin-bottom:12px">
+    ${campoFrota('ptr-prefixo','Prefixo do carro')}
+    <label class="fl">Motorista original</label>
+    <input id="ptr-original" class="fi" placeholder="Matrícula ou nome..." style="margin-bottom:12px;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()">
+    <label class="fl">Motorista substituto</label>
+    <input id="ptr-substituto" class="fi" placeholder="Matrícula ou nome..." style="margin-bottom:12px;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()">
+    <label class="fl">Motivo</label>
+    <div id="ptr-motivos-motorista" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">
+      ${Object.entries(PLANTAO_MOTIVO_TROCA_MOTORISTA).map(([v,lb])=>`<button onclick="selPlantaoChip('ptr-motivos-motorista','ptr-motivo','${v}',this)" style="padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">${lb}</button>`).join('')}
+    </div>
+    <input type="hidden" id="ptr-motivo" value="">
+    <label class="fl">Autorizado por</label>
+    <input id="ptr-autorizado" class="fi" placeholder="Opcional" style="margin-bottom:16px">
+    <button onclick="salvarPlantaoTroca('motorista')" style="width:100%;padding:14px;border-radius:12px;border:none;background:#8B5CF6;color:#fff;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">🔄 Registrar Troca de Motorista</button>
+  `;
+
+  render(`
+    <div style="padding:14px 14px 0"><div style="font-weight:800;font-size:17px;margin-bottom:12px">🔄 Trocas de Linha</div></div>
+    <div style="display:flex;gap:8px;padding:0 14px 14px">
+      ${tabBtn('carro','🚌','Carro')}
+      ${tabBtn('motorista','👤','Motorista')}
+    </div>
+    <div class="card" style="margin:0 14px 14px">
+      ${window._ptrTipo==='carro'?formCarro:formMotorista}
+    </div>
+    <div class="sl">Registros de hoje ${window._ptrLista.length?'· '+window._ptrLista.length:''}</div>
+    <div style="padding:0 14px 14px">
+      ${cardsHoje||'<div class="empty"><div class="empty-ic">🔄</div><div style="font-weight:700">Nenhuma troca hoje</div></div>'}
+    </div>
+  `);
+}
+
+async function salvarPlantaoTroca(tipo){
+  const gid=getGid();
+  const data=document.getElementById('ptr-data')?.value||hoje();
+  const linha=document.getElementById('ptr-linha')?.value?.trim()||null;
+  const motivo=document.getElementById('ptr-motivo')?.value||null;
+  const autorizado_por=document.getElementById('ptr-autorizado')?.value?.trim()||null;
+  let prefixo,original,substituto;
+  if(tipo==='carro'){
+    original=document.getElementById('ptr-original')?.value?.trim();
+    substituto=document.getElementById('ptr-substituto')?.value?.trim();
+    prefixo=original;
+  }else{
+    prefixo=document.getElementById('ptr-prefixo')?.value?.trim();
+    original=document.getElementById('ptr-original')?.value?.trim();
+    substituto=document.getElementById('ptr-substituto')?.value?.trim();
+  }
+  if(!prefixo){toast('Informe o prefixo do carro','err');return;}
+  if(!original||!substituto){toast('Preencha original e substituto','err');return;}
+  const{error}=await sb.from('plantao_trocas').insert({
+    garagem_id:gid,data,tipo,prefixo,linha,original,substituto,motivo,autorizado_por,
+    plantao_nome:S.perfil?.nome||null,plantao_id:S.perfil?.id||null,
+  });
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast(tipo==='carro'?'🔄 Troca de carro registrada!':'🔄 Troca de motorista registrada!');
+  telaPlantaoTrocas();
+}
+
+// ══════════════════════════════════════════════════════════
 // ABASTECIMENTO (Frentista)
 // ══════════════════════════════════════════════════════════
 let _abFrotaLista=[], _abBuscaAtiva='';
@@ -9261,7 +9431,7 @@ async function salvarAvaria(id){
 }
 
 // ─────────────────────────────────────────────────────────────────
-const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,acomp_manut:telaAcompManutencao,prev26:telaPrev26,valet_oficina:telaValetOficina,prev_oficina:telaPrevOficina,valet_almox:telaValetAlmox,ronda33:telaRonda33,patio_man:telaPatioMan,recolha:telaRecolha,plantao_sos:telaPlantaoSOS,plantao_reg:telaPlantaoReg,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip,sos218:telaSOS218,fech21:telaFech21,lubrificacao:telaLubrificacao,lubri_rel:telaLubriRel,avarias:telaAvariasDashboard,monitor:telaMonitor};
+const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,acomp_manut:telaAcompManutencao,prev26:telaPrev26,valet_oficina:telaValetOficina,prev_oficina:telaPrevOficina,valet_almox:telaValetAlmox,ronda33:telaRonda33,patio_man:telaPatioMan,recolha:telaRecolha,plantao_sos:telaPlantaoSOS,plantao_trocas:telaPlantaoTrocas,plantao_reg:telaPlantaoReg,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip,sos218:telaSOS218,fech21:telaFech21,lubrificacao:telaLubrificacao,lubri_rel:telaLubriRel,avarias:telaAvariasDashboard,monitor:telaMonitor};
 
 // ── INIT ───────────────────────────────────────────────────
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login').style.display!=='none')doLogin()});
