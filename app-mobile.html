@@ -5603,9 +5603,9 @@ async function buscarHistoricoSOS(){
   el.innerHTML='<div style="text-align:center;padding:12px;color:var(--text3);font-size:12px">Buscando...</div>';
 
   const[{data:prevData},{data:lubriData},{data:osData},{data:avData},{data:solData}]=await Promise.all([
-    sb.from('ocorrencias_22').select('tipo,status,hora_entrada,hora_liberacao').eq('garagem_id',gid).eq('prefixo',prefixo).ilike('tipo','%preventiva%').order('hora_entrada',{ascending:false}).limit(1),
+    sb.from('ocorrencias_22').select('numero,praxio_os_id,tipo,status,hora_entrada,hora_liberacao').eq('garagem_id',gid).eq('prefixo',prefixo).ilike('tipo','%preventiva%').order('hora_entrada',{ascending:false}).limit(1),
     sb.from('checklist_lubrificacao').select('data').eq('garagem_id',gid).eq('prefixo',prefixo).order('data',{ascending:false}).limit(1),
-    sb.from('ocorrencias_22').select('descricao,status,hora_entrada').eq('garagem_id',gid).eq('prefixo',prefixo).order('hora_entrada',{ascending:false}).limit(3),
+    sb.from('ocorrencias_22').select('numero,praxio_os_id,descricao,status,hora_entrada').eq('garagem_id',gid).eq('prefixo',prefixo).order('hora_entrada',{ascending:false}).limit(3),
     sb.from('avarias_recolha').select('itens_nok,status,data_recolha').eq('garagem_id',gid).eq('prefixo',prefixo).neq('status','resolvido').order('created_at',{ascending:false}).limit(3),
     sb.from('soltura_2_10').select('motorista,linha,data').eq('garagem_id',gid).eq('prefixo',prefixo).order('data',{ascending:false}).limit(1),
   ]);
@@ -5616,16 +5616,44 @@ async function buscarHistoricoSOS(){
     if(lEl&&!lEl.value)lEl.value=solData[0].linha||'';
   }
 
+  // Peças já usadas nessas OS -- vem do fluxo padrão de solicitação do PCM
+  // (requisicoes_compra), não do código bruto do Oracle (sem descrição).
+  const osNumeros=[...new Set([prevData?.[0],...(osData||[])].filter(o=>o?.praxio_os_id).map(o=>o.praxio_os_id))];
+  let pecasPorOS={};
+  if(osNumeros.length){
+    const{data:pecasData}=await sb.from('requisicoes_compra').select('os_numero,peca,quantidade,status').in('os_numero',osNumeros);
+    (pecasData||[]).forEach(p=>{
+      if(!pecasPorOS[p.os_numero])pecasPorOS[p.os_numero]=[];
+      pecasPorOS[p.os_numero].push(p);
+    });
+  }
+  const pecasLinha=numero=>{
+    const itens=pecasPorOS[numero];
+    if(!itens?.length)return'';
+    // Agrupa por peça+status pra não repetir linha quando há solicitações duplicadas
+    const agrupado={};
+    itens.forEach(p=>{
+      const k=p.peca+'|'+p.status;
+      if(!agrupado[k])agrupado[k]={peca:p.peca,status:p.status,quantidade:0};
+      agrupado[k].quantidade+=Number(p.quantidade||0);
+    });
+    return Object.values(agrupado).map(p=>{
+      const entregue=p.status==='separado'||p.status==='comprado';
+      return `<div style="font-size:11px;color:${entregue?'var(--text3)':'var(--amber)'};padding-left:14px">${entregue?'✅':'⏳'} ${p.quantidade}x ${escHtml(p.peca)}</div>`;
+    }).join('');
+  };
+
   const TIPO_PREV_LBL={preventiva_leve:'Preventiva Leve',preventiva_pesada:'Preventiva Pesada',preventiva_garantia:'Garantia'};
   const blocos=[];
   const prev=prevData?.[0];
   blocos.push(`<div style="font-size:11px;font-weight:800;color:var(--text3);margin-bottom:4px">🔧 ÚLTIMA PREVENTIVA (PRAXIO)</div>
-    <div style="font-size:12px;color:var(--text2);margin-bottom:10px">${prev?`${(prev.hora_entrada?new Date(prev.hora_entrada):null)?.toLocaleDateString('pt-BR')||'—'} · ${TIPO_PREV_LBL[prev.tipo]||prev.tipo} · ${prev.status==='liberado'?'✅ liberado':'🔧 '+(prev.status||'')}`:'Nenhuma preventiva sincronizada do PRAXIO'}</div>
-    <div style="font-size:11px;font-weight:800;color:var(--text3);margin-bottom:4px">🛢️ Última lubrificação (app)</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:2px">${prev?`${(prev.hora_entrada?new Date(prev.hora_entrada):null)?.toLocaleDateString('pt-BR')||'—'} · ${TIPO_PREV_LBL[prev.tipo]||prev.tipo} · ${prev.status==='liberado'?'✅ liberado':'🔧 '+(prev.status||'')}${prev.numero?' · OS '+escHtml(prev.numero):''}`:'Nenhuma preventiva sincronizada do PRAXIO'}</div>
+    ${prev?pecasLinha(prev.praxio_os_id):''}
+    <div style="font-size:11px;font-weight:800;color:var(--text3);margin-bottom:4px;margin-top:8px">🛢️ Última lubrificação (app)</div>
     <div style="font-size:12px;color:var(--text2);margin-bottom:10px">${lubriData?.[0]?.data?new Date(lubriData[0].data+'T00:00:00').toLocaleDateString('pt-BR'):'Nenhum registro'}</div>`);
 
   blocos.push(`<div style="font-size:11px;font-weight:800;color:var(--text3);margin-bottom:4px">🔧 ÚLTIMAS OS</div>
-    ${(osData&&osData.length)?osData.map(o=>`<div style="font-size:12px;color:var(--text2);margin-bottom:4px">${o.hora_entrada?new Date(o.hora_entrada).toLocaleDateString('pt-BR'):'—'} · ${o.status==='liberado'?'✅ liberado':'🔧 '+(o.status||'')}${o.descricao?' — '+escHtml(o.descricao):''}</div>`).join(''):'<div style="font-size:12px;color:var(--text4);margin-bottom:10px">Nenhuma OS encontrada</div>'}`);
+    ${(osData&&osData.length)?osData.map(o=>`<div style="font-size:12px;color:var(--text2);margin-bottom:2px">${o.hora_entrada?new Date(o.hora_entrada).toLocaleDateString('pt-BR'):'—'} · ${o.status==='liberado'?'✅ liberado':'🔧 '+(o.status||'')}${o.numero?' · OS '+escHtml(o.numero):''}${o.descricao?' — '+escHtml(o.descricao):''}</div>${pecasLinha(o.praxio_os_id)}`).join(''):'<div style="font-size:12px;color:var(--text4);margin-bottom:10px">Nenhuma OS encontrada</div>'}`);
 
   blocos.push(`<div style="font-size:11px;font-weight:800;color:var(--text3);margin-bottom:4px">⚠️ AVARIAS EM ABERTO</div>
     ${(avData&&avData.length)?avData.map(a=>`<div style="font-size:12px;color:var(--red);margin-bottom:4px">${(a.itens_nok||[]).slice(0,3).join(', ')||'—'} · ${a.data_recolha||''}</div>`).join(''):'<div style="font-size:12px;color:var(--green);margin-bottom:10px">Nenhuma avaria em aberto</div>'}`);
