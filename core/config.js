@@ -39,7 +39,7 @@ const NAV = {
   supervisor:    [{id:'fech21',ic:'📋',lb:'2.1'},{id:'avarias',ic:'⚠️',lb:'Avarias'},{id:'ronda33',ic:'👣',lb:'3.3'},{id:'soltura',ic:'🚌',lb:'Soltura'},{id:'abastecimento',ic:'⛽',lb:'Abast.'},{id:'recolha',ic:'🔑',lb:'Recolha'},{id:'lubri_rel',ic:'🛢️',lb:'Lubri.'},{id:'home',ic:'🏠',lb:'Início'}],
   manobrista:    [{id:'patio_man',ic:'🚗',lb:'Pátio'},{id:'home',ic:'🏠',lb:'Início'}],
   frentista:     [{id:'abastecimento',ic:'⛽',lb:'Abastecer'},{id:'home',ic:'🏠',lb:'Início'}],
-  plantao:       [{id:'recolha',ic:'🔑',lb:'Recolha'},{id:'plantao_reg',ic:'📋',lb:'Registro'},{id:'home',ic:'🏠',lb:'Início'}],
+  plantao:       [{id:'recolha',ic:'🔑',lb:'Recolha'},{id:'plantao_reg',ic:'📋',lb:'Dobras/Falta'},{id:'home',ic:'🏠',lb:'Início'}],
   lubrificador:  [{id:'lubrificacao',ic:'🛢️',lb:'Lubr.'},{id:'lubri_rel',ic:'📋',lb:'Relatório'},{id:'home',ic:'🏠',lb:'Início'}],
   monitor:       [{id:'monitor',ic:'👁️',lb:'Monitor'},{id:'home',ic:'🏠',lb:'Início'}],
   instrutor:     [{id:'monitor',ic:'👁️',lb:'Monitor'},{id:'home',ic:'🏠',lb:'Início'}],

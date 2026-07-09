@@ -36,13 +36,19 @@ CREATE TABLE IF NOT EXISTS plantao_absenteismo (
 CREATE INDEX IF NOT EXISTS plantao_absenteismo_garagem_data
   ON plantao_absenteismo (garagem_id, data);
 
--- Mesmo padrao das outras tabelas do app: chave anon, sem sessao autenticada.
-ALTER TABLE plantao_dobras DISABLE ROW LEVEL SECURITY;
-ALTER TABLE plantao_dobras NO FORCE ROW LEVEL SECURITY;
-GRANT ALL ON plantao_dobras TO anon;
+-- Escrito por usuario logado no app (sessao authenticated) -- RLS ligado com
+-- policy explicita liberando tudo, mesmo padrao ja usado em monitoria_registros
+-- checklist_33, instrutor_atribuicoes (ver fix_rls_monitoria.sql).
+ALTER TABLE plantao_dobras ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Autenticado pode tudo" ON plantao_dobras;
+CREATE POLICY "Autenticado pode tudo"
+  ON plantao_dobras FOR ALL TO authenticated
+  USING (true) WITH CHECK (true);
 GRANT ALL ON plantao_dobras TO authenticated;
 
-ALTER TABLE plantao_absenteismo DISABLE ROW LEVEL SECURITY;
-ALTER TABLE plantao_absenteismo NO FORCE ROW LEVEL SECURITY;
-GRANT ALL ON plantao_absenteismo TO anon;
+ALTER TABLE plantao_absenteismo ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Autenticado pode tudo" ON plantao_absenteismo;
+CREATE POLICY "Autenticado pode tudo"
+  ON plantao_absenteismo FOR ALL TO authenticated
+  USING (true) WITH CHECK (true);
 GRANT ALL ON plantao_absenteismo TO authenticated;
