@@ -3045,7 +3045,8 @@ async function telaAlmoxMobConferencia(){
   const listaAtual=rawAtual||[];
 
   // invMapMine  → contagens do almoxarife atual (badge ✅/⚠️ no card)
-  // invMapOther → contagem mais recente de outro almox (referência / pré-preenchimento)
+  // invMapOther → contagem mais recente de outro almox — só pra saber SE já
+  // foi contado (contagem cega: o valor em si não é exibido nem pré-preenchido)
   const invMapMine={};
   const invMapOther={};
   (invExist||[]).forEach(i=>{
@@ -3129,9 +3130,11 @@ async function telaAlmoxMobConferencia(){
       :`<span style="background:var(--surface2);color:var(--text3);border:1px solid var(--border);border-radius:99px;padding:2px 8px;font-size:9px;font-weight:700;white-space:nowrap">→ Lançar</span>`;
     const osTxt=g.osList.join(', ')||'—';
     const prefixoTxt=g.prefixoList.join(', ')||'—';
+    // Contagem cega — não mostra a quantidade que o outro almoxarife lançou,
+    // só avisa que já foi contado, pra reconferência ser independente de verdade.
     const refHtml=!todosContados&&invRef&&invRef.qtd_fisica!=null
       ?`<div style="margin-top:6px;padding:5px 8px;background:#7C3AED15;border:1px solid #7C3AED40;border-radius:6px;font-size:10px;color:var(--purple)">
-          📋 T-anterior contou: <b style="font-family:'DM Mono',monospace">${invRef.qtd_fisica}</b> físico${invRef.almoxarife_nome?' · '+escHtml(invRef.almoxarife_nome):''}
+          📋 Já contado${invRef.almoxarife_nome?' por '+escHtml(invRef.almoxarife_nome):''} — faça sua própria contagem
         </div>`
       :'';
     return`<div onclick="almoxMobAbrirInvRotativo('${g.id}')" style="margin-bottom:8px;background:var(--surface);border:1px solid ${bordaCor};border-left:4px solid ${bordaCor};border-radius:12px;padding:12px 14px;cursor:pointer;active-opacity:.7">
@@ -3244,12 +3247,14 @@ function almoxMobAbrirInvRotativo(grupoId){
   // pra todo o grupo (é a mesma peça), então pega a primeira que existir
   const inv=itens.map(i=>window._invRotMap?.[i.id]).find(Boolean)||null;
   const invRef=itens.map(i=>window._invRotMapOther?.[i.id]).find(Boolean)||null;
-  const preFilFis=inv?.qtd_fisica??invRef?.qtd_fisica??'';
+  // Contagem cega — o campo só vem pré-preenchido se for uma edição da MINHA
+  // própria contagem anterior. Nunca com o valor do outro almoxarife: se ele
+  // já contou, a recontagem tem que ser independente, sem influência do número dele.
+  const preFilFis=inv?.qtd_fisica??'';
   const refBlock=invRef&&!inv?`
     <div style="background:#7C3AED15;border:1px solid #7C3AED50;border-left:4px solid var(--purple);border-radius:10px;padding:10px 14px;margin-bottom:14px">
-      <div style="font-size:10px;font-weight:900;color:var(--purple);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">📋 Turno anterior — ${escHtml(invRef.almoxarife_nome||'—')}</div>
-      <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:900;color:var(--text)">Físico: <span style="color:var(--green)">${invRef.qtd_fisica??'—'}</span></div>
-      <div style="font-size:10px;color:var(--text3);margin-top:4px">Pré-preenchido abaixo — confirme ou corrija o físico real</div>
+      <div style="font-size:10px;font-weight:900;color:var(--purple);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">📋 Já contado${invRef.almoxarife_nome?' por '+escHtml(invRef.almoxarife_nome):' no turno anterior'}</div>
+      <div style="font-size:11px;color:var(--text3)">Faça sua própria contagem, sem olhar o valor anterior — é assim que a dupla contagem confirma o estoque de verdade.</div>
     </div>`:'';
   const multiBlock=multi?`
     <div style="background:#3B82F615;border:1px solid #3B82F640;border-radius:10px;padding:10px 14px;margin-bottom:14px">

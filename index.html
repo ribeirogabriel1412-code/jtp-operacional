@@ -4860,10 +4860,28 @@ async function confCruzarRotativo(){
   // Agrupa por cod_sap + turno_data — última contagem de cada item por dia
   // Se o mesmo item saiu segunda E terça, aparece uma linha por dia
   const rotMap={};
+  const rotGrupos={};
   rotRaw.forEach(r=>{
     if(!r.cod_sap)return;
     const k=confNormCod(r.cod_sap)+'|'+(r.turno_data||'');
     if(!rotMap[k])rotMap[k]=r; // já vem ordenado por turno_data DESC do Supabase
+    (rotGrupos[k]=rotGrupos[k]||[]).push(r);
+  });
+  // Dupla contagem — mesmo cod_sap+turno_data lançado por dois almoxarifes
+  // diferentes (contagem cega de conferência). Junta as contagens distintas
+  // por almoxarife_id pra mostrar lado a lado e sinalizar se bateram ou não.
+  const duplaMap={};
+  Object.keys(rotGrupos).forEach(k=>{
+    const porAlmox={};
+    rotGrupos[k].forEach(r=>{ const aid=r.almoxarife_id||r.almoxarife_nome; if(aid&&!porAlmox[aid])porAlmox[aid]=r; });
+    const contagens=Object.values(porAlmox);
+    if(contagens.length>1){
+      const valores=contagens.map(c=>parseFloat(c.qtd_fisica));
+      duplaMap[k]={
+        contagens:contagens.map(c=>({nome:c.almoxarife_nome||'—',qtd:c.qtd_fisica})),
+        diverge:new Set(valores).size>1
+      };
+    }
   });
 
   // Conferência T-1 (turno seguinte reconferindo o que o turno de origem contou)
@@ -4909,6 +4927,7 @@ async function confCruzarRotativo(){
       trat:t,
       wms:wmsMap[cod]||null,
       fisAjustado,difAjustado,
+      dupla:duplaMap[k]||null,
     };
   }).sort((a,b)=>b.data.localeCompare(a.data)||a.cod.localeCompare(b.cod));
 
@@ -4929,13 +4948,22 @@ async function confCruzarRotativo(){
   const itensExibidos=soDesvio?itens.filter(d=>d.temDesvio):itens;
 
   const thead=`<tr style="background:var(--surface2)">
-    ${thH('#')}${thH('Status')}${thH('Tratativa')}${thH('Código')}${thH('Descrição')}${thH('WMS')}${thR('Físico (Rot.)')}${thR('SAP')}${thR('Δ Fís.↔SAP')}${thR('Físico Ajustado')}${thR('Δ Final')}${thR('T-1 (conf. seguinte)')}${thR('Δ Cadeia')}${thH('Almoxarife')}${thH('Data')}
+    ${thH('#')}${thH('Status')}${thH('Tratativa')}${thH('Código')}${thH('Descrição')}${thH('WMS')}${thR('Físico (Rot.)')}${thR('SAP')}${thR('Δ Fís.↔SAP')}${thR('Físico Ajustado')}${thR('Δ Final')}${thR('T-1 (conf. seguinte)')}${thR('Δ Cadeia')}${thH('Almoxarife')}${thH('Data')}${thH('Dupla Contagem')}
   </tr>`;
   const ajusteCell=d=>{
     if(d.fisAjustado==null)return`<td style="padding:7px 10px;text-align:right;color:var(--text4)">—</td>`;
     return`<td style="padding:7px 10px;text-align:right;font-family:monospace;font-weight:700;color:var(--text2)">${N(d.fisAjustado)}</td>`;
   };
   const wmsCell=d=>`<td style="padding:7px 10px;font-family:monospace;font-size:11px;color:var(--blue);white-space:nowrap">${d.wms&&d.wms.length?escHtml(d.wms.join(', ')):'<span style="color:var(--text4);font-family:inherit">—</span>'}</td>`;
+  const duplaCell=d=>{
+    if(!d.dupla) return `<td style="padding:7px 10px;color:var(--text4)">—</td>`;
+    const cor=d.dupla.diverge?'var(--danger)':'var(--green)';
+    const txt=d.dupla.contagens.map(c=>`${escHtml(c.nome)}: ${N(parseFloat(c.qtd))}`).join(' · ');
+    return `<td style="padding:7px 10px;font-size:11px;white-space:nowrap">
+      <div>${txt}</div>
+      <div style="font-weight:800;color:${cor};margin-top:2px">${d.dupla.diverge?'⚠️ Diverge':'✅ Bate'}</div>
+    </td>`;
+  };
 
   const TRAT_LB={recebimento:'📦 Recebimento',contagem_errada:'✏️ Recontagem',desvio:'⚠️ Desvio confirmado'};
   const tratCell=d=>{
@@ -4981,6 +5009,7 @@ async function confCruzarRotativo(){
       ${difCell(d.difCadeia)}
       <td style="padding:7px 10px;font-size:11px;color:var(--text3);white-space:nowrap">${escHtml(d.almoxarife)}</td>
       <td style="padding:7px 10px;font-size:11px;color:var(--text3);white-space:nowrap">${escHtml(d.data)}</td>
+      ${duplaCell(d)}
     </tr>`;
   }).join('');
 
@@ -5009,7 +5038,7 @@ async function confCruzarRotativo(){
         <button onclick="confRotExportarPDF()" class="btn-sec" style="padding:6px 14px;font-size:12px">📄 PDF</button>
       </div>
     </div>
-    ${itensExibidos.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:1480px"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>`
+    ${itensExibidos.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:1660px"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>`
       :`<div style="padding:20px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhum item com desvio nessa janela. 🎉</div>`}
   `;
 }
@@ -5161,18 +5190,25 @@ function confTratTexto(t){
   return t.tipo;
 }
 
+// Texto plano da dupla contagem (dois almoxarifes contaram o mesmo item no mesmo turno)
+function confDuplaTexto(d){
+  if(!d) return '—';
+  const partes=d.contagens.map(c=>`${c.nome}: ${c.qtd}`).join(' · ');
+  return `${partes} — ${d.diverge?'⚠️ Diverge':'✅ Bate'}`;
+}
+
 function confRotExportarXLSX(){
   const itens=window._confRotItens;
   if(!itens?.length){toast('Sem dados para exportar.','err');return;}
   const garagem=window._confRotGaragem||'Garagem';
   const dataRef=window._confRotDataRef||new Date().toISOString().slice(0,10);
-  const header=[['#','Status','Justificativa','Código','Descrição','WMS','Físico (Rot.)','PRAXIO','Δ Fís.↔PRAX','SAP','Δ Fís.↔SAP','Físico Ajustado','Δ Final','Almoxarife','Data']];
+  const header=[['#','Status','Justificativa','Código','Descrição','WMS','Físico (Rot.)','PRAXIO','Δ Fís.↔PRAX','SAP','Δ Fís.↔SAP','Físico Ajustado','Δ Final','Almoxarife','Data','Dupla Contagem']];
   const body=itens.map((d,i)=>{
     const temDesvio=(d.difSap!=null&&d.difSap!==0)||(d.difPrax!=null&&d.difPrax!==0);
-    return[i+1,temDesvio?'Desvio':'Conforme',temDesvio?confTratTexto(d.trat):'—',d.cod,d.nome,d.wms&&d.wms.length?d.wms.join(', '):'—',d.fis??'',d.saldoPrax??'',d.difPrax??'',d.saldoSap??'',d.difSap??'',d.fisAjustado??'',d.difAjustado??'',d.almoxarife,d.data];
+    return[i+1,temDesvio?'Desvio':'Conforme',temDesvio?confTratTexto(d.trat):'—',d.cod,d.nome,d.wms&&d.wms.length?d.wms.join(', '):'—',d.fis??'',d.saldoPrax??'',d.difPrax??'',d.saldoSap??'',d.difSap??'',d.fisAjustado??'',d.difAjustado??'',d.almoxarife,d.data,confDuplaTexto(d.dupla)];
   });
   const ws=XLSX.utils.aoa_to_sheet([...header,...body]);
-  ws['!cols']=[{wch:4},{wch:10},{wch:34},{wch:12},{wch:40},{wch:16},{wch:12},{wch:10},{wch:12},{wch:10},{wch:12},{wch:14},{wch:10},{wch:30},{wch:12}];
+  ws['!cols']=[{wch:4},{wch:10},{wch:34},{wch:12},{wch:40},{wch:16},{wch:12},{wch:10},{wch:12},{wch:10},{wch:12},{wch:14},{wch:10},{wch:30},{wch:12},{wch:34}];
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'Inventário Rotativo');
 
@@ -5244,6 +5280,7 @@ function confRotExportarPDF(){
       <td style="${B}font-size:9px">${esc(d.almoxarife)}</td>
       <td style="${B}">${esc(d.data)}</td>
       <td style="${B}font-size:9px">${temDesvio?esc(confTratTexto(d.trat))+(d.trat?.observacao?` — ${esc(d.trat.observacao)}`:''):'—'}</td>
+      <td style="${B}font-size:9px;${d.dupla?.diverge?'color:#991b1b;font-weight:700':''}">${esc(confDuplaTexto(d.dupla))}</td>
     </tr>`;
   }).join('');
   const quadroFisico=`
@@ -5254,7 +5291,7 @@ function confRotExportarPDF(){
         <th style="${BH}text-align:right">Físico (Rot.)</th><th style="${BH}text-align:right">SAP</th><th style="${BH}text-align:right">Δ Fís.↔SAP</th>
         <th style="${BH}text-align:right">Físico Ajustado</th><th style="${BH}text-align:right">Δ Final</th>
         <th style="${BH}text-align:right">T-1 (conf. seguinte)</th><th style="${BH}text-align:right">Δ Cadeia</th>
-        <th style="${BH}">Almoxarife</th><th style="${BH}">Data</th><th style="${BH}">Justificativa</th>
+        <th style="${BH}">Almoxarife</th><th style="${BH}">Data</th><th style="${BH}">Justificativa</th><th style="${BH}">Dupla Contagem</th>
       </tr></thead><tbody>${rowsFisico}</tbody></table>`
       :`<div style="padding:8px 0;color:#555;font-size:9px">Sem inventário rotativo cruzado nesta sessão.</div>`}
   `;
