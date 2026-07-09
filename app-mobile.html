@@ -183,16 +183,17 @@ async function telaHome(){
   const lavPend=lavList.filter(l=>l.status!=='executado'&&l.tipo_lavagem!=='leve');
 
   // Queries dos Pontos de Controle
-  let recList=[],abList=[],escalaD1=[],avariasList=[],dobrasList=[],absList=[];
+  let recList=[],abList=[],escalaD1=[],avariasList=[],dobrasList=[],absList=[],sosList=[];
   if(temPainel){
     const dSol=opAddDays(dRef,1);
-    [recList,abList,escalaD1,avariasList,dobrasList,absList]=await Promise.all([
+    [recList,abList,escalaD1,avariasList,dobrasList,absList,sosList]=await Promise.all([
       sb.from('recolha_checklist').select('prefixo,horario_real,status,linha,tabela,motorista').eq('garagem_id',gid).eq('data_recolha',dRef).then(r=>r.data||[]),
       sb.from('abastecimento_checklist').select('prefixo,horario').eq('garagem_id',gid).eq('data',dRef).then(r=>r.data||[]),
       sb.from('soltura_2_10').select('prefixo,linha,horario_programado').eq('garagem_id',gid).eq('data',dSol).then(r=>r.data||[]),
       sb.from('avarias_recolha').select('id,prefixo,status,itens_nok,data_recolha,plantao_nome,horario_real').eq('garagem_id',gid).neq('status','resolvido').order('created_at',{ascending:false}).then(r=>r.data||[]),
       sb.from('plantao_dobras').select('motorista,prefixo,linha,motivo,created_at').eq('garagem_id',gid).eq('data',dRef).order('created_at',{ascending:false}).then(r=>r.data||[]),
       sb.from('plantao_absenteismo').select('motorista,prefixo,linha,motivo,cobertura,created_at').eq('garagem_id',gid).eq('data',dRef).order('created_at',{ascending:false}).then(r=>r.data||[]),
+      sb.from('plantao_sos').select('id,prefixo,motorista,linha,problema,status,created_at').eq('garagem_id',gid).eq('data',dRef).eq('status','aberto').order('created_at',{ascending:false}).then(r=>r.data||[]),
     ]);
   }
 
@@ -251,6 +252,20 @@ async function telaHome(){
     </div>`;
   }).join('');
 
+  // Cards SOS aberto (Plantão)
+  const totSos=sosList.length;
+  const sosCards=sosList.map(s=>{
+    const min=s.created_at?Math.round((Date.now()-new Date(s.created_at).getTime())/60000):null;
+    return`<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:8px;border-left:3px solid var(--red)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+        <span style="font-family:'DM Mono',monospace;font-weight:800;font-size:13px">${escHtml(s.prefixo)}</span>
+        <span style="font-size:10px;font-weight:700;color:var(--red);background:#EF444420;padding:2px 8px;border-radius:20px">${min!==null?min+' min':'ABERTO'}</span>
+      </div>
+      <div style="font-size:10px;color:var(--text4);margin-bottom:3px">${escHtml(s.motorista||'—')}${s.linha?' · '+escHtml(s.linha):''}</div>
+      <div style="font-size:11px;color:var(--text3)">${escHtml(s.problema)}</div>
+    </div>`;
+  }).join('');
+
   // Header accordion
   const hdr=(id,icon,label,badge,cor)=>`
     <div onclick="_toggleHomePanel('${id}')" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;cursor:pointer;${id!=='rec'?'border-top:1px solid var(--border2)':''}">
@@ -270,6 +285,9 @@ async function telaHome(){
       </div>
       ${hdr('av','⚠️','Avarias',totAv?totAv+' em aberto':null,'var(--red)')}
         ${avCards||'<div style="font-size:12px;color:var(--green);text-align:center;padding:8px 0">✅ Nenhuma avaria em aberto</div>'}
+      </div>
+      ${hdr('sos','🆘','SOS',totSos?totSos+' aberto(s)':null,'var(--red)')}
+        ${sosCards||'<div style="font-size:12px;color:var(--green);text-align:center;padding:8px 0">✅ Nenhum SOS aberto</div>'}
       </div>
       ${hdr('dobras','🔁','Dobras & Absenteísmo',(totDobras+totAbsent)?`${totDobras} dobra(s) · ${totAbsent} falta(s)`:null,'var(--amber)')}
         ${dobrasAbsCards||'<div style="font-size:12px;color:var(--text4);text-align:center;padding:8px 0">Nenhum registro do plantão hoje</div>'}
@@ -5472,6 +5490,187 @@ async function salvarPlantaoAbsenteismo(){
 }
 
 // ══════════════════════════════════════════════════════════
+// PLANTÃO — SOS AO VIVO
+// ══════════════════════════════════════════════════════════
+const PLANTAO_DECISAO={segue_rodando:'Segue rodando',troca_carro:'Troca de carro',troca_motorista:'Troca de motorista',aciona_pcm:'Aciona PCM',outro:'Outro'};
+
+async function telaPlantaoSOS(){
+  const gid=getGid();
+  window._psosMode=window._psosMode||'lista';
+  if(window._psosMode==='novo'){ renderPlantaoSOSForm(); return; }
+  render('<div class="loading"><div class="sp"></div></div>');
+
+  const{data:lista}=await sb.from('plantao_sos').select('*').eq('garagem_id',gid).eq('data',hoje()).order('created_at',{ascending:false});
+  window._psosLista=lista||[];
+  const abertos=window._psosLista.filter(s=>s.status==='aberto');
+  const encerrados=window._psosLista.filter(s=>s.status!=='aberto');
+
+  const cardSOS=(s,aberto)=>{
+    const tempoAberto=aberto&&s.created_at?Math.round((Date.now()-new Date(s.created_at).getTime())/60000):null;
+    return`<div class="card" style="margin-bottom:8px;border-left:3px solid ${aberto?'var(--red)':'var(--border)'}" onclick="abrirDetalheSOS('${s.id}')">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span style="font-family:'DM Mono',monospace;font-weight:800;font-size:15px;color:${aberto?'var(--red)':'var(--text)'}">${escHtml(s.prefixo)}</span>
+        <span style="font-size:10px;font-weight:700;color:${aberto?'var(--red)':'var(--text3)'};background:${aberto?'#EF444420':'var(--surface2)'};padding:2px 8px;border-radius:20px">${aberto?(tempoAberto!==null?tempoAberto+' min aberto':'ABERTO'):'ENCERRADO'}</span>
+      </div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:2px">${escHtml(s.motorista||'—')}${s.linha?' · '+escHtml(s.linha):''}</div>
+      <div style="font-size:12px;color:var(--text2)">${escHtml(s.problema)}</div>
+    </div>`;
+  };
+
+  render(`
+    <div style="padding:14px 14px 0"><div style="font-weight:800;font-size:17px;margin-bottom:12px">🆘 SOS do Plantão</div></div>
+    <div style="padding:0 14px 14px">
+      <button onclick="window._psosMode='novo';telaPlantaoSOS()" style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--red);color:#fff;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">🆘 Novo SOS</button>
+    </div>
+    <div class="sl">Abertos ${abertos.length?'· '+abertos.length:''}</div>
+    <div style="padding:0 14px 14px">${abertos.map(s=>cardSOS(s,true)).join('')||'<div class="empty"><div class="empty-ic">✅</div><div style="font-weight:700">Nenhum SOS aberto</div></div>'}</div>
+    <div class="sl">Encerrados hoje ${encerrados.length?'· '+encerrados.length:''}</div>
+    <div style="padding:0 14px 14px">${encerrados.map(s=>cardSOS(s,false)).join('')||'<div style="font-size:12px;color:var(--text4);text-align:center;padding:8px 0">Nenhum SOS encerrado hoje</div>'}</div>
+  `);
+}
+
+function renderPlantaoSOSForm(){
+  render(`
+    <div style="padding:14px 14px 0"><div style="font-weight:800;font-size:17px;margin-bottom:12px">🆘 Novo SOS</div></div>
+    <div class="card" style="margin:0 14px 14px">
+      <label class="fl">Prefixo</label>
+      <div style="display:flex;gap:6px;margin-bottom:12px">
+        <input id="psos-prefixo" class="fi" placeholder="Ex: 02.188" style="text-transform:uppercase;margin-bottom:0" oninput="this.value=this.value.toUpperCase()">
+        <button onclick="buscarHistoricoSOS()" style="padding:0 16px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap">🔍 Buscar</button>
+      </div>
+      <div id="psos-historico" style="margin-bottom:14px;padding:10px 12px;background:var(--surface2);border-radius:10px">
+        <div style="font-size:12px;color:var(--text4);text-align:center">Informe o prefixo e busque o histórico</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+        <div><label class="fl">Linha</label><input id="psos-linha" class="fi" placeholder="Opcional"></div>
+        <div><label class="fl">KM</label><input id="psos-km" class="fi" placeholder="Opcional" inputmode="numeric"></div>
+      </div>
+      <label class="fl">Motorista</label>
+      <input id="psos-motorista" class="fi" placeholder="Matrícula ou nome..." style="margin-bottom:12px;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()">
+      <label class="fl">Problema relatado</label>
+      <textarea id="psos-problema" class="fi" placeholder="O que o motorista relatou..." rows="3" style="margin-bottom:12px;resize:none"></textarea>
+      <label class="fl">Decisão</label>
+      <div id="psos-decisoes" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">
+        ${Object.entries(PLANTAO_DECISAO).map(([v,lb])=>`<button onclick="selPlantaoDecisao('${v}',this)" style="padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">${lb}</button>`).join('')}
+      </div>
+      <input type="hidden" id="psos-decisao" value="">
+      <div id="psos-detalhe-wrap" style="display:none;margin-bottom:16px">
+        <label class="fl">Detalhe da decisão</label>
+        <input id="psos-decisao-detalhe" class="fi" placeholder="Ex: novo prefixo, novo motorista...">
+      </div>
+      <button onclick="salvarPlantaoSOS()" style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--red);color:#fff;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">🆘 Registrar SOS</button>
+      <button onclick="window._psosMode='lista';telaPlantaoSOS()" style="width:100%;margin-top:8px;padding:11px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-family:inherit;cursor:pointer">← Cancelar</button>
+    </div>
+  `);
+}
+
+async function buscarHistoricoSOS(){
+  const prefixo=document.getElementById('psos-prefixo')?.value?.trim().toUpperCase();
+  if(!prefixo){toast('Informe o prefixo','err');return;}
+  const gid=getGid();
+  const el=document.getElementById('psos-historico');
+  el.innerHTML='<div style="text-align:center;padding:12px;color:var(--text3);font-size:12px">Buscando...</div>';
+
+  const[{data:prevData},{data:osData},{data:avData},{data:solData}]=await Promise.all([
+    sb.from('checklist_lubrificacao').select('data').eq('garagem_id',gid).eq('prefixo',prefixo).order('data',{ascending:false}).limit(1),
+    sb.from('ocorrencias_22').select('descricao,status,hora_entrada').eq('garagem_id',gid).eq('prefixo',prefixo).order('hora_entrada',{ascending:false}).limit(3),
+    sb.from('avarias_recolha').select('itens_nok,status,data_recolha').eq('garagem_id',gid).eq('prefixo',prefixo).neq('status','resolvido').order('created_at',{ascending:false}).limit(3),
+    sb.from('soltura_2_10').select('motorista,linha,data').eq('garagem_id',gid).eq('prefixo',prefixo).order('data',{ascending:false}).limit(1),
+  ]);
+
+  if(solData?.[0]){
+    const mEl=document.getElementById('psos-motorista'),lEl=document.getElementById('psos-linha');
+    if(mEl&&!mEl.value)mEl.value=solData[0].motorista||'';
+    if(lEl&&!lEl.value)lEl.value=solData[0].linha||'';
+  }
+
+  const blocos=[];
+  blocos.push(`<div style="font-size:11px;font-weight:800;color:var(--text3);margin-bottom:4px">🛢️ ÚLTIMA PREVENTIVA/LUBRIFICAÇÃO</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px">${prevData?.[0]?.data?new Date(prevData[0].data+'T00:00:00').toLocaleDateString('pt-BR'):'Nenhum registro'}</div>`);
+
+  blocos.push(`<div style="font-size:11px;font-weight:800;color:var(--text3);margin-bottom:4px">🔧 ÚLTIMAS OS</div>
+    ${(osData&&osData.length)?osData.map(o=>`<div style="font-size:12px;color:var(--text2);margin-bottom:4px">${o.hora_entrada?new Date(o.hora_entrada).toLocaleDateString('pt-BR'):'—'} · ${o.status==='liberado'?'✅ liberado':'🔧 '+(o.status||'')}${o.descricao?' — '+escHtml(o.descricao):''}</div>`).join(''):'<div style="font-size:12px;color:var(--text4);margin-bottom:10px">Nenhuma OS encontrada</div>'}`);
+
+  blocos.push(`<div style="font-size:11px;font-weight:800;color:var(--text3);margin-bottom:4px">⚠️ AVARIAS EM ABERTO</div>
+    ${(avData&&avData.length)?avData.map(a=>`<div style="font-size:12px;color:var(--red);margin-bottom:4px">${(a.itens_nok||[]).slice(0,3).join(', ')||'—'} · ${a.data_recolha||''}</div>`).join(''):'<div style="font-size:12px;color:var(--green);margin-bottom:10px">Nenhuma avaria em aberto</div>'}`);
+
+  blocos.push(`<div style="font-size:11px;font-weight:800;color:var(--text3);margin-bottom:4px">🔑 ÚLTIMO REGISTRO DE ESCALA</div>
+    <div style="font-size:12px;color:var(--text2)">${solData?.[0]?(escHtml(solData[0].motorista||'—')+' · '+escHtml(solData[0].linha||'—')+' · '+(solData[0].data||'')):'Nenhum registro'}</div>`);
+
+  el.innerHTML=blocos.join('');
+}
+
+function selPlantaoDecisao(val,btn){
+  selPlantaoChip('psos-decisoes','psos-decisao',val,btn);
+  const wrap=document.getElementById('psos-detalhe-wrap');
+  if(wrap)wrap.style.display=val==='segue_rodando'?'none':'block';
+}
+
+async function salvarPlantaoSOS(){
+  const gid=getGid();
+  const prefixo=document.getElementById('psos-prefixo')?.value?.trim();
+  const linha=document.getElementById('psos-linha')?.value?.trim()||null;
+  const km=document.getElementById('psos-km')?.value?.trim()||null;
+  const motorista=document.getElementById('psos-motorista')?.value?.trim()||null;
+  const problema=document.getElementById('psos-problema')?.value?.trim();
+  const decisao=document.getElementById('psos-decisao')?.value||null;
+  const decisao_detalhe=document.getElementById('psos-decisao-detalhe')?.value?.trim()||null;
+  if(!prefixo){toast('Informe o prefixo','err');return;}
+  if(!problema){toast('Descreva o problema relatado','err');return;}
+  const{error}=await sb.from('plantao_sos').insert({
+    garagem_id:gid,data:hoje(),prefixo,linha,km,motorista,problema,decisao,decisao_detalhe,status:'aberto',
+    plantao_nome:S.perfil?.nome||null,plantao_id:S.perfil?.id||null,
+  });
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('🆘 SOS registrado!');
+  window._psosMode='lista';
+  telaPlantaoSOS();
+}
+
+function abrirDetalheSOS(id){
+  const s=(window._psosLista||[]).find(x=>String(x.id)===String(id));
+  if(!s)return;
+  const aberto=s.status==='aberto';
+  openSheet(`🆘 ${s.prefixo}`,`
+    <div style="font-size:12px;color:var(--text3);margin-bottom:4px">${escHtml(s.motorista||'—')}${s.linha?' · '+escHtml(s.linha):''}${s.km?' · KM '+escHtml(s.km):''}</div>
+    <div style="font-size:13px;margin-bottom:10px"><b>Problema:</b> ${escHtml(s.problema)}</div>
+    ${s.decisao?`<div style="font-size:13px;margin-bottom:10px"><b>Decisão:</b> ${PLANTAO_DECISAO[s.decisao]||s.decisao}${s.decisao_detalhe?' — '+escHtml(s.decisao_detalhe):''}</div>`:''}
+    ${aberto?`
+      <label class="fl">Resolução</label>
+      <textarea id="psos-resolucao" class="fi" rows="3" placeholder="O que foi feito pra resolver..." style="margin-bottom:12px;resize:none"></textarea>
+      <button onclick="encerrarPlantaoSOS('${s.id}')" style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--green);color:#fff;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer;margin-bottom:8px">✅ Encerrar SOS</button>
+    `:`<div style="font-size:13px;margin-bottom:10px"><b>Resolução:</b> ${escHtml(s.resolucao||'—')}</div>`}
+    <button onclick="gerarPDFPlantaoSOS('${s.id}')" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">📄 Gerar PDF</button>
+  `);
+}
+
+async function encerrarPlantaoSOS(id){
+  const resolucao=document.getElementById('psos-resolucao')?.value?.trim()||null;
+  const{error}=await sb.from('plantao_sos').update({status:'encerrado',resolucao,resolvido_em:new Date().toISOString()}).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  closeSheet(true);
+  toast('✅ SOS encerrado!');
+  telaPlantaoSOS();
+}
+
+async function gerarPDFPlantaoSOS(id){
+  const s=(window._psosLista||[]).find(x=>String(x.id)===String(id));
+  if(!s)return;
+  const g=S.garagens?.find(x=>x.id===s.garagem_id)?.nome||'Garagem';
+  const B='border:1px solid #333;';
+  const html=`<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;font-size:9px;color:#000;padding:8px}table{border-collapse:collapse;width:100%}td,th{${B}padding:3px 5px;font-size:9px}.sec{background:#111;color:#fff;font-weight:900;padding:5px;margin-top:8px}.head{text-align:center;border:2px solid #000;padding:5px;margin-bottom:6px}</style></head><body>
+<div class="head"><strong>GRUPO JTP | OPERAÇÃO GARAGEM | Registro de SOS — Plantão</strong></div>
+<table><tr><td><b>Data:</b> ${s.data?new Date(s.data+'T00:00:00').toLocaleDateString('pt-BR'):''}</td><td><b>Garagem:</b> ${escHtml(g)}</td><td><b>Status:</b> ${s.status==='aberto'?'ABERTO':'ENCERRADO'}</td></tr><tr><td colspan="3"><b>Registrado por:</b> ${escHtml(s.plantao_nome||'')}</td></tr></table>
+<div class="sec">■ IDENTIFICAÇÃO DO EVENTO</div><table><tr><td><b>Prefixo</b><br>${escHtml(s.prefixo)}</td><td><b>Linha</b><br>${escHtml(s.linha||'—')}</td><td><b>KM</b><br>${escHtml(s.km||'—')}</td></tr><tr><td colspan="3"><b>Motorista</b><br>${escHtml(s.motorista||'—')}</td></tr></table>
+<div class="sec">■ PROBLEMA RELATADO</div><table><tr><td>${escHtml(s.problema)}</td></tr></table>
+<div class="sec">■ DECISÃO TOMADA</div><table><tr><td>${s.decisao?(PLANTAO_DECISAO[s.decisao]||s.decisao):'—'}${s.decisao_detalhe?' — '+escHtml(s.decisao_detalhe):''}</td></tr></table>
+<div class="sec">■ RESOLUÇÃO</div><table><tr><td>${escHtml(s.resolucao||'Em aberto — ainda não encerrado')}</td></tr></table>
+<table style="margin-top:8px"><tr><td><b>Gerado em:</b> ${new Date().toLocaleString('pt-BR')}</td></tr></table>
+</body></html>`;
+  await downloadPDF(html,`JTP_SOS_PLANTAO_${String(s.data||hoje()).replace(/-/g,'')}_${String(s.prefixo||'').replace(/\D/g,'')}.pdf`);
+}
+
+// ══════════════════════════════════════════════════════════
 // ABASTECIMENTO (Frentista)
 // ══════════════════════════════════════════════════════════
 let _abFrotaLista=[], _abBuscaAtiva='';
@@ -8989,7 +9188,7 @@ async function salvarAvaria(id){
 }
 
 // ─────────────────────────────────────────────────────────────────
-const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,acomp_manut:telaAcompManutencao,prev26:telaPrev26,valet_oficina:telaValetOficina,prev_oficina:telaPrevOficina,valet_almox:telaValetAlmox,ronda33:telaRonda33,patio_man:telaPatioMan,recolha:telaRecolha,plantao_reg:telaPlantaoReg,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip,sos218:telaSOS218,fech21:telaFech21,lubrificacao:telaLubrificacao,lubri_rel:telaLubriRel,avarias:telaAvariasDashboard,monitor:telaMonitor};
+const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,acomp_manut:telaAcompManutencao,prev26:telaPrev26,valet_oficina:telaValetOficina,prev_oficina:telaPrevOficina,valet_almox:telaValetAlmox,ronda33:telaRonda33,patio_man:telaPatioMan,recolha:telaRecolha,plantao_sos:telaPlantaoSOS,plantao_reg:telaPlantaoReg,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip,sos218:telaSOS218,fech21:telaFech21,lubrificacao:telaLubrificacao,lubri_rel:telaLubriRel,avarias:telaAvariasDashboard,monitor:telaMonitor};
 
 // ── INIT ───────────────────────────────────────────────────
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login').style.display!=='none')doLogin()});
