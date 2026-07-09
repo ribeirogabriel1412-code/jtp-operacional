@@ -16714,28 +16714,38 @@ async function renderFerrInstrutor(aba='painel'){
 
 async function _instrPainel(gid,back,tabBar){
   const hoje=new Date().toISOString().slice(0,10);
-  const semAgo=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
 
-  const[{data:kmlHoje},{data:ranking},{data:monHoje}]=await Promise.all([
+  const[{data:kmlHoje},{data:ranking},{data:monHoje},{data:relLinhaHoje},{data:relCarroHoje}]=await Promise.all([
     sb.from('instrutor_kml').select('*').eq('garagem_id',gid).order('data',{ascending:false}).limit(1),
     sb.from('instrutor_ranking').select('*').eq('garagem_id',gid).order('semana_ref',{ascending:false}).order('posicao').limit(30),
-    sb.from('monitoria_registros').select('monitor_id,monitor_nome,tipo').eq('garagem_id',gid).eq('data',hoje),
+    sb.from('monitoria_registros').select('monitor_id,monitor_nome,tipo,inf_velocidade,inf_frenagem,inf_aceleracao,inf_celular,inf_cinto,inf_postura').eq('garagem_id',gid).eq('data',hoje),
+    sb.from('monitor_relatorio_linha').select('*').eq('garagem_id',gid).eq('data',hoje),
+    sb.from('monitor_relatorio_carro').select('*').eq('garagem_id',gid).eq('data',hoje),
   ]);
 
   const kml=kmlHoje?.[0];
   const kmlPct=kml&&kml.meta>0?((kml.media_geral/kml.meta)*100).toFixed(1):null;
   const kmlCor=kmlPct>=100?'var(--green)':kmlPct>=90?'var(--amber)':'var(--red)';
 
-  // Agrupar monitorias por monitor
+  // Produtividade por monitor: campo vem das monitorias individuais
+  // (monitoria_registros), linha e carro vem dos relatorios dedicados
+  // (monitor_relatorio_linha/carro) -- mesma logica que o Plano do Dia usa
+  // pra marcar "Feito", antes o Painel so olhava monitoria_registros e
+  // deixava os relatorios de linha/carro de fora da contagem.
   const porMonitor={};
-  (monHoje||[]).forEach(m=>{
-    if(!porMonitor[m.monitor_id]) porMonitor[m.monitor_id]={nome:m.monitor_nome,total:0,campo:0,linha:0,carro:0};
-    porMonitor[m.monitor_id].total++;
-    porMonitor[m.monitor_id][m.tipo]=(porMonitor[m.monitor_id][m.tipo]||0)+1;
-  });
+  function contarMonitor(id,nome,campo){
+    if(!id)return;
+    if(!porMonitor[id]) porMonitor[id]={nome,total:0,campo:0,linha:0,carro:0};
+    porMonitor[id][campo]++;
+    porMonitor[id].total++;
+    if(nome&&!porMonitor[id].nome) porMonitor[id].nome=nome;
+  }
+  (monHoje||[]).forEach(m=>contarMonitor(m.monitor_id,m.monitor_nome,'campo'));
+  (relLinhaHoje||[]).forEach(r=>contarMonitor(r.monitor_id,r.monitor_nome,'linha'));
+  (relCarroHoje||[]).forEach(r=>contarMonitor(r.monitor_id,r.monitor_nome,'carro'));
 
   const monRows=Object.values(porMonitor).length
-    ? Object.values(porMonitor).map(m=>`
+    ? Object.values(porMonitor).sort((a,b)=>b.total-a.total).map(m=>`
       <tr>
         <td style="font-weight:600">${m.nome||'—'}</td>
         <td style="text-align:center">${m.campo||0}</td>
@@ -16743,7 +16753,29 @@ async function _instrPainel(gid,back,tabBar){
         <td style="text-align:center">${m.carro||0}</td>
         <td style="text-align:center;font-weight:700;color:var(--blue)">${m.total}</td>
       </tr>`).join('')
-    : `<tr><td colspan="5" style="text-align:center;color:var(--text4);padding:16px">Nenhuma monitoria registrada hoje</td></tr>`;
+    : `<tr><td colspan="5" style="text-align:center;color:var(--text4);padding:16px">Nenhuma atividade registrada hoje</td></tr>`;
+
+  // Indicadores extras a partir dos relatorios do dia
+  const infracoesHoje=(monHoje||[]).reduce((s,m)=>s+(m.inf_velocidade?1:0)+(m.inf_frenagem?1:0)+(m.inf_aceleracao?1:0)+(m.inf_celular?1:0)+(m.inf_cinto?1:0)+(m.inf_postura?1:0),0);
+  const pontValidos=(relLinhaHoje||[]).filter(r=>r.pontualidade_pct!=null);
+  const pontMedia=pontValidos.length?(pontValidos.reduce((s,r)=>s+r.pontualidade_pct,0)/pontValidos.length).toFixed(1):null;
+  const pontCor=pontMedia>=90?'var(--green)':pontMedia>=75?'var(--amber)':'var(--red)';
+  const totalRelatorios=(relLinhaHoje||[]).length+(relCarroHoje||[]).length;
+
+  // Lista dos relatorios de linha/carro de hoje -- pra dar visibilidade direta
+  // do que os monitores ja registraram sem precisar abrir a aba Relatórios.
+  const relHojeLista=[
+    ...(relLinhaHoje||[]).map(r=>({tipo:'📋 Linha',alvo:r.linha||'—',ind:r.pontualidade_pct!=null?`${r.pontualidade_pct}% pontual`:'—',obs:r.observacao,monitor:r.monitor_nome})),
+    ...(relCarroHoje||[]).map(r=>({tipo:'🚌 Carro',alvo:r.prefixo||'—',ind:r.km_l!=null?`${r.km_l} km/l`:(r.condicao_interna||'—'),obs:r.observacao,monitor:r.monitor_nome})),
+  ];
+  const relHojeHtml=relHojeLista.length?relHojeLista.map(r=>`
+    <tr>
+      <td>${r.tipo}</td>
+      <td style="font-weight:600">${escHtml(r.alvo)}</td>
+      <td style="font-size:12px">${escHtml(r.ind)}</td>
+      <td style="font-size:12px;color:var(--text3)">${r.obs?escHtml(r.obs):'—'}</td>
+      <td style="font-size:12px;color:var(--text3)">${escHtml(r.monitor||'—')}</td>
+    </tr>`).join(''):'<tr><td colspan="5" style="text-align:center;color:var(--text4);padding:16px">Nenhum relatório de linha/carro hoje</td></tr>';
 
   const rankRows=(ranking||[]).slice(0,10).map((r,i)=>`
     <tr>
@@ -16758,7 +16790,7 @@ async function _instrPainel(gid,back,tabBar){
   setMain(`${secTitle('📊','Painel do Instrutor',back)}
     <div class="filtros">${tabBar}</div>
 
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px">
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
         <div style="font-size:11px;color:var(--text4);letter-spacing:1px;text-transform:uppercase">KM/L Ontem</div>
         <div style="font-size:28px;font-weight:800;color:${kmlCor};font-family:'DM Mono',monospace;margin:8px 0">${kml?.media_geral??'—'}</div>
@@ -16770,13 +16802,28 @@ async function _instrPainel(gid,back,tabBar){
         <div style="font-size:12px;color:var(--text3)">${Object.keys(porMonitor).length} monitores ativos</div>
       </div>
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+        <div style="font-size:11px;color:var(--text4);letter-spacing:1px;text-transform:uppercase">Relatórios Hoje</div>
+        <div style="font-size:28px;font-weight:800;color:var(--purple);font-family:'DM Mono',monospace;margin:8px 0">${totalRelatorios}</div>
+        <div style="font-size:12px;color:var(--text3)">${(relLinhaHoje||[]).length} linha · ${(relCarroHoje||[]).length} carro</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+        <div style="font-size:11px;color:var(--text4);letter-spacing:1px;text-transform:uppercase">Pontualidade Média</div>
+        <div style="font-size:28px;font-weight:800;color:${pontMedia?pontCor:'var(--text4)'};font-family:'DM Mono',monospace;margin:8px 0">${pontMedia?pontMedia+'%':'—'}</div>
+        <div style="font-size:12px;color:var(--text3)">${pontValidos.length} linha(s) reportada(s)</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+        <div style="font-size:11px;color:var(--text4);letter-spacing:1px;text-transform:uppercase">Infrações Hoje</div>
+        <div style="font-size:28px;font-weight:800;color:${infracoesHoje>0?'var(--red)':'var(--green)'};font-family:'DM Mono',monospace;margin:8px 0">${infracoesHoje}</div>
+        <div style="font-size:12px;color:var(--text3)">observadas nas monitorias</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
         <div style="font-size:11px;color:var(--text4);letter-spacing:1px;text-transform:uppercase">Rank — Motoristas</div>
         <div style="font-size:28px;font-weight:800;color:var(--amber);font-family:'DM Mono',monospace;margin:8px 0">${(ranking||[]).length}</div>
         <div style="font-size:12px;color:var(--text3)">na lista da semana</div>
       </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
       <div>
         <div class="tbl-wrap">
           <div class="tbl-head"><div style="font-size:13px;font-weight:700">Produtividade dos Monitores — Hoje</div></div>
@@ -16793,6 +16840,17 @@ async function _instrPainel(gid,back,tabBar){
             <thead><tr><th style="text-align:center">Pos</th><th>Motorista</th><th>Matrícula</th><th style="text-align:center">KM/L</th><th style="text-align:center">Inf</th><th>Monitor</th></tr></thead>
             <tbody>${rankRows}</tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="tbl-wrap">
+      <div class="tbl-head"><div style="font-size:13px;font-weight:700">Relatórios de Linha e Carro — Hoje</div></div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Tipo</th><th>Linha/Carro</th><th>Indicador</th><th>Observação</th><th>Monitor</th></tr></thead>
+          <tbody>${relHojeHtml}</tbody>
+        </table>
         </div>
       </div>
     </div>
