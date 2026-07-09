@@ -17560,10 +17560,12 @@ async function _instrPlanoDia(gid,back,tabBar){
           const ultimaHtml=ultima
             ?`<span style="font-size:10px;color:var(--text4);white-space:nowrap">Última: ${ultima.data.split('-').reverse().join('/')} (${escHtml(ultima.monitor_nome||'—')})</span>`
             :`<span style="font-size:10px;color:var(--red);white-space:nowrap">Nunca monitorado</span>`;
+          const valorSafe=String(valor).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
           return`<div style="padding:6px 0;border-top:1px solid var(--border2)">
             <div style="display:flex;align-items:center;gap:8px">
               <span style="flex:1;font-size:13px">${sugerido?'🤖 ':''}${escHtml(valor)}</span>
               <span style="font-size:11px;font-weight:700;color:${feito?'var(--green)':'var(--amber)'}">${feito?'✅ Feito':'⏳ Pendente'}</span>
+              ${feito?`<button onclick="_instrVerRelatorio('${gid}','${tipo}','${it.monitor_id}','${valorSafe}','${dataP}')" title="Ver relatório automático" style="background:transparent;border:none;color:var(--blue);cursor:pointer">📄</button>`:''}
               <button onclick="_instrPlanoRemover('${it.id}')" style="background:transparent;border:none;color:var(--text4);cursor:pointer">🗑️</button>
             </div>
             <div style="margin-top:2px">${ultimaHtml}</div>
@@ -17626,6 +17628,76 @@ async function _instrPlanoRemover(id){
   if(!confirm('Remover do plano?'))return;
   await sb.from('instrutor_atribuicoes').delete().eq('id',id);
   renderFerrInstrutor('plano_dia');
+}
+
+// Puxa o relatório automático que o monitor já preencheu pra esse item do
+// Plano do Dia (campo/linha/carro) e mostra no modal generico -- reusa
+// modal-alm em vez de criar um modal novo (mesmo padrao ja usado por varias
+// outras telas do app).
+async function _instrVerRelatorio(gid,tipo,monitorId,valor,data){
+  document.getElementById('modal-alm-title').textContent='📄 Relatório Automático';
+  document.getElementById('modal-alm-body').innerHTML='<div style="padding:20px;text-align:center;color:var(--text4)">⏳ Carregando...</div>';
+  document.getElementById('modal-alm').style.display='flex';
+
+  let regs=[];
+  if(tipo==='campo'){
+    const[{data:porMat},{data:porNome}]=await Promise.all([
+      sb.from('monitoria_registros').select('*').eq('garagem_id',gid).eq('monitor_id',monitorId).eq('data',data).eq('matricula',valor),
+      sb.from('monitoria_registros').select('*').eq('garagem_id',gid).eq('monitor_id',monitorId).eq('data',data).eq('motorista_nome',valor),
+    ]);
+    const vistos=new Set();
+    regs=[...(porMat||[]),...(porNome||[])].filter(r=>vistos.has(r.id)?false:(vistos.add(r.id),true));
+  }else if(tipo==='linha'){
+    const{data:rows}=await sb.from('monitor_relatorio_linha').select('*').eq('garagem_id',gid).eq('monitor_id',monitorId).eq('data',data).eq('linha',valor);
+    regs=rows||[];
+  }else if(tipo==='carro'){
+    const{data:rows}=await sb.from('monitor_relatorio_carro').select('*').eq('garagem_id',gid).eq('monitor_id',monitorId).eq('data',data).eq('prefixo',valor);
+    regs=rows||[];
+  }
+
+  if(!regs.length){
+    document.getElementById('modal-alm-body').innerHTML='<div style="padding:20px;text-align:center;color:var(--text4)">Nenhum relatório encontrado.</div>';
+    return;
+  }
+
+  const html=regs.map(r=>{
+    if(tipo==='campo'){
+      const infs=[
+        r.inf_velocidade?'⚡ Velocidade':null,r.inf_frenagem?'🛑 Frenagem':null,r.inf_aceleracao?'🚀 Aceleração':null,
+        r.inf_celular?'📱 Celular':null,r.inf_cinto?'🔒 Cinto':null,r.inf_postura?'🪑 Postura':null,
+      ].filter(Boolean);
+      return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-weight:700">${escHtml(r.motorista_nome||'—')}</span>
+          <span style="font-weight:800;color:${r.nota>=8?'var(--green)':r.nota>=6?'var(--amber)':'var(--red)'}">Nota: ${r.nota??'—'}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:6px">${r.linha?'Linha '+escHtml(r.linha)+' · ':''}${r.prefixo?escHtml(r.prefixo)+' · ':''}${r.data} · ${escHtml(r.monitor_nome||'—')}</div>
+        ${infs.length?`<div style="font-size:12px;color:var(--red);margin-bottom:6px">${infs.join(', ')}</div>`:'<div style="font-size:12px;color:var(--green);margin-bottom:6px">Nenhuma infração</div>'}
+        ${r.observacao?`<div style="font-size:13px;color:var(--text2)">${escHtml(r.observacao)}</div>`:''}
+      </div>`;
+    }
+    if(tipo==='linha'){
+      const pont=r.pontualidade_pct;
+      return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-weight:700">Linha ${escHtml(r.linha||'—')}</span>
+          <span style="font-weight:800;color:${(pont||0)>=90?'var(--green)':(pont||0)>=75?'var(--amber)':'var(--red)'}">${pont??'—'}%</span>
+        </div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Prog: ${r.viagens_programadas??'—'} · Real: ${r.viagens_realizadas??'—'} · Atrasos: ${r.atrasos??0} · ${r.data} · ${escHtml(r.monitor_nome||'—')}</div>
+        ${r.observacao?`<div style="font-size:13px;color:var(--text2)">${escHtml(r.observacao)}</div>`:''}
+      </div>`;
+    }
+    return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-weight:700;font-family:'DM Mono',monospace">${escHtml(r.prefixo||'—')}</span>
+        <span style="font-weight:800;color:${r.condicao_interna==='ok'?'var(--green)':r.condicao_interna==='atencao'?'var(--amber)':'var(--red)'}">${r.condicao_interna||'—'}</span>
+      </div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:6px">KM/L: ${r.km_l??'—'} · ${r.data} · ${escHtml(r.monitor_nome||'—')}</div>
+      ${r.observacao?`<div style="font-size:13px;color:var(--text2)">${escHtml(r.observacao)}</div>`:''}
+    </div>`;
+  }).join('');
+
+  document.getElementById('modal-alm-body').innerHTML=html;
 }
 
 async function _instrEscalaSemanal(gid,back,tabBar){
