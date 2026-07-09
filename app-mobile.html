@@ -5559,9 +5559,9 @@ async function renderPlantaoSOSForm(){
         ${Object.entries(PLANTAO_DECISAO).map(([v,lb])=>`<button onclick="selPlantaoDecisao('${v}',this)" style="padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">${lb}</button>`).join('')}
       </div>
       <input type="hidden" id="psos-decisao" value="">
-      <div id="psos-detalhe-wrap" style="display:none;margin-bottom:16px">
-        <label class="fl">Detalhe da decisão</label>
-        <input id="psos-decisao-detalhe" class="fi" placeholder="Ex: novo prefixo, novo motorista...">
+      <div style="margin-bottom:16px">
+        <label class="fl">Justificativa</label>
+        <input id="psos-decisao-detalhe" class="fi" placeholder="Ex: por que pode seguir rodando, novo prefixo, novo motorista...">
       </div>
       <button onclick="salvarPlantaoSOS()" style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--red);color:#fff;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">🆘 Registrar SOS</button>
       <button onclick="window._psosMode='lista';telaPlantaoSOS()" style="width:100%;margin-top:8px;padding:11px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-family:inherit;cursor:pointer">← Cancelar</button>
@@ -5638,8 +5638,6 @@ async function buscarHistoricoSOS(){
 
 function selPlantaoDecisao(val,btn){
   selPlantaoChip('psos-decisoes','psos-decisao',val,btn);
-  const wrap=document.getElementById('psos-detalhe-wrap');
-  if(wrap)wrap.style.display=val==='segue_rodando'?'none':'block';
 }
 
 async function salvarPlantaoSOS(){
@@ -5658,7 +5656,22 @@ async function salvarPlantaoSOS(){
     plantao_nome:S.perfil?.nome||null,plantao_id:S.perfil?.id||null,
   });
   if(error){toast('Erro: '+error.message,'err');return;}
-  toast('🆘 SOS registrado!');
+
+  if(decisao==='aciona_pcm'){
+    try{
+      await sb.from('relatorio_sos_218').insert({
+        garagem_id:gid,data:hoje(),turno:turnoOperacionalAtual(),prefixo,km:km||'',linha:linha||'',motorista:motorista||'',
+        data_ocorrencia:hoje(),problema,diagnostico:'',causa_raiz:'',acao_imediata:decisao_detalhe||'',
+        pecas:[],plano_acao:[],preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null,status:'enviado',
+      });
+      toast('🆘 SOS registrado e enviado pro PCM (2.18)!');
+    }catch(e){
+      console.warn('[plantao_sos → relatorio_sos_218] erro ao migrar:',e?.message);
+      toast('🆘 SOS registrado! (não conseguiu enviar automático pro PCM — avise por outro meio)','err');
+    }
+  }else{
+    toast('🆘 SOS registrado!');
+  }
   window._psosMode='lista';
   telaPlantaoSOS();
 }
