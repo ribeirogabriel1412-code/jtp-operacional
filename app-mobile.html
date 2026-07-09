@@ -183,14 +183,16 @@ async function telaHome(){
   const lavPend=lavList.filter(l=>l.status!=='executado'&&l.tipo_lavagem!=='leve');
 
   // Queries dos Pontos de Controle
-  let recList=[],abList=[],escalaD1=[],avariasList=[];
+  let recList=[],abList=[],escalaD1=[],avariasList=[],dobrasList=[],absList=[];
   if(temPainel){
     const dSol=opAddDays(dRef,1);
-    [recList,abList,escalaD1,avariasList]=await Promise.all([
+    [recList,abList,escalaD1,avariasList,dobrasList,absList]=await Promise.all([
       sb.from('recolha_checklist').select('prefixo,horario_real,status,linha,tabela,motorista').eq('garagem_id',gid).eq('data_recolha',dRef).then(r=>r.data||[]),
       sb.from('abastecimento_checklist').select('prefixo,horario').eq('garagem_id',gid).eq('data',dRef).then(r=>r.data||[]),
       sb.from('soltura_2_10').select('prefixo,linha,horario_programado').eq('garagem_id',gid).eq('data',dSol).then(r=>r.data||[]),
       sb.from('avarias_recolha').select('id,prefixo,status,itens_nok,data_recolha,plantao_nome,horario_real').eq('garagem_id',gid).neq('status','resolvido').order('created_at',{ascending:false}).then(r=>r.data||[]),
+      sb.from('plantao_dobras').select('motorista,prefixo,linha,motivo,created_at').eq('garagem_id',gid).eq('data',dRef).order('created_at',{ascending:false}).then(r=>r.data||[]),
+      sb.from('plantao_absenteismo').select('motorista,prefixo,linha,motivo,cobertura,created_at').eq('garagem_id',gid).eq('data',dRef).order('created_at',{ascending:false}).then(r=>r.data||[]),
     ]);
   }
 
@@ -231,6 +233,24 @@ async function telaHome(){
     </div>`;
   }).join('');
 
+  // Cards Dobras & Absenteísmo (registrados pelo Plantão)
+  const totDobras=dobrasList.length,totAbsent=absList.length;
+  const dobrasAbsCards=[
+    ...dobrasList.map(r=>({...r,_tipo:'dobra'})),
+    ...absList.map(r=>({...r,_tipo:'absenteismo'})),
+  ].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))).map(r=>{
+    const isDobra=r._tipo==='dobra';
+    const cor=isDobra?'var(--amber)':'var(--red)';
+    const motivoLbl=isDobra?(PLANTAO_MOTIVO_DOBRA[r.motivo]||r.motivo||'—'):(PLANTAO_MOTIVO_ABS[r.motivo]||r.motivo||'—');
+    return`<div style="background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:8px;border-left:3px solid ${cor}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+        <span style="font-weight:700;font-size:13px">${escHtml(r.motorista)}</span>
+        <span style="font-size:10px;font-weight:700;color:${cor};background:${cor}20;padding:2px 8px;border-radius:20px">${isDobra?'DOBRA':'ABSENTEÍSMO'}</span>
+      </div>
+      <div style="font-size:11px;color:var(--text3)">${motivoLbl}${r.linha?' · '+escHtml(r.linha):''}${!isDobra&&r.cobertura?' · '+(PLANTAO_COBERTURA[r.cobertura]||r.cobertura):''}</div>
+    </div>`;
+  }).join('');
+
   // Header accordion
   const hdr=(id,icon,label,badge,cor)=>`
     <div onclick="_toggleHomePanel('${id}')" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;cursor:pointer;${id!=='rec'?'border-top:1px solid var(--border2)':''}">
@@ -250,6 +270,9 @@ async function telaHome(){
       </div>
       ${hdr('av','⚠️','Avarias',totAv?totAv+' em aberto':null,'var(--red)')}
         ${avCards||'<div style="font-size:12px;color:var(--green);text-align:center;padding:8px 0">✅ Nenhuma avaria em aberto</div>'}
+      </div>
+      ${hdr('dobras','🔁','Dobras & Absenteísmo',(totDobras+totAbsent)?`${totDobras} dobra(s) · ${totAbsent} falta(s)`:null,'var(--amber)')}
+        ${dobrasAbsCards||'<div style="font-size:12px;color:var(--text4);text-align:center;padding:8px 0">Nenhum registro do plantão hoje</div>'}
       </div>
       ${hdr('lav','🚿','Lavagem',lavT?lavE+'/'+lavT+(lavE===lavT&&lavT>0?' ✅':''):null,lavE===lavT&&lavT>0?'var(--green)':'var(--blue)')}
         ${lavT===0
@@ -5290,6 +5313,165 @@ async function salvarRecolha(horarioRef=''){
 }
 
 // ══════════════════════════════════════════════════════════
+// PLANTÃO — REGISTRO (Dobras & Absenteísmo)
+// ══════════════════════════════════════════════════════════
+const PLANTAO_MOTIVO_DOBRA={cobertura_falta:'Cobertura de falta',reforco:'Reforço',outro:'Outro'};
+const PLANTAO_MOTIVO_ABS={falta_injustificada:'Falta injustificada',atestado:'Atestado',atraso:'Atraso',outro:'Outro'};
+const PLANTAO_COBERTURA={reserva:'Reserva',dobra:'Dobra',sem_cobertura:'Sem cobertura'};
+
+async function telaPlantaoReg(){
+  const gid=getGid();
+  window._pReg=window._pReg||'dobra';
+  render('<div class="loading"><div class="sp"></div></div>');
+
+  const[{data:dobrasHoje},{data:absHoje}]=await Promise.all([
+    sb.from('plantao_dobras').select('*').eq('garagem_id',gid).eq('data',hoje()).order('created_at',{ascending:false}),
+    sb.from('plantao_absenteismo').select('*').eq('garagem_id',gid).eq('data',hoje()).order('created_at',{ascending:false}),
+  ]);
+
+  const registros=[
+    ...(dobrasHoje||[]).map(r=>({...r,_tipo:'dobra'})),
+    ...(absHoje||[]).map(r=>({...r,_tipo:'absenteismo'})),
+  ].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
+
+  const cardsHoje=registros.map(r=>{
+    const isDobra=r._tipo==='dobra';
+    const cor=isDobra?'var(--amber)':'var(--red)';
+    const lbl=isDobra?'🔁 Dobra':'⚠️ Absenteísmo';
+    const motivoLbl=isDobra?(PLANTAO_MOTIVO_DOBRA[r.motivo]||r.motivo||'—'):(PLANTAO_MOTIVO_ABS[r.motivo]||r.motivo||'—');
+    const hora=r.created_at?new Date(r.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';
+    return `<div class="card" style="margin-bottom:8px;border-left:3px solid ${cor}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span style="font-size:11px;font-weight:800;color:${cor}">${lbl}</span>
+        <span style="font-size:10px;color:var(--text4)">${hora}</span>
+      </div>
+      <div style="font-weight:700;font-size:14px">${escHtml(r.motorista)}</div>
+      <div style="font-size:12px;color:var(--text3)">${motivoLbl}${r.linha?' · '+escHtml(r.linha):''}${!isDobra&&r.cobertura?' · '+(PLANTAO_COBERTURA[r.cobertura]||r.cobertura):''}</div>
+    </div>`;
+  }).join('');
+
+  const tabBtn=(t,ic,lb)=>`<button onclick="window._pReg='${t}';telaPlantaoReg()" style="flex:1;padding:12px;border-radius:10px;border:1px solid ${window._pReg===t?'var(--amber)':'var(--border)'};background:${window._pReg===t?'#F59E0B18':'var(--surface)'};color:${window._pReg===t?'var(--amber)':'var(--text3)'};font-size:13px;font-weight:800;font-family:inherit;cursor:pointer">${ic} ${lb}</button>`;
+
+  const formDobra=`
+    <label class="fl">Data</label>
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:12px">
+      <input type="date" id="pd-data" class="fi" style="margin-bottom:0" value="${hoje()}">
+      <button onclick="document.getElementById('pd-data').showPicker()" style="padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">📅</button>
+    </div>
+    <label class="fl">Motorista</label>
+    <input id="pd-motorista" class="fi" placeholder="Matrícula ou nome..." style="margin-bottom:12px;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+      <div><label class="fl">Prefixo</label><input id="pd-prefixo" class="fi" placeholder="Opcional" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"></div>
+      <div><label class="fl">Linha</label><input id="pd-linha" class="fi" placeholder="Opcional"></div>
+    </div>
+    <label class="fl">Motivo</label>
+    <div id="pd-motivos" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">
+      ${Object.entries(PLANTAO_MOTIVO_DOBRA).map(([v,lb])=>`<button onclick="selPlantaoChip('pd-motivos','pd-motivo','${v}',this)" style="padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">${lb}</button>`).join('')}
+    </div>
+    <input type="hidden" id="pd-motivo" value="">
+    <label class="fl">Autorizado por</label>
+    <input id="pd-autorizado" class="fi" placeholder="Opcional" style="margin-bottom:16px">
+    <button onclick="salvarPlantaoDobra()" style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--amber);color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">🔁 Registrar Dobra</button>
+  `;
+
+  const formAbs=`
+    <label class="fl">Data</label>
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:12px">
+      <input type="date" id="pa-data" class="fi" style="margin-bottom:0" value="${hoje()}">
+      <button onclick="document.getElementById('pa-data').showPicker()" style="padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">📅</button>
+    </div>
+    <label class="fl">Motorista faltante</label>
+    <input id="pa-motorista" class="fi" placeholder="Matrícula ou nome..." style="margin-bottom:12px;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+      <div><label class="fl">Prefixo</label><input id="pa-prefixo" class="fi" placeholder="Opcional" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"></div>
+      <div><label class="fl">Linha</label><input id="pa-linha" class="fi" placeholder="Opcional"></div>
+    </div>
+    <label class="fl">Motivo</label>
+    <div id="pa-motivos" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">
+      ${Object.entries(PLANTAO_MOTIVO_ABS).map(([v,lb])=>`<button onclick="selPlantaoChip('pa-motivos','pa-motivo','${v}',this)" style="padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer">${lb}</button>`).join('')}
+    </div>
+    <input type="hidden" id="pa-motivo" value="">
+    <label class="fl">Cobertura</label>
+    <div id="pa-coberturas" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px">
+      ${Object.entries(PLANTAO_COBERTURA).map(([v,lb])=>`<button onclick="selPlantaoCobertura('${v}',this)" style="padding:10px 4px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:11px;font-weight:700;font-family:inherit;cursor:pointer">${lb}</button>`).join('')}
+    </div>
+    <input type="hidden" id="pa-cobertura" value="">
+    <div id="pa-cob-mot-wrap" style="display:none;margin-bottom:16px">
+      <label class="fl">Motorista de cobertura</label>
+      <input id="pa-cobertura-motorista" class="fi" placeholder="Matrícula ou nome..." style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()">
+    </div>
+    <button onclick="salvarPlantaoAbsenteismo()" style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--red);color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">⚠️ Registrar Absenteísmo</button>
+  `;
+
+  render(`
+    <div style="padding:14px 14px 0"><div style="font-weight:800;font-size:17px;margin-bottom:12px">📋 Registro do Plantão</div></div>
+    <div style="display:flex;gap:8px;padding:0 14px 14px">
+      ${tabBtn('dobra','🔁','Dobra')}
+      ${tabBtn('absenteismo','⚠️','Absenteísmo')}
+    </div>
+    <div class="card" style="margin:0 14px 14px">
+      ${window._pReg==='dobra'?formDobra:formAbs}
+    </div>
+    <div class="sl">Registros de hoje ${registros.length?'· '+registros.length:''}</div>
+    <div style="padding:0 14px 14px">
+      ${cardsHoje||'<div class="empty"><div class="empty-ic">📋</div><div style="font-weight:700">Nenhum registro hoje</div></div>'}
+    </div>
+  `);
+}
+
+function selPlantaoChip(containerId,hiddenId,val,btn){
+  document.getElementById(hiddenId).value=val;
+  document.querySelectorAll('#'+containerId+' button').forEach(b=>{
+    b.style.border='1px solid var(--border)';b.style.background='transparent';b.style.color='var(--text3)';
+  });
+  btn.style.border='2px solid var(--amber)';btn.style.background='#F59E0B18';btn.style.color='var(--amber)';
+}
+
+function selPlantaoCobertura(val,btn){
+  selPlantaoChip('pa-coberturas','pa-cobertura',val,btn);
+  const wrap=document.getElementById('pa-cob-mot-wrap');
+  if(wrap)wrap.style.display=val==='dobra'?'block':'none';
+}
+
+async function salvarPlantaoDobra(){
+  const gid=getGid();
+  const data=document.getElementById('pd-data')?.value||hoje();
+  const motorista=document.getElementById('pd-motorista')?.value?.trim();
+  const prefixo=document.getElementById('pd-prefixo')?.value?.trim()||null;
+  const linha=document.getElementById('pd-linha')?.value?.trim()||null;
+  const motivo=document.getElementById('pd-motivo')?.value||null;
+  const autorizado_por=document.getElementById('pd-autorizado')?.value?.trim()||null;
+  if(!motorista){toast('Informe o motorista','err');return;}
+  const{error}=await sb.from('plantao_dobras').insert({
+    garagem_id:gid,data,motorista,prefixo,linha,motivo,autorizado_por,
+    plantao_nome:S.perfil?.nome||null,plantao_id:S.perfil?.id||null,
+  });
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('🔁 Dobra registrada!');
+  telaPlantaoReg();
+}
+
+async function salvarPlantaoAbsenteismo(){
+  const gid=getGid();
+  const data=document.getElementById('pa-data')?.value||hoje();
+  const motorista=document.getElementById('pa-motorista')?.value?.trim();
+  const prefixo=document.getElementById('pa-prefixo')?.value?.trim()||null;
+  const linha=document.getElementById('pa-linha')?.value?.trim()||null;
+  const motivo=document.getElementById('pa-motivo')?.value||null;
+  const cobertura=document.getElementById('pa-cobertura')?.value||null;
+  const cobertura_motorista=document.getElementById('pa-cobertura-motorista')?.value?.trim()||null;
+  if(!motorista){toast('Informe o motorista faltante','err');return;}
+  if(!motivo){toast('Selecione o motivo','err');return;}
+  const{error}=await sb.from('plantao_absenteismo').insert({
+    garagem_id:gid,data,motorista,prefixo,linha,motivo,cobertura,cobertura_motorista,
+    plantao_nome:S.perfil?.nome||null,plantao_id:S.perfil?.id||null,
+  });
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('⚠️ Absenteísmo registrado!');
+  telaPlantaoReg();
+}
+
+// ══════════════════════════════════════════════════════════
 // ABASTECIMENTO (Frentista)
 // ══════════════════════════════════════════════════════════
 let _abFrotaLista=[], _abBuscaAtiva='';
@@ -8807,7 +8989,7 @@ async function salvarAvaria(id){
 }
 
 // ─────────────────────────────────────────────────────────────────
-const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,acomp_manut:telaAcompManutencao,prev26:telaPrev26,valet_oficina:telaValetOficina,prev_oficina:telaPrevOficina,valet_almox:telaValetAlmox,ronda33:telaRonda33,patio_man:telaPatioMan,recolha:telaRecolha,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip,sos218:telaSOS218,fech21:telaFech21,lubrificacao:telaLubrificacao,lubri_rel:telaLubriRel,avarias:telaAvariasDashboard,monitor:telaMonitor};
+const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,acomp_manut:telaAcompManutencao,prev26:telaPrev26,valet_oficina:telaValetOficina,prev_oficina:telaPrevOficina,valet_almox:telaValetAlmox,ronda33:telaRonda33,patio_man:telaPatioMan,recolha:telaRecolha,plantao_reg:telaPlantaoReg,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip,sos218:telaSOS218,fech21:telaFech21,lubrificacao:telaLubrificacao,lubri_rel:telaLubriRel,avarias:telaAvariasDashboard,monitor:telaMonitor};
 
 // ── INIT ───────────────────────────────────────────────────
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login').style.display!=='none')doLogin()});
