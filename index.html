@@ -4957,11 +4957,16 @@ async function confCruzarRotativo(){
   const wmsCell=d=>`<td style="padding:7px 10px;font-family:monospace;font-size:11px;color:var(--blue);white-space:nowrap">${d.wms&&d.wms.length?escHtml(d.wms.join(', ')):'<span style="color:var(--text4);font-family:inherit">—</span>'}</td>`;
   const duplaCell=d=>{
     if(!d.dupla) return `<td style="padding:7px 10px;color:var(--text4)">—</td>`;
-    const cor=d.dupla.diverge?'var(--danger)':'var(--green)';
-    const txt=d.dupla.contagens.map(c=>`${escHtml(c.nome)}: ${N(parseFloat(c.qtd))}`).join(' · ');
+    const diverge=d.dupla.diverge;
+    const cor=diverge?'var(--danger)':'var(--green)';
+    const badge=`<span style="display:inline-flex;align-items:center;gap:4px;background:${cor}22;color:${cor};border:1px solid ${cor}55;border-radius:99px;padding:2px 8px;font-size:10px;font-weight:900;white-space:nowrap">${diverge?'⚠️ Diverge':'✅ Bate'}</span>`;
+    const primeiroNome=n=>String(n||'—').split(' ')[0];
+    const linhas=d.dupla.contagens.map(c=>
+      `<span style="color:var(--text3)">${escHtml(primeiroNome(c.nome))}</span> <b style="font-family:monospace;color:${diverge?'var(--danger)':'var(--text2)'}">${N(parseFloat(c.qtd))}</b>`
+    ).join(' <span style="color:var(--text4)">·</span> ');
     return `<td style="padding:7px 10px;font-size:11px;white-space:nowrap">
-      <div>${txt}</div>
-      <div style="font-weight:800;color:${cor};margin-top:2px">${d.dupla.diverge?'⚠️ Diverge':'✅ Bate'}</div>
+      <div style="margin-bottom:3px">${badge}</div>
+      <div>${linhas}</div>
     </td>`;
   };
 
