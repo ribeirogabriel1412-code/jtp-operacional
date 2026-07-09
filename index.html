@@ -4929,7 +4929,7 @@ async function confCruzarRotativo(){
       fisAjustado,difAjustado,
       dupla:duplaMap[k]||null,
     };
-  }).sort((a,b)=>b.data.localeCompare(a.data)||a.cod.localeCompare(b.cod));
+  }).sort((a,b)=>(b.difSap??-Infinity)-(a.difSap??-Infinity)||b.data.localeCompare(a.data)||a.cod.localeCompare(b.cod));
 
   const N=v=>v==null?'—':Number.isInteger(v)?v:v.toFixed(2);
   const difCell=v=>{
