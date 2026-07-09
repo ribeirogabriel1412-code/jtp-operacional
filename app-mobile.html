@@ -5602,7 +5602,8 @@ async function buscarHistoricoSOS(){
   const el=document.getElementById('psos-historico');
   el.innerHTML='<div style="text-align:center;padding:12px;color:var(--text3);font-size:12px">Buscando...</div>';
 
-  const[{data:prevData},{data:osData},{data:avData},{data:solData}]=await Promise.all([
+  const[{data:prevData},{data:lubriData},{data:osData},{data:avData},{data:solData}]=await Promise.all([
+    sb.from('ocorrencias_22').select('tipo,status,hora_entrada,hora_liberacao').eq('garagem_id',gid).eq('prefixo',prefixo).ilike('tipo','%preventiva%').order('hora_entrada',{ascending:false}).limit(1),
     sb.from('checklist_lubrificacao').select('data').eq('garagem_id',gid).eq('prefixo',prefixo).order('data',{ascending:false}).limit(1),
     sb.from('ocorrencias_22').select('descricao,status,hora_entrada').eq('garagem_id',gid).eq('prefixo',prefixo).order('hora_entrada',{ascending:false}).limit(3),
     sb.from('avarias_recolha').select('itens_nok,status,data_recolha').eq('garagem_id',gid).eq('prefixo',prefixo).neq('status','resolvido').order('created_at',{ascending:false}).limit(3),
@@ -5615,9 +5616,13 @@ async function buscarHistoricoSOS(){
     if(lEl&&!lEl.value)lEl.value=solData[0].linha||'';
   }
 
+  const TIPO_PREV_LBL={preventiva_leve:'Preventiva Leve',preventiva_pesada:'Preventiva Pesada',preventiva_garantia:'Garantia'};
   const blocos=[];
-  blocos.push(`<div style="font-size:11px;font-weight:800;color:var(--text3);margin-bottom:4px">🛢️ ÚLTIMA PREVENTIVA/LUBRIFICAÇÃO</div>
-    <div style="font-size:12px;color:var(--text2);margin-bottom:10px">${prevData?.[0]?.data?new Date(prevData[0].data+'T00:00:00').toLocaleDateString('pt-BR'):'Nenhum registro'}</div>`);
+  const prev=prevData?.[0];
+  blocos.push(`<div style="font-size:11px;font-weight:800;color:var(--text3);margin-bottom:4px">🔧 ÚLTIMA PREVENTIVA (PRAXIO)</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px">${prev?`${(prev.hora_entrada?new Date(prev.hora_entrada):null)?.toLocaleDateString('pt-BR')||'—'} · ${TIPO_PREV_LBL[prev.tipo]||prev.tipo} · ${prev.status==='liberado'?'✅ liberado':'🔧 '+(prev.status||'')}`:'Nenhuma preventiva sincronizada do PRAXIO'}</div>
+    <div style="font-size:11px;font-weight:800;color:var(--text3);margin-bottom:4px">🛢️ Última lubrificação (app)</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px">${lubriData?.[0]?.data?new Date(lubriData[0].data+'T00:00:00').toLocaleDateString('pt-BR'):'Nenhum registro'}</div>`);
 
   blocos.push(`<div style="font-size:11px;font-weight:800;color:var(--text3);margin-bottom:4px">🔧 ÚLTIMAS OS</div>
     ${(osData&&osData.length)?osData.map(o=>`<div style="font-size:12px;color:var(--text2);margin-bottom:4px">${o.hora_entrada?new Date(o.hora_entrada).toLocaleDateString('pt-BR'):'—'} · ${o.status==='liberado'?'✅ liberado':'🔧 '+(o.status||'')}${o.descricao?' — '+escHtml(o.descricao):''}</div>`).join(''):'<div style="font-size:12px;color:var(--text4);margin-bottom:10px">Nenhuma OS encontrada</div>'}`);
