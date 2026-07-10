@@ -1,9 +1,17 @@
 # Explorador de Schema Oracle -- PRAXIO / Painel "Cumprimento de Revisao"
+# Objetivo: achar a tabela/view fonte do relatorio MAN que hoje e importado
+# manualmente em PDF no Painel Preventivas (ferr-prev, index.html). Esse PDF
+# tem por linha: carro, plano, GRUPO DE REVISAO, KM da ultima execucao,
+# qtd de execucoes, KM atual, KM da proxima execucao, KM percorrido desde a
+# ultima, EXCESSO de KM, EXCESSO de dias, pendente (sim/nao) -- ver
+# parsearMANPreventiva() no index.html (~linha 14793) pros nomes exatos dos
+# campos que estamos tentando casar.
+#
 # O Oracle desse servidor tem ~7000 tabelas (banco corporativo inteiro, nao so
-# manutencao) -- entao NAO vasculhamos tabela por tabela. Em vez disso, buscamos
-# direto no dicionario de dados (ALL_TAB_COLUMNS) por tabelas que tenham colunas
-# com nomes parecidos aos que ja vimos em tabelas reais (CODIGOVEIC, PREFIXO_ATUAL,
-# DATA_INICIO, DATA_FIM, PREFIXO_OS, EMPRESA) e ao painel oficial de revisao.
+# manutencao) -- entao NAO vasculhamos tabela por tabela. Buscamos direto no
+# dicionario de dados (ALL_TAB_COLUMNS/ALL_TABLES/ALL_VIEWS) por padroes
+# genericos (peso baixo) e especificos dos campos acima (peso alto), e
+# tambem pelo NOME da tabela/view.
 #
 # RODAR NO SERVIDOR (unico lugar com IP liberado no ODBC GLOBUSSERVER).
 #
@@ -62,9 +70,19 @@ function Roda-Query($sql, $timeout = 60) {
 }
 
 # -- Busca tabelas cujas colunas batem com nomes reais ja confirmados no Oracle --
-$padroes = @(
-    "%CODIGOVEIC%", "%PREFIXO%", "%DATA_INICIO%", "%DATA_FIM%",
-    "%REVIS%", "%PREVENT%", "%GARAGEM%", "%STATUS%", "%CONDICAO%"
+# Padroes GENERICOS (pesam pouco -- toda tabela de veiculo/OS tem isso, sozinhos nao provam nada)
+$padroesGenericos = @(
+    "%CODIGOVEIC%", "%PREFIXO%", "%GARAGEM%", "%STATUS%", "%CONDICAO%"
+)
+# Padroes ESPECIFICOS -- sao os campos que o PDF "Cumprimento de Revisao" realmente
+# mostra por veiculo/plano (kmUltima, execucoes, kmAtual, proximaExecucao,
+# kmPercorridoUltima, excessoKm, excessoDias, "Grupo de revisao"). Uma tabela com
+# QUALQUER um desses e muito mais provavel de ser a fonte real do painel do que
+# uma que so tem PREFIXO/GARAGEM/STATUS (que 100+ tabelas do PRAXIO tem).
+$padroesEspecificos = @(
+    "%REVIS%", "%PREVENT%", "%PLANOMAN%", "%PLANOREV%", "%GRUPOREV%",
+    "%EXCESSO%", "%PROXIM%", "%KMULT%", "%KMATUAL%", "%KMPROX%",
+    "%DATAULT%", "%ULTEXEC%", "%QTDEXEC%", "%INTERVALOKM%", "%PERIODICID%"
 )
 
 Log ""
@@ -72,13 +90,14 @@ Log "========================================================"
 Log "Tabelas com colunas parecidas ao painel 'Cumprimento de Revisao'"
 Log "========================================================"
 
-$candidatas = @{}  # "OWNER.TABLE" -> lista de colunas batidas
+$candidatas = @{}       # "OWNER.TABLE" -> lista de colunas batidas (generico + especifico)
+$pesoEspecifico = @{}   # "OWNER.TABLE" -> quantas colunas ESPECIFICAS bateram
 
-foreach ($p in $padroes) {
+foreach ($p in $padroesGenericos) {
     try {
         $sql = "SELECT OWNER, TABLE_NAME, COLUMN_NAME FROM ALL_TAB_COLUMNS WHERE COLUMN_NAME LIKE '$p'"
         $linhas = Roda-Query $sql
-        Log "Padrao '$p': $($linhas.Count) colunas encontradas"
+        Log "Padrao generico '$p': $($linhas.Count) colunas encontradas"
         foreach ($linha in $linhas) {
             $chave = "$($linha.OWNER).$($linha.TABLE_NAME)"
             if (-not $candidatas.ContainsKey($chave)) { $candidatas[$chave] = @() }
@@ -90,13 +109,52 @@ foreach ($p in $padroes) {
     }
 }
 
-# Ordena por quantidade de colunas batidas (a tabela certa deve ter varias, nao so 1)
-$ordenadas = $candidatas.GetEnumerator() | Sort-Object { $_.Value.Count } -Descending
+foreach ($p in $padroesEspecificos) {
+    try {
+        $sql = "SELECT OWNER, TABLE_NAME, COLUMN_NAME FROM ALL_TAB_COLUMNS WHERE COLUMN_NAME LIKE '$p'"
+        $linhas = Roda-Query $sql
+        Log "Padrao ESPECIFICO '$p': $($linhas.Count) colunas encontradas"
+        foreach ($linha in $linhas) {
+            $chave = "$($linha.OWNER).$($linha.TABLE_NAME)"
+            if (-not $candidatas.ContainsKey($chave)) { $candidatas[$chave] = @() }
+            $candidatas[$chave] += $linha.COLUMN_NAME
+            if (-not $pesoEspecifico.ContainsKey($chave)) { $pesoEspecifico[$chave] = 0 }
+            $pesoEspecifico[$chave] += 1
+        }
+    } catch {
+        Log "Padrao '$p' falhou: $($_.Exception.Message)"
+        if ($_.Exception.InnerException) { Log "  Detalhe interno: $($_.Exception.InnerException.Message)" }
+    }
+}
+
+# Tambem busca pelo NOME da tabela/view (nao so das colunas) -- a tabela fonte do
+# painel de revisao provavelmente tem REVIS/PREVENT/PLANO no proprio nome.
+Log ""
+Log "Tabelas/views cujo NOME contem REVIS/PREVENT/PLANOMAN:"
+try {
+    $porNome = Roda-Query "SELECT OWNER, TABLE_NAME FROM ALL_TABLES WHERE TABLE_NAME LIKE '%REVIS%' OR TABLE_NAME LIKE '%PREVENT%' OR TABLE_NAME LIKE '%PLANOMAN%' UNION SELECT OWNER, VIEW_NAME AS TABLE_NAME FROM ALL_VIEWS WHERE VIEW_NAME LIKE '%REVIS%' OR VIEW_NAME LIKE '%PREVENT%' OR VIEW_NAME LIKE '%PLANOMAN%'"
+    foreach ($t in $porNome) {
+        $chave = "$($t.OWNER).$($t.TABLE_NAME)"
+        Log "  $chave"
+        if (-not $candidatas.ContainsKey($chave)) { $candidatas[$chave] = @('(achada pelo nome da tabela)') }
+        if (-not $pesoEspecifico.ContainsKey($chave)) { $pesoEspecifico[$chave] = 0 }
+        $pesoEspecifico[$chave] += 5   # nome bater e forte indicio, pesa mais que 1 coluna
+    }
+} catch {
+    Log "  Busca por nome falhou: $($_.Exception.Message)"
+}
+
+# Ordena por PESO ESPECIFICO primeiro (o que realmente distingue a tabela certa),
+# desempate por quantidade total de colunas batidas.
+$ordenadas = $candidatas.GetEnumerator() | Sort-Object -Property `
+    @{Expression={ if ($pesoEspecifico.ContainsKey($_.Key)) { $pesoEspecifico[$_.Key] } else { 0 } }; Descending=$true}, `
+    @{Expression={ $_.Value.Count }; Descending=$true}
 
 Log ""
-Log "Tabelas candidatas (ordenadas por qtd de colunas batidas):"
+Log "Tabelas candidatas (ordenadas por peso especifico, depois qtd de colunas batidas):"
 foreach ($item in $ordenadas) {
-    Log "  $($item.Key) -- colunas: $($item.Value -join ', ')"
+    $peso = if ($pesoEspecifico.ContainsKey($item.Key)) { $pesoEspecifico[$item.Key] } else { 0 }
+    Log "  $($item.Key) [peso especifico=$peso] -- colunas: $($item.Value -join ', ')"
 }
 
 if (@($ordenadas).Count -eq 0) {
@@ -104,12 +162,12 @@ if (@($ordenadas).Count -eq 0) {
     Log "NENHUMA tabela encontrada com esses padroes. Talvez os nomes de coluna"
     Log "reais sejam diferentes. Nesse caso, me avise para tentar padroes diferentes."
 } else {
-    # -- Para as top 8 candidatas, mostra TODAS as colunas + amostra de linhas --
+    # -- Para as top 10 candidatas, mostra TODAS as colunas + amostra de linhas --
     Log ""
     Log "========================================================"
-    Log "Detalhe das top 8 candidatas"
+    Log "Detalhe das top 10 candidatas"
     Log "========================================================"
-    $top8 = @($ordenadas) | Select-Object -First 8
+    $top8 = @($ordenadas) | Select-Object -First 10
     foreach ($item in $top8) {
         $partes = $item.Key -split '\.', 2
         $owner = $partes[0]; $nome = $partes[1]

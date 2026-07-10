@@ -13406,6 +13406,10 @@ function prevToggleSelTodos(tipo,sel){
 // Distribui os veículos selecionados pelos 5 dias da semana, respeitando
 // qualquer dia escolhido manualmente (_prevDiaManual) e preenchendo o
 // restante em ordem, na primeira vaga livre dentro da capacidade do dia.
+// Se sobrar mais veículos do que a capacidade da semana (capDia × dias),
+// a sobra é distribuída em rodízio entre os dias (1 a mais por dia, depois
+// mais 1, etc.) em vez de empilhar tudo no último dia — evita concentrar
+// uma semana pesada inteira numa sexta-feira só.
 function prevAtribuirDias(veics,dias,capDia,tipo){
   const porDia=Array.from({length:dias.length},()=>[]);
   const semDia=[];
@@ -13418,7 +13422,8 @@ function prevAtribuirDias(veics,dias,capDia,tipo){
   porDia.forEach((lista,i)=>{
     while(lista.length<capDia&&idx<semDia.length){ lista.push(semDia[idx]); idx++; }
   });
-  while(idx<semDia.length){ porDia[dias.length-1].push(semDia[idx]); idx++; } // sobra além da capacidade da semana
+  let dia=0;
+  while(idx<semDia.length){ porDia[dia%dias.length].push(semDia[idx]); idx++; dia++; } // sobra além da capacidade: rodízio pelos dias
   return porDia;
 }
 function prevMoverCarroDia(tipo,prefixo,diaIdx){
@@ -13438,8 +13443,12 @@ function prevBuildEscalaFromSelecoes(){
     const veics=[...selSet].map(pref=>p.porPrefixo?.get(pref)).filter(Boolean).sort(prevOrdenarPreventiva);
     const porDia=prevAtribuirDias(veics,dias,capDia,tipo);
     porDia.forEach((lista,dia)=>{
+      // Sem limite de slot aqui: quando a semana tem mais veículos que a capacidade
+      // padrão, prevAtribuirDias já distribuiu a sobra em rodízio pelos dias — os
+      // slots extras (índice >= capDia) são gravados normalmente e o grid em
+      // prevMontarEscala() se ajusta pra mostrá-los (prevSlotCountDia). Antes esse
+      // corte aqui descartava silenciosamente os carros que sobravam no dia lotado.
       lista.forEach((c,slot)=>{
-        if(slot>=capDia)return; // segurança: mais carros que vagas na semana
         _prevEscalaAlteracoes[prevSlotKey(tipo,dia,slot)]={tipo,prefixo:c.prefixo};
       });
     });
@@ -13950,6 +13959,23 @@ function prevCandidatoPorPrefixo(p,prefixo,tipoPreferido){
   return base?{...base,tipo:tipoPreferido||'manual',prioridade:base.maiorExcesso,base:base.itens[0],descricoes:prevServicosDoCarro(base,tipoPreferido)}:null;
 }
 
+// Quantos slots mostrar num dia/tipo: normalmente a capacidade padrão (PREV_CAP),
+// mas se prevAtribuirDias já gravou carros em índices além dela (semana com mais
+// preventivas que o normal, distribuídas em rodízio pelos dias), o grid cresce
+// pra caber todos — sem isso, os carros extras ficariam gravados mas invisíveis
+// (nenhum slot na tela pra mostrá-los) e sumiriam do fechamento sem aviso.
+function prevSlotCountDia(tipo,dia,capDia){
+  let maxIdx=capDia-1;
+  Object.keys(_prevEscalaAlteracoes).forEach(key=>{
+    if(_prevEscalaAlteracoes[key]==null)return;
+    const partes=key.split(':');
+    if(partes[0]===tipo&&parseInt(partes[1],10)===dia){
+      const idx=parseInt(partes[2],10);
+      if(idx>maxIdx)maxIdx=idx;
+    }
+  });
+  return maxIdx+1;
+}
 function prevMontarEscala(p){
   const dias=prevDiasSemana();
   const semana=prevSelecionarSemana(p);
@@ -13971,9 +13997,9 @@ function prevMontarEscala(p){
   };
   return dias.map((d,i)=>({
     ...d,
-    garantias:Array.from({length:PREV_CAP.garantiaDia},(_,s)=>slot('garantia',i,s,baseGarantias[i*PREV_CAP.garantiaDia+s])),
-    pesadas:Array.from({length:PREV_CAP.pesadaDia},(_,s)=>slot('pesada',i,s,basePesadas[i*PREV_CAP.pesadaDia+s])),
-    leves:Array.from({length:PREV_CAP.leveDia},(_,s)=>slot('leve',i,s,baseLeves[i*PREV_CAP.leveDia+s]))
+    garantias:Array.from({length:prevSlotCountDia('garantia',i,PREV_CAP.garantiaDia)},(_,s)=>slot('garantia',i,s,baseGarantias[i*PREV_CAP.garantiaDia+s])),
+    pesadas:Array.from({length:prevSlotCountDia('pesada',i,PREV_CAP.pesadaDia)},(_,s)=>slot('pesada',i,s,basePesadas[i*PREV_CAP.pesadaDia+s])),
+    leves:Array.from({length:prevSlotCountDia('leve',i,PREV_CAP.leveDia)},(_,s)=>slot('leve',i,s,baseLeves[i*PREV_CAP.leveDia+s]))
   }));
 }
 function prevHtmlPropostasEscala(){
@@ -14180,9 +14206,9 @@ function prevHtmlEscalaSemanal(escala,ultimas){
         <div style="padding:10px;display:grid;gap:8px">
           <div class="prev-section-label" style="color:var(--purple)">Garantia (${d.garantias.filter(s=>s.item).length}/${PREV_CAP.garantiaDia})</div>
           ${d.garantias.map(s=>prevHtmlCarroMini(s,ultimas)).join('')}
-          <div class="prev-section-label" style="color:var(--amber)">Pesadas manhã (${d.pesadas.filter(s=>s.item).length}/${PREV_CAP.pesadaDia})</div>
+          <div class="prev-section-label" style="color:var(--amber)">Pesadas manhã (${d.pesadas.filter(s=>s.item).length}/${PREV_CAP.pesadaDia})${d.pesadas.filter(s=>s.item).length>PREV_CAP.pesadaDia?' ⚠️ acima da capacidade':''}</div>
           ${d.pesadas.map(s=>prevHtmlCarroMini(s,ultimas)).join('')}
-          <div class="prev-section-label" style="color:var(--green)">Leves (${d.leves.filter(s=>s.item).length}/${PREV_CAP.leveDia})</div>
+          <div class="prev-section-label" style="color:var(--green)">Leves (${d.leves.filter(s=>s.item).length}/${PREV_CAP.leveDia})${d.leves.filter(s=>s.item).length>PREV_CAP.leveDia?' ⚠️ acima da capacidade':''}</div>
           ${d.leves.map(s=>prevHtmlCarroMini(s,ultimas)).join('')}
         </div>
       </div>`).join('')}
