@@ -3558,7 +3558,7 @@ async function telaAlmoxMobBaixaRotacao(){
   // Todo mundo da partição já contou tudo neste ciclo -- reinicia sozinho
   if(!pendentes.length){ciclo+=1;pendentes=todos;}
 
-  const LOTE=15;
+  const LOTE=10;
   const meuLote=pendentes.slice(0,LOTE);
   window._baixaRotItens={};
   todos.forEach(i=>{window._baixaRotItens[i.id]=i;});
