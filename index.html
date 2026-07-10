@@ -4839,14 +4839,18 @@ async function confCruzarRotativo(){
   const dataRef=window._confDataRef||hoje();
   const janelaDias=window._confRotJanela||3;
   const dataIni=opAddDays(dataRef,-(janelaDias-1));
-  const [{data:rotRaw,error},{data:t1Raw,error:t1Error},{data:tratRaw},{data:wmsRaw}]=await Promise.all([
+  const [{data:rotRaw,error},{data:t1Raw,error:t1Error},{data:tratRaw},{data:wmsRaw},{data:baixaRotRaw}]=await Promise.all([
     sb.from('almoxo_inventario_turno').select('*').eq('garagem_id',gid)
       .gte('turno_data',dataIni).lte('turno_data',dataRef).order('turno_data',{ascending:false}),
     sb.from('almoxo_inventario_t1').select('*').eq('garagem_id',gid)
       .gte('turno_data',dataIni).lte('turno_data',dataRef).order('turno_data',{ascending:false}),
     sb.from('almoxo_inventario_tratativas').select('*').eq('garagem_id',gid)
       .gte('turno_data',dataIni).lte('turno_data',dataRef),
-    sb.from('almoxo_wms_enderecos').select('cod_sap,localizacao').eq('garagem_id',gid)
+    sb.from('almoxo_wms_enderecos').select('cod_sap,localizacao').eq('garagem_id',gid),
+    // Inventário de baixa rotação (cíclico) -- pro líder ter ciência diária
+    // junto com o rotativo, no mesmo relatório
+    sb.from('almoxo_baixa_rotacao_contagem').select('*,almoxo_baixa_rotacao_itens(nome_item,cod_sap,wms_localizacao)').eq('garagem_id',gid)
+      .gte('turno_data',dataIni).lte('turno_data',dataRef).order('turno_data',{ascending:false})
   ]);
   const tratMap={};
   (tratRaw||[]).forEach(t=>{ tratMap[confNormCod(t.cod_sap)+'|'+(t.turno_data||'')]=t; });
@@ -5038,6 +5042,30 @@ async function confCruzarRotativo(){
   window._confRotGaragem=S.garagens?.find(g=>g.id===gid)?.nome||gid;
   window._confRotDataRef=dataRef;
 
+  // ── Baixa Rotação — mesma janela, pro líder ter ciência diária junto com o rotativo ──
+  const baixaRotItens=baixaRotRaw||[];
+  const baixaRotDesvios=baixaRotItens.filter(b=>b.acuracia!=null&&parseFloat(b.acuracia)<100).length;
+  const baixaRotThead=`<tr style="background:var(--surface2)">
+    ${thH('Data')}${thH('Ciclo')}${thH('Código')}${thH('Descrição')}${thH('WMS')}${thR('Sistema')}${thR('Físico')}${thR('Acurácia')}${thH('Almoxarife')}
+  </tr>`;
+  const baixaRotRows=baixaRotItens.map(b=>{
+    const item=b.almoxo_baixa_rotacao_itens||{};
+    const acur=b.acuracia!=null?parseFloat(b.acuracia):null;
+    const desvio=acur!=null&&acur<100;
+    const cor=acur==null?'var(--text4)':desvio?'var(--danger)':'var(--green)';
+    return`<tr style="border-bottom:1px solid var(--border);${desvio?'background:#EF444406':''}">
+      <td style="padding:7px 10px;font-size:11px;color:var(--text3);white-space:nowrap">${escHtml(b.turno_data||'—')}</td>
+      <td style="padding:7px 10px;text-align:center;font-family:monospace;font-size:11px;color:var(--text3)">${b.particao!=null?'P'+b.particao:'—'} · C${b.ciclo??'—'}</td>
+      <td style="padding:7px 10px;font-family:monospace;font-size:12px;font-weight:700">${escHtml(item.cod_sap||'—')}</td>
+      <td style="padding:7px 10px;font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(item.nome_item||'')}">${escHtml(item.nome_item||'—')}</td>
+      <td style="padding:7px 10px;font-family:monospace;font-size:11px;color:var(--blue);white-space:nowrap">${escHtml(item.wms_localizacao||'—')}</td>
+      <td style="padding:7px 10px;text-align:right;font-family:monospace">${N(b.qtd_sistema)}</td>
+      <td style="padding:7px 10px;text-align:right;font-family:monospace;font-weight:800;color:var(--green)">${N(b.qtd_fisica)}</td>
+      <td style="padding:7px 10px;text-align:right;font-family:monospace;font-weight:900;color:${cor}">${acur!=null?acur+'%':'—'}</td>
+      <td style="padding:7px 10px;font-size:11px;color:var(--text3);white-space:nowrap">${escHtml(b.almoxarife_nome||'—')}</td>
+    </tr>`;
+  }).join('');
+
   el.innerHTML=`
     <div style="display:flex;align-items:center;gap:10px;padding:4px 0 12px;flex-wrap:wrap">
       <span style="font-size:13px;font-weight:900">📋 Inventário Rotativo — Última contagem por item/turno</span>
@@ -5053,6 +5081,14 @@ async function confCruzarRotativo(){
     </div>
     ${itensExibidos.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:1660px"><thead>${thead}</thead><tbody>${rows}</tbody></table></div>`
       :`<div style="padding:20px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhum item com desvio nessa janela. 🎉</div>`}
+
+    <div style="display:flex;align-items:center;gap:10px;padding:26px 0 12px;flex-wrap:wrap">
+      <span style="font-size:13px;font-weight:900">🔎 Inventário de Baixa Rotação — contagens do ciclo</span>
+      <span style="background:#00C48C20;color:#00C48C;border:1px solid #00C48C60;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:800">${baixaRotItens.length} registros</span>
+      ${baixaRotDesvios?`<span style="background:#EF444420;color:var(--danger);border:1px solid #EF444460;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:800">⚠️ ${baixaRotDesvios} desvio${baixaRotDesvios!==1?'s':''}</span>`:''}
+    </div>
+    ${baixaRotItens.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:1000px"><thead>${baixaRotThead}</thead><tbody>${baixaRotRows}</tbody></table></div>`
+      :`<div style="padding:20px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhuma contagem de baixa rotação nessa janela.</div>`}
   `;
 }
 
