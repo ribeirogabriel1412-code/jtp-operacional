@@ -4836,9 +4836,22 @@ async function confCruzarRotativo(){
   if(!el)return;
   el.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3)"><div class="spinner" style="width:24px;height:24px;border-width:3px;margin:0 auto 8px"></div>Buscando inventários rotativos...</div>';
 
-  const dataRef=window._confDataRef||hoje();
-  const janelaDias=window._confRotJanela||3;
-  const dataIni=opAddDays(dataRef,-(janelaDias-1));
+  // "semana": semana anterior COMPLETA (segunda a domingo), pro apanhado
+  // toda segunda-feira antes do ajuste -- não é rolling window, é a semana
+  // fechada, então não inclui dias da semana atual ainda em andamento.
+  const janelaSel=window._confRotJanela||3;
+  let dataRef,dataIni;
+  if(janelaSel==='semana'){
+    const hojeIso=hoje();
+    const dow=new Date(hojeIso+'T12:00:00').getDay(); // 0=dom..6=sab
+    const diasDesdeSegundaAtual=(dow+6)%7;
+    const segundaAtual=opAddDays(hojeIso,-diasDesdeSegundaAtual);
+    dataRef=opAddDays(segundaAtual,-1); // domingo da semana anterior
+    dataIni=opAddDays(dataRef,-6); // segunda da semana anterior
+  } else {
+    dataRef=window._confDataRef||hoje();
+    dataIni=opAddDays(dataRef,-(janelaSel-1));
+  }
   const [{data:rotRaw,error},{data:t1Raw,error:t1Error},{data:tratRaw},{data:wmsRaw},{data:baixaRotRaw}]=await Promise.all([
     sb.from('almoxo_inventario_turno').select('*').eq('garagem_id',gid)
       .gte('turno_data',dataIni).lte('turno_data',dataRef).order('turno_data',{ascending:false}),
@@ -4858,15 +4871,16 @@ async function confCruzarRotativo(){
   (wmsRaw||[]).forEach(w=>{ const k=confNormCod(w.cod_sap); (wmsMap[k]=wmsMap[k]||[]).push(w.localizacao); });
   const janelaSelect=`<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3)">
     <span>Janela:</span>
-    <select onchange="window._confRotJanela=parseInt(this.value);confCruzarRotativo()" style="padding:5px 8px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px">
-      <option value="1"${janelaDias===1?' selected':''}>Só hoje</option>
-      <option value="2"${janelaDias===2?' selected':''}>2 dias</option>
-      <option value="3"${janelaDias===3?' selected':''}>3 dias</option>
-      <option value="7"${janelaDias===7?' selected':''}>7 dias</option>
+    <select onchange="window._confRotJanela=this.value==='semana'?'semana':parseInt(this.value);confCruzarRotativo()" style="padding:5px 8px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px">
+      <option value="1"${janelaSel===1?' selected':''}>Só hoje</option>
+      <option value="2"${janelaSel===2?' selected':''}>2 dias</option>
+      <option value="3"${janelaSel===3?' selected':''}>3 dias</option>
+      <option value="7"${janelaSel===7?' selected':''}>7 dias</option>
+      <option value="semana"${janelaSel==='semana'?' selected':''}>📅 Semana anterior completa (seg–dom)</option>
     </select>
   </div>`;
   if(error){el.innerHTML=`<div style="color:var(--danger);padding:12px">Erro: ${error.message}</div>`;return;}
-  if(!rotRaw||!rotRaw.length){el.innerHTML=`<div style="padding:12px 0 20px"><div style="margin-bottom:10px">${janelaSelect}</div><div style="padding:20px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhum inventário rotativo encontrado nos últimos ${janelaDias} dia(s). Aumente a janela acima se precisar ver mais histórico.</div></div>`;return;}
+  if(!rotRaw||!rotRaw.length){el.innerHTML=`<div style="padding:12px 0 20px"><div style="margin-bottom:10px">${janelaSelect}</div><div style="padding:20px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhum inventário rotativo encontrado no período (${dataIni} a ${dataRef}). Aumente a janela acima se precisar ver mais histórico.</div></div>`;return;}
   if(t1Error)console.warn('[Cruzamento T-1]',t1Error);
 
   // Agrupa por cod_sap + turno_data — última contagem de cada item por dia
@@ -5066,6 +5080,43 @@ async function confCruzarRotativo(){
     </tr>`;
   }).join('');
 
+  // ── Divergências Recorrentes — mesmo cod_sap divergindo em 2+ ocorrências
+  // na janela (rotativo com dupla contagem OU baixa rotação), agrupado pra
+  // sinalizar problema real (não erro pontual de digitação de um turno só).
+  const recorrMap={};
+  itens.forEach(d=>{
+    if(!recorrMap[d.cod])recorrMap[d.cod]={cod:d.cod,nome:d.nome,rotOcorr:0,rotDiverg:0,baixaOcorr:0,baixaDiverg:0,ultimoFis:null,ultimoSap:null,ultimoData:null};
+    const r=recorrMap[d.cod];
+    r.rotOcorr++;
+    if(d.dupla?.diverge)r.rotDiverg++;
+    if(!r.ultimoData||d.data>r.ultimoData){r.ultimoData=d.data;r.ultimoFis=d.fis;r.ultimoSap=d.saldoSap;}
+  });
+  baixaRotItens.forEach(b=>{
+    const item=b.almoxo_baixa_rotacao_itens||{};
+    const cod=item.cod_sap;
+    if(!cod)return;
+    if(!recorrMap[cod])recorrMap[cod]={cod,nome:item.nome_item,rotOcorr:0,rotDiverg:0,baixaOcorr:0,baixaDiverg:0,ultimoFis:null,ultimoSap:null,ultimoData:null};
+    const r=recorrMap[cod];
+    r.baixaOcorr++;
+    const acur=b.acuracia!=null?parseFloat(b.acuracia):null;
+    if(acur!=null&&acur<100)r.baixaDiverg++;
+  });
+  const recorrentes=Object.values(recorrMap)
+    .map(r=>({...r,totalDiverg:r.rotDiverg+r.baixaDiverg}))
+    .filter(r=>r.totalDiverg>=2)
+    .sort((a,b)=>b.totalDiverg-a.totalDiverg);
+  window._confRecorrentes=recorrentes;
+  const recorrRows=recorrentes.map((r,i)=>`<tr style="border-bottom:1px solid var(--border)">
+    <td style="padding:7px 10px;text-align:center"><input type="checkbox" id="recorr-chk-${i}" checked></td>
+    <td style="padding:7px 10px;font-family:monospace;font-size:12px;font-weight:700">${escHtml(r.cod)}</td>
+    <td style="padding:7px 10px;font-size:12px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.nome||'')}">${escHtml(r.nome||'—')}</td>
+    <td style="padding:7px 10px;text-align:center;font-size:11px;color:var(--text3)">${r.rotOcorr?`${r.rotDiverg}/${r.rotOcorr} diverg.`:'—'}</td>
+    <td style="padding:7px 10px;text-align:center;font-size:11px;color:var(--text3)">${r.baixaOcorr?`${r.baixaDiverg}/${r.baixaOcorr} diverg.`:'—'}</td>
+    <td style="padding:7px 10px;text-align:center;font-weight:900;color:var(--danger)">${r.totalDiverg}x</td>
+    <td style="padding:7px 10px;text-align:right;font-family:monospace;font-weight:800;color:var(--green)">${N(r.ultimoFis)}</td>
+    <td style="padding:7px 10px;text-align:right;font-family:monospace">${N(r.ultimoSap)}</td>
+  </tr>`).join('');
+
   el.innerHTML=`
     <div style="display:flex;align-items:center;gap:10px;padding:4px 0 12px;flex-wrap:wrap">
       <span style="font-size:13px;font-weight:900">📋 Inventário Rotativo — Última contagem por item/turno</span>
@@ -5089,7 +5140,73 @@ async function confCruzarRotativo(){
     </div>
     ${baixaRotItens.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:1000px"><thead>${baixaRotThead}</thead><tbody>${baixaRotRows}</tbody></table></div>`
       :`<div style="padding:20px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhuma contagem de baixa rotação nessa janela.</div>`}
+
+    <div style="display:flex;align-items:center;gap:10px;padding:26px 0 12px;flex-wrap:wrap">
+      <span style="font-size:13px;font-weight:900">🔁 Divergências Recorrentes — mesmo item divergindo 2+ vezes</span>
+      <span style="background:#EF444420;color:var(--danger);border:1px solid #EF444460;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:800">${recorrentes.length} item${recorrentes.length!==1?'s':''}</span>
+      <div style="margin-left:auto;display:flex;gap:6px">
+        <button onclick="confRecorrMarcarTodos(true)" class="btn-sec" style="padding:6px 12px;font-size:11px">Marcar todos</button>
+        <button onclick="confRecorrMarcarTodos(false)" class="btn-sec" style="padding:6px 12px;font-size:11px">Desmarcar todos</button>
+        <button onclick="confRecorrExportarPDF()" class="btn-success" style="padding:6px 14px;font-size:12px">📑 Gerar Relatório de Consolidação</button>
+      </div>
+    </div>
+    ${recorrentes.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:900px">
+      <thead><tr style="background:var(--surface2)">
+        ${thH('')}${thH('Código')}${thH('Descrição')}${thH('Rotativo')}${thH('Baixa Rotação')}${thH('Total diverg.')}${thR('Último Físico')}${thR('Último SAP')}
+      </tr></thead>
+      <tbody>${recorrRows}</tbody>
+    </table></div>`
+      :`<div style="padding:20px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhum item divergiu mais de uma vez nessa janela. 🎉</div>`}
   `;
+}
+
+function confRecorrMarcarTodos(marcar){
+  (window._confRecorrentes||[]).forEach((r,i)=>{const el=document.getElementById('recorr-chk-'+i);if(el)el.checked=marcar;});
+}
+
+function confRecorrExportarPDF(){
+  const recorrentes=window._confRecorrentes||[];
+  const selecionados=recorrentes.filter((r,i)=>document.getElementById('recorr-chk-'+i)?.checked);
+  if(!selecionados.length){toast('Selecione pelo menos um item para consolidar','err');return;}
+  const garagem=window._confRotGaragem||S.garagens?.find(g=>g.id===getGid())?.nome||'Garagem';
+  const dataRef=window._confRotDataRef||hoje();
+  const esc=v=>String(v??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const N2=v=>v==null?'—':Number.isInteger(v)?v:parseFloat(v).toFixed(2);
+  const B='border:1px solid #333;';
+  const BH='border:1px solid #333;background:#555;color:#fff;font-weight:900;';
+  const rows=selecionados.map((r,i)=>`<tr>
+    <td style="${B}text-align:center">${i+1}</td>
+    <td style="${B}font-family:monospace;font-weight:700">${esc(r.cod)}</td>
+    <td style="${B}">${esc(r.nome)}</td>
+    <td style="${B}text-align:center">${r.rotOcorr?`${r.rotDiverg}/${r.rotOcorr}`:'—'}</td>
+    <td style="${B}text-align:center">${r.baixaOcorr?`${r.baixaDiverg}/${r.baixaOcorr}`:'—'}</td>
+    <td style="${B}text-align:center;font-weight:900">${r.totalDiverg}x</td>
+    <td style="${B}text-align:right">${N2(r.ultimoFis)}</td>
+    <td style="${B}text-align:right">${N2(r.ultimoSap)}</td>
+    <td style="${B}"></td>
+  </tr>`).join('');
+  const agora=new Date();
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${estiloRelJTP()}.assin{display:grid;grid-template-columns:1fr 1fr;gap:90px;margin-top:60px}.linha{border-top:1px solid #000;text-align:center;padding-top:4px}</style></head><body>
+${barraPrint('📑 Relatório de Consolidação de Divergências · '+esc(garagem),'JTP_Consolidacao_Divergencias')}
+<div class="cabecalho"><strong>GRUPO JTP | OPERAÇÃO GARAGEM | RELATÓRIO DE CONSOLIDAÇÃO DE DIVERGÊNCIAS | ${esc(garagem)}</strong></div>
+<table style="margin-bottom:8px"><tr>
+  <td style="${B}"><b>Data ref.:</b> ${dataRef}</td>
+  <td style="${B}"><b>Responsável:</b> ${esc(S.perfil?.nome||'—')}</td>
+  <td style="${B}"><b>Gerado:</b> ${agora.toLocaleString('pt-BR')}</td>
+</tr></table>
+<div class="sec-header">■ ITENS SELECIONADOS PARA AJUSTE (${selecionados.length})</div>
+<table>
+  <thead><tr>
+    <th style="${BH}">#</th><th style="${BH}">Cód. SAP</th><th style="${BH}">Descrição</th>
+    <th style="${BH}">Rotativo (diverg/total)</th><th style="${BH}">Baixa Rotação (diverg/total)</th>
+    <th style="${BH}">Total diverg.</th><th style="${BH}text-align:right">Último Físico</th><th style="${BH}text-align:right">Último SAP</th>
+    <th style="${BH}">Decisão / Assinatura</th>
+  </tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<div class="assin"><div class="linha">Líder de Almoxarifado / Suprimentos</div><div class="linha">Líder PCM</div></div>
+</body></html>`;
+  abrirRelatorioHTMLPCM(html,`JTP_Consolidacao_Divergencias_${dataRef.replace(/-/g,'')}.pdf`);
 }
 
 // Tratativa de desvio — selecionou no <select> da linha
