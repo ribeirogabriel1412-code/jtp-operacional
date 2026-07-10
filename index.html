@@ -1954,14 +1954,39 @@ async function renderAlmoxPainelLider(){
   const isLider=['lider_suprimentos','lider_almoxarifado'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
   if(!isLider){setMain(`<div class="empty">Acesso restrito ao Líder</div>`);return;}
   const hojeIso=hoje();
-  const[{data:ruas},{data:divs},{data:ultInvT1},{data:ultInvRua},{data:quadro},{data:perfisAlmox}]=await Promise.all([
+  const tz=opTimezone(gid);
+  const iniHoje=opDateTimeISO(hojeIso,'00:00',tz);
+  const fimHoje=opDateTimeISO(opAddDays(hojeIso,1),'00:00',tz);
+  const[{data:ruas},{data:divs},{data:quadro},{data:perfisAlmox},{data:saidaRaw},{data:entradaRaw},{data:rotHojeRaw},{data:baixaRotHojeRaw}]=await Promise.all([
     sb.from('almoxo_ruas').select('*').eq('garagem_id',gid).eq('ativo',true).order('nome'),
     sb.from('almoxo_divergencias').select('*').eq('garagem_id',gid).eq('status','aberta').order('detectado_em',{ascending:false}),
-    sb.from('almoxo_inventario_t1').select('*').eq('garagem_id',gid).order('conferido_em',{ascending:false}).limit(60),
-    sb.from('almoxo_inventario_rua').select('*,almoxo_ruas(nome)').eq('garagem_id',gid).order('conferido_em',{ascending:false}).limit(60),
     sb.from('almoxo_quadro_turno').select('*,perfis(nome,cargo)').eq('garagem_id',gid).order('hora_entrada'),
-    sb.from('perfis').select('id,nome,cargo').eq('garagem_id',gid).in('cargo',['almoxarifado','lider_almoxarifado','lider_suprimentos']).order('nome')
+    sb.from('perfis').select('id,nome,cargo').eq('garagem_id',gid).in('cargo',['almoxarifado','lider_almoxarifado','lider_suprimentos']).order('nome'),
+    // Saída = itens entregues (separado/comprado) hoje, com valor unitário já resolvido na confirmação
+    sb.from('requisicoes_compra').select('qtd_entregue,quantidade,valor_estimado').eq('garagem_id',gid).in('status',['separado','comprado']).gte('entregue_em',iniHoje).lt('entregue_em',fimHoje),
+    // Entrada = recebimentos de NF classificados pelo líder no Inventário Rotativo (Cruzar SAP x PRAXIO)
+    sb.from('almoxo_inventario_tratativas').select('qtd_recebida,nota_fiscal').eq('garagem_id',gid).eq('tipo','recebimento').eq('turno_data',hojeIso),
+    // Acurácia do Inventário Rotativo hoje = % de itens com dupla contagem que bateram entre dois almoxarifes
+    sb.from('almoxo_inventario_turno').select('req_id,qtd_fisica,almoxarife_id').eq('garagem_id',gid).eq('turno_data',hojeIso).not('req_id','is',null),
+    // Acurácia da Baixa Rotação hoje = média do físico/sistema já calculado na contagem
+    sb.from('almoxo_baixa_rotacao_contagem').select('acuracia').eq('garagem_id',gid).eq('turno_data',hojeIso).not('acuracia','is',null)
   ]);
+  const saidaQtd=(saidaRaw||[]).reduce((s,r)=>s+(parseFloat(r.qtd_entregue||r.quantidade)||0),0);
+  const saidaValor=(saidaRaw||[]).reduce((s,r)=>s+(parseFloat(r.qtd_entregue||r.quantidade)||0)*(parseFloat(r.valor_estimado)||0),0);
+  const entradaQtd=(entradaRaw||[]).reduce((s,r)=>s+(parseFloat(r.qtd_recebida)||0),0);
+  const entradaNFs=new Set((entradaRaw||[]).map(r=>r.nota_fiscal).filter(Boolean)).size;
+  // Dupla contagem hoje: agrupa por req_id, pega 1 contagem por almoxarife distinto,
+  // acurácia = % de grupos com 2+ contadores cujos valores bateram
+  const rotPorReq={};
+  (rotHojeRaw||[]).forEach(r=>{
+    if(!r.req_id)return;
+    if(!rotPorReq[r.req_id])rotPorReq[r.req_id]={};
+    if(r.almoxarife_id&&!(r.almoxarife_id in rotPorReq[r.req_id]))rotPorReq[r.req_id][r.almoxarife_id]=parseFloat(r.qtd_fisica);
+  });
+  const gruposDupla=Object.values(rotPorReq).filter(g=>Object.keys(g).length>1);
+  const acurRotativo=gruposDupla.length?Math.round(100*gruposDupla.filter(g=>new Set(Object.values(g)).size===1).length/gruposDupla.length):null;
+  const acurBaixaRotVals=(baixaRotHojeRaw||[]).map(r=>parseFloat(r.acuracia)).filter(v=>!isNaN(v));
+  const acurBaixaRot=acurBaixaRotVals.length?Math.round(acurBaixaRotVals.reduce((s,v)=>s+v,0)/acurBaixaRotVals.length):null;
   window._almoxPerfisCache=perfisAlmox||[];
   const abaAtiva=S._almoxPainelAba||'painel';
   const tabs=`
@@ -2014,25 +2039,6 @@ async function renderAlmoxPainelLider(){
   const divFiltradas=divFiltroOrigem==='todas'?divTodas:divTodas.filter(d=>d.origem===divFiltroOrigem);
   const divAberta=divFiltradas.length;
   const cntPorOrigem={rotativo:divTodas.filter(d=>d.origem==='rotativo').length,t1:divTodas.filter(d=>d.origem==='t1').length,rua:divTodas.filter(d=>d.origem==='rua').length};
-  const t1Hoje=(ultInvT1||[]).filter(i=>i.turno_data===hojeIso);
-  const acurT1=t1Hoje.length?Math.round(t1Hoje.reduce((s,i)=>s+(parseFloat(i.acuracia)||100),0)/t1Hoje.length):null;
-  const ruaHoje=(ultInvRua||[]).filter(i=>i.data_inventario===hojeIso);
-  const acurRua=ruaHoje.length?Math.round(ruaHoje.reduce((s,i)=>s+(parseFloat(i.acuracia)||100),0)/ruaHoje.length):null;
-  const acurPorRua={};
-  (ultInvRua||[]).forEach(i=>{
-    const nome=i.almoxo_ruas?.nome||i.rua_id||'—';
-    if(!acurPorRua[nome])acurPorRua[nome]={nome,vals:[]};
-    acurPorRua[nome].vals.push(parseFloat(i.acuracia)||100);
-  });
-  const ruaKpis=Object.values(acurPorRua).map(r=>{
-    const med=Math.round(r.vals.reduce((s,v)=>s+v,0)/r.vals.length);
-    const cor=med>=95?'var(--green)':med>=80?'var(--amber)':'var(--red)';
-    return`<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${cor};border-radius:10px;padding:14px 18px">
-      <div style="font-weight:900;font-size:14px;color:var(--blue)">${r.nome}</div>
-      <div style="font-family:'DM Mono',monospace;font-size:26px;font-weight:900;color:${cor};margin:4px 0">${med}%</div>
-      <div style="font-size:11px;color:var(--text3)">${r.vals.length} contagem(ns)</div>
-    </div>`;
-  }).join('');
   const origemLabel={rotativo:'Rotativo',t1:'T-1',rua:'Rua'};
   const origemCor={rotativo:'var(--blue)',t1:'var(--purple,#7C3AED)',rua:'var(--amber)'};
   const divRows=divFiltradas.slice(0,20).map(d=>{
@@ -2065,13 +2071,16 @@ async function renderAlmoxPainelLider(){
       </div>
     </div>`;
   }).join('');
+  const fmtMoneyBR=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0});
   setMain(`
     ${secTitle('📊','Painel do Líder — Almoxarifado')}
     ${tabs}
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:20px">
       ${kpi('Divergências abertas',divTodas.length,0,'',divTodas.length>0,0)}
-      ${acurT1!=null?kpi('Acurácia T-1 hoje',acurT1+'%',null,'',acurT1<95,0):kpi('Acurácia T-1 hoje','—',null,'',false,0)}
-      ${acurRua!=null?kpi('Acurácia ruas hoje',acurRua+'%',null,'',acurRua<95,0):kpi('Acurácia ruas hoje','—',null,'',false,0)}
+      ${kpi(`Saída hoje (${fmtMoneyBR(saidaValor)})`,saidaQtd,undefined,'un',false,0)}
+      ${kpi(`Entrada hoje (${entradaNFs} NF)`,entradaQtd,undefined,'un',false,0)}
+      ${acurRotativo!=null?kpi('Acurácia Rotativo (dupla contagem)',acurRotativo,95,'%',false,0):kpi('Acurácia Rotativo (dupla contagem)','—',undefined,'',false,0)}
+      ${acurBaixaRot!=null?kpi('Acurácia Baixa Rotação hoje',acurBaixaRot,95,'%',false,0):kpi('Acurácia Baixa Rotação hoje','—',undefined,'',false,0)}
     </div>
     ${secTitle('🗓️','Quadro de Turnos')}
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:20px">
@@ -2084,7 +2093,6 @@ async function renderAlmoxPainelLider(){
         <button onclick="almoxNovoTurnoModal()" style="background:var(--blue);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer">+ Adicionar ao Quadro</button>
       </div>
     </div>
-    ${ruaKpis?`${secTitle('📦','Histórico por Rua')}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:20px">${ruaKpis}</div>`:''}
     ${secTitle('⚠️','Divergências Abertas')}
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
       ${[{k:'todas',l:'Todas',c:divTodas.length},{k:'rotativo',l:'Rotativo',c:cntPorOrigem.rotativo},{k:'t1',l:'T-1',c:cntPorOrigem.t1},{k:'rua',l:'Rua',c:cntPorOrigem.rua}].map(o=>{
