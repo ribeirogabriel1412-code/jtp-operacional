@@ -17194,9 +17194,22 @@ async function _instrRelatorioDia(gid,back,tabBar){
   // Prefixo usa almoxPrefKey (mesma normalização do Almoxarifado) porque
   // "02189" e "02.189" são o mesmo carro escrito diferente -- sem isso o
   // dedup e o cruzamento com o Plano do Dia tratavam como carros distintos.
-  const monRegs=_instrDedupPorChave(monRegsRaw,r=>(r.monitor_id||'')+'|'+(r.matricula||r.motorista_nome||''));
-  const relLinha=_instrDedupPorChave(relLinhaRaw,r=>(r.monitor_id||'')+'|'+(r.linha||''));
-  const relCarro=_instrDedupPorChave(relCarroRaw,r=>(r.monitor_id||'')+'|'+almoxPrefKey(r.prefixo));
+  const monRegsDedup=_instrDedupPorChave(monRegsRaw,r=>(r.monitor_id||'')+'|'+(r.matricula||r.motorista_nome||''));
+  const relLinhaDedup=_instrDedupPorChave(relLinhaRaw,r=>(r.monitor_id||'')+'|'+(r.linha||''));
+  const relCarroDedup=_instrDedupPorChave(relCarroRaw,r=>(r.monitor_id||'')+'|'+almoxPrefKey(r.prefixo));
+
+  // O relatório do dia só mostra o que bateu com a escala (instrutor_atribuicoes)
+  // -- se o monitor registrou algo fora do que foi atribuído a ele, isso não
+  // entra aqui (fica de fora do "compilado do dia", mesmo que exista na tabela).
+  const escaladoCampo=new Set(),escaladoLinha=new Set(),escaladoCarro=new Set();
+  (atribuicoes||[]).forEach(a=>{
+    if(a.tipo==='motorista')escaladoCampo.add(a.monitor_id+'|'+a.motorista_cod);
+    else if(a.tipo==='linha')escaladoLinha.add(a.monitor_id+'|'+a.linha);
+    else if(a.tipo==='carro')escaladoCarro.add(a.monitor_id+'|'+almoxPrefKey(a.veiculo));
+  });
+  const monRegs=monRegsDedup.filter(r=>escaladoCampo.has(r.monitor_id+'|'+r.matricula)||escaladoCampo.has(r.monitor_id+'|'+r.motorista_nome));
+  const relLinha=relLinhaDedup.filter(r=>escaladoLinha.has(r.monitor_id+'|'+r.linha));
+  const relCarro=relCarroDedup.filter(r=>escaladoCarro.has(r.monitor_id+'|'+almoxPrefKey(r.prefixo)));
 
   const kmlManual=kmlManualRows?.[0]||null;
 
@@ -17214,8 +17227,9 @@ async function _instrRelatorioDia(gid,back,tabBar){
   ];
 
   // Produtividade: cruza o que foi planejado (instrutor_atribuicoes) com o que
-  // realmente foi feito (mesma lógica do Plano do Dia) -- pra cada monitor,
-  // planejado x feito, e lista o que faltou pra anexar uma justificativa.
+  // realmente foi feito (já filtrado acima pra só contar o que é da escala) --
+  // pra cada monitor, planejado x feito, e lista o que faltou pra anexar
+  // uma justificativa.
   const feitoCampo=new Set();monRegs.forEach(r=>{feitoCampo.add(r.monitor_id+'|'+r.matricula);feitoCampo.add(r.monitor_id+'|'+r.motorista_nome);});
   const feitoLinha=new Set(relLinha.map(r=>r.monitor_id+'|'+r.linha));
   const feitoCarro=new Set(relCarro.map(r=>r.monitor_id+'|'+almoxPrefKey(r.prefixo)));
