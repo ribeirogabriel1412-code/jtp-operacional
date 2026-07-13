@@ -16989,13 +16989,15 @@ async function deleteCronograma(id){
 
 async function renderFerrInstrutor(aba='painel'){
   const gid=getGid();
+  S._instrAbaAtiva=aba;
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
-  const tabs=['painel','relatorio_dia','viagens','plano_dia','escala_semanal','pontualidade','ranking','kml','monitorias','relatorios'];
-  const tabLabels={painel:'📊 Painel',relatorio_dia:'📄 Relatório do Dia',viagens:'🎯 Escala',plano_dia:'📅 Plano do Dia',escala_semanal:'🗓️ Escala Semanal',pontualidade:'📍 Pontualidade',ranking:'🏆 Ranking',kml:'⛽ KM/L',monitorias:'👁️ Monitorias',relatorios:'📋 Relatórios'};
+  const tabs=['painel','relatorio_dia','acoes_timeline','viagens','plano_dia','escala_semanal','pontualidade','ranking','kml','monitorias','relatorios'];
+  const tabLabels={painel:'📊 Painel',relatorio_dia:'📄 Relatório do Dia',acoes_timeline:'📆 Linha do Tempo',viagens:'🎯 Escala',plano_dia:'📅 Plano do Dia',escala_semanal:'🗓️ Escala Semanal',pontualidade:'📍 Pontualidade',ranking:'🏆 Ranking',kml:'⛽ KM/L',monitorias:'👁️ Monitorias',relatorios:'📋 Relatórios'};
   const tabBar=tabs.map(t=>`<button class="filtro-btn${aba===t?' active':''}" onclick="renderFerrInstrutor('${t}')">${tabLabels[t]}</button>`).join('');
 
   if(aba==='painel') return _instrPainel(gid,back,tabBar);
   if(aba==='relatorio_dia') return _instrRelatorioDia(gid,back,tabBar);
+  if(aba==='acoes_timeline') return _instrAcoesTimeline(gid,back,tabBar);
   if(aba==='viagens') return _instrViagens(gid,back,tabBar);
   if(aba==='plano_dia') return _instrPlanoDia(gid,back,tabBar);
   if(aba==='escala_semanal') return _instrEscalaSemanal(gid,back,tabBar);
@@ -17418,20 +17420,76 @@ async function _instrAcaoAdd(gid,data){
   const{error}=await sb.from('instrutor_acoes').insert({garagem_id:gid,data,descricao,responsavel,prazo,status:'pendente',criado_por:S.perfil?.nome||null});
   if(error){toast('Erro: '+error.message,'err');return;}
   toast('✅ Ação adicionada!');
-  renderFerrInstrutor('relatorio_dia');
+  renderFerrInstrutor(S._instrAbaAtiva||'relatorio_dia');
 }
 
 async function _instrAcaoToggle(id,novoStatus){
   const payload={status:novoStatus,concluido_em:novoStatus==='concluido'?new Date().toISOString():null};
   const{error}=await sb.from('instrutor_acoes').update(payload).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
-  renderFerrInstrutor('relatorio_dia');
+  renderFerrInstrutor(S._instrAbaAtiva||'relatorio_dia');
 }
 
 async function _instrAcaoRemover(id){
   if(!confirm('Remover essa ação?'))return;
   await sb.from('instrutor_acoes').delete().eq('id',id);
-  renderFerrInstrutor('relatorio_dia');
+  renderFerrInstrutor(S._instrAbaAtiva||'relatorio_dia');
+}
+
+// ══════════════════════════════════════════════════════════════
+// INSTRUTOR — Linha do Tempo de Ações (acompanhamento entre dias)
+// ══════════════════════════════════════════════════════════════
+async function _instrAcoesTimeline(gid,back,tabBar){
+  const filtro=S._instrTimelineFiltro||'pendente';
+  setMain(`${secTitle('📆','Linha do Tempo de Ações',back)}<div class="filtros">${tabBar}</div><div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando...</div>`);
+
+  let query=sb.from('instrutor_acoes').select('*').eq('garagem_id',gid).order('data',{ascending:false}).order('criado_em',{ascending:false}).limit(200);
+  if(filtro!=='todas')query=query.eq('status',filtro);
+  const{data:acoes}=await query;
+
+  const hoje=new Date().toISOString().slice(0,10);
+  const porData={};
+  (acoes||[]).forEach(a=>{if(!porData[a.data])porData[a.data]=[];porData[a.data].push(a);});
+  const datasOrdenadas=Object.keys(porData).sort((a,b)=>a<b?1:-1);
+
+  const totalPendentes=(acoes||[]).filter(a=>a.status==='pendente').length;
+  const totalVencidas=(acoes||[]).filter(a=>a.status==='pendente'&&a.prazo&&a.prazo<hoje).length;
+
+  const blocos=datasOrdenadas.length?datasOrdenadas.map(data=>{
+    const dataFmt=new Date(data+'T00:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'});
+    const itens=porData[data].map(a=>{
+      const vencida=a.status==='pendente'&&a.prazo&&a.prazo<hoje;
+      return`<div style="background:var(--surface);border:1px solid ${vencida?'var(--red)':'var(--border)'};border-radius:8px;padding:12px 14px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px">
+            <div style="font-size:13px;margin-bottom:4px">${escHtml(a.descricao)}</div>
+            <div style="font-size:11px;color:var(--text3)">👤 ${escHtml(a.responsavel||'—')}${a.prazo?` · 📅 prazo ${a.prazo.split('-').reverse().join('/')}`:''}${vencida?' · <span style="color:var(--red);font-weight:800">VENCIDA</span>':''}</div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <button onclick="_instrAcaoToggle('${a.id}','${a.status==='pendente'?'concluido':'pendente'}')" style="border:1px solid ${a.status==='concluido'?'var(--green)':'var(--amber)'};background:${a.status==='concluido'?'#00C48C18':'#F59E0B18'};color:${a.status==='concluido'?'var(--green)':'var(--amber)'};border-radius:6px;padding:5px 10px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap">${a.status==='concluido'?'✅ Concluída':'⏳ Pendente'}</button>
+            <button onclick="_instrAcaoRemover('${a.id}')" style="background:transparent;border:none;color:var(--text4);cursor:pointer">🗑️</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+    return`<div style="margin-bottom:18px">
+      <div style="font-size:12px;font-weight:800;color:var(--text3);text-transform:capitalize;margin-bottom:8px;padding-left:14px;border-left:3px solid var(--purple)">${dataFmt}</div>
+      <div style="padding-left:14px">${itens}</div>
+    </div>`;
+  }).join(''):'<div class="empty">Nenhuma ação encontrada</div>';
+
+  setMain(`${secTitle('📆','Linha do Tempo de Ações',back)}
+    <div class="filtros">${tabBar}</div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+      ${[{k:'pendente',l:'Pendentes'},{k:'concluido',l:'Concluídas'},{k:'todas',l:'Todas'}].map(f=>{
+        const ativo=filtro===f.k;
+        return`<button onclick="S._instrTimelineFiltro='${f.k}';renderFerrInstrutor('acoes_timeline')" style="cursor:pointer;padding:6px 14px;border-radius:20px;font-family:inherit;font-weight:700;font-size:12px;border:1px solid ${ativo?'var(--blue)':'var(--border)'};background:${ativo?'var(--blue)':'var(--surface2)'};color:${ativo?'#fff':'var(--text3)'}">${f.l}</button>`;
+      }).join('')}
+      ${totalVencidas>0?`<span style="color:var(--red);font-size:12px;font-weight:800">⚠️ ${totalVencidas} vencida(s)</span>`:''}
+      <span style="margin-left:auto;font-size:12px;color:var(--text3)">${totalPendentes} pendente(s) no total</span>
+    </div>
+    ${blocos}
+  `);
 }
 
 function _instrExportarRelatorioDia(gid){
