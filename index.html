@@ -1999,7 +1999,9 @@ async function renderAlmoxPainelLider(){
     <div style="display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap">
       <button onclick="S._almoxPainelAba='painel';renderAlmoxPainelLider()" style="cursor:pointer;padding:6px 18px;border-radius:20px;font-family:inherit;font-size:12px;font-weight:800;border:1px solid ${abaAtiva==='painel'?'var(--blue)':'var(--border)'};background:${abaAtiva==='painel'?'var(--blue)':'var(--surface2)'};color:${abaAtiva==='painel'?'#fff':'var(--text3)'}">📊 Painel</button>
       <button onclick="S._almoxPainelAba='conf';renderAlmoxPainelLider()" style="cursor:pointer;padding:6px 18px;border-radius:20px;font-family:inherit;font-size:12px;font-weight:800;border:1px solid ${abaAtiva==='conf'?'var(--blue)':'var(--border)'};background:${abaAtiva==='conf'?'var(--blue)':'var(--surface2)'};color:${abaAtiva==='conf'?'#fff':'var(--text3)'}">🔍 SAP x PRAXIO</button>
+      <button onclick="S._almoxPainelAba='recontagem';renderAlmoxPainelLider()" style="cursor:pointer;padding:6px 18px;border-radius:20px;font-family:inherit;font-size:12px;font-weight:800;border:1px solid ${abaAtiva==='recontagem'?'var(--blue)':'var(--border)'};background:${abaAtiva==='recontagem'?'var(--blue)':'var(--surface2)'};color:${abaAtiva==='recontagem'?'#fff':'var(--text3)'}">🔁 Recontagem de Hoje</button>
     </div>`;
+  if(abaAtiva==='recontagem'){await renderAlmoxRecontagem(gid,tabs);return;}
   if(abaAtiva==='conf'){
     setMain(`
       ${secTitle('📊','Painel do Líder — Almoxarifado')}
@@ -2132,6 +2134,72 @@ async function renderAlmoxPainelLider(){
       </div>${divRows}`:`<div class="empty">Nenhuma divergência aberta 🎉</div>`}
     </div>
   `);
+}
+
+// Lista dedicada pra recontagem do dia seguinte -- só as divergências abertas
+// do Rotativo/Baixa Rotação (as que o "Salvar Divergências no Sistema" grava).
+// O almoxarife conta o físico de novo aqui direto: se bater com o SAP, a
+// divergência fecha sozinha; se não bater, atualiza o valor e segue aberta
+// pra próxima recontagem.
+async function renderAlmoxRecontagem(gid,tabs){
+  setMain(`${secTitle('🔁','Recontagem de Hoje')}${tabs}<div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando...</div>`);
+  const{data:divs,error}=await sb.from('almoxo_divergencias').select('*').eq('garagem_id',gid).eq('status','aberta').in('origem',['rotativo','baixa_rotacao']).order('detectado_em',{ascending:true});
+  if(error){setMain(`${secTitle('🔁','Recontagem de Hoje')}${tabs}<div style="color:var(--danger);padding:12px">Erro: ${error.message}</div>`);return;}
+  const lista=divs||[];
+  window._recontagemCache=lista;
+  const N=v=>v==null?'—':Number.isInteger(Number(v))?v:Number(v).toFixed(2);
+  const origemLbl={rotativo:'Rotativo',baixa_rotacao:'Baixa Rotação'};
+
+  const rows=lista.map(d=>`<tr style="border-bottom:1px solid var(--border2)">
+    <td style="padding:8px 10px;font-family:monospace;font-weight:700">${escHtml(d.cod_sap||'—')}</td>
+    <td style="padding:8px 10px;font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.nome_item||'')}">${escHtml(d.nome_item||'—')}</td>
+    <td style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text3)">${origemLbl[d.origem]||d.origem}</td>
+    <td style="padding:8px 10px;text-align:right;font-family:monospace">${N(d.qtd_sap)}</td>
+    <td style="padding:8px 10px;text-align:right;font-family:monospace;color:var(--danger);font-weight:700">${N(d.qtd_fisica)}</td>
+    <td style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text3)">${d.detectado_em?new Date(d.detectado_em).toLocaleDateString('pt-BR'):'—'}</td>
+    <td style="padding:8px 10px">
+      <div style="display:flex;gap:6px;align-items:center">
+        <input id="recont-${d.id}" type="number" step="0.01" placeholder="novo físico" style="width:100px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-family:monospace;font-size:12px">
+        <button onclick="almoxRecontarItem('${d.id}')" style="padding:6px 12px;border-radius:6px;border:none;background:var(--blue);color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">✓ Confirmar</button>
+      </div>
+    </td>
+  </tr>`).join('');
+
+  setMain(`${secTitle('🔁','Recontagem de Hoje')}
+    ${tabs}
+    <div class="info-blue info-banner" style="margin-bottom:16px">📌 Divergências abertas do Rotativo/Baixa Rotação. Conte o físico de novo e confirme — se bater com o SAP, a divergência encerra sozinha; se não bater, o valor é atualizado e ela segue aberta pra próxima recontagem.</div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden">
+      ${lista.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:var(--surface2)">
+          <th style="padding:9px 10px;text-align:left;font-size:10px;color:var(--text3)">Código</th>
+          <th style="padding:9px 10px;text-align:left;font-size:10px;color:var(--text3)">Descrição</th>
+          <th style="padding:9px 10px;text-align:center;font-size:10px;color:var(--text3)">Origem</th>
+          <th style="padding:9px 10px;text-align:right;font-size:10px;color:var(--text3)">SAP</th>
+          <th style="padding:9px 10px;text-align:right;font-size:10px;color:var(--text3)">Físico (aberto)</th>
+          <th style="padding:9px 10px;text-align:center;font-size:10px;color:var(--text3)">Detectado</th>
+          <th style="padding:9px 10px;text-align:left;font-size:10px;color:var(--text3)">Recontagem</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>`:`<div class="empty">Nenhuma divergência aberta pra recontar 🎉</div>`}
+    </div>
+  `);
+}
+
+async function almoxRecontarItem(id){
+  const d=(window._recontagemCache||[]).find(x=>String(x.id)===String(id));
+  if(!d)return;
+  const novoFisico=parseFloat(document.getElementById('recont-'+id)?.value);
+  if(isNaN(novoFisico)){toast('Informe o novo físico contado','err');return;}
+  const sapVal=parseFloat(d.qtd_sap);
+  const bateu=!isNaN(sapVal)&&novoFisico===sapVal;
+  const acuracia=!isNaN(sapVal)&&sapVal!==0?Math.round((novoFisico/sapVal)*1000)/10:null;
+  const payload=bateu
+    ?{status:'encerrada',qtd_fisica:novoFisico,acuracia,encerrado_por:S.user?.id,encerrado_em:new Date().toISOString(),obs_resolucao:'Recontagem confirmou o físico'}
+    :{qtd_fisica:novoFisico,acuracia,detectado_em:new Date().toISOString()};
+  const{error}=await sb.from('almoxo_divergencias').update(payload).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast(bateu?'✅ Recontagem bateu — divergência encerrada!':'⚠️ Ainda diverge — valor atualizado, segue aberta');
+  renderAlmoxPainelLider();
 }
 
 function abrirNotaPortaria(id){
@@ -5218,6 +5286,7 @@ async function confCruzarRotativo(){
       ${janelaSelect}
       ${filtroSoDesvio}
       <div style="margin-left:auto;display:flex;gap:6px">
+        <button onclick="confSalvarDivergenciasAbertas()" class="btn-success" style="padding:6px 14px;font-size:12px">💾 Salvar Divergências no Sistema</button>
         <button onclick="confRotExportarXLSX()" class="btn-sec" style="padding:6px 14px;font-size:12px">📊 Excel</button>
         <button onclick="confRotExportarPDF()" class="btn-sec" style="padding:6px 14px;font-size:12px">📄 PDF</button>
       </div>
@@ -5254,6 +5323,50 @@ async function confCruzarRotativo(){
 
 function confRecorrMarcarTodos(marcar){
   (window._confRecorrentes||[]).forEach((r,i)=>{const el=document.getElementById('recorr-chk-'+i);if(el)el.checked=marcar;});
+}
+
+// Salva os desvios de hoje (Rotativo + Baixa Rotação) em almoxo_divergencias,
+// a mesma tabela que alimenta o card "Divergências Abertas" do Painel do
+// Líder -- antes só T-1 e Rua gravavam ali, o Rotativo/Baixa Rotação era só
+// calculado na tela e se perdia. Se o código já tem divergência aberta de um
+// dia anterior, atualiza os números em vez de duplicar (mantém 1 registro
+// por código até ele ser recontado e fechado).
+async function confSalvarDivergenciasAbertas(){
+  const gid=getGid();
+  const rotDesvios=(window._confRotItens||[]).filter(d=>d.temDesvio);
+  const baixaDesvios=(window._confBaixaRotItens||[]).filter(b=>b.acuracia!=null&&parseFloat(b.acuracia)<100);
+  if(!rotDesvios.length&&!baixaDesvios.length){toast('Nenhum desvio pra salvar nessa janela','err');return;}
+
+  const{data:abertas,error:errBusca}=await sb.from('almoxo_divergencias').select('id,cod_sap,origem').eq('garagem_id',gid).eq('status','aberta').in('origem',['rotativo','baixa_rotacao']);
+  if(errBusca){toast('Erro ao conferir divergências existentes: '+errBusca.message,'err');return;}
+  const mapAbertas={};
+  (abertas||[]).forEach(a=>{mapAbertas[a.origem+'|'+confNormCod(a.cod_sap)]=a.id;});
+
+  const novos=[],atualizar=[];
+  rotDesvios.forEach(d=>{
+    const k='rotativo|'+confNormCod(d.cod);
+    const payload={qtd_sap:d.saldoSap,qtd_fisica:d.fis,acuracia:d.saldoSap?Math.round((d.fis/d.saldoSap)*1000)/10:null};
+    if(mapAbertas[k])atualizar.push({id:mapAbertas[k],payload});
+    else novos.push({garagem_id:gid,origem:'rotativo',cod_sap:d.cod,nome_item:d.nome,...payload});
+  });
+  baixaDesvios.forEach(b=>{
+    const item=b.almoxo_baixa_rotacao_itens||{};
+    if(!item.cod_sap)return;
+    const k='baixa_rotacao|'+confNormCod(item.cod_sap);
+    const payload={qtd_sap:b.qtd_sistema,qtd_fisica:b.qtd_fisica,acuracia:b.acuracia};
+    if(mapAbertas[k])atualizar.push({id:mapAbertas[k],payload});
+    else novos.push({garagem_id:gid,origem:'baixa_rotacao',cod_sap:item.cod_sap,nome_item:item.nome_item,...payload});
+  });
+
+  for(const u of atualizar){
+    const{error}=await sb.from('almoxo_divergencias').update(u.payload).eq('id',u.id);
+    if(error){toast('Erro ao atualizar: '+error.message,'err');return;}
+  }
+  if(novos.length){
+    const{error}=await sb.from('almoxo_divergencias').insert(novos);
+    if(error){toast('Erro ao salvar: '+error.message,'err');return;}
+  }
+  toast(`✅ ${novos.length} nova(s) + ${atualizar.length} atualizada(s) em Divergências Abertas!`);
 }
 
 function confRecorrExportarPDF(){
