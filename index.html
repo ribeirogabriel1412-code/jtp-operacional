@@ -17160,37 +17160,76 @@ function _instrRelDiaAddDias(dataIso,delta){
   return d.toISOString().slice(0,10);
 }
 
+// Mantém só o registro mais recente por (monitor+alvo) -- um monitor que
+// reenviou/editou o mesmo relatório no mesmo dia não deve aparecer duplicado,
+// só o que "ficou valendo" no fim do dia.
+function _instrDedupPorChave(lista,chaveFn){
+  const porChave=new Map();
+  (lista||[]).forEach(item=>{
+    const k=chaveFn(item);
+    const atual=porChave.get(k);
+    if(!atual||String(item.created_at||'')>=String(atual.created_at||''))porChave.set(k,item);
+  });
+  return[...porChave.values()];
+}
+
+const INSTR_TIPO_ATRIB_LABEL={motorista:'👤 Campo',linha:'📋 Linha',carro:'🚌 Carro'};
+const INSTR_TIPO_ATRIB_CAMPO={motorista:'motorista_cod',linha:'linha',carro:'veiculo'};
+
 async function _instrRelatorioDia(gid,back,tabBar){
   const dataR=S._instrRelDiaData||new Date().toISOString().slice(0,10);
   setMain(`${secTitle('📄','Relatório do Dia',back)}<div class="filtros">${tabBar}</div><div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando...</div>`);
 
-  const[{data:kmlDia},{data:monRegs},{data:relLinha},{data:relCarro},{data:rankingRaw},{data:acoes}]=await Promise.all([
-    sb.from('instrutor_kml_detalhado').select('veiculo,km_percorrido,litros').eq('garagem_id',gid).eq('data',dataR),
+  const[{data:kmlManualRows},{data:monRegsRaw},{data:relLinhaRaw},{data:relCarroRaw},{data:rankingRaw},{data:acoes},{data:atribuicoes}]=await Promise.all([
+    sb.from('instrutor_kml').select('*').eq('garagem_id',gid).eq('data',dataR).limit(1),
     sb.from('monitoria_registros').select('*').eq('garagem_id',gid).eq('data',dataR),
     sb.from('monitor_relatorio_linha').select('*').eq('garagem_id',gid).eq('data',dataR),
     sb.from('monitor_relatorio_carro').select('*').eq('garagem_id',gid).eq('data',dataR),
     sb.from('instrutor_ranking').select('*').eq('garagem_id',gid).order('semana_ref',{ascending:false}).order('posicao').limit(30),
     sb.from('instrutor_acoes').select('*').eq('garagem_id',gid).eq('data',dataR).order('criado_em',{ascending:true}),
+    sb.from('instrutor_atribuicoes').select('*').eq('garagem_id',gid).eq('data',dataR),
   ]);
 
-  const kmTotal=(kmlDia||[]).reduce((s,r)=>s+(parseFloat(r.km_percorrido)||0),0);
-  const litrosTotal=(kmlDia||[]).reduce((s,r)=>s+(parseFloat(r.litros)||0),0);
-  const kmlGeral=litrosTotal>0?(kmTotal/litrosTotal):null;
+  // Só o que "ficou valendo" no dia -- descarta reenvios/edições duplicadas
+  const monRegs=_instrDedupPorChave(monRegsRaw,r=>(r.monitor_id||'')+'|'+(r.matricula||r.motorista_nome||''));
+  const relLinha=_instrDedupPorChave(relLinhaRaw,r=>(r.monitor_id||'')+'|'+(r.linha||''));
+  const relCarro=_instrDedupPorChave(relCarroRaw,r=>(r.monitor_id||'')+'|'+(r.prefixo||''));
+
+  const kmlManual=kmlManualRows?.[0]||null;
 
   const semanaMaisRecente=rankingRaw?.[0]?.semana_ref;
   const ranking=(rankingRaw||[]).filter(r=>r.semana_ref===semanaMaisRecente);
   const agressores=ranking.slice(0,8);
 
-  const infracoesHoje=(monRegs||[]).reduce((s,m)=>s+(m.inf_velocidade?1:0)+(m.inf_frenagem?1:0)+(m.inf_aceleracao?1:0)+(m.inf_celular?1:0)+(m.inf_cinto?1:0)+(m.inf_postura?1:0),0);
+  const infracoesHoje=monRegs.reduce((s,m)=>s+(m.inf_velocidade?1:0)+(m.inf_frenagem?1:0)+(m.inf_aceleracao?1:0)+(m.inf_celular?1:0)+(m.inf_cinto?1:0)+(m.inf_postura?1:0),0);
   const acoesPendentes=(acoes||[]).filter(a=>a.status==='pendente').length;
 
   const listaAcoesMonitores=[
-    ...(monRegs||[]).map(r=>({tipo:'👤 Campo',alvo:r.motorista_nome||r.matricula||'—',ind:[r.inf_velocidade&&'Velocidade',r.inf_frenagem&&'Frenagem',r.inf_aceleracao&&'Aceleração',r.inf_celular&&'Celular',r.inf_cinto&&'Cinto',r.inf_postura&&'Postura'].filter(Boolean).join(', ')||'Sem infração',obs:r.observacao,monitor:r.monitor_nome})),
-    ...(relLinha||[]).map(r=>({tipo:'📋 Linha',alvo:r.linha||'—',ind:r.pontualidade_pct!=null?`${r.pontualidade_pct}% pontual`:'—',obs:r.observacao,monitor:r.monitor_nome})),
-    ...(relCarro||[]).map(r=>({tipo:'🚌 Carro',alvo:r.prefixo||'—',ind:r.km_l!=null?`${r.km_l} km/l`:(r.condicao_interna||'—'),obs:r.observacao,monitor:r.monitor_nome})),
+    ...monRegs.map(r=>({tipo:'👤 Campo',alvo:r.motorista_nome||r.matricula||'—',ind:[r.inf_velocidade&&'Velocidade',r.inf_frenagem&&'Frenagem',r.inf_aceleracao&&'Aceleração',r.inf_celular&&'Celular',r.inf_cinto&&'Cinto',r.inf_postura&&'Postura'].filter(Boolean).join(', ')||'Sem infração',obs:r.observacao,monitor:r.monitor_nome})),
+    ...relLinha.map(r=>({tipo:'📋 Linha',alvo:r.linha||'—',ind:r.pontualidade_pct!=null?`${r.pontualidade_pct}% pontual`:'—',obs:r.observacao,monitor:r.monitor_nome})),
+    ...relCarro.map(r=>({tipo:'🚌 Carro',alvo:r.prefixo||'—',ind:r.km_l!=null?`${r.km_l} km/l`:(r.condicao_interna||'—'),obs:r.observacao,monitor:r.monitor_nome})),
   ];
 
-  window._instrRelDiaCache={dataR,kmlGeral,kmTotal,litrosTotal,monitoriasHoje:(monRegs||[]).length,infracoesHoje,agressores,listaAcoesMonitores,acoes:acoes||[]};
+  // Produtividade: cruza o que foi planejado (instrutor_atribuicoes) com o que
+  // realmente foi feito (mesma lógica do Plano do Dia) -- pra cada monitor,
+  // planejado x feito, e lista o que faltou pra anexar uma justificativa.
+  const feitoCampo=new Set();monRegs.forEach(r=>{feitoCampo.add(r.monitor_id+'|'+r.matricula);feitoCampo.add(r.monitor_id+'|'+r.motorista_nome);});
+  const feitoLinha=new Set(relLinha.map(r=>r.monitor_id+'|'+r.linha));
+  const feitoCarro=new Set(relCarro.map(r=>r.monitor_id+'|'+r.prefixo));
+  const feitoPorTipo={motorista:feitoCampo,linha:feitoLinha,carro:feitoCarro};
+  const prodPorMonitor={};
+  (atribuicoes||[]).forEach(a=>{
+    const valor=a[INSTR_TIPO_ATRIB_CAMPO[a.tipo]];
+    const feito=feitoPorTipo[a.tipo]?.has(a.monitor_id+'|'+valor);
+    if(!prodPorMonitor[a.monitor_id])prodPorMonitor[a.monitor_id]={nome:a.monitor_nome,planejado:0,feito:0,faltantes:[]};
+    const pm=prodPorMonitor[a.monitor_id];
+    pm.planejado++;
+    if(feito)pm.feito++;
+    else pm.faltantes.push({id:a.id,tipo:a.tipo,valor,justificativa:a.justificativa});
+  });
+  const faltantesFlat=Object.values(prodPorMonitor).flatMap(m=>m.faltantes.map(f=>({...f,monitorNome:m.nome})));
+
+  window._instrRelDiaCache={dataR,kmlGeral:kmlManual?.media_geral??null,monitoriasHoje:monRegs.length,infracoesHoje,agressores,listaAcoesMonitores,acoes:acoes||[],prodPorMonitor};
 
   const agressoresHtml=agressores.length?agressores.map((r,i)=>`
     <tr>
@@ -17220,6 +17259,26 @@ async function _instrRelatorioDia(gid,back,tabBar){
       <td style="text-align:center"><button onclick="_instrAcaoRemover('${a.id}')" style="background:transparent;border:none;color:var(--text4);cursor:pointer">🗑️</button></td>
     </tr>`).join(''):'<tr><td colspan="5" style="text-align:center;color:var(--text4);padding:16px">Nenhuma ação registrada nesse dia</td></tr>';
 
+  const prodRows=Object.values(prodPorMonitor).length?Object.values(prodPorMonitor).map(m=>`
+    <tr>
+      <td style="font-weight:600">${escHtml(m.nome||'—')}</td>
+      <td style="text-align:center">${m.planejado}</td>
+      <td style="text-align:center;color:var(--green);font-weight:700">${m.feito}</td>
+      <td style="text-align:center;color:${m.planejado-m.feito>0?'var(--red)':'var(--text3)'};font-weight:700">${m.planejado-m.feito}</td>
+    </tr>`).join(''):'<tr><td colspan="4" style="text-align:center;color:var(--text4);padding:16px">Nenhum plano montado nesse dia (ver Plano do Dia)</td></tr>';
+
+  const faltantesHtml=faltantesFlat.length?faltantesFlat.map(f=>`
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:6px;flex-wrap:wrap">
+        <span style="font-size:12px;font-weight:700">${INSTR_TIPO_ATRIB_LABEL[f.tipo]||f.tipo} · ${escHtml(f.valor||'—')}</span>
+        <span style="font-size:11px;color:var(--text3)">${escHtml(f.monitorNome||'—')}</span>
+      </div>
+      <div style="display:flex;gap:8px">
+        <input id="justif-${f.id}" value="${escHtml(f.justificativa||'')}" placeholder="Motivo de não ter sido feito..." style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px">
+        <button onclick="_instrSalvarJustificativa('${f.id}')" style="padding:6px 12px;border-radius:6px;border:none;background:var(--blue);color:#fff;font-size:11px;font-weight:700;cursor:pointer">💾</button>
+      </div>
+    </div>`).join(''):'<div style="text-align:center;color:var(--text4);padding:16px">Nenhum item faltante — tudo planejado foi feito 🎉</div>';
+
   const dataFmt=new Date(dataR+'T00:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'});
 
   setMain(`${secTitle('📄','Relatório do Dia',back)}
@@ -17235,13 +17294,21 @@ async function _instrRelatorioDia(gid,back,tabBar){
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px">
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
         <div style="font-size:11px;color:var(--text4);letter-spacing:1px;text-transform:uppercase">KM/L Geral do Dia</div>
-        <div style="font-size:28px;font-weight:800;color:var(--blue);font-family:'DM Mono',monospace;margin:8px 0">${kmlGeral!=null?kmlGeral.toFixed(2):'—'}</div>
-        <div style="font-size:12px;color:var(--text3)">${(kmlDia||[]).length} veículo(s) medido(s)</div>
+        ${kmlManual&&!S._instrKmlManualForceEdit?`
+          <div style="font-size:28px;font-weight:800;color:var(--blue);font-family:'DM Mono',monospace;margin:8px 0">${kmlManual.media_geral??'—'}</div>
+          <div style="font-size:12px;color:var(--text3)">${kmlManual.meta?`meta ${kmlManual.meta}`:'valor inserido'} <button onclick="S._instrKmlManualForceEdit=true;renderFerrInstrutor('relatorio_dia')" style="background:transparent;border:none;color:var(--text4);cursor:pointer;font-size:11px;text-decoration:underline">editar</button></div>
+        `:`
+          <div style="display:flex;gap:6px;align-items:center;margin:8px 0">
+            <input id="kml-manual-input" type="number" step="0.01" value="${kmlManual?.media_geral??''}" placeholder="Ex: 2.35" style="width:90px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-family:'DM Mono',monospace;font-size:14px">
+            <button onclick="_instrSalvarKmlManual('${gid}','${dataR}')" style="padding:6px 10px;border-radius:6px;border:none;background:var(--blue);color:#fff;font-size:12px;font-weight:700;cursor:pointer">💾</button>
+          </div>
+          <div style="font-size:11px;color:var(--amber)">sem KM/L pra esse dia — insira manualmente</div>
+        `}
       </div>
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
         <div style="font-size:11px;color:var(--text4);letter-spacing:1px;text-transform:uppercase">Monitorias no Dia</div>
-        <div style="font-size:28px;font-weight:800;color:var(--blue);font-family:'DM Mono',monospace;margin:8px 0">${(monRegs||[]).length}</div>
-        <div style="font-size:12px;color:var(--text3)">${(relLinha||[]).length} linha · ${(relCarro||[]).length} carro</div>
+        <div style="font-size:28px;font-weight:800;color:var(--blue);font-family:'DM Mono',monospace;margin:8px 0">${monRegs.length}</div>
+        <div style="font-size:12px;color:var(--text3)">${relLinha.length} linha · ${relCarro.length} carro</div>
       </div>
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
         <div style="font-size:11px;color:var(--text4);letter-spacing:1px;text-transform:uppercase">Infrações no Dia</div>
@@ -17273,6 +17340,19 @@ async function _instrRelatorioDia(gid,back,tabBar){
       </div>
     </div>
 
+    <div class="tbl-wrap" style="margin-bottom:20px">
+      <div class="tbl-head"><div style="font-size:13px;font-weight:700">📊 Produtividade dos Monitores — Planejado × Realizado</div></div>
+      <table>
+        <thead><tr><th>Monitor</th><th style="text-align:center">Planejado</th><th style="text-align:center">Feito</th><th style="text-align:center">Faltante</th></tr></thead>
+        <tbody>${prodRows}</tbody>
+      </table>
+    </div>
+
+    <div style="margin-bottom:20px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px">📝 Itens Faltantes — Justificativa</div>
+      ${faltantesHtml}
+    </div>
+
     <div class="tbl-wrap">
       <div class="tbl-head"><div style="font-size:13px;font-weight:700">✅ Plano de Ação do Dia</div></div>
       <table>
@@ -17287,6 +17367,29 @@ async function _instrRelatorioDia(gid,back,tabBar){
       </div>
     </div>
   `);
+}
+
+async function _instrSalvarKmlManual(gid,data){
+  const valor=parseFloat(document.getElementById('kml-manual-input')?.value);
+  if(isNaN(valor)){toast('Informe um valor de KM/L','err');return;}
+  const{data:existente}=await sb.from('instrutor_kml').select('id').eq('garagem_id',gid).eq('data',data).limit(1);
+  let error;
+  if(existente?.[0]){
+    ({error}=await sb.from('instrutor_kml').update({media_geral:valor}).eq('id',existente[0].id));
+  }else{
+    ({error}=await sb.from('instrutor_kml').insert({garagem_id:gid,data,media_geral:valor}));
+  }
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('✅ KM/L salvo!');
+  S._instrKmlManualForceEdit=false;
+  renderFerrInstrutor('relatorio_dia');
+}
+
+async function _instrSalvarJustificativa(id){
+  const valor=document.getElementById('justif-'+id)?.value?.trim()||null;
+  const{error}=await sb.from('instrutor_atribuicoes').update({justificativa:valor}).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('✅ Justificativa salva!');
 }
 
 async function _instrAcaoAdd(gid,data){
@@ -17337,6 +17440,8 @@ function _instrExportarRelatorioDia(gid){
   <table><thead><tr><th>Pos</th><th>Motorista</th><th>Matrícula</th><th>KM/L</th><th>Infrações</th><th>Monitor</th></tr></thead><tbody>${c.agressores.map(linhaAgressor).join('')||'<tr><td colspan="6">Sem ranking calculado</td></tr>'}</tbody></table>
   <div class="sec">■ AÇÕES DOS MONITORES NO DIA</div>
   <table><thead><tr><th>Tipo</th><th>Alvo</th><th>Indicador</th><th>Observação</th><th>Monitor</th></tr></thead><tbody>${c.listaAcoesMonitores.map(linhaAcaoMonitor).join('')||'<tr><td colspan="5">Nenhuma ação registrada</td></tr>'}</tbody></table>
+  <div class="sec">■ PRODUTIVIDADE DOS MONITORES — PLANEJADO × REALIZADO</div>
+  <table><thead><tr><th>Monitor</th><th>Planejado</th><th>Feito</th><th>Faltante</th></tr></thead><tbody>${Object.values(c.prodPorMonitor).map(m=>`<tr><td>${escHtml(m.nome||'—')}</td><td>${m.planejado}</td><td>${m.feito}</td><td>${m.planejado-m.feito}</td></tr>`).join('')||'<tr><td colspan="4">Nenhum plano montado nesse dia</td></tr>'}</tbody></table>
   <div class="sec">■ PLANO DE AÇÃO DO INSTRUTOR</div>
   <table><thead><tr><th>Descrição</th><th>Responsável</th><th>Prazo</th><th>Status</th></tr></thead><tbody>${c.acoes.map(linhaAcao).join('')||'<tr><td colspan="4">Nenhuma ação registrada</td></tr>'}</tbody></table>
   <table style="margin-top:8px"><tr><td><b>Gerado em:</b> ${new Date().toLocaleString('pt-BR')}</td></tr></table>
