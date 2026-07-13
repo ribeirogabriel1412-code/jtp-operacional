@@ -1957,7 +1957,7 @@ async function renderAlmoxPainelLider(){
   const tz=opTimezone(gid);
   const iniHoje=opDateTimeISO(hojeIso,'00:00',tz);
   const fimHoje=opDateTimeISO(opAddDays(hojeIso,1),'00:00',tz);
-  const[{data:ruas},{data:divs},{data:quadro},{data:perfisAlmox},{data:saidaRaw},{data:entradaRaw},{data:rotHojeRaw},{data:baixaRotHojeRaw}]=await Promise.all([
+  const[{data:ruas},{data:divs},{data:quadro},{data:perfisAlmox},{data:saidaRaw},{data:entradaRaw},{data:rotHojeRaw},{data:baixaRotHojeRaw},{data:portariaPendentes},{data:portariaConferidasHoje}]=await Promise.all([
     sb.from('almoxo_ruas').select('*').eq('garagem_id',gid).eq('ativo',true).order('nome'),
     sb.from('almoxo_divergencias').select('*').eq('garagem_id',gid).eq('status','aberta').order('detectado_em',{ascending:false}),
     sb.from('almoxo_quadro_turno').select('*,perfis(nome,cargo)').eq('garagem_id',gid).order('hora_entrada'),
@@ -1969,12 +1969,17 @@ async function renderAlmoxPainelLider(){
     // Acurácia do Inventário Rotativo hoje = % de itens com dupla contagem que bateram entre dois almoxarifes
     sb.from('almoxo_inventario_turno').select('req_id,qtd_fisica,almoxarife_id').eq('garagem_id',gid).eq('turno_data',hojeIso).not('req_id','is',null),
     // Acurácia da Baixa Rotação hoje = média do físico/sistema já calculado na contagem
-    sb.from('almoxo_baixa_rotacao_contagem').select('acuracia').eq('garagem_id',gid).eq('turno_data',hojeIso).not('acuracia','is',null)
+    sb.from('almoxo_baixa_rotacao_contagem').select('acuracia').eq('garagem_id',gid).eq('turno_data',hojeIso).not('acuracia','is',null),
+    // Notas lançadas pela portaria ainda sem entrada dada pelo almox
+    sb.from('portaria_recebimento').select('*').eq('garagem_id',gid).eq('status','pendente').order('created_at',{ascending:true}),
+    // Notas da portaria já confirmadas hoje -- soma no mesmo indicador de Entrada
+    sb.from('portaria_recebimento').select('id').eq('garagem_id',gid).eq('status','conferido').gte('conferido_em',iniHoje).lt('conferido_em',fimHoje)
   ]);
   const saidaQtd=(saidaRaw||[]).reduce((s,r)=>s+(parseFloat(r.qtd_entregue||r.quantidade)||0),0);
   const saidaValor=(saidaRaw||[]).reduce((s,r)=>s+(parseFloat(r.qtd_entregue||r.quantidade)||0)*(parseFloat(r.valor_estimado)||0),0);
   const entradaQtd=(entradaRaw||[]).reduce((s,r)=>s+(parseFloat(r.qtd_recebida)||0),0);
-  const entradaNFs=new Set((entradaRaw||[]).map(r=>r.nota_fiscal).filter(Boolean)).size;
+  const entradaNFs=new Set((entradaRaw||[]).map(r=>r.nota_fiscal).filter(Boolean)).size+(portariaConferidasHoje||[]).length;
+  window._portariaPendentesCache=portariaPendentes||[];
   // Dupla contagem hoje: agrupa por req_id, pega 1 contagem por almoxarife distinto,
   // acurácia = % de grupos com 2+ contadores cujos valores bateram
   const rotPorReq={};
@@ -2082,6 +2087,21 @@ async function renderAlmoxPainelLider(){
       ${acurRotativo!=null?kpi('Acurácia Rotativo (dupla contagem)',acurRotativo,95,'%',false,0):kpi('Acurácia Rotativo (dupla contagem)','—',undefined,'',false,0)}
       ${acurBaixaRot!=null?kpi('Acurácia Baixa Rotação hoje',acurBaixaRot,95,'%',false,0):kpi('Acurácia Baixa Rotação hoje','—',undefined,'',false,0)}
     </div>
+    ${secTitle('📥',`Notas da Portaria — Aguardando Entrada (${(portariaPendentes||[]).length})`)}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:20px">
+      ${(portariaPendentes||[]).length?`
+        <div style="display:grid;grid-template-columns:110px 1fr 1fr 100px 140px;gap:10px;background:var(--surface2);border-bottom:1px solid var(--border);padding:9px 14px;font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)">
+          <div>NF</div><div>Fornecedor</div><div>Material</div><div style="text-align:center">Registrado</div><div></div>
+        </div>
+        ${portariaPendentes.map(p=>`<div style="display:grid;grid-template-columns:110px 1fr 1fr 100px 140px;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border2);font-size:12px">
+          <div style="font-family:'DM Mono',monospace;font-weight:800;color:var(--blue)">${safe(p.numero_nota)}</div>
+          <div>${safe(p.fornecedor)}</div>
+          <div style="color:var(--text3)">${safe((p.material||'').slice(0,60))}${(p.material||'').length>60?'…':''}</div>
+          <div style="text-align:center;color:var(--text3);font-size:11px">${p.created_at?new Date(p.created_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'}</div>
+          <div style="text-align:right"><button onclick="darEntradaPortaria('${p.id}')" style="border:1px solid var(--green);background:#00C48C18;color:var(--green);border-radius:6px;padding:6px 12px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit">✅ Dar entrada</button></div>
+        </div>`).join('')}
+      `:'<div class="empty">Nenhuma nota aguardando entrada 🎉</div>'}
+    </div>
     ${secTitle('🗓️','Quadro de Turnos')}
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:20px">
       ${quadroRows?`
@@ -2107,6 +2127,18 @@ async function renderAlmoxPainelLider(){
       </div>${divRows}`:`<div class="empty">Nenhuma divergência aberta 🎉</div>`}
     </div>
   `);
+}
+
+async function darEntradaPortaria(id){
+  const p=(window._portariaPendentesCache||[]).find(x=>String(x.id)===String(id));
+  if(!p)return;
+  if(!confirm(`Confirmar entrada da NF ${p.numero_nota} (${p.fornecedor})?`))return;
+  const{error}=await sb.from('portaria_recebimento').update({
+    status:'conferido',conferido_por:S.perfil?.nome||null,conferido_em:new Date().toISOString()
+  }).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('✅ Entrada confirmada!');
+  renderAlmoxPainelLider();
 }
 
 // ── ALMOXARIFADO: Pedidos de Compra + FUP ────────────────────────────────────

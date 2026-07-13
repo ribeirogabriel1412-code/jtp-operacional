@@ -124,33 +124,24 @@ if ($oracleRows.Count -eq 0) {
     return
 }
 
-$osNumeros = @($oracleRows | Select-Object -ExpandProperty NUMERO_OS -Unique)
-# IMPORTANTE (2026-07-07): o filtro in.() do PostgREST NAO usa aspas simples
-# como delimitador de string -- ele trata a aspa como parte literal do valor.
-# "in.('16685')" busca a string "'16685'" (com aspas) e nunca acha nada,
-# "in.(16685)" busca o valor certo. Envolver em aspas aqui fazia a checagem de
-# "ja existe" sempre voltar vazia, e o sync duplicava tudo a cada execucao.
-$listaOs = $osNumeros -join ','
-
-# -- 2) Busca o que ja existe no Supabase pras mesmas OS ---------------------
-# So compara (os_numero, cod_sap) -- nao importa quem criou a linha (sync ou
-# PCM manual), se ja existe nao insere de novo.
-Write-Host "Buscando linhas ja existentes em requisicoes_compra..." -ForegroundColor Cyan
-$existentesUri = "$SUPABASE_URL/rest/v1/requisicoes_compra?os_numero=in.($listaOs)&select=os_numero,cod_sap"
-$existentes = @(Invoke-RestMethod -Method GET -Headers $hdr -Uri $existentesUri)
-$chavesExistentes = New-Object System.Collections.Generic.HashSet[string]
-foreach ($e in $existentes) { [void]$chavesExistentes.Add("$($e.os_numero)|$($e.cod_sap)") }
-Write-Host "$($chavesExistentes.Count) combinacao(oes) OS+peca ja existem no app." -ForegroundColor Green
-
-# -- 3) Monta e insere só o que falta -----------------------------------------
+# -- 2) Monta os candidatos --------------------------------------------------
+# IMPORTANTE (2026-07-13): antes o dedup era feito aqui no PowerShell (buscar
+# os_numero+cod_sap ja existentes e comparar em memoria). Isso falhou de forma
+# silenciosa -- rodando a cada 30min, criou 1110 linhas duplicadas num unico
+# dia (ver scripts/dedupe_e_travar_requisicoes_praxio.sql pra limpeza). Causa
+# exata nao confirmada (URL longa demais com muitos os_numero, tipo Decimal do
+# ODBC formatando diferente do texto salvo, etc) -- em vez de caçar a causa,
+# o dedup agora e garantido pelo PROPRIO BANCO: indice unico parcial em
+# requisicoes_compra(os_numero, cod_sap) WHERE status <> 'cancelado', e o
+# insert abaixo usa upsert com "ignore-duplicates" (equivalente a ON CONFLICT
+# DO NOTHING). Mesmo que esse script rode 2x, ou 100x, o Postgres nunca deixa
+# duplicar -- so roda a migracao SQL uma vez antes de usar esta versao.
 $hoje = (Get-Date).ToString("yyyy-MM-dd")
 $agora = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ssZ")
-$novos = [System.Collections.Generic.List[object]]::new()
+$candidatos = [System.Collections.Generic.List[object]]::new()
 foreach ($o in $oracleRows) {
     if (-not $o.COD_SAP) { continue }  # sem codigo de material, nao da pra rastrear
-    $chave = "$($o.NUMERO_OS)|$($o.COD_SAP)"
-    if ($chavesExistentes.Contains($chave)) { continue }
-    $novos.Add([PSCustomObject]@{
+    $candidatos.Add([PSCustomObject]@{
         garagem_id  = $GARAGEM_ID_PVH
         os_numero   = "$($o.NUMERO_OS)"
         prefixo     = Formata-Prefixo $o.PREFIXO_VEIC
@@ -162,11 +153,10 @@ foreach ($o in $oracleRows) {
         criado_por  = "Sync PRAXIO"
         criado_em   = $agora
     })
-    [void]$chavesExistentes.Add($chave)  # evita duplicar dentro da mesma rodada
 }
-
+$novos = $candidatos
 Write-Host ""
-Write-Host "$($novos.Count) item(ns) novo(s) pra inserir (de $($oracleRows.Count) da Oracle)." -ForegroundColor $(if ($novos.Count -gt 0) { "Cyan" } else { "Green" })
+Write-Host "$($candidatos.Count) candidato(s) da Oracle (o banco decide quais ja existem)." -ForegroundColor Cyan
 
 # Invoke-RestMethod no Windows PowerShell 5.1 nao manda o -Body (string) como
 # UTF-8 de verdade quando tem acento/cedilha -- o Supabase recebe bytes
@@ -181,10 +171,16 @@ function Post-SupabaseJson($uri, $headers, $bodyObj) {
 
 if ($novos.Count -gt 0) {
     $novos | Format-Table os_numero, prefixo, cod_sap, quantidade, peca -AutoSize
-    $uriInsert = "$SUPABASE_URL/rest/v1/requisicoes_compra"
+    # on_conflict + Prefer: resolution=ignore-duplicates == ON CONFLICT DO
+    # NOTHING no Postgres. Exige o indice unico parcial criado por
+    # scripts/dedupe_e_travar_requisicoes_praxio.sql. return=representation
+    # devolve so as linhas que realmente foram inseridas (as que ja existiam
+    # voltam vazias), entao o log mostra o numero real de itens novos.
+    $uriUpsert = "$SUPABASE_URL/rest/v1/requisicoes_compra?on_conflict=os_numero,cod_sap"
+    $hdrUpsert = $hdr + @{ "Content-Type" = "application/json; charset=utf-8"; "Prefer" = "resolution=ignore-duplicates,return=representation" }
     try {
-        Post-SupabaseJson $uriInsert $hdrWrite $novos | Out-Null
-        Write-Host "Inseridos em requisicoes_compra." -ForegroundColor Green
+        $inseridos = @(Post-SupabaseJson $uriUpsert $hdrUpsert $novos)
+        Write-Host "$($inseridos.Count) item(ns) realmente novo(s) inserido(s) em requisicoes_compra (o resto ja existia -- o banco ignorou)." -ForegroundColor Green
     } catch {
         Write-Warning "Erro inserindo: $($_.Exception.Message)"
         $respBody = $null
@@ -203,7 +199,7 @@ if ($novos.Count -gt 0) {
         Write-Host "Tentando inserir item a item pra achar o(s) registro(s) com problema..." -ForegroundColor Yellow
         foreach ($n in $novos) {
             try {
-                Post-SupabaseJson $uriInsert $hdrWrite @($n) | Out-Null
+                Post-SupabaseJson $uriUpsert $hdrUpsert @($n) | Out-Null
                 Write-Host "  OK  os=$($n.os_numero) cod_sap=$($n.cod_sap)" -ForegroundColor Green
             } catch {
                 $detalhe = $null
