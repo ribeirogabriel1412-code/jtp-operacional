@@ -2324,14 +2324,43 @@ function abrirListaValetOficina(prefixo='',km='',itensTxt='',modo='nova'){
   openSheet(modo==='editar'?'✏️ Alterar lista':modo==='adicionar'?'➕ Adicionar peças':'📦 Lista de peças',`
     <div style="display:flex;flex-direction:column;gap:10px">
       <input type="hidden" id="val-modo" value="${modo}">
-      <div><label class="fl">Data do valetamento</label><input class="fi2" id="val-data" type="date" value="${_valetMobData||proximoSabadoISO()}" style="font-family:'DM Mono',monospace"></div>
+      <div>
+        <label class="fl">Data do valetamento</label>
+        <input class="fi2" id="val-data" type="date" value="${_valetMobData||proximoSabadoISO()}" style="font-family:'DM Mono',monospace">
+        <div id="val-data-info" style="font-size:11px;color:var(--blue);margin-top:4px"></div>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div><label class="fl">Prefixo</label><input class="fi2" id="val-pref" type="text" placeholder="02.015" value="${escHtml(prefixo)}" style="font-family:'DM Mono',monospace;font-size:20px"></div>
+        <div><label class="fl">Prefixo</label><input class="fi2" id="val-pref" type="text" placeholder="02.015" value="${escHtml(prefixo)}" style="font-family:'DM Mono',monospace;font-size:20px" onblur="sugerirDataValetPorPrefixo(this.value)"></div>
         <div><label class="fl">KM atual</label><input class="fi2" id="val-km" type="number" placeholder="19880" value="${escHtml(km)}" style="font-family:'DM Mono',monospace;font-size:20px"></div>
       </div>
       <div><label class="fl">Peças - uma por linha</label><textarea id="val-itens" placeholder="2 Filtro de óleo&#10;1 Correia do alternador&#10;Pastilha freio x4" style="width:100%;height:180px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;color:var(--text);padding:12px;font-size:15px;line-height:1.45;font-family:inherit;outline:none;box-sizing:border-box">${escHtml(itensTxt)}</textarea></div>
       <button onclick="salvarListaValetOficina()" style="padding:16px;border-radius:12px;border:none;background:var(--green);color:#06131f;font-size:15px;font-weight:800;font-family:inherit;cursor:pointer">${modo==='adicionar'?'Adicionar peças':'Salvar lista'}</button>
     </div>`);
+  if(prefixo)sugerirDataValetPorPrefixo(prefixo);
+}
+
+// Busca o dia que o PCM já programou pra esse carro na preventiva da semana
+// (marcador __PROG_PREV__ em requisicoes_compra) e ajusta a data sozinho --
+// antes o líder digitava a data livremente e os carros da mesma semana
+// acabavam espalhados em dias diferentes.
+async function sugerirDataValetPorPrefixo(prefixoRaw){
+  const info=document.getElementById('val-data-info');
+  const prefixo=String(prefixoRaw||'').trim().toUpperCase();
+  if(!prefixo){if(info)info.textContent='';return;}
+  const gid=getGid();
+  const{data}=await sb.from('requisicoes_compra').select('data').eq('garagem_id',gid).eq('prefixo',prefixo).eq('cod_sap','__PROG_PREV__').neq('status','cancelado').gte('data',hoje()).order('data',{ascending:true}).limit(1);
+  const marcador=data?.[0];
+  if(!info)return;
+  if(!marcador){info.textContent='';return;}
+  const dataFmt=marcador.data.split('-').reverse().join('/');
+  const modo=document.getElementById('val-modo')?.value||'nova';
+  if(modo==='nova'){
+    const dataEl=document.getElementById('val-data');
+    if(dataEl)dataEl.value=marcador.data;
+    info.textContent=`📆 Data ajustada pro dia programado da preventiva: ${dataFmt}`;
+  }else{
+    info.textContent=`📆 Preventiva deste carro programada pra ${dataFmt}`;
+  }
 }
 async function salvarListaValetOficina(){
   const gid=getGid();
@@ -2342,13 +2371,43 @@ async function salvarListaValetOficina(){
   const itens=parseItensValetTexto(document.getElementById('val-itens')?.value);
   if(!prefixo){toast('Informe o prefixo','err');return;}
   if(!itens.length){toast('Informe pelo menos uma peça','err');return;}
-  if(modo!=='adicionar'){
-    const del=await sb.from('requisicoes_compra').update({status:'cancelado'}).eq('garagem_id',gid).eq('data',data).eq('prefixo',prefixo).in('status',['lista_oficina','solicitado_pcm']);
-    if(del.error){toast('Erro ao substituir lista: '+del.error.message,'err');return;}
+
+  // Compara com o que já está aberto (não processado pelo almox) pra não
+  // recriar peça que não mudou -- isso é o que gerava "duplicação" na
+  // requisicoes_compra a cada vez que o líder reabria e salvava a lista.
+  const{data:abertos,error:errBusca}=await sb.from('requisicoes_compra').select('id,peca,quantidade').eq('garagem_id',gid).eq('data',data).eq('prefixo',prefixo).in('status',['lista_oficina','solicitado_pcm']);
+  if(errBusca){toast('Erro ao conferir lista atual: '+errBusca.message,'err');return;}
+  const chave=s=>String(s||'').trim().toLowerCase();
+  const restantes=new Map((abertos||[]).map(r=>[chave(r.peca),r]));
+  const justificativa=(km?`KM ${km} · `:'')+'Lista líder oficina';
+  const paraInserir=[],paraAtualizar=[];
+
+  itens.forEach(it=>{
+    const existente=restantes.get(chave(it.peca));
+    if(existente){
+      restantes.delete(chave(it.peca));
+      if(Number(existente.quantidade||1)!==it.qtd)paraAtualizar.push({id:existente.id,quantidade:it.qtd});
+    }else{
+      paraInserir.push({garagem_id:gid,data,prefixo,peca:it.peca,quantidade:it.qtd,status:'solicitado_pcm',justificativa,criado_por:S.perfil?.nome||null,criado_em:new Date().toISOString()});
+    }
+  });
+  // O que sobrou em "restantes" não foi digitado de novo -- só remove
+  // quando é substituição de lista (nova/editar); "adicionar" nunca mexe
+  // no que já existia.
+  const paraCancelar=modo==='adicionar'?[]:[...restantes.values()].map(r=>r.id);
+
+  for(const upd of paraAtualizar){
+    const{error}=await sb.from('requisicoes_compra').update({quantidade:upd.quantidade}).eq('id',upd.id);
+    if(error){toast('Erro ao atualizar item: '+error.message,'err');return;}
   }
-  const rows=itens.map(it=>({garagem_id:gid,data,prefixo,peca:it.peca,quantidade:it.qtd,status:'solicitado_pcm',justificativa:(km?`KM ${km} · `:'')+'Lista líder oficina',criado_por:S.perfil?.nome||null,criado_em:new Date().toISOString()}));
-  const{error}=await sb.from('requisicoes_compra').insert(rows);
-  if(error){toast('Erro: '+error.message,'err');return;}
+  if(paraCancelar.length){
+    const{error}=await sb.from('requisicoes_compra').update({status:'cancelado'}).in('id',paraCancelar);
+    if(error){toast('Erro ao remover itens: '+error.message,'err');return;}
+  }
+  if(paraInserir.length){
+    const{error}=await sb.from('requisicoes_compra').insert(paraInserir);
+    if(error){toast('Erro: '+error.message,'err');return;}
+  }
   _valetMobData=data;closeSheet(true);toast('✅ Lista enviada direto ao almox');telaValetOficina();
 }
 async function excluirListaValetOficina(prefixo){
