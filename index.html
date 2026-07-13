@@ -17190,10 +17190,13 @@ async function _instrRelatorioDia(gid,back,tabBar){
     sb.from('instrutor_atribuicoes').select('*').eq('garagem_id',gid).eq('data',dataR),
   ]);
 
-  // Só o que "ficou valendo" no dia -- descarta reenvios/edições duplicadas
+  // Só o que "ficou valendo" no dia -- descarta reenvios/edições duplicadas.
+  // Prefixo usa almoxPrefKey (mesma normalização do Almoxarifado) porque
+  // "02189" e "02.189" são o mesmo carro escrito diferente -- sem isso o
+  // dedup e o cruzamento com o Plano do Dia tratavam como carros distintos.
   const monRegs=_instrDedupPorChave(monRegsRaw,r=>(r.monitor_id||'')+'|'+(r.matricula||r.motorista_nome||''));
   const relLinha=_instrDedupPorChave(relLinhaRaw,r=>(r.monitor_id||'')+'|'+(r.linha||''));
-  const relCarro=_instrDedupPorChave(relCarroRaw,r=>(r.monitor_id||'')+'|'+(r.prefixo||''));
+  const relCarro=_instrDedupPorChave(relCarroRaw,r=>(r.monitor_id||'')+'|'+almoxPrefKey(r.prefixo));
 
   const kmlManual=kmlManualRows?.[0]||null;
 
@@ -17215,12 +17218,13 @@ async function _instrRelatorioDia(gid,back,tabBar){
   // planejado x feito, e lista o que faltou pra anexar uma justificativa.
   const feitoCampo=new Set();monRegs.forEach(r=>{feitoCampo.add(r.monitor_id+'|'+r.matricula);feitoCampo.add(r.monitor_id+'|'+r.motorista_nome);});
   const feitoLinha=new Set(relLinha.map(r=>r.monitor_id+'|'+r.linha));
-  const feitoCarro=new Set(relCarro.map(r=>r.monitor_id+'|'+r.prefixo));
+  const feitoCarro=new Set(relCarro.map(r=>r.monitor_id+'|'+almoxPrefKey(r.prefixo)));
   const feitoPorTipo={motorista:feitoCampo,linha:feitoLinha,carro:feitoCarro};
   const prodPorMonitor={};
   (atribuicoes||[]).forEach(a=>{
     const valor=a[INSTR_TIPO_ATRIB_CAMPO[a.tipo]];
-    const feito=feitoPorTipo[a.tipo]?.has(a.monitor_id+'|'+valor);
+    const valorChave=a.tipo==='carro'?almoxPrefKey(valor):valor;
+    const feito=feitoPorTipo[a.tipo]?.has(a.monitor_id+'|'+valorChave);
     if(!prodPorMonitor[a.monitor_id])prodPorMonitor[a.monitor_id]={nome:a.monitor_nome,planejado:0,feito:0,faltantes:[]};
     const pm=prodPorMonitor[a.monitor_id];
     pm.planejado++;
