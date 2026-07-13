@@ -2193,12 +2193,85 @@ async function almoxRecontarItem(id){
   const sapVal=parseFloat(d.qtd_sap);
   const bateu=!isNaN(sapVal)&&novoFisico===sapVal;
   const acuracia=!isNaN(sapVal)&&sapVal!==0?Math.round((novoFisico/sapVal)*1000)/10:null;
-  const payload=bateu
-    ?{status:'encerrada',qtd_fisica:novoFisico,acuracia,encerrado_por:S.user?.id,encerrado_em:new Date().toISOString(),obs_resolucao:'Recontagem confirmou o físico'}
-    :{qtd_fisica:novoFisico,acuracia,detectado_em:new Date().toISOString()};
-  const{error}=await sb.from('almoxo_divergencias').update(payload).eq('id',id);
+  if(bateu){
+    const{error}=await sb.from('almoxo_divergencias').update({status:'encerrada',qtd_fisica:novoFisico,acuracia,encerrado_por:S.user?.id,encerrado_em:new Date().toISOString(),obs_resolucao:'Recontagem confirmou o físico'}).eq('id',id);
+    if(error){toast('Erro: '+error.message,'err');return;}
+    toast('✅ Recontagem bateu — divergência encerrada!');
+    renderAlmoxPainelLider();
+    return;
+  }
+  // Ainda diverge -- atualiza o físico e abre a tratativa na hora, pra não
+  // precisar ir na tela do Rotativo depois classificar separadamente.
+  const{error}=await sb.from('almoxo_divergencias').update({qtd_fisica:novoFisico,acuracia,detectado_em:new Date().toISOString()}).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
-  toast(bateu?'✅ Recontagem bateu — divergência encerrada!':'⚠️ Ainda diverge — valor atualizado, segue aberta');
+  toast('⚠️ Ainda diverge — classifique a tratativa','err');
+  abrirTratativaRecontagem(d.id,d.cod_sap,d.nome_item,novoFisico,sapVal);
+}
+
+// Tratativa aberta direto da Recontagem -- versão auto-contida da tratativa do
+// Rotativo (confAbrirTratativa), que depende de window._confRotItens (só
+// existe se o líder tiver rodado o cruzamento SAP x PRAXIO na mesma sessão).
+// Aqui usa direto os dados da divergência salva, funciona pra Rotativo E
+// Baixa Rotação (o Rotativo original só cobria Rotativo).
+function abrirTratativaRecontagem(divergenciaId,codSap,nomeItem,fisico,sap){
+  document.getElementById('modal-alm-title').textContent='Tratativa — '+codSap;
+  document.getElementById('modal-alm-body').innerHTML=`
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px">${escHtml(nomeItem||'')} · Físico ${fisico} × SAP ${sap??'—'}</div>
+    <label class="fl">Tipo de tratativa</label>
+    <select id="rec-trat-tipo" onchange="document.getElementById('rec-trat-campos').innerHTML=recTratCampos(this.value)" style="width:100%;padding:9px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);margin-bottom:14px">
+      <option value="">— selecione —</option>
+      <option value="recebimento">Recebimento (material entrou depois da contagem)</option>
+      <option value="contagem_errada">Contagem errada (recontagem corrige o físico)</option>
+      <option value="desvio">Desvio real (formaliza, será tratado no inventário oficial)</option>
+    </select>
+    <div id="rec-trat-campos"></div>
+    <label class="fl">Observação (opcional)</label>
+    <textarea class="fi" id="rec-trat-obs" rows="2" style="margin-bottom:16px"></textarea>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn-sec" onclick="closeM('modal-alm')">Cancelar</button>
+      <button class="btn-success" onclick="salvarTratativaRecontagem('${divergenciaId}','${codSap}')">💾 Salvar tratativa</button>
+    </div>
+  `;
+  document.getElementById('modal-alm').style.display='flex';
+}
+
+function recTratCampos(tipo){
+  if(tipo==='recebimento')return`
+    <label class="fl">Nota Fiscal</label>
+    <input class="fi" id="rec-trat-nf" placeholder="Ex: 123456" style="margin-bottom:14px">
+    <label class="fl">Quantidade recebida</label>
+    <input class="fi" id="rec-trat-qtd" type="number" step="0.01" placeholder="Ex: 8" style="margin-bottom:14px">
+  `;
+  if(tipo==='contagem_errada')return`
+    <label class="fl">Quantidade correta (recontagem)</label>
+    <input class="fi" id="rec-trat-qtd-corr" type="number" step="0.01" placeholder="Ex: 17" style="margin-bottom:14px">
+  `;
+  return'';
+}
+
+async function salvarTratativaRecontagem(divergenciaId,codSap){
+  const tipo=document.getElementById('rec-trat-tipo')?.value;
+  if(!tipo){toast('Selecione o tipo de tratativa','err');return;}
+  const gid=getGid();
+  const hojeIso=hoje();
+  const payload={garagem_id:gid,cod_sap:codSap,turno_data:hojeIso,tipo,criado_por:S.perfil?.nome||null,observacao:document.getElementById('rec-trat-obs')?.value?.trim()||null};
+  if(tipo==='recebimento'){
+    const nf=document.getElementById('rec-trat-nf')?.value?.trim();
+    const qtd=parseFloat(document.getElementById('rec-trat-qtd')?.value);
+    if(!nf){toast('Informe a nota fiscal','err');return;}
+    if(isNaN(qtd)){toast('Informe a quantidade recebida','err');return;}
+    payload.nota_fiscal=nf;payload.qtd_recebida=qtd;
+  }else if(tipo==='contagem_errada'){
+    const qtd=document.getElementById('rec-trat-qtd-corr')?.value;
+    if(qtd===''||qtd==null){toast('Informe a quantidade correta','err');return;}
+    payload.qtd_corrigida=parseFloat(qtd);
+  }
+  const{error:errTrat}=await sb.from('almoxo_inventario_tratativas').upsert(payload,{onConflict:'garagem_id,cod_sap,turno_data'});
+  if(errTrat){toast('Erro ao salvar tratativa: '+errTrat.message,'err');return;}
+  const{error:errDiv}=await sb.from('almoxo_divergencias').update({status:'encerrada',encerrado_por:S.user?.id,encerrado_em:new Date().toISOString(),obs_resolucao:'Tratado: '+tipo}).eq('id',divergenciaId);
+  if(errDiv){toast('Erro ao encerrar divergência: '+errDiv.message,'err');return;}
+  closeM('modal-alm');
+  toast('✅ Tratativa registrada e divergência encerrada!');
   renderAlmoxPainelLider();
 }
 
