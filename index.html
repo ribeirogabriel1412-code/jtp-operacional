@@ -2090,16 +2090,21 @@ async function renderAlmoxPainelLider(){
     ${secTitle('📥',`Notas da Portaria — Aguardando Entrada (${(portariaPendentes||[]).length})`)}
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:20px">
       ${(portariaPendentes||[]).length?`
-        <div style="display:grid;grid-template-columns:110px 1fr 1fr 100px 140px;gap:10px;background:var(--surface2);border-bottom:1px solid var(--border);padding:9px 14px;font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)">
-          <div>NF</div><div>Fornecedor</div><div>Material</div><div style="text-align:center">Registrado</div><div></div>
+        <div style="display:grid;grid-template-columns:110px 90px 1fr 1fr 100px 100px;gap:10px;background:var(--surface2);border-bottom:1px solid var(--border);padding:9px 14px;font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)">
+          <div>NF</div><div>Tipo</div><div>Fornecedor</div><div>Material</div><div style="text-align:center">Registrado</div><div></div>
         </div>
-        ${portariaPendentes.map(p=>`<div style="display:grid;grid-template-columns:110px 1fr 1fr 100px 140px;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border2);font-size:12px">
+        ${portariaPendentes.map(p=>{
+          const tipoTag=p.tipo==='retirada'?`<span style="background:#F59E0B18;color:var(--amber);border:1px solid #F59E0B50;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:800">🔄 Retirada</span>`
+            :p.tipo==='lancamento'?`<span style="background:#2563EB18;color:var(--blue);border:1px solid #2563EB50;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:800">📥 Lançto${p.sap_lancado?' ✅':''}</span>`
+            :`<span style="color:var(--text4);font-size:10px">— classificar</span>`;
+          return`<div style="display:grid;grid-template-columns:110px 90px 1fr 1fr 100px 100px;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border2);font-size:12px;cursor:pointer" onclick="abrirNotaPortaria('${p.id}')">
           <div style="font-family:'DM Mono',monospace;font-weight:800;color:var(--blue)">${safe(p.numero_nota)}</div>
+          <div>${tipoTag}</div>
           <div>${safe(p.fornecedor)}</div>
           <div style="color:var(--text3)">${safe((p.material||'').slice(0,60))}${(p.material||'').length>60?'…':''}</div>
           <div style="text-align:center;color:var(--text3);font-size:11px">${p.created_at?new Date(p.created_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'}</div>
-          <div style="text-align:right"><button onclick="darEntradaPortaria('${p.id}')" style="border:1px solid var(--green);background:#00C48C18;color:var(--green);border-radius:6px;padding:6px 12px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit">✅ Dar entrada</button></div>
-        </div>`).join('')}
+          <div style="text-align:right"><button onclick="event.stopPropagation();abrirNotaPortaria('${p.id}')" style="border:1px solid var(--blue);background:#2563EB18;color:var(--blue);border-radius:6px;padding:6px 12px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit">🔍 Abrir</button></div>
+        </div>`;}).join('')}
       `:'<div class="empty">Nenhuma nota aguardando entrada 🎉</div>'}
     </div>
     ${secTitle('🗓️','Quadro de Turnos')}
@@ -2129,14 +2134,68 @@ async function renderAlmoxPainelLider(){
   `);
 }
 
+function abrirNotaPortaria(id){
+  const p=(window._portariaPendentesCache||[]).find(x=>String(x.id)===String(id));
+  if(!p)return;
+  const tipo=p.tipo||'';
+  const sapBox=tipo==='lancamento'?`<div id="portnota-sap-box">${sapBoxHtmlPortaria(p)}</div>`:'<div id="portnota-sap-box"></div>';
+  document.getElementById('modal-alm-title').textContent='📥 NF '+p.numero_nota;
+  document.getElementById('modal-alm-body').innerHTML=`
+    <div style="font-size:12px;color:var(--text3);margin-bottom:4px">${escHtml(p.fornecedor)} · registrado por ${escHtml(p.plantao_nome||'—')} · ${p.created_at?new Date(p.created_at).toLocaleString('pt-BR'):''}</div>
+    <div style="font-size:13px;margin-bottom:16px"><b>Material:</b> ${escHtml(p.material)}</div>
+    <label class="fl">Tipo da nota</label>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button id="portnota-tipo-retirada" onclick="selTipoNotaPortaria('${p.id}','retirada')" style="flex:1;padding:10px;border-radius:8px;border:1px solid ${tipo==='retirada'?'var(--amber)':'var(--border)'};background:${tipo==='retirada'?'#F59E0B18':'var(--surface2)'};color:${tipo==='retirada'?'var(--amber)':'var(--text3)'};font-weight:800;cursor:pointer;font-family:inherit">🔄 Retirada</button>
+      <button id="portnota-tipo-lancamento" onclick="selTipoNotaPortaria('${p.id}','lancamento')" style="flex:1;padding:10px;border-radius:8px;border:1px solid ${tipo==='lancamento'?'var(--blue)':'var(--border)'};background:${tipo==='lancamento'?'#2563EB18':'var(--surface2)'};color:${tipo==='lancamento'?'var(--blue)':'var(--text3)'};font-weight:800;cursor:pointer;font-family:inherit">📥 Lançamento</button>
+    </div>
+    ${sapBox}
+    <label class="fl">Tratativa</label>
+    <textarea class="fi" id="portnota-tratativa" rows="3" placeholder="Observação sobre essa nota..." style="margin-bottom:16px">${escHtml(p.tratativa||'')}</textarea>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn-sec" onclick="closeM('modal-alm')">Fechar</button>
+      <button class="btn-success" onclick="darEntradaPortaria('${p.id}')">✅ Dar entrada</button>
+    </div>
+  `;
+  document.getElementById('modal-alm').style.display='flex';
+}
+
+function sapBoxHtmlPortaria(p){
+  const marcado=!!p.sap_lancado;
+  return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+    <div style="font-size:12px;color:var(--text2)">${marcado?`✅ Lançado no SAP por ${escHtml(p.sap_lancado_por||'')}`:'⏳ Ainda não lançado no SAP'}</div>
+    <button onclick="toggleSapLancadoPortaria('${p.id}')" style="border:1px solid ${marcado?'var(--border)':'var(--blue)'};background:${marcado?'var(--surface)':'#2563EB18'};color:${marcado?'var(--text3)':'var(--blue)'};border-radius:6px;padding:6px 12px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap">${marcado?'Desmarcar':'☑ Validar lançamento'}</button>
+  </div>`;
+}
+
+async function selTipoNotaPortaria(id,tipo){
+  const{error}=await sb.from('portaria_recebimento').update({tipo}).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  const p=(window._portariaPendentesCache||[]).find(x=>String(x.id)===String(id));
+  if(p)p.tipo=tipo;
+  abrirNotaPortaria(id);
+}
+
+async function toggleSapLancadoPortaria(id){
+  const p=(window._portariaPendentesCache||[]).find(x=>String(x.id)===String(id));
+  if(!p)return;
+  const novo=!p.sap_lancado;
+  const payload={sap_lancado:novo,sap_lancado_por:novo?(S.perfil?.nome||null):null,sap_lancado_em:novo?new Date().toISOString():null};
+  const{error}=await sb.from('portaria_recebimento').update(payload).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  Object.assign(p,payload);
+  abrirNotaPortaria(id);
+}
+
 async function darEntradaPortaria(id){
   const p=(window._portariaPendentesCache||[]).find(x=>String(x.id)===String(id));
   if(!p)return;
+  const tratativa=document.getElementById('portnota-tratativa')?.value?.trim()||null;
   if(!confirm(`Confirmar entrada da NF ${p.numero_nota} (${p.fornecedor})?`))return;
   const{error}=await sb.from('portaria_recebimento').update({
-    status:'conferido',conferido_por:S.perfil?.nome||null,conferido_em:new Date().toISOString()
+    tratativa,status:'conferido',conferido_por:S.perfil?.nome||null,conferido_em:new Date().toISOString()
   }).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
+  closeM('modal-alm');
   toast('✅ Entrada confirmada!');
   renderAlmoxPainelLider();
 }
