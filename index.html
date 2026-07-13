@@ -5146,6 +5146,7 @@ async function confCruzarRotativo(){
   window._confRotItens=itensExibidos;
   window._confRotGaragem=S.garagens?.find(g=>g.id===gid)?.nome||gid;
   window._confRotDataRef=dataRef;
+  window._confBaixaRotItens=baixaRotRaw||[];
 
   // ── Baixa Rotação — mesma janela, pro líder ter ciência diária junto com o rotativo ──
   const baixaRotItens=baixaRotRaw||[];
@@ -5276,6 +5277,28 @@ function confRecorrExportarPDF(){
     <td style="${B}text-align:right">${N2(r.ultimoSap)}</td>
     <td style="${B}"></td>
   </tr>`).join('');
+  // Baixa Rotação -- entra informativo (tudo que foi contado no ciclo) além
+  // dos itens recorrentes acima, que já misturam rotativo+baixa rotação mas
+  // só quando divergem 2+ vezes. Sem essa seção, um desvio de baixa rotação
+  // que só aconteceu 1x nunca aparecia em relatório nenhum.
+  const baixaRotItens=window._confBaixaRotItens||[];
+  const baixaRotRows=baixaRotItens.map(b=>{
+    const item=b.almoxo_baixa_rotacao_itens||{};
+    const acur=b.acuracia!=null?parseFloat(b.acuracia):null;
+    const desvio=acur!=null&&acur<100;
+    return`<tr${desvio?' style="background:#fdd"':''}>
+      <td style="${B}">${esc(b.turno_data)}</td>
+      <td style="${B}text-align:center">${b.particao!=null?'P'+b.particao:'—'} · C${b.ciclo??'—'}</td>
+      <td style="${B}font-family:monospace;font-weight:700">${esc(item.cod_sap)}</td>
+      <td style="${B}">${esc(item.nome_item)}</td>
+      <td style="${B}font-family:monospace">${esc(item.wms_localizacao)}</td>
+      <td style="${B}text-align:right">${N2(b.qtd_sistema)}</td>
+      <td style="${B}text-align:right;font-weight:800">${N2(b.qtd_fisica)}</td>
+      <td style="${B}text-align:right;font-weight:900">${acur!=null?acur+'%':'—'}</td>
+      <td style="${B}">${esc(b.almoxarife_nome)}</td>
+    </tr>`;
+  }).join('');
+  const baixaRotDesvios=baixaRotItens.filter(b=>b.acuracia!=null&&parseFloat(b.acuracia)<100).length;
   const agora=new Date();
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${estiloRelJTP()}.assin{display:grid;grid-template-columns:1fr 1fr;gap:90px;margin-top:60px}.linha{border-top:1px solid #000;text-align:center;padding-top:4px}</style></head><body>
 ${barraPrint('📑 Relatório de Consolidação de Divergências · '+esc(garagem),'JTP_Consolidacao_Divergencias')}
@@ -5294,6 +5317,15 @@ ${barraPrint('📑 Relatório de Consolidação de Divergências · '+esc(garage
     <th style="${BH}">Decisão / Assinatura</th>
   </tr></thead>
   <tbody>${rows}</tbody>
+</table>
+<div class="sec-header">■ INVENTÁRIO DE BAIXA ROTAÇÃO — CONTAGENS DO CICLO (${baixaRotItens.length}${baixaRotDesvios?', '+baixaRotDesvios+' com desvio':''})</div>
+<table>
+  <thead><tr>
+    <th style="${BH}">Data</th><th style="${BH}">Ciclo</th><th style="${BH}">Cód. SAP</th><th style="${BH}">Descrição</th>
+    <th style="${BH}">WMS</th><th style="${BH}text-align:right">Sistema</th><th style="${BH}text-align:right">Físico</th>
+    <th style="${BH}text-align:right">Acurácia</th><th style="${BH}">Almoxarife</th>
+  </tr></thead>
+  <tbody>${baixaRotRows||`<tr><td colspan="9" style="${B}text-align:center">Nenhuma contagem de baixa rotação nessa janela.</td></tr>`}</tbody>
 </table>
 <div class="assin"><div class="linha">Líder de Almoxarifado / Suprimentos</div><div class="linha">Líder PCM</div></div>
 </body></html>`;
