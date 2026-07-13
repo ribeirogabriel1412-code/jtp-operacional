@@ -16990,11 +16990,12 @@ async function deleteCronograma(id){
 async function renderFerrInstrutor(aba='painel'){
   const gid=getGid();
   const back=`<button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>`;
-  const tabs=['painel','viagens','plano_dia','escala_semanal','pontualidade','ranking','kml','monitorias','relatorios'];
-  const tabLabels={painel:'📊 Painel',viagens:'🎯 Escala',plano_dia:'📅 Plano do Dia',escala_semanal:'🗓️ Escala Semanal',pontualidade:'📍 Pontualidade',ranking:'🏆 Ranking',kml:'⛽ KM/L',monitorias:'👁️ Monitorias',relatorios:'📋 Relatórios'};
+  const tabs=['painel','relatorio_dia','viagens','plano_dia','escala_semanal','pontualidade','ranking','kml','monitorias','relatorios'];
+  const tabLabels={painel:'📊 Painel',relatorio_dia:'📄 Relatório do Dia',viagens:'🎯 Escala',plano_dia:'📅 Plano do Dia',escala_semanal:'🗓️ Escala Semanal',pontualidade:'📍 Pontualidade',ranking:'🏆 Ranking',kml:'⛽ KM/L',monitorias:'👁️ Monitorias',relatorios:'📋 Relatórios'};
   const tabBar=tabs.map(t=>`<button class="filtro-btn${aba===t?' active':''}" onclick="renderFerrInstrutor('${t}')">${tabLabels[t]}</button>`).join('');
 
   if(aba==='painel') return _instrPainel(gid,back,tabBar);
+  if(aba==='relatorio_dia') return _instrRelatorioDia(gid,back,tabBar);
   if(aba==='viagens') return _instrViagens(gid,back,tabBar);
   if(aba==='plano_dia') return _instrPlanoDia(gid,back,tabBar);
   if(aba==='escala_semanal') return _instrEscalaSemanal(gid,back,tabBar);
@@ -17148,6 +17149,199 @@ async function _instrPainel(gid,back,tabBar){
       </div>
     </div>
   `);
+}
+
+// ══════════════════════════════════════════════════════════════
+// INSTRUTOR — Relatório do Dia (compilado + plano de ação)
+// ══════════════════════════════════════════════════════════════
+function _instrRelDiaAddDias(dataIso,delta){
+  const d=new Date(dataIso+'T00:00:00');
+  d.setDate(d.getDate()+delta);
+  return d.toISOString().slice(0,10);
+}
+
+async function _instrRelatorioDia(gid,back,tabBar){
+  const dataR=S._instrRelDiaData||new Date().toISOString().slice(0,10);
+  setMain(`${secTitle('📄','Relatório do Dia',back)}<div class="filtros">${tabBar}</div><div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando...</div>`);
+
+  const[{data:kmlDia},{data:monRegs},{data:relLinha},{data:relCarro},{data:rankingRaw},{data:acoes}]=await Promise.all([
+    sb.from('instrutor_kml_detalhado').select('veiculo,km_percorrido,litros').eq('garagem_id',gid).eq('data',dataR),
+    sb.from('monitoria_registros').select('*').eq('garagem_id',gid).eq('data',dataR),
+    sb.from('monitor_relatorio_linha').select('*').eq('garagem_id',gid).eq('data',dataR),
+    sb.from('monitor_relatorio_carro').select('*').eq('garagem_id',gid).eq('data',dataR),
+    sb.from('instrutor_ranking').select('*').eq('garagem_id',gid).order('semana_ref',{ascending:false}).order('posicao').limit(30),
+    sb.from('instrutor_acoes').select('*').eq('garagem_id',gid).eq('data',dataR).order('criado_em',{ascending:true}),
+  ]);
+
+  const kmTotal=(kmlDia||[]).reduce((s,r)=>s+(parseFloat(r.km_percorrido)||0),0);
+  const litrosTotal=(kmlDia||[]).reduce((s,r)=>s+(parseFloat(r.litros)||0),0);
+  const kmlGeral=litrosTotal>0?(kmTotal/litrosTotal):null;
+
+  const semanaMaisRecente=rankingRaw?.[0]?.semana_ref;
+  const ranking=(rankingRaw||[]).filter(r=>r.semana_ref===semanaMaisRecente);
+  const agressores=ranking.slice(0,8);
+
+  const infracoesHoje=(monRegs||[]).reduce((s,m)=>s+(m.inf_velocidade?1:0)+(m.inf_frenagem?1:0)+(m.inf_aceleracao?1:0)+(m.inf_celular?1:0)+(m.inf_cinto?1:0)+(m.inf_postura?1:0),0);
+  const acoesPendentes=(acoes||[]).filter(a=>a.status==='pendente').length;
+
+  const listaAcoesMonitores=[
+    ...(monRegs||[]).map(r=>({tipo:'👤 Campo',alvo:r.motorista_nome||r.matricula||'—',ind:[r.inf_velocidade&&'Velocidade',r.inf_frenagem&&'Frenagem',r.inf_aceleracao&&'Aceleração',r.inf_celular&&'Celular',r.inf_cinto&&'Cinto',r.inf_postura&&'Postura'].filter(Boolean).join(', ')||'Sem infração',obs:r.observacao,monitor:r.monitor_nome})),
+    ...(relLinha||[]).map(r=>({tipo:'📋 Linha',alvo:r.linha||'—',ind:r.pontualidade_pct!=null?`${r.pontualidade_pct}% pontual`:'—',obs:r.observacao,monitor:r.monitor_nome})),
+    ...(relCarro||[]).map(r=>({tipo:'🚌 Carro',alvo:r.prefixo||'—',ind:r.km_l!=null?`${r.km_l} km/l`:(r.condicao_interna||'—'),obs:r.observacao,monitor:r.monitor_nome})),
+  ];
+
+  window._instrRelDiaCache={dataR,kmlGeral,kmTotal,litrosTotal,monitoriasHoje:(monRegs||[]).length,infracoesHoje,agressores,listaAcoesMonitores,acoes:acoes||[]};
+
+  const agressoresHtml=agressores.length?agressores.map((r,i)=>`
+    <tr>
+      <td style="font-family:'DM Mono',monospace;color:var(--text3);text-align:center">${r.posicao||i+1}°</td>
+      <td style="font-weight:600">${escHtml(r.motorista_nome||'—')}</td>
+      <td style="font-family:'DM Mono',monospace;text-align:center">${escHtml(r.matricula||'—')}</td>
+      <td style="text-align:center;font-family:'DM Mono',monospace">${r.km_l??'—'}</td>
+      <td style="text-align:center;color:var(--red);font-weight:700">${r.infracoes_total||0}</td>
+      <td style="font-size:11px;color:var(--text3)">${escHtml(r.monitor_nome||'Não atribuído')}</td>
+    </tr>`).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--text4);padding:16px">Ranking ainda não calculado pra semana atual</td></tr>';
+
+  const acoesMonitoresHtml=listaAcoesMonitores.length?listaAcoesMonitores.map(r=>`
+    <tr>
+      <td>${r.tipo}</td>
+      <td style="font-weight:600">${escHtml(r.alvo)}</td>
+      <td style="font-size:12px">${escHtml(r.ind)}</td>
+      <td style="font-size:12px;color:var(--text3)">${r.obs?escHtml(r.obs):'—'}</td>
+      <td style="font-size:12px;color:var(--text3)">${escHtml(r.monitor||'—')}</td>
+    </tr>`).join(''):'<tr><td colspan="5" style="text-align:center;color:var(--text4);padding:16px">Nenhuma ação de monitor registrada nesse dia</td></tr>';
+
+  const acaoRows=(acoes||[]).length?acoes.map(a=>`
+    <tr>
+      <td style="font-size:13px">${escHtml(a.descricao)}</td>
+      <td style="font-size:12px;color:var(--text3)">${escHtml(a.responsavel||'—')}</td>
+      <td style="font-size:12px;text-align:center">${a.prazo?a.prazo.split('-').reverse().join('/'):'—'}</td>
+      <td style="text-align:center"><button onclick="_instrAcaoToggle('${a.id}','${a.status==='pendente'?'concluido':'pendente'}')" style="border:1px solid ${a.status==='concluido'?'var(--green)':'var(--amber)'};background:${a.status==='concluido'?'#00C48C18':'#F59E0B18'};color:${a.status==='concluido'?'var(--green)':'var(--amber)'};border-radius:6px;padding:4px 10px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap">${a.status==='concluido'?'✅ Concluída':'⏳ Pendente'}</button></td>
+      <td style="text-align:center"><button onclick="_instrAcaoRemover('${a.id}')" style="background:transparent;border:none;color:var(--text4);cursor:pointer">🗑️</button></td>
+    </tr>`).join(''):'<tr><td colspan="5" style="text-align:center;color:var(--text4);padding:16px">Nenhuma ação registrada nesse dia</td></tr>';
+
+  const dataFmt=new Date(dataR+'T00:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'});
+
+  setMain(`${secTitle('📄','Relatório do Dia',back)}
+    <div class="filtros">${tabBar}</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <button onclick="S._instrRelDiaData='${_instrRelDiaAddDias(dataR,-1)}';renderFerrInstrutor('relatorio_dia')" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">◀</button>
+      <span style="font-size:14px;font-weight:700;text-transform:capitalize">${dataFmt}</span>
+      <button onclick="S._instrRelDiaData='${_instrRelDiaAddDias(dataR,1)}';renderFerrInstrutor('relatorio_dia')" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">▶</button>
+      <button onclick="S._instrRelDiaData=new Date().toISOString().slice(0,10);renderFerrInstrutor('relatorio_dia')" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:12px;cursor:pointer">Hoje</button>
+      <button onclick="_instrExportarRelatorioDia('${gid}')" style="margin-left:auto;padding:8px 14px;border-radius:8px;border:1px solid var(--purple);background:#8B5CF618;color:var(--purple);font-size:12px;font-weight:800;cursor:pointer">📄 Exportar PDF</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+        <div style="font-size:11px;color:var(--text4);letter-spacing:1px;text-transform:uppercase">KM/L Geral do Dia</div>
+        <div style="font-size:28px;font-weight:800;color:var(--blue);font-family:'DM Mono',monospace;margin:8px 0">${kmlGeral!=null?kmlGeral.toFixed(2):'—'}</div>
+        <div style="font-size:12px;color:var(--text3)">${(kmlDia||[]).length} veículo(s) medido(s)</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+        <div style="font-size:11px;color:var(--text4);letter-spacing:1px;text-transform:uppercase">Monitorias no Dia</div>
+        <div style="font-size:28px;font-weight:800;color:var(--blue);font-family:'DM Mono',monospace;margin:8px 0">${(monRegs||[]).length}</div>
+        <div style="font-size:12px;color:var(--text3)">${(relLinha||[]).length} linha · ${(relCarro||[]).length} carro</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+        <div style="font-size:11px;color:var(--text4);letter-spacing:1px;text-transform:uppercase">Infrações no Dia</div>
+        <div style="font-size:28px;font-weight:800;color:${infracoesHoje>0?'var(--red)':'var(--green)'};font-family:'DM Mono',monospace;margin:8px 0">${infracoesHoje}</div>
+        <div style="font-size:12px;color:var(--text3)">observadas nas monitorias</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+        <div style="font-size:11px;color:var(--text4);letter-spacing:1px;text-transform:uppercase">Ações Pendentes</div>
+        <div style="font-size:28px;font-weight:800;color:${acoesPendentes>0?'var(--amber)':'var(--green)'};font-family:'DM Mono',monospace;margin:8px 0">${acoesPendentes}</div>
+        <div style="font-size:12px;color:var(--text3)">${(acoes||[]).length} no total do dia</div>
+      </div>
+    </div>
+
+    <div class="tbl-wrap" style="margin-bottom:20px">
+      <div class="tbl-head"><div style="font-size:13px;font-weight:700">🚨 Principais Agressores — Semana Atual</div></div>
+      <table>
+        <thead><tr><th style="text-align:center">Pos</th><th>Motorista</th><th>Matrícula</th><th style="text-align:center">KM/L</th><th style="text-align:center">Infrações</th><th>Monitor</th></tr></thead>
+        <tbody>${agressoresHtml}</tbody>
+      </table>
+    </div>
+
+    <div class="tbl-wrap" style="margin-bottom:20px">
+      <div class="tbl-head"><div style="font-size:13px;font-weight:700">👁️ Ações dos Monitores — ${escHtml(dataFmt)}</div></div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Tipo</th><th>Alvo</th><th>Indicador</th><th>Observação</th><th>Monitor</th></tr></thead>
+          <tbody>${acoesMonitoresHtml}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tbl-wrap">
+      <div class="tbl-head"><div style="font-size:13px;font-weight:700">✅ Plano de Ação do Dia</div></div>
+      <table>
+        <thead><tr><th>Descrição</th><th>Responsável</th><th style="text-align:center">Prazo</th><th style="text-align:center">Status</th><th></th></tr></thead>
+        <tbody>${acaoRows}</tbody>
+      </table>
+      <div style="display:flex;gap:8px;padding:12px 16px;flex-wrap:wrap">
+        <input id="instr-acao-desc" placeholder="Descreva a ação (ex: conversar com motorista X sobre frenagem brusca)..." style="flex:2;min-width:220px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:12px">
+        <input id="instr-acao-resp" placeholder="Responsável" style="flex:1;min-width:140px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:12px">
+        <input id="instr-acao-prazo" type="date" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:12px">
+        <button onclick="_instrAcaoAdd('${gid}','${dataR}')" style="padding:8px 16px;border-radius:6px;border:none;background:var(--blue);color:#fff;font-size:12px;font-weight:700;cursor:pointer">+ Adicionar ação</button>
+      </div>
+    </div>
+  `);
+}
+
+async function _instrAcaoAdd(gid,data){
+  const descricao=document.getElementById('instr-acao-desc')?.value?.trim();
+  const responsavel=document.getElementById('instr-acao-resp')?.value?.trim()||null;
+  const prazo=document.getElementById('instr-acao-prazo')?.value||null;
+  if(!descricao){toast('Descreva a ação antes de adicionar','err');return;}
+  const{error}=await sb.from('instrutor_acoes').insert({garagem_id:gid,data,descricao,responsavel,prazo,status:'pendente',criado_por:S.perfil?.nome||null});
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('✅ Ação adicionada!');
+  renderFerrInstrutor('relatorio_dia');
+}
+
+async function _instrAcaoToggle(id,novoStatus){
+  const payload={status:novoStatus,concluido_em:novoStatus==='concluido'?new Date().toISOString():null};
+  const{error}=await sb.from('instrutor_acoes').update(payload).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  renderFerrInstrutor('relatorio_dia');
+}
+
+async function _instrAcaoRemover(id){
+  if(!confirm('Remover essa ação?'))return;
+  await sb.from('instrutor_acoes').delete().eq('id',id);
+  renderFerrInstrutor('relatorio_dia');
+}
+
+function _instrExportarRelatorioDia(gid){
+  const c=window._instrRelDiaCache;
+  if(!c){toast('Carregue o relatório antes de exportar','err');return;}
+  const garagem=S.garagens?.find(g=>g.id===gid);
+  const dataFmt=new Date(c.dataR+'T00:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
+  const B='border:1px solid #333;';
+  const linhaAgressor=(r,i)=>`<tr><td>${r.posicao||i+1}°</td><td>${escHtml(r.motorista_nome||'—')}</td><td>${escHtml(r.matricula||'—')}</td><td style="text-align:center">${r.km_l??'—'}</td><td style="text-align:center">${r.infracoes_total||0}</td><td>${escHtml(r.monitor_nome||'—')}</td></tr>`;
+  const linhaAcaoMonitor=r=>`<tr><td>${r.tipo}</td><td>${escHtml(r.alvo)}</td><td>${escHtml(r.ind)}</td><td>${r.obs?escHtml(r.obs):'—'}</td><td>${escHtml(r.monitor||'—')}</td></tr>`;
+  const linhaAcao=a=>`<tr><td>${escHtml(a.descricao)}</td><td>${escHtml(a.responsavel||'—')}</td><td>${a.prazo?a.prazo.split('-').reverse().join('/'):'—'}</td><td>${a.status==='concluido'?'Concluída':'Pendente'}</td></tr>`;
+  const html=`<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;font-size:10px;color:#000;padding:10px}table{border-collapse:collapse;width:100%;margin-bottom:12px}td,th{${B}padding:4px 6px;font-size:10px}.sec{background:#111;color:#fff;font-weight:900;padding:6px;margin-top:10px}.head{text-align:center;border:2px solid #000;padding:8px;margin-bottom:8px;font-weight:900;text-transform:capitalize}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}.kpi{border:1px solid #111;border-radius:6px;text-align:center;padding:8px}.kpi b{display:block;font-size:16px}
+  .top-print{position:sticky;top:0;background:#f3f4f6;border:1px solid #ddd;border-radius:6px;padding:8px;margin-bottom:8px;display:flex;gap:8px}.top-print button{border:0;border-radius:6px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer}.print{background:#111;color:#fff}.close{background:#e5e7eb;color:#111}
+  @media print{.top-print{display:none!important}@page{size:A4 landscape;margin:8mm}}</style></head><body>
+  <div class="top-print"><button class="print" onclick="window.print()">Imprimir / Salvar PDF</button><button class="close" onclick="window.close()">Fechar</button></div>
+  <div class="head">GRUPO JTP | RELATÓRIO DO INSTRUTOR — ${escHtml(garagem?.nome||'Garagem')} · ${dataFmt}</div>
+  <div class="kpis">
+    <div class="kpi">KM/L Geral<b>${c.kmlGeral!=null?c.kmlGeral.toFixed(2):'—'}</b></div>
+    <div class="kpi">Monitorias<b>${c.monitoriasHoje}</b></div>
+    <div class="kpi">Infrações<b>${c.infracoesHoje}</b></div>
+    <div class="kpi">Ações no dia<b>${c.acoes.length}</b></div>
+  </div>
+  <div class="sec">■ PRINCIPAIS AGRESSORES — SEMANA ATUAL</div>
+  <table><thead><tr><th>Pos</th><th>Motorista</th><th>Matrícula</th><th>KM/L</th><th>Infrações</th><th>Monitor</th></tr></thead><tbody>${c.agressores.map(linhaAgressor).join('')||'<tr><td colspan="6">Sem ranking calculado</td></tr>'}</tbody></table>
+  <div class="sec">■ AÇÕES DOS MONITORES NO DIA</div>
+  <table><thead><tr><th>Tipo</th><th>Alvo</th><th>Indicador</th><th>Observação</th><th>Monitor</th></tr></thead><tbody>${c.listaAcoesMonitores.map(linhaAcaoMonitor).join('')||'<tr><td colspan="5">Nenhuma ação registrada</td></tr>'}</tbody></table>
+  <div class="sec">■ PLANO DE AÇÃO DO INSTRUTOR</div>
+  <table><thead><tr><th>Descrição</th><th>Responsável</th><th>Prazo</th><th>Status</th></tr></thead><tbody>${c.acoes.map(linhaAcao).join('')||'<tr><td colspan="4">Nenhuma ação registrada</td></tr>'}</tbody></table>
+  <table style="margin-top:8px"><tr><td><b>Gerado em:</b> ${new Date().toLocaleString('pt-BR')}</td></tr></table>
+  </body></html>`;
+  abrirRelatorioHTMLPCM(html,`JTP_Relatorio_Instrutor_${c.dataR.replace(/-/g,'')}.pdf`);
 }
 
 async function _instrRanking(gid,back,tabBar){
