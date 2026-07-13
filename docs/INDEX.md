@@ -71,6 +71,14 @@
 
 ---
 
+## Roadmap Estratégico
+
+| Documento | Arquivo | Última atualização | Status |
+|-----------|---------|-------------------|--------|
+| Roadmap vivo (trilhas priorizadas, log de decisões) | [ROADMAP.md](ROADMAP.md) | 2026-07-12 | 🌀 vivo — atualizar a cada sessão estratégica |
+
+---
+
 ## Documentação do Sistema
 
 | Documento | Arquivo | Última atualização | Status |
