@@ -5720,6 +5720,83 @@ async function gerarPDFPlantaoSOS(id){
 }
 
 // ══════════════════════════════════════════════════════════
+// PLANTÃO — ENTRADA DE MATERIAL NA PORTARIA
+// ══════════════════════════════════════════════════════════
+async function telaPortariaMaterial(){
+  const gid=getGid();
+  window._portMode=window._portMode||'lista';
+  if(window._portMode==='novo'){ renderPortariaMaterialForm(); return; }
+  render('<div class="loading"><div class="sp"></div></div>');
+
+  const{data:lista}=await sb.from('portaria_recebimento').select('*').eq('garagem_id',gid).eq('data',hoje()).order('created_at',{ascending:false});
+  window._portLista=lista||[];
+
+  const cardPort=r=>`<div class="card" style="margin-bottom:8px" onclick="abrirDetalhePortaria('${r.id}')">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span style="font-family:'DM Mono',monospace;font-weight:800;font-size:14px">NF ${escHtml(r.numero_nota)}</span>
+        <span style="font-size:10px;font-weight:700;color:var(--text3)">${r.created_at?new Date(r.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):''}</span>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:2px">${escHtml(r.fornecedor)}</div>
+      <div style="font-size:12px;color:var(--text3)">${escHtml((r.material||'').slice(0,80))}${(r.material||'').length>80?'…':''}</div>
+    </div>`;
+
+  render(`
+    <div style="padding:14px 14px 0"><div style="font-weight:800;font-size:17px;margin-bottom:12px">📦 Portaria</div></div>
+    <div style="padding:0 14px 14px">
+      <button onclick="window._portMode='novo';telaPortariaMaterial()" style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">📦 Registrar Entrada</button>
+    </div>
+    <div class="sl">Recebido hoje ${window._portLista.length?'· '+window._portLista.length:''}</div>
+    <div style="padding:0 14px 14px">${window._portLista.map(cardPort).join('')||'<div class="empty"><div class="empty-ic">📦</div><div style="font-weight:700">Nenhuma entrada registrada hoje</div></div>'}</div>
+  `);
+}
+
+function renderPortariaMaterialForm(){
+  render(`
+    <div style="padding:14px 14px 0"><div style="font-weight:800;font-size:17px;margin-bottom:4px">📦 Registrar Entrada</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Material recebido do fornecedor na portaria</div>
+    </div>
+    <div class="card" style="margin:0 14px 14px">
+      <label class="fl">Número da nota</label>
+      <input id="port-nota" class="fi" placeholder="Ex: 123456" style="margin-bottom:12px" inputmode="numeric">
+      <label class="fl">Fornecedor</label>
+      <input id="port-fornecedor" class="fi" placeholder="Nome do fornecedor..." style="margin-bottom:12px">
+      <label class="fl">Material que vai ser entregue</label>
+      <textarea id="port-material" class="fi" placeholder="Descreva o material recebido..." rows="4" style="margin-bottom:16px;resize:none"></textarea>
+      <button onclick="salvarPortariaMaterial()" style="width:100%;padding:14px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:800;font-family:inherit;cursor:pointer">📦 Registrar Entrada</button>
+      <button onclick="window._portMode='lista';telaPortariaMaterial()" style="width:100%;margin-top:8px;padding:11px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:13px;font-family:inherit;cursor:pointer">← Cancelar</button>
+    </div>
+  `);
+}
+
+async function salvarPortariaMaterial(){
+  const gid=getGid();
+  const numero_nota=document.getElementById('port-nota')?.value?.trim();
+  const fornecedor=document.getElementById('port-fornecedor')?.value?.trim();
+  const material=document.getElementById('port-material')?.value?.trim();
+  if(!numero_nota){toast('Informe o número da nota','err');return;}
+  if(!fornecedor){toast('Informe o fornecedor','err');return;}
+  if(!material){toast('Descreva o material recebido','err');return;}
+  const{error}=await sb.from('portaria_recebimento').insert({
+    garagem_id:gid,data:hoje(),numero_nota,fornecedor,material,status:'pendente',
+    plantao_nome:S.perfil?.nome||null,plantao_id:S.perfil?.id||null,
+  });
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('📦 Entrada registrada!');
+  window._portMode='lista';
+  telaPortariaMaterial();
+}
+
+function abrirDetalhePortaria(id){
+  const r=(window._portLista||[]).find(x=>String(x.id)===String(id));
+  if(!r)return;
+  openSheet(`📦 NF ${r.numero_nota}`,`
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">${escHtml(r.fornecedor)} · ${r.created_at?new Date(r.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):''}</div>
+    <div style="font-size:13px;margin-bottom:4px"><b>Material:</b></div>
+    <div style="font-size:13px;color:var(--text2);white-space:pre-wrap">${escHtml(r.material)}</div>
+  `);
+}
+
+// ══════════════════════════════════════════════════════════
 // PLANTÃO — TROCAS DE LINHA (Carro / Motorista)
 // ══════════════════════════════════════════════════════════
 const PLANTAO_MOTIVO_TROCA_CARRO={quebra_avaria:'Quebra/Avaria',preventiva:'Preventiva',acidente:'Acidente',outro:'Outro'};
@@ -9388,7 +9465,7 @@ async function salvarAvaria(id){
 }
 
 // ─────────────────────────────────────────────────────────────────
-const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,acomp_manut:telaAcompManutencao,prev26:telaPrev26,valet_oficina:telaValetOficina,prev_oficina:telaPrevOficina,valet_almox:telaValetAlmox,ronda33:telaRonda33,patio_man:telaPatioMan,recolha:telaRecolha,plantao_sos:telaPlantaoSOS,plantao_trocas:telaPlantaoTrocas,plantao_reg:telaPlantaoReg,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip,sos218:telaSOS218,fech21:telaFech21,lubrificacao:telaLubrificacao,lubri_rel:telaLubriRel,avarias:telaAvariasDashboard,monitor:telaMonitor};
+const TELAS={home:telaHome,lavagem:telaLavagem,patio:telaPatio,soltura:telaSoltura,oficina:telaOficina,acomp_manut:telaAcompManutencao,prev26:telaPrev26,valet_oficina:telaValetOficina,prev_oficina:telaPrevOficina,valet_almox:telaValetAlmox,ronda33:telaRonda33,patio_man:telaPatioMan,recolha:telaRecolha,plantao_sos:telaPlantaoSOS,plantao_trocas:telaPlantaoTrocas,portaria_mat:telaPortariaMaterial,plantao_reg:telaPlantaoReg,abastecimento:telaAbastecimento,lav_pesada:telaLavPesada,checklist_equip:telaChecklistEquip,sos218:telaSOS218,fech21:telaFech21,lubrificacao:telaLubrificacao,lubri_rel:telaLubriRel,avarias:telaAvariasDashboard,monitor:telaMonitor};
 
 // ── INIT ───────────────────────────────────────────────────
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login').style.display!=='none')doLogin()});
