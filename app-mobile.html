@@ -6570,14 +6570,14 @@ async function telaLavPesada(){
 
 async function addLavagemSemana(prefixo){
   const gid=getGid();
-  const {error}=await sb.from('checklist_lavagem').upsert([{
+  const {error}=await sb.from('checklist_lavagem').insert([{
     garagem_id:gid,
     prefixo:prefixo,
     data:_lpData,
     tipo_lavagem:'pesada',
     status:'pendente',
     turno:S.turno||'dia',
-  }],{onConflict:'garagem_id,prefixo,data',ignoreDuplicates:true});
+  }]);
   if(error){toast('Erro ao programar: '+error.message,'err');return;}
   toast('✅ '+prefixo+' programado para lavar');
   telaLavPesada();
@@ -6965,20 +6965,11 @@ async function abrirMontarPlano(){
   });
 
   const frota_livre=frota.filter(v=>!jaMap[v.prefixo]);
-  // PESADA: do preventiva do dia
-  const pesadaSug=frota_livre.filter(v=>prevSet.has(v.prefixo));
-  // SIMPLES: sugestão baseada em mais tempo sem lavagem simples, excluindo pesada
-  const candidatosMedia=frota_livre.filter(v=>!prevSet.has(v.prefixo)).sort((a,b)=>{
-    const dA=ultMediaMap[a.prefixo]||'2000-01-01';
-    const dB=ultMediaMap[b.prefixo]||'2000-01-01';
-    return dA.localeCompare(dB);
-  });
   const META_PESADA=7;
   const META_MEDIA=18;
-  const mediaSug=candidatosMedia.slice(0,META_MEDIA);
 
-  window._planoPesada=new Set(pesadaSug.map(v=>v.prefixo));
-  window._planoMedia=new Set(mediaSug.map(v=>v.prefixo));
+  window._planoPesada=new Set();
+  window._planoMedia=new Set();
   window._planoFrota=frota_livre;
   window._planoJaMap=jaMap;
   window._planoPrevSet=prevSet;
@@ -7073,7 +7064,7 @@ async function confirmarPlano(){
 
   if(!rows.length){toast('Nenhum veículo para salvar','err');if(btn){btn.disabled=false;btn.textContent='Confirmar plano';}return;}
 
-  const{error}=await sb.from('checklist_lavagem').upsert(rows,{onConflict:'garagem_id,prefixo,data',ignoreDuplicates:true});
+  const{error}=await sb.from('checklist_lavagem').insert(rows);
   if(error){toast('Erro: '+error.message,'err');if(btn){btn.disabled=false;btn.textContent='Tentar novamente';}return;}
 
   closeSheet(true);
