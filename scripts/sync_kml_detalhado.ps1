@@ -115,7 +115,7 @@ while ($dia -le $fimLoop) {
     $diaStr = $dia.ToString("yyyy-MM-dd")
     $sqlDia = @"
 SELECT PREFIXO, PLACA, DATA_ABASTECIMENTO, KM_PERCORRIDO, KM_POR_L,
-       CODIGO_MOTORISTA, NOME_MOTORISTA, CODIGO_LINHA, NOME_LINHA
+       CODIGO_MOTORISTA, NOME_MOTORISTA, CODIGO_LINHA, NOME_LINHA, HODOMETRO_FINAL
 FROM $TABELA_ORACLE
 WHERE DATA_ABASTECIMENTO >= TO_DATE('$diaStr','YYYY-MM-DD')
   AND DATA_ABASTECIMENTO <  TO_DATE('$diaStr','YYYY-MM-DD') + 1
@@ -169,21 +169,27 @@ foreach ($garagem in $GARAGEM_MAP) {
     $registros = $doGaragem | Group-Object { "$($_.DATA_ABASTECIMENTO.ToString('yyyy-MM-dd'))~$($_.PREFIXO_FROTA)~$($_.CODIGO_MOTORISTA)~$($_.CODIGO_LINHA)" } | ForEach-Object {
         $km = ($_.Group | Measure-Object KM_PERCORRIDO -Sum).Sum
         $lt = ($_.Group | Measure-Object LITROS_IMPLICITO -Sum).Sum
+        # Hodometro do FIM do dia (maior leitura entre os abastecimentos agrupados) --
+        # usado so pra cruzar com o km_hodometro digitado em recolha_checklist e
+        # abastecimento_checklist (conferencia pedida pelo Daniel 2026-07-14),
+        # nao entra no calculo de km/l (que continua vindo de KM_PERCORRIDO/KM_POR_L).
+        $hodFinal = ($_.Group | Measure-Object HODOMETRO_FINAL -Maximum).Maximum
         $primeiro = $_.Group[0]
         [PSCustomObject]@{
-            garagem_id     = $gid
-            garagem_cod    = $cod
-            data           = $primeiro.DATA_ABASTECIMENTO.ToString('yyyy-MM-dd')
-            veiculo        = $primeiro.PREFIXO_FROTA
-            placa          = $primeiro.PLACA
-            motorista_cod  = if ($primeiro.CODIGO_MOTORISTA) { "$($primeiro.CODIGO_MOTORISTA)" } else { "SEM_MOTORISTA" }
-            motorista_nome = $primeiro.NOME_MOTORISTA
-            linha          = if ($primeiro.CODIGO_LINHA) { "$($primeiro.CODIGO_LINHA)" } else { "SEM_LINHA" }
-            linha_nome     = $primeiro.NOME_LINHA
-            km_percorrido  = [Math]::Round($km, 1)
-            litros         = [Math]::Round($lt, 2)
-            km_l           = if ($lt -gt 0) { [Math]::Round($km / $lt, 2) } else { 0 }
-            updated_at     = $agora
+            garagem_id      = $gid
+            garagem_cod     = $cod
+            data            = $primeiro.DATA_ABASTECIMENTO.ToString('yyyy-MM-dd')
+            veiculo         = $primeiro.PREFIXO_FROTA
+            placa           = $primeiro.PLACA
+            motorista_cod   = if ($primeiro.CODIGO_MOTORISTA) { "$($primeiro.CODIGO_MOTORISTA)" } else { "SEM_MOTORISTA" }
+            motorista_nome  = $primeiro.NOME_MOTORISTA
+            linha           = if ($primeiro.CODIGO_LINHA) { "$($primeiro.CODIGO_LINHA)" } else { "SEM_LINHA" }
+            linha_nome      = $primeiro.NOME_LINHA
+            km_percorrido   = [Math]::Round($km, 1)
+            litros          = [Math]::Round($lt, 2)
+            km_l            = if ($lt -gt 0) { [Math]::Round($km / $lt, 2) } else { 0 }
+            hodometro_final = $hodFinal
+            updated_at      = $agora
         }
     }
 

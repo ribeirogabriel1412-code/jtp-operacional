@@ -5720,7 +5720,8 @@ function confRotExportarXLSX(){
 function confRotExportarPDF(){
   const itens=window._confRotItens||[];
   const desvios=window._confDesvios||[];
-  if(!itens.length&&!desvios.length){toast('Sem dados para exportar.','err');return;}
+  const baixaRotDivergentes=(window._confBaixaRotItens||[]).filter(b=>b.acuracia!=null&&parseFloat(b.acuracia)<100);
+  if(!itens.length&&!desvios.length&&!baixaRotDivergentes.length){toast('Sem dados para exportar.','err');return;}
   const garagem=window._confRotGaragem||S.garagens?.find(g=>g.id===getGid())?.nome||'Garagem';
   const dataRef=window._confRotDataRef||window._confDataRef||new Date().toISOString().slice(0,10);
   const esc=v=>String(v??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -5786,6 +5787,34 @@ function confRotExportarPDF(){
       :`<div style="padding:8px 0;color:#555;font-size:9px">Sem inventário rotativo cruzado nesta sessão.</div>`}
   `;
 
+  // ── Quadro 3: Divergência SAP × Físico — Baixa Rotação (só os desvios) ──
+  const rowsBaixaRot=baixaRotDivergentes.map((b,i)=>{
+    const item=b.almoxo_baixa_rotacao_itens||{};
+    const acur=b.acuracia!=null?parseFloat(b.acuracia):null;
+    return`<tr>
+      <td style="${B}text-align:center">${i+1}</td>
+      <td style="${B}font-family:monospace;font-weight:700">${esc(item.cod_sap)}</td>
+      <td style="${B}">${esc(item.nome_item)}</td>
+      <td style="${B}font-family:monospace;font-size:9px">${esc(item.wms_localizacao)}</td>
+      <td style="${B}text-align:right">${N(b.qtd_sistema)}</td>
+      <td style="${B}text-align:right;font-weight:700">${N(b.qtd_fisica)}</td>
+      <td style="${B}text-align:right;font-weight:700">${acur!=null?acur+'%':'—'}</td>
+      <td style="${B}font-size:9px">${b.particao!=null?'P'+b.particao:'—'} · C${b.ciclo??'—'}</td>
+      <td style="${B}font-size:9px">${esc(b.almoxarife_nome)}</td>
+      <td style="${B}">${esc(b.turno_data)}</td>
+    </tr>`;
+  }).join('');
+  const quadroBaixaRot=`
+    <div class="sec-header">■ DIVERGÊNCIA SAP × FÍSICO — INVENTÁRIO DE BAIXA ROTAÇÃO (${baixaRotDivergentes.length} desvio${baixaRotDivergentes.length!==1?'s':''})</div>
+    ${baixaRotDivergentes.length?`<table>
+      <thead><tr>
+        <th style="${BH}">#</th><th style="${BH}">Código</th><th style="${BH}">Descrição</th><th style="${BH}">WMS</th>
+        <th style="${BH}text-align:right">Sistema</th><th style="${BH}text-align:right">Físico</th><th style="${BH}text-align:right">Acurácia</th>
+        <th style="${BH}">Ciclo</th><th style="${BH}">Almoxarife</th><th style="${BH}">Data</th>
+      </tr></thead><tbody>${rowsBaixaRot}</tbody></table>`
+      :`<div style="padding:8px 0;color:#555;font-size:9px">Sem desvios de baixa rotação nesta sessão.</div>`}
+  `;
+
   const agora=new Date();
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${estiloRelJTP()}.assin{display:grid;grid-template-columns:1fr 1fr;gap:90px;margin-top:60px}.linha{border-top:1px solid #000;text-align:center;padding-top:4px}</style></head><body>
 ${barraPrint('📋 Conferência SAP × PRAXIO × Inventário Rotativo · '+esc(garagem),'JTP_Conferencia_SAP_PRAXIO_Rotativo')}
@@ -5797,6 +5826,7 @@ ${barraPrint('📋 Conferência SAP × PRAXIO × Inventário Rotativo · '+esc(g
 </tr></table>
 ${quadroPraxio}
 ${quadroFisico}
+${quadroBaixaRot}
 <div class="assin"><div class="linha">Líder de Almoxarifado / Suprimentos</div><div class="linha">Líder PCM</div></div>
 </body></html>`;
   abrirRelatorioHTMLPCM(html,`JTP_Conferencia_SAP_PRAXIO_Rotativo_${dataRef.replace(/-/g,'')}.pdf`);
@@ -18699,27 +18729,45 @@ async function _instrViagens(gid,back,tabBar){
   // Cache por período — evita re-query ao digitar na busca
   if(!S._instrVRows||S._instrVRowsDias!==dias||S._instrVRowsGid!==gid){
     setMain(`${secTitle('🎯','Escala — Viagens CITTATI',back)}<div class="filtros">${tabBar}</div><div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando dados...</div>`);
-    const[rows,kmlRows]=await Promise.all([
-      _sbFetchAll(()=>sb.from('viagens_resumo')
-        .select('data,linha,veiculo,motorista_cod,viagens_programadas,viagens_realizadas,updated_at')
-        .eq('garagem_id',gid).gte('data',dataMin).order('data').order('id')),
-      // Km/L do carro (Oracle VW_LANCAMENTOABASTECIMENTO) -- so nivel veiculo,
-      // sem tentar repartir por motorista (testado e descartado: atribuicao por
-      // dia+viagem ficava incompleta quando faltava abastecimento nalgum dia)
-      _sbFetchAll(()=>sb.from('instrutor_kml_detalhado')
-        .select('veiculo,data,km_percorrido,litros')
-        .eq('garagem_id',gid).gte('data',dataMin).order('data').order('id')),
-    ]);
+    const rows=await _sbFetchAll(()=>sb.from('viagens_resumo')
+      .select('data,linha,veiculo,motorista_cod,viagens_programadas,viagens_realizadas,updated_at')
+      .eq('garagem_id',gid).gte('data',dataMin).order('data').order('id'));
     S._instrVRows=rows||[];
     S._instrVRowsDias=dias;
     S._instrVRowsGid=gid;
     const uts=(rows||[]).map(r=>r.updated_at).filter(Boolean).sort();
     S._instrVUltimoSync=uts.length?uts[uts.length-1]:null;
+  }
+
+  // Km/L do carro (Oracle VW_LANCAMENTOABASTECIMENTO) -- SEMPRE na janela
+  // completa de 60 dias (o maximo que o sync_kml_detalhado.ps1 mantem),
+  // INDEPENDENTE do filtro 7/15/30/60 selecionado na tela. Pedido do Daniel
+  // 2026-07-14: em janela curta (7 dias), o veiculo pode ter so 1-2 ciclos de
+  // abastecimento; descartando o 1o (regra abaixo) pode sobrar so um registro
+  // degenerado -- ex: 02.007 teve so 1km/8.29L de reabastecimento complementar
+  // ("topping off" 6h30 depois do anterior) e isso sozinho virou 0.12km/l.
+  // Com a janela completa esse tipo de ciclo curto se dilui entre os demais
+  // e o numero fica estavel nao importa qual filtro de dias esta selecionado.
+  // Nao repartimos por motorista aqui (testado e descartado: atribuicao por
+  // dia+viagem ficava incompleta quando faltava abastecimento nalgum dia).
+  if(!S._instrVKml||S._instrVKmlGid!==gid){
+    const dataMinKml=new Date(Date.now()-60*86400000).toISOString().slice(0,10);
+    const[kmlRows,recRows,abastRows]=await Promise.all([
+      _sbFetchAll(()=>sb.from('instrutor_kml_detalhado')
+        .select('veiculo,data,km_percorrido,litros,hodometro_final')
+        .eq('garagem_id',gid).gte('data',dataMinKml).order('data').order('id')),
+      _sbFetchAll(()=>sb.from('recolha_checklist')
+        .select('prefixo,data_recolha,km_hodometro')
+        .eq('garagem_id',gid).gte('data_recolha',dataMinKml).not('km_hodometro','is',null)),
+      _sbFetchAll(()=>sb.from('abastecimento_checklist')
+        .select('prefixo,data,km_hodometro')
+        .eq('garagem_id',gid).gte('data',dataMinKml).not('km_hodometro','is',null)),
+    ]);
 
     // Km/L por veiculo: SEMPRE SUM(km)/SUM(litros), nunca media das medias.
-    // Descarta o 1o abastecimento do periodo por veiculo (km_percorrido nele
+    // Descarta o 1o abastecimento da janela por veiculo (km_percorrido nele
     // e a distancia rodada DESDE o abastecimento anterior -- que comecou antes
-    // da janela escolhida, entao "vaza" km/litros de fora pra dentro do periodo).
+    // da janela, entao "vaza" km/litros de fora pra dentro do periodo).
     // Validado em 2026-07-05 contra planilha oficial (CTAPLUS): sem descartar,
     // 02.188 dava 1.55 km/l (oficial 1.35); descartando o 1o registro bateu
     // exato (772km/569.80L = 1.35) e o mesmo pro 02.203 (1177km/640.31L=1.84).
@@ -18736,9 +18784,46 @@ async function _instrViagens(gid,back,tabBar){
       const lt=validos.reduce((s,r)=>s+(r.litros||0),0);
       S._instrVKml[v]=lt>0?km/lt:null;
     });
+
+    // Conferencia Oracle x recolha x abastecimento (pedido do Daniel 2026-07-14):
+    // pega a leitura de hodometro MAIS RECENTE do Oracle por veiculo e compara
+    // com o km_hodometro digitado (recolha_checklist/abastecimento_checklist)
+    // mais proximo em data (ate 2 dias de folga -- a data do Oracle pode nao
+    // bater exato com o dia em que o app registrou). Limiar de divergencia: 10km
+    // (definido pelo Daniel). So aponta a divergencia, nao decide sozinho se e
+    // sensor ruim (Oracle x manuais) ou erro de digitacao (manuais entre si).
+    const LIMIAR_DIVERG=10;
+    const porVeicRec={},porVeicAbast={};
+    (recRows||[]).forEach(r=>{(porVeicRec[r.prefixo]=porVeicRec[r.prefixo]||[]).push(r);});
+    (abastRows||[]).forEach(r=>{(porVeicAbast[r.prefixo]=porVeicAbast[r.prefixo]||[]).push(r);});
+    function _maisPerto(lista,dataAlvo,campoData){
+      let melhor=null,melhorDist=Infinity;
+      (lista||[]).forEach(r=>{
+        if(r.km_hodometro==null||!r[campoData])return;
+        const dist=Math.abs(new Date(r[campoData])-new Date(dataAlvo));
+        if(dist<melhorDist&&dist<=2*86400000){melhorDist=dist;melhor=r;}
+      });
+      return melhor;
+    }
+    S._instrVDiverg={};
+    Object.entries(porVeiculo).forEach(([v,lista])=>{
+      const comHod=lista.filter(r=>r.hodometro_final!=null).sort((a,b)=>a.data<b.data?1:a.data>b.data?-1:0);
+      if(!comHod.length)return;
+      const ultimo=comHod[0];
+      const hodOracle=Number(ultimo.hodometro_final);
+      const rec=_maisPerto(porVeicRec[v],ultimo.data,'data_recolha');
+      const ab=_maisPerto(porVeicAbast[v],ultimo.data,'data');
+      const diffRec=rec?Math.abs(hodOracle-Number(rec.km_hodometro)):null;
+      const diffAb=ab?Math.abs(hodOracle-Number(ab.km_hodometro)):null;
+      if(diffRec==null&&diffAb==null)return;
+      const pior=Math.max(diffRec||0,diffAb||0);
+      S._instrVDiverg[v]={diverge:pior>LIMIAR_DIVERG,diffRec,diffAb,dataRef:ultimo.data};
+    });
+    S._instrVKmlGid=gid;
   }
   const vg=S._instrVRows;
   const kmlPorVeiculo=S._instrVKml||{};
+  const divergPorVeiculo=S._instrVDiverg||{};
 
   // Índices: linha→veiculo, veiculo→linha, linha→veiculo→motorista, veiculo→motorista
   const byLV={},byVL={},byLVM={},byVM={};
@@ -18809,10 +18894,19 @@ async function _instrViagens(gid,back,tabBar){
           const ultimaHtml=ultima
             ?`<span style="font-size:10px;color:var(--text4);white-space:nowrap">Última: ${ultima.data.split('-').reverse().join('/')} (${escHtml(ultima.monitor_nome||'—')})</span>`
             :`<span style="font-size:10px;color:var(--red);white-space:nowrap">Nunca monitorado</span>`;
+          // Conferencia Oracle x recolha/abastecimento do app (pedido do Daniel
+          // 2026-07-14, limiar 10km) -- so mostra selo quando ha dado pra comparar.
+          const div=divergPorVeiculo[c];
+          const divergHtml=div
+            ?(div.diverge
+                ?`<span title="Hodômetro Oracle (${div.dataRef.split('-').reverse().join('/')}) diverge ${div.diffRec!=null?`${Math.round(div.diffRec)}km da recolha`:''}${div.diffRec!=null&&div.diffAb!=null?' e ':''}${div.diffAb!=null?`${Math.round(div.diffAb)}km do abastecimento`:''}" style="font-size:10px;color:var(--red);font-weight:700;white-space:nowrap;cursor:help">⚠️ diverge ${Math.round(Math.max(div.diffRec||0,div.diffAb||0))}km</span>`
+                :`<span style="font-size:10px;color:var(--green);white-space:nowrap">✅ confere</span>`)
+            :'';
           return`<div style="display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 14px">
             <span onclick="S._instrVBusca='${c}';document.getElementById('instr-v-busca').value='${c}';renderFerrInstrutor('viagens')" style="cursor:pointer;font-size:11px;color:var(--text4);min-width:22px">${i+1}°</span>
             <span onclick="S._instrVBusca='${c}';document.getElementById('instr-v-busca').value='${c}';renderFerrInstrutor('viagens')" style="cursor:pointer;font-family:'DM Mono',monospace;font-weight:700;flex:1">${c}</span>
             <span style="font-family:'DM Mono',monospace;font-weight:800;color:${cor}">${kml.toFixed(2)} km/l</span>
+            ${divergHtml}
             ${ultimaHtml}
             ${_instrSelectEscalar(escId,'🚌 Escalar carro...')}
           </div>`;
