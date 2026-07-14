@@ -1736,8 +1736,8 @@ function renderOS38Oficina(){
   var hcCard='<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px">'+
     '<div style="font-size:11px;font-weight:900;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">👷 HC — Headcount na OS</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">'+hcInputs+'</div>'+
-    '<div style="font-size:9px;font-weight:800;color:var(--amber);text-transform:uppercase;margin-bottom:3px">⏱ Horas Trabalhadas na OS</div>'+
-    '<input type="number" id="mob-hc-horas" min="0" step="0.5" inputmode="decimal" placeholder="Ex: 4.5" value="'+(hc.horas_trabalhadas||'')+'" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:20px;font-family:\'DM Mono\',monospace;outline:none;text-align:center">'+
+    '<div style="font-size:9px;font-weight:800;color:var(--amber);text-transform:uppercase;margin-bottom:3px">⏱ Minutos Trabalhados na OS</div>'+
+    '<input type="number" id="mob-hc-horas" min="0" step="1" inputmode="numeric" placeholder="Ex: 90" value="'+(hc.horas_trabalhadas||'')+'" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:20px;font-family:\'DM Mono\',monospace;outline:none;text-align:center">'+
   '</div>';
   openSheet(oc.prefixo+' — Checklist 3.8',hcCard+status+secoes+
     '<button onclick="salvarOS38Oficina()" style="width:100%;padding:15px;border-radius:12px;border:none;background:'+(pct===100?'var(--green)':'var(--blue)')+';color:#fff;font-size:15px;font-weight:800;font-family:inherit;margin-top:4px">'+(pct===100?'Salvar e exportar PDF':'Salvar checklist 3.8 ('+pct+'%)')+'</button>');
@@ -1893,7 +1893,7 @@ async function salvarOS38Oficina(){
     aux_funileiro:parseInt(document.getElementById('mob-hc-aux-funileiro')?.value||0)||0,
     borracheiro:parseInt(document.getElementById('mob-hc-borracheiro')?.value||0)||0,
     aux_borracheiro:parseInt(document.getElementById('mob-hc-aux-borracheiro')?.value||0)||0,
-    horas_trabalhadas:parseFloat(document.getElementById('mob-hc-horas')?.value||0)||0,
+    horas_trabalhadas:parseInt(document.getElementById('mob-hc-horas')?.value||0)||0,
     registrado_por:S.perfil&&S.perfil.nome||null,
     updated_at:new Date().toISOString()};
   await sb.from('os_hc').upsert(hcPayload,{onConflict:'ocorrencia_id'});
