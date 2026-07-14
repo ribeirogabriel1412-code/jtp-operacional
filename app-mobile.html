@@ -7000,16 +7000,14 @@ async function abrirMontarPlano(){
 
   const renderPlano=()=>{
     const nP=window._planoPesada.size,nM=window._planoMedia.size;
-    const nL=window._planoFrota.filter(v=>!window._planoPesada.has(v.prefixo)&&!window._planoMedia.has(v.prefixo)).length;
     const busca=(document.getElementById('busca-plano')?.value||'').toUpperCase();
     const rows=window._planoFrota.filter(v=>!busca||v.prefixo.includes(busca)).map(v=>mkItemPlano(v)).join('');
     document.getElementById('lista-plano').innerHTML=rows||'<div style="font-size:12px;color:var(--text3);text-align:center;padding:10px">Nenhum veículo</div>';
     document.getElementById('kpi-p').textContent='🟡 Pesada '+nP+'/'+META_PESADA;
     document.getElementById('kpi-m').textContent='🔵 Simples '+nM+'/'+META_MEDIA;
-    document.getElementById('kpi-l').textContent='🟢 Leve (auto) '+nL;
     const btn=document.getElementById('btn-conf-plano');
     if(btn){
-      const tot=nP+nM+nL;
+      const tot=nP+nM;
       btn.textContent='✅ Confirmar plano — '+tot+' veículo(s)';
       btn.disabled=tot===0;btn.style.opacity=tot===0?'0.5':'1';
     }
@@ -7017,11 +7015,10 @@ async function abrirMontarPlano(){
   window._renderListaPlano=renderPlano;
 
   openSheet('🚿 Montar Plano do Dia',
-    '<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Marque Pesada ou Simples para cada veículo. Quem não for marcado recebe Leve (varrer + lixo) automaticamente.</div>'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">'
+    '<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Marque Pesada ou Simples para cada veículo. Quem não for marcado não entra no plano de hoje.</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">'
     +'<div id="kpi-p" style="font-size:11px;color:var(--amber);font-weight:700;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 4px;text-align:center"></div>'
     +'<div id="kpi-m" style="font-size:11px;color:var(--blue);font-weight:700;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 4px;text-align:center"></div>'
-    +'<div id="kpi-l" style="font-size:11px;color:#10B981;font-weight:700;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 4px;text-align:center"></div>'
     +'</div>'
     +'<div style="position:relative;margin-bottom:10px"><span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px">🔍</span>'
     +'<input type="text" id="busca-plano" placeholder="Filtrar prefixo..." oninput="this.value=this.value.toUpperCase();window._renderListaPlano&&window._renderListaPlano()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 8px 8px 30px;color:var(--text);font-size:13px;font-family:\'DM Mono\',monospace;outline:none"></div>'
@@ -7050,16 +7047,10 @@ async function confirmarPlano(){
 
   const pesadaList=[...window._planoPesada];
   const mediaList=[...window._planoMedia];
-  const jaMap=window._planoJaMap||{};
-  const frotaLivre=window._planoFrota||[];
-  const leveList=frotaLivre
-    .filter(v=>!window._planoPesada.has(v.prefixo)&&!window._planoMedia.has(v.prefixo)&&!jaMap[v.prefixo])
-    .map(v=>v.prefixo);
 
   const rows=[
     ...pesadaList.map(prefixo=>({garagem_id:gid,prefixo,data:_lpData,tipo_lavagem:'pesada',status:'pendente',turno:S.turno||'dia'})),
     ...mediaList.map(prefixo=>({garagem_id:gid,prefixo,data:_lpData,tipo_lavagem:'media',status:'pendente',turno:S.turno||'dia'})),
-    ...leveList.map(prefixo=>({garagem_id:gid,prefixo,data:_lpData,tipo_lavagem:'leve',status:'pendente',turno:S.turno||'dia'})),
   ];
 
   if(!rows.length){toast('Nenhum veículo para salvar','err');if(btn){btn.disabled=false;btn.textContent='Confirmar plano';}return;}
@@ -7068,7 +7059,7 @@ async function confirmarPlano(){
   if(error){toast('Erro: '+error.message,'err');if(btn){btn.disabled=false;btn.textContent='Tentar novamente';}return;}
 
   closeSheet(true);
-  toast('✅ Plano montado — '+pesadaList.length+' pesada · '+mediaList.length+' média · '+leveList.length+' leve');
+  toast('✅ Plano montado — '+pesadaList.length+' pesada · '+mediaList.length+' simples');
   telaLavPesada();
 }
 

@@ -5068,12 +5068,19 @@ async function confCruzarRotativo(){
   if(!el)return;
   el.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3)"><div class="spinner" style="width:24px;height:24px;border-width:3px;margin:0 auto 8px"></div>Buscando inventários rotativos...</div>';
 
-  // "semana": semana anterior COMPLETA (segunda a domingo), pro apanhado
-  // toda segunda-feira antes do ajuste -- não é rolling window, é a semana
-  // fechada, então não inclui dias da semana atual ainda em andamento.
-  const janelaSel=window._confRotJanela||3;
+  const janelaSel=window._confRotJanela||'auto';
   let dataRef,dataIni;
-  if(janelaSel==='semana'){
+  if(janelaSel==='auto'){
+    // Regra da 2ª conferência: sempre D-1. Como não roda conferência no fim
+    // de semana, a de segunda-feira volta até sexta pra pegar sáb+dom junto.
+    const hojeIso=window._confDataRef||hoje();
+    const dow=new Date(hojeIso+'T12:00:00').getDay(); // 0=dom..6=sab, 1=seg
+    dataRef=opAddDays(hojeIso,-1);
+    dataIni=dow===1?opAddDays(hojeIso,-3):dataRef;
+  } else if(janelaSel==='semana'){
+    // Semana anterior COMPLETA (segunda a domingo), pro apanhado toda
+    // segunda-feira antes do ajuste -- não é rolling window, é a semana
+    // fechada, então não inclui dias da semana atual ainda em andamento.
     const hojeIso=hoje();
     const dow=new Date(hojeIso+'T12:00:00').getDay(); // 0=dom..6=sab
     const diasDesdeSegundaAtual=(dow+6)%7;
@@ -5086,7 +5093,7 @@ async function confCruzarRotativo(){
   }
   const [{data:rotRaw,error},{data:t1Raw,error:t1Error},{data:tratRaw},{data:wmsRaw},{data:baixaRotRaw}]=await Promise.all([
     sb.from('almoxo_inventario_turno').select('*').eq('garagem_id',gid)
-      .gte('turno_data',dataIni).lte('turno_data',dataRef).order('turno_data',{ascending:false}),
+      .gte('turno_data',dataIni).lte('turno_data',dataRef).order('criado_em',{ascending:false}),
     sb.from('almoxo_inventario_t1').select('*').eq('garagem_id',gid)
       .gte('turno_data',dataIni).lte('turno_data',dataRef).order('turno_data',{ascending:false}),
     sb.from('almoxo_inventario_tratativas').select('*').eq('garagem_id',gid)
@@ -5103,7 +5110,8 @@ async function confCruzarRotativo(){
   (wmsRaw||[]).forEach(w=>{ const k=confNormCod(w.cod_sap); (wmsMap[k]=wmsMap[k]||[]).push(w.localizacao); });
   const janelaSelect=`<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3)">
     <span>Janela:</span>
-    <select onchange="window._confRotJanela=this.value==='semana'?'semana':parseInt(this.value);confCruzarRotativo()" style="padding:5px 8px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px">
+    <select onchange="window._confRotJanela=(this.value==='semana'||this.value==='auto')?this.value:parseInt(this.value);confCruzarRotativo()" style="padding:5px 8px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px">
+      <option value="auto"${janelaSel==='auto'?' selected':''}>🔁 D-1 (padrão · segunda pega sex+sáb+dom)</option>
       <option value="1"${janelaSel===1?' selected':''}>Só hoje</option>
       <option value="2"${janelaSel===2?' selected':''}>2 dias</option>
       <option value="3"${janelaSel===3?' selected':''}>3 dias</option>
@@ -5115,15 +5123,22 @@ async function confCruzarRotativo(){
   if(!rotRaw||!rotRaw.length){el.innerHTML=`<div style="padding:12px 0 20px"><div style="margin-bottom:10px">${janelaSelect}</div><div style="padding:20px;text-align:center;color:var(--text3);background:var(--surface);border:1px solid var(--border);border-radius:10px">Nenhum inventário rotativo encontrado no período (${dataIni} a ${dataRef}). Aumente a janela acima se precisar ver mais histórico.</div></div>`;return;}
   if(t1Error)console.warn('[Cruzamento T-1]',t1Error);
 
-  // Agrupa por cod_sap + turno_data — última contagem de cada item por dia
-  // Se o mesmo item saiu segunda E terça, aparece uma linha por dia
-  const rotMap={};
+  // Agrupa por cod_sap + turno_data — só pra detectar dupla contagem no mesmo
+  // dia (dois almoxarifes contando o mesmo item no mesmo turno_data).
   const rotGrupos={};
   rotRaw.forEach(r=>{
     if(!r.cod_sap)return;
     const k=confNormCod(r.cod_sap)+'|'+(r.turno_data||'');
-    if(!rotMap[k])rotMap[k]=r; // já vem ordenado por turno_data DESC do Supabase
     (rotGrupos[k]=rotGrupos[k]||[]).push(r);
+  });
+  // Agrupa por cod_sap — se o item saiu mais de uma vez na janela (dias
+  // diferentes), fica só com a ÚLTIMA contagem por criado_em; é ela que entra
+  // na comparação com o saldo SAP.
+  const rotMap={};
+  rotRaw.forEach(r=>{
+    if(!r.cod_sap)return;
+    const cod=confNormCod(r.cod_sap);
+    if(!rotMap[cod])rotMap[cod]=r; // já vem ordenado por criado_em DESC do Supabase
   });
   // Dupla contagem — mesmo cod_sap+turno_data lançado por dois almoxarifes
   // diferentes (contagem cega de conferência). Junta as contagens distintas
@@ -5352,7 +5367,7 @@ async function confCruzarRotativo(){
 
   el.innerHTML=`
     <div style="display:flex;align-items:center;gap:10px;padding:4px 0 12px;flex-wrap:wrap">
-      <span style="font-size:13px;font-weight:900">📋 Inventário Rotativo — Última contagem por item/turno</span>
+      <span style="font-size:13px;font-weight:900">📋 Inventário Rotativo — Última contagem por item na janela</span>
       <span style="background:#00C48C20;color:#00C48C;border:1px solid #00C48C60;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:800">${itens.length} registros</span>
       ${desvioCount?`<span style="background:#EF444420;color:var(--danger);border:1px solid #EF444460;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:800">⚠️ ${desvioCount} desvio${desvioCount!==1?'s':''}</span>`:''}
       <span style="background:#00C48C20;color:#00C48C;border:1px solid #00C48C60;border-radius:99px;padding:2px 10px;font-size:11px;font-weight:800">✅ ${conformeCount} conforme${conformeCount!==1?'s':''}</span>
