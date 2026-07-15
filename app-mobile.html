@@ -6974,7 +6974,10 @@ async function abrirMontarPlano(){
 
   window._planoPesada=new Set(naoLavados.slice(0,META_PESADA).map(v=>v.prefixo));
   window._planoMedia=new Set(naoLavados.slice(META_PESADA,META_PESADA+META_MEDIA).map(v=>v.prefixo));
-  window._planoSugeridos=new Set(naoLavados.map(v=>v.prefixo));
+  // "Sugerido" = só os que já vieram pré-marcados (meta do dia). Os demais atrasados da
+  // semana entram como "ATRASADO" (aviso neutro) — sem sugerir que é pra marcar tudo hoje.
+  window._planoSugeridos=new Set([...window._planoPesada,...window._planoMedia]);
+  window._planoAtrasados=new Set(naoLavados.map(v=>v.prefixo));
   window._planoFrota=frota_livre;
   window._planoJaMap=jaMap;
   window._planoPrevSet=prevSet;
@@ -6992,8 +6995,10 @@ async function abrirMontarPlano(){
     const selM=window._planoMedia.has(v.prefixo);
     const emPrev=window._planoPrevSet.has(v.prefixo);
     const sugerido=window._planoSugeridos.has(v.prefixo);
+    const atrasado=!sugerido&&window._planoAtrasados.has(v.prefixo);
     const tagPrev=emPrev?'<span style="font-size:9px;background:#8B5CF618;border:1px solid #8B5CF640;color:#8B5CF6;border-radius:4px;padding:1px 5px;font-weight:700">PREV</span>':'';
-    const tagSug=sugerido?'<span style="font-size:9px;background:#EF444418;border:1px solid #EF444440;color:var(--red);border-radius:4px;padding:1px 5px;font-weight:700">SUGERIDO — NÃO LAVOU NA SEMANA</span>':'';
+    const tagSug=sugerido?'<span style="font-size:9px;background:#EF444418;border:1px solid #EF444440;color:var(--red);border-radius:4px;padding:1px 5px;font-weight:700">SUGERIDO HOJE</span>'
+      :atrasado?'<span style="font-size:9px;background:#F59E0B18;border:1px solid #F59E0B40;color:var(--amber);border-radius:4px;padding:1px 5px;font-weight:700">ATRASADO NA SEMANA</span>':'';
     const mkChk=(sel,cor,label,tipo)=>'<div onclick="togPlano(\''+v.prefixo+'\',\''+tipo+'\')" style="display:flex;align-items:center;gap:6px;cursor:pointer">'
       +'<div style="width:20px;height:20px;border-radius:5px;border:2px solid '+(sel?cor:'var(--border)')+';background:'+(sel?cor:'transparent')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#0B1220;font-size:12px;font-weight:900">'+(sel?'✓':'')+'</div>'
       +'<span style="font-size:12px;font-weight:700;color:'+(sel?cor:'var(--text3)')+'">'+label+'</span>'
@@ -7022,7 +7027,7 @@ async function abrirMontarPlano(){
   window._renderListaPlano=renderPlano;
 
   openSheet('🚿 Montar Plano do Dia',
-    '<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Os veículos marcados <strong style="color:var(--red)">SUGERIDO</strong> ainda não lavaram essa semana e já vêm pré-marcados — desmarque ou adicione outros livremente. Quem não ficar marcado não entra no plano de hoje.</div>'
+    '<div style="font-size:11px;color:var(--text3);margin-bottom:10px"><strong style="color:var(--red)">SUGERIDO HOJE</strong> = já vem pré-marcado, é a meta do dia. <strong style="color:var(--amber)">ATRASADO NA SEMANA</strong> = ainda não lavou mas não precisa entrar hoje, é só um alerta. Marque/desmarque livremente — quem não ficar marcado não entra no plano de hoje.</div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">'
     +'<div id="kpi-p" style="font-size:11px;color:var(--amber);font-weight:700;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 4px;text-align:center"></div>'
     +'<div id="kpi-m" style="font-size:11px;color:var(--blue);font-weight:700;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 4px;text-align:center"></div>'
