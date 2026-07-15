@@ -3588,6 +3588,23 @@ const SUPERVISAO_ROTINA=[
   {id:'r22_corretivas_2300',doc:'2.2 - Priorização Corretivas',ferr:'WHATSAPP',hora:'23:00',resp:'Natan',cargo:'Líder PCM',tipo:'2.2'},
   {id:'r218_sos_demanda',doc:'2.18 - Relatório de S.O.S',ferr:'WHATSAPP',hora:'--',resp:'Gabriel / Wadalla',cargo:'Assistente PCM',tipo:'2.18',sobDemanda:true},
 ];
+// Array acima é o fallback de segurança — a fonte real vira a tabela supervisao_checkpoints
+// (Supabase). renderSupervisao() resolve e reatribui esta variável a cada carregamento; se a
+// tabela ainda não existir ou estiver vazia, o painel continua funcionando com o array fixo.
+let SUPERVISAO_ROTINA_ATUAL=SUPERVISAO_ROTINA;
+function supMapCheckpointDB(r,perfisPorCargo){
+  const item={
+    id:r.id, doc:r.documento, ferr:r.ferramenta,
+    hora:String(r.hora||'').slice(0,5),
+    resp:(perfisPorCargo[r.responsavel_cargo]||[]).join(', ')||CARGOS[r.responsavel_cargo]||r.responsavel_cargo,
+    cargo:CARGOS[r.responsavel_cargo]||r.responsavel_cargo,
+    tipo:r.tipo,
+  };
+  if(r.rodada!=null)item.rodada=r.rodada;
+  if(r.tipo==='3.3'&&r.area)item.setor=r.area;
+  if((r.tipo==='2.12'||r.tipo==='2.14')&&r.area)item.area=r.area;
+  return item;
+}
 
 function supDueDate(data,hora){
   return new Date(`${data}T${hora}:00-04:00`);
@@ -3617,7 +3634,7 @@ function supAtividadeDoTurno(a,turno){
   return h>='08:00'&&h<='18:00';
 }
 function supRowTime(row){
-  return row?.fechado_em||row?.enviado_em||row?.created_at||row?.criado_em||row?.registrado_em||row?.updated_at||row?.atualizado_em||row?.verificado_em||null;
+  return row?.fechado_em||row?.enviado_em||row?.preenchido_em||row?.created_at||row?.criado_em||row?.registrado_em||row?.updated_at||row?.atualizado_em||row?.verificado_em||null;
 }
 // Verifica se o timestamp de um registro está dentro da janela de auditoria do turno
 function supRowDentroJanela(row,janela){
@@ -3626,9 +3643,35 @@ function supRowDentroJanela(row,janela){
   const dt=new Date(t);
   return dt>=janela.dtIni&&dt<=janela.dtFim;
 }
+// Casa, em ordem cronológica, os checkpoints do dia com os eventos reais registrados via
+// jtpRegistrarEnvio (relatorios_gerados) do mesmo tipo — resolve o caso de mais de um horário
+// do mesmo tipo no mesmo dia (ex: 3 checkpoints "2.4"): o 1º checkpoint casa com o 1º evento
+// registrado, o 2º com o 2º, etc. Vira a fonte prioritária pros tipos que já chamam
+// jtpRegistrarEnvio no botão real de finalizar — as tabelas de rascunho deixam de decidir status.
+// 3.3 e 2.12/2.14 com área ficam de fora daqui porque têm sinal próprio de conclusão por setor.
+function supCasarEventosPorTipo(itens,relatorios,turnoRef){
+  const porTipo={};
+  itens.forEach(a=>{
+    if(a.sobDemanda||a.tipo==='3.3'||a.tipo==='2.19'||((a.tipo==='2.12'||a.tipo==='2.14')&&a.area))return;
+    (porTipo[a.tipo]=porTipo[a.tipo]||[]).push(a);
+  });
+  const match={};
+  Object.keys(porTipo).forEach(tipo=>{
+    const checkpoints=porTipo[tipo].slice().sort((x,y)=>String(x.hora||'').localeCompare(String(y.hora||'')));
+    const eventos=(relatorios||[]).filter(r=>(!r.turno||r.turno===turnoRef)&&String(r.tipo||'')===tipo)
+      .slice().sort((x,y)=>String(supRowTime(x)||'').localeCompare(String(supRowTime(y)||'')));
+    checkpoints.forEach((a,i)=>{
+      match[a.id]=eventos[i]?{row:eventos[i],quando:supRowTime(eventos[i]),fonte:'Supervisão (registro automático)'}:null;
+    });
+  });
+  return match;
+}
 function supFindRotinaEnvio(a,ctx){
   const turnoRef=ctx.turno||'dia';
   const janela=ctx.janela||null;
+  if(ctx._relMatch&&Object.prototype.hasOwnProperty.call(ctx._relMatch,a.id)){
+    return ctx._relMatch[a.id];
+  }
   if(a.tipo==='3.3'){
     const rodadaNum=a.rodada?Number(a.rodada):null;
     const base=(ctx.ck33||[]).filter(r=>{
@@ -3644,7 +3687,7 @@ function supFindRotinaEnvio(a,ctx){
       if(!sc||!sc[a.setor]?.ok)return null;
       return{row,quando:sc[a.setor].em||supRowTime(row),fonte:'Checklist 3.3',parcial:false};
     }
-    if(!sc)return{row,quando:supRowTime(row),fonte:'Checklist 3.3',parcial:false};
+    if(!sc)return null; // ninguém submeteu nenhum setor ainda — não é "enviado"
     const setores33=['pcm','almox','operacao'];
     const feitos=setores33.filter(s=>sc[s]?.ok);
     if(feitos.length===0)return null;
@@ -3699,6 +3742,13 @@ function supFindRotinaEnvio(a,ctx){
     const row=solturaTurno.sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
     if(row)return{row,quando:supRowTime(row)||janela?.ini,fonte:'Soltura 2.10'};
   }
+  if((a.tipo==='2.12'||a.tipo==='2.14')&&a.area){
+    // Cada área confirma a parte dela (dados.setores_concluidos) — mesmo padrão do 3.3 por setor.
+    const row=(ctx.ind212||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
+    const sc=row?.dados?.setores_concluidos;
+    if(!sc||!sc[a.area]?.ok)return null;
+    return{row,quando:sc[a.area].em||supRowTime(row),fonte:'Indicadores 2.12/2.14 · '+IND212_AREA_NOME[a.area],parcial:false};
+  }
   if(a.tipo==='2.12'||a.tipo==='2.14'){
     const row=(ctx.ind212||[]).sort((x,y)=>String(supRowTime(y)||'').localeCompare(String(supRowTime(x)||'')))[0];
     if(row&&supRowDentroJanela(row,janela))return{row,quando:supRowTime(row),fonte:'Indicadores 2.12/2.14'};
@@ -3724,7 +3774,9 @@ function supFindRotinaEnvio(a,ctx){
 function renderSupervisaoRotina(data,ctx){
   const janela=ctx.janela||supJanelaAuditoria(data,ctx.turno||'dia',ctx.gid);
   const agora=new Date();
-  const rows=SUPERVISAO_ROTINA.filter(a=>supAtividadeDoTurno(a,ctx.turno||'dia')).map(a=>{
+  const itensDoTurno=SUPERVISAO_ROTINA_ATUAL.filter(a=>supAtividadeDoTurno(a,ctx.turno||'dia'));
+  ctx._relMatch=supCasarEventosPorTipo(itensDoTurno,ctx.relatorios,ctx.turno||'dia');
+  const rows=itensDoTurno.map(a=>{
     const due=a.sobDemanda?janela.dtFim:supDueDateAuditoria(data,a.hora,ctx.turno||'dia',ctx.gid);
     const found=supFindRotinaEnvio(a,ctx);
     const quando=found?.quando?new Date(found.quando):null;
@@ -3805,7 +3857,7 @@ function renderSupervisaoRotina(data,ctx){
 }
 
 async function abrirRelatorioSupervisaoRotina(id,data,gid,turno='dia'){
-  const item=SUPERVISAO_ROTINA.find(x=>x.id===id);
+  const item=SUPERVISAO_ROTINA_ATUAL.find(x=>x.id===id);
   if(!item){toast('Atividade não encontrada','err');return;}
   const gidAnt=S.gidAtivo;
   S.gidAtivo=gid||getGid();
@@ -3839,7 +3891,7 @@ async function abrirRelatorioSupervisaoRotina(id,data,gid,turno='dia'){
 }
 
 async function registrarEnvioSupervisaoRotina(id,data,gid,turno=null){
-  const item=SUPERVISAO_ROTINA.find(x=>x.id===id);
+  const item=SUPERVISAO_ROTINA_ATUAL.find(x=>x.id===id);
   if(!item){toast('Atividade não encontrada','err');return;}
   const turnoRef=turno||S._supTurno||S.turno||turnoOperacionalAtual(opTimezone(gid||getGid()));
   const payload={
@@ -3886,10 +3938,10 @@ async function renderSupPeriodo(gid){
 
   el.innerHTML='<div style="display:flex;align-items:center;gap:8px;padding:16px 0;color:var(--text3);font-size:13px"><div class="spinner" style="width:18px;height:18px;border-width:2px"></div> Carregando período...</div>';
 
-  const r22ids=SUPERVISAO_ROTINA.filter(x=>x.tipo==='2.2').map(x=>x.id);
-  const r41ids=SUPERVISAO_ROTINA.filter(x=>x.tipo==='4.1').map(x=>x.id);
-  const r24ids=SUPERVISAO_ROTINA.filter(x=>x.tipo==='2.4').map(x=>x.id);
-  const r34ids=SUPERVISAO_ROTINA.filter(x=>x.tipo==='3.4').map(x=>x.id);
+  const r22ids=SUPERVISAO_ROTINA_ATUAL.filter(x=>x.tipo==='2.2').map(x=>x.id);
+  const r41ids=SUPERVISAO_ROTINA_ATUAL.filter(x=>x.tipo==='4.1').map(x=>x.id);
+  const r24ids=SUPERVISAO_ROTINA_ATUAL.filter(x=>x.tipo==='2.4').map(x=>x.id);
+  const r34ids=SUPERVISAO_ROTINA_ATUAL.filter(x=>x.tipo==='3.4').map(x=>x.id);
 
   const[
     {data:fGar},{data:fLid},{data:f24},{data:ck33},
@@ -4075,6 +4127,8 @@ async function renderSupervisao(gidFiltro=null){
     {data:fechLiderPCMData},
     {data:ind212Data},
     {data:sos218Data},
+    {data:supCheckpointsData},
+    {data:perfisData},
   ]=await Promise.all([
     sb.from('frota').select('*').eq('garagem_id',gid),
     sb.from('ocorrencias_22').select('*').eq('garagem_id',gid).neq('status','liberado'),
@@ -4096,7 +4150,17 @@ async function renderSupervisao(gidFiltro=null){
     sb.from('fechamento_lider_pcm').select('*').eq('garagem_id',gid).eq('data',data).order('fechado_em',{ascending:false}),
     sb.from('indicadores_tecnicos').select('*').eq('garagem_id',gid).eq('data',data),
     sb.from('relatorio_sos_218').select('*').eq('garagem_id',gid).eq('data',data),
+    sb.from('supervisao_checkpoints').select('*').eq('ativo',true).order('ordem',{ascending:true}),
+    sb.from('perfis').select('nome,cargo').eq('garagem_id',gid),
   ]);
+
+  // Fonte real dos checkpoints = tabela supervisao_checkpoints; se ainda não existir/estiver
+  // vazia (SQL de criação pendente), cai no array fixo SUPERVISAO_ROTINA como fallback seguro.
+  const perfisPorCargo={};
+  (perfisData||[]).forEach(p=>{(perfisPorCargo[p.cargo]=perfisPorCargo[p.cargo]||[]).push(p.nome);});
+  SUPERVISAO_ROTINA_ATUAL=(supCheckpointsData?.length)
+    ?supCheckpointsData.map(r=>supMapCheckpointDB(r,perfisPorCargo))
+    :SUPERVISAO_ROTINA;
 
   // ── KPIs FROTA ────────────────────────────────────────────
   const totalFrota=(frota||[]).length;
@@ -16054,15 +16118,28 @@ async function enviar212WhatsApp(){
 }
 
 const INDICADORES_212=[
-  {id:'cpk',nome:'CPK - Custo por KM (R$/km)',meta:'',tipo:'menor'},
-  {id:'mkbf',nome:'MKBF - KM entre Falhas',meta:'',tipo:'maior'},
-  {id:'prev_geral',nome:'Cumprimento Preventiva Geral',meta:'',tipo:'maior'},
-  {id:'prev_pesada',nome:'Cumprimento Preventiva Pesada',meta:'2',tipo:'maior',metaFixa:true},
-  {id:'prev_leve',nome:'Cumprimento Preventiva Leve',meta:'6',tipo:'maior',metaFixa:true},
-  {id:'indisp',nome:'Indisponibilidade de Frota',meta:'',tipo:'menor',base:'d1'},
-  {id:'pneu_sucata',nome:'Pneus sucateados',meta:'',tipo:'menor'},
-  {id:'rod_pneu',nome:'Rodagem pneus km',meta:'',tipo:'maior'},
+  {id:'cpk',nome:'CPK - Custo por KM (R$/km)',meta:'',tipo:'menor',area:'pcm'},
+  {id:'mkbf',nome:'MKBF - KM entre Falhas',meta:'',tipo:'maior',area:'pcm'},
+  {id:'prev_geral',nome:'Cumprimento Preventiva Geral',meta:'',tipo:'maior',area:'pcm'},
+  {id:'prev_pesada',nome:'Cumprimento Preventiva Pesada',meta:'2',tipo:'maior',metaFixa:true,area:'pcm'},
+  {id:'prev_leve',nome:'Cumprimento Preventiva Leve',meta:'6',tipo:'maior',metaFixa:true,area:'pcm'},
+  {id:'indisp',nome:'Indisponibilidade de Frota',meta:'',tipo:'menor',base:'d1',area:'pcm'},
+  {id:'pneu_sucata',nome:'Pneus sucateados',meta:'',tipo:'menor',area:'pcm'},
+  {id:'rod_pneu',nome:'Rodagem pneus km',meta:'',tipo:'maior',area:'pcm'},
+  {id:'op_pontualidade',nome:'Pontualidade',meta:'100',tipo:'maior',metaFixa:true,area:'operacao'},
+  {id:'op_cumpr_partida',nome:'Cumprimento de Partida',meta:'100',tipo:'maior',metaFixa:true,area:'operacao'},
+  {id:'op_hora_extra',nome:'Hora Extra',meta:'0',tipo:'menor',metaFixa:true,area:'operacao'},
+  {id:'sup_acur_inv_rotativo',nome:'Acuracidade Inventário Rotativo',meta:'100',tipo:'maior',metaFixa:true,area:'suprimentos'},
+  {id:'sup_acur_inv_baixa_saida',nome:'Acuracidade Inventário de Baixa/Saída',meta:'100',tipo:'maior',metaFixa:true,area:'suprimentos'},
+  {id:'sup_entrada',nome:'% Entradas de estoque no prazo',meta:'100',tipo:'maior',metaFixa:true,area:'suprimentos'},
+  {id:'sup_saida',nome:'% Saídas de estoque no prazo',meta:'100',tipo:'maior',metaFixa:true,area:'suprimentos'},
 ];
+const IND212_AREA_NOME={pcm:'MANUTENÇÃO',operacao:'OPERAÇÃO',suprimentos:'SUPRIMENTOS'};
+const IND212_AREA_CARGOS={pcm:['lider_pcm','assistente_pcm'],operacao:['lider_operacional'],suprimentos:['lider_suprimentos']};
+function ind212PodeEditarArea(area){
+  if(S.perfil?.is_admin||papelFerr('ferr-212')==='executa')return true;
+  return (IND212_AREA_CARGOS[area]||[]).includes(S.perfil?.cargo);
+}
 function ind212Key(data,turno,gid){return `jtp_ind212_v1:${gid||getGid()}:${data||hoje()}:${turno||turnoOperacionalAtual()}`;}
 function ind212Numero(v){
   let s=String(v??'').trim();
@@ -16385,37 +16462,60 @@ async function renderFerr212(backArg='',tabsArg=''){
   setMain(`<div class="loading"><div class="spinner"></div> Carregando 2.12...</div>`);
   const [banco,cpkLista]=await Promise.all([buscarInd212Banco(gid,data,turno),cpkCarregarApontamentos(gid)]);
   const state=banco?.dados||ind212GetState(data,turno,gid);
+  window._ind212Setores=state.setores_concluidos||{};
   const cpkAbertos=cpkLista.filter(a=>!a.resolvido).length;
-  const rows=INDICADORES_212.map(it=>{
+  const mkRow=(it)=>{
     const r={meta:it.metaFixa?it.meta:'',...(state.itens?.[it.id]||{})};
     if(it.metaFixa)r.meta=it.meta;
     const calc=ind212Calc(it,r);
     const precisa=calc.status==='nok';
-    const oncalc=`oninput="atualizarStatusIndicador212('${it.id}')"`;
+    const podeEditar=ind212PodeEditarArea(it.area);
+    const trava=podeEditar?'':'disabled';
+    const oncalc=podeEditar?`oninput="atualizarStatusIndicador212('${it.id}')"`:'';
     const soD1=it.base==='d1';
-    const disabledS1=soD1?'disabled title="Este indicador usa apenas D-1"':'';
-    const disabledM1=soD1?'disabled title="Este indicador usa apenas D-1"':'';
+    const disabledS1=(soD1?'disabled title="Este indicador usa apenas D-1"':'')||trava;
+    const disabledM1=(soD1?'disabled title="Este indicador usa apenas D-1"':'')||trava;
     const nomeCell=it.id==='cpk'
       ?`<span onclick="cpkToggleExpand()" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">${it.nome}<span id="cpk-toggle-icon" style="font-size:10px;color:var(--text3)">▶</span>${cpkAbertos>0?`<span style="background:#EF444418;color:var(--red);border:1px solid #EF444440;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">⚠️ ${cpkAbertos}</span>`:''}</span>`
       :it.nome;
     const metaCell=it.metaFixa
       ?`<td style="padding:7px;text-align:center"><div style="padding:8px;font-family:'DM Mono',monospace;font-weight:800;font-size:13px;color:var(--text2)">${it.meta}</div><input type="hidden" id="ind212-${it.id}-meta" value="${it.meta}"></td>`
-      :`<td style="padding:7px">${ind212Input(`ind212-${it.id}-meta`,r.meta,'Meta',oncalc)}</td>`;
+      :`<td style="padding:7px">${ind212Input(`ind212-${it.id}-meta`,r.meta,'Meta',`${oncalc} ${trava}`)}</td>`;
     const extraRow=it.id==='cpk'?`<tr id="cpk-expand-row" style="display:none"><td colspan="8" style="padding:0">${cpkRenderApontamentos(cpkLista,gid)}</td></tr>`:'';
     return `<tr style="border-top:1px solid var(--border2)">
       <td style="padding:9px 10px;color:var(--text);font-weight:800">${nomeCell}</td>
-      <td style="padding:7px">${ind212Input(`ind212-${it.id}-d1`,r.d1,'D-1',oncalc)}</td>
+      <td style="padding:7px">${ind212Input(`ind212-${it.id}-d1`,r.d1,'D-1',`${oncalc} ${trava}`)}</td>
       <td style="padding:7px">${ind212Input(`ind212-${it.id}-s1`,soD1?'':r.s1,soD1?'Não usado':'S-1',`${oncalc} ${disabledS1}`)}</td>
       <td style="padding:7px">${ind212Input(`ind212-${it.id}-m1`,soD1?'':r.m1,soD1?'Não usado':'M-1 acumulado',`${oncalc} ${disabledM1}`)}</td>
       ${metaCell}
       <td style="padding:7px;text-align:center">
         <span id="ind212-${it.id}-status" style="${ind212StatusStyle(calc)}">${calc.label}</span>
-        ${it.tipo==='texto'?`<select id="ind212-${it.id}-statusManual" onchange="atualizarStatusIndicador212('${it.id}')" style="margin-top:5px;width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:5px;font-size:11px"><option value="">Auto/manual</option><option value="ok"${r.statusManual==='ok'?' selected':''}>OK</option><option value="nok"${r.statusManual==='nok'?' selected':''}>NOK</option></select>`:`<input id="ind212-${it.id}-statusManual" type="hidden" value="${prevEsc(r.statusManual||'')}">`}
+        ${it.tipo==='texto'?`<select id="ind212-${it.id}-statusManual" onchange="atualizarStatusIndicador212('${it.id}')" ${trava} style="margin-top:5px;width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:5px;font-size:11px"><option value="">Auto/manual</option><option value="ok"${r.statusManual==='ok'?' selected':''}>OK</option><option value="nok"${r.statusManual==='nok'?' selected':''}>NOK</option></select>`:`<input id="ind212-${it.id}-statusManual" type="hidden" value="${prevEsc(r.statusManual||'')}">`}
       </td>
-      <td style="padding:7px">${ind212Input(`ind212-${it.id}-causa`,r.causa,precisa?'Causa do desvio 2.14':'Análise 2.14')}</td>
-      <td style="padding:7px">${ind212Input(`ind212-${it.id}-acao`,r.acao,precisa?'Obrigatório para NOK':'Plano de ação / obs')}</td>
+      <td style="padding:7px">${ind212Input(`ind212-${it.id}-causa`,r.causa,precisa?'Causa do desvio 2.14':'Análise 2.14',`${trava}`)}</td>
+      <td style="padding:7px">${ind212Input(`ind212-${it.id}-acao`,r.acao,precisa?'Obrigatório para NOK':'Plano de ação / obs',`${trava}`)}</td>
     </tr>${extraRow}`;
-  }).join('');
+  };
+  const mkBlocoArea=(area)=>{
+    const itens=INDICADORES_212.filter(it=>it.area===area);
+    if(!itens.length)return '';
+    const conclu=window._ind212Setores?.[area];
+    const podeEditar=ind212PodeEditarArea(area);
+    const badge=conclu?.ok
+      ?`<span style="font-size:10px;background:#00C48C22;color:var(--green);border:1px solid #00C48C50;border-radius:99px;padding:3px 10px;font-weight:800">✅ Confirmado por ${prevEsc(conclu.por||'—')}</span>`
+      :podeEditar?`<button onclick="confirmarAreaIndicadores212('${area}')" style="padding:6px 12px;border-radius:8px;border:none;background:var(--green);color:#06131f;font-size:11px;font-weight:800;cursor:pointer">✅ Confirmar ${IND212_AREA_NOME[area]}</button>`
+      :`<span style="font-size:10px;color:var(--text4)">⏳ Aguardando confirmação</span>`;
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:14px">
+      <div style="background:#1f6fae;color:#fff;font-weight:900;padding:9px 12px;font-size:15px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <span>■ ${IND212_AREA_NOME[area]}</span>${badge}
+      </div>
+      <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:1180px">
+        <thead><tr style="background:var(--surface2);color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.1em">
+          <th style="padding:9px;text-align:left;width:260px">Indicador</th><th style="padding:9px;width:95px">D-1</th><th style="padding:9px;width:95px">S-1</th><th style="padding:9px;width:95px">M-1</th><th style="padding:9px;width:210px;text-align:left">Meta</th><th style="padding:9px;width:105px">Status</th><th style="padding:9px;width:260px;text-align:left">2.14 - Causa do Desvio</th><th style="padding:9px;width:240px;text-align:left">Plano de Ação / Obs</th>
+        </tr></thead><tbody>${itens.map(mkRow).join('')}</tbody>
+      </table></div>
+    </div>`;
+  };
   const resumo=INDICADORES_212.reduce((acc,it)=>{
     const c=ind212Calc(it,state.itens?.[it.id]||{});
     if(c.status==='ok')acc.ok++;
@@ -16429,16 +16529,9 @@ async function renderFerr212(backArg='',tabsArg=''){
     <div style="display:grid;grid-template-columns:215px 1fr auto;gap:10px;align-items:end;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:14px">
       <div><label class="campo-label">Data</label><div style="display:flex;gap:6px;align-items:center"><input id="ind212-data" class="fi" type="date" value="${data}" onchange="S._ind212Data=this.value;${rerender212}"><button title="Abrir calendário" onclick="const el=document.getElementById('ind212-data');if(el?.showPicker)el.showPicker();else el?.focus();" style="width:38px;height:38px;border-radius:9px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:16px;cursor:pointer">📅</button></div></div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${ind212ResumoBox('ok','OK',resumo.ok)}${ind212ResumoBox('nok','NOK',resumo.nok,0)}${ind212ResumoBox('pend','Pendentes',resumo.pend,0)}</div>
-      <button class="btn-add" onclick="salvarIndicadores212()" style="height:44px;background:var(--green);border-color:var(--green);color:#06131f">💾 Salvar</button>
+      <button class="btn-add" onclick="salvarIndicadores212()" style="height:44px;background:var(--surface2);border:1px solid var(--border);color:var(--text2)" title="Salva os números sem confirmar sua área">💾 Salvar rascunho</button>
     </div>
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
-      <div style="background:#1f6fae;color:#fff;font-weight:900;padding:9px 12px;font-size:15px">■ MANUTENÇÃO</div>
-      <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;min-width:1180px">
-        <thead><tr style="background:var(--surface2);color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.1em">
-          <th style="padding:9px;text-align:left;width:260px">Indicador</th><th style="padding:9px;width:95px">D-1</th><th style="padding:9px;width:95px">S-1</th><th style="padding:9px;width:95px">M-1</th><th style="padding:9px;width:210px;text-align:left">Meta</th><th style="padding:9px;width:105px">Status</th><th style="padding:9px;width:260px;text-align:left">2.14 - Causa do Desvio</th><th style="padding:9px;width:240px;text-align:left">Plano de Ação / Obs</th>
-        </tr></thead><tbody>${rows}</tbody>
-      </table></div>
-    </div>`);
+    ${mkBlocoArea('pcm')}${mkBlocoArea('operacao')}${mkBlocoArea('suprimentos')}`);
 }
 async function salvarIndicadores212(){
   const gid=getGid();
@@ -16449,10 +16542,27 @@ async function salvarIndicadores212(){
     r.status=c.status;
     r.statusLabel=c.label;
   });
+  state.setores_concluidos=window._ind212Setores||{};
   ind212SetState(state.data,state.turno,gid,state);
   const ok=await salvarInd212Banco(gid,state,'em_andamento');
-  await jtpRegistrarEnvio('2.12',state.data,state.turno);
-  toast(ok?'✅ 2.12 salvos e registrado na Supervisão':'Indicadores salvos localmente');
+  toast(ok?'💾 Rascunho salvo (ainda não confirmado)':'Indicadores salvos localmente');
+  if(S._ind212DentroPCM)renderFerrPCM('ind212');else renderFerr212();
+}
+async function confirmarAreaIndicadores212(area){
+  if(!ind212PodeEditarArea(area)){toast('Sem permissão para confirmar esta área','err');return;}
+  const gid=getGid();
+  const state=ind212ColetarTela();
+  INDICADORES_212.forEach(it=>{
+    const r=state.itens[it.id]||{};
+    const c=ind212Calc(it,r);
+    r.status=c.status;
+    r.statusLabel=c.label;
+  });
+  state.setores_concluidos={...(window._ind212Setores||{}),[area]:{ok:true,por:S.perfil?.nome||null,em:new Date().toISOString()}};
+  window._ind212Setores=state.setores_concluidos;
+  ind212SetState(state.data,state.turno,gid,state);
+  const ok=await salvarInd212Banco(gid,state,'em_andamento');
+  toast(ok?`✅ ${IND212_AREA_NOME[area]} confirmado — registrado na Supervisão`:'Erro ao salvar, tente novamente');
   if(S._ind212DentroPCM)renderFerrPCM('ind212');else renderFerr212();
 }
 async function gerarRelatorio212(){

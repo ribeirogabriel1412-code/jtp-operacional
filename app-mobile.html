@@ -1197,6 +1197,9 @@ async function confirmarFechamentoAbastecimento(){
     });
     if(error) throw error;
 
+    // Registra o checkpoint "abastecimento" na Supervisão
+    await jtpRegistrarEnvio('abastecimento',dataGravar,S.turno||'dia');
+
     // Limpa todos os registros de hoje após arquivar
     // Deleta pelos IDs exatos que foram arquivados — mais seguro que filtro de data
     const ids=lista.map(a=>a.id).filter(Boolean);
@@ -6650,6 +6653,13 @@ async function fecharTurnoLavagem(){
   );
 }
 
+// Registra o evento de finalização na Supervisão (index.html tem a cópia gêmea desta função —
+// mesma tabela relatorios_gerados, mesmo formato, pra o painel de auditoria enxergar os dois lados).
+async function jtpRegistrarEnvio(tipo,data,turno){
+  const gid=getGid();
+  try{await sb.from('relatorios_gerados').insert({garagem_id:gid,tipo,numero:`${tipo}-${data}-${turno}`,data_evento:data,turno,status:'fechado',fechado_em:new Date().toISOString(),preenchido_por:S.perfil?.id||null,preenchido_por_nome:S.perfil?.nome||null});}catch(e){console.warn(`[relatorios_gerados ${tipo}] erro:`,e?.message);}
+}
+
 async function confirmarFechamentoLavagem(){
   const gid=getGid();
   const obs=document.getElementById('obs-lav-turno')?.value?.trim()||null;
@@ -6689,6 +6699,9 @@ async function confirmarFechamentoLavagem(){
       observacao:obs,
     });
   }catch(e){console.warn('[fechamento_lavagem]',e.message);}
+
+  // Registra o fechamento na Supervisão (checkpoint "Lavagem", 07:30, Líder de Pátio)
+  await jtpRegistrarEnvio('lavagem',dataRef,S.turno||'dia');
 
   // PASSO 2 — Atualizar ultima_lavagem (não bloqueia se falhar)
   if(prefixosLavados.length){
@@ -8369,6 +8382,9 @@ async function salvarChecklist34(){
     if(btn){ btn.disabled=false; btn.textContent='Tentar novamente'; }
     return;
   }
+
+  // Registra o checkpoint "3.4" na Supervisão
+  await jtpRegistrarEnvio('3.4',dataHoje,turnoId);
 
   // Criar/atualizar pendências de NOK no banco
   const garagem=S.garagens?.find(g=>g.id===gid);

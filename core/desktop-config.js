@@ -92,7 +92,7 @@ const FERRAMENTAS_DEF=[
   {id:'ferr-212', icon:'📊', nome:'2.12 Indicadores Técnicos',
     executa:  [],
     valida:   [],
-    visualiza:['lider_pcm','assistente_pcm','lider_operacional','gerente_garagem','diretoria'],
+    visualiza:['lider_pcm','assistente_pcm','lider_operacional','lider_suprimentos','gerente_garagem','diretoria'],
   },
   {id:'ferr-lubri', icon:'🛢️', nome:'Relatório Lubrificação',
     executa:  ['lubrificador'],
