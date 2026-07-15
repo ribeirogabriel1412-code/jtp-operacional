@@ -418,7 +418,7 @@ const CK_VISTORIA_PESADA=[
 let _lid='',_lck={};
 async function telaLavagem(){
   const gid=getGid();
-  const{data:lista}=await sb.from('checklist_lavagem').select('*').eq('garagem_id',gid).eq('data',hoje()).not('status','in','("cancelado","arquivado")').order('prefixo');
+  const{data:lista}=await sb.from('checklist_lavagem').select('*').eq('garagem_id',gid).not('status','in','("cancelado","arquivado")').order('prefixo');
   if(!lista?.length){render(`<div class="empty"><div class="empty-ic">🚿</div><div style="font-weight:700;font-size:16px;margin-bottom:8px">Sem programação hoje</div><div style="font-size:13px">Aguardando programação do líder.</div></div>`);return}
   const exec=lista.filter(l=>l.status==='executado').length,tot=lista.length,pct=Math.round(exec/tot*100);
   const TIPO_COR={pesada:'var(--amber)',media:'var(--blue)',leve:'#10B981',simples:'#3B82F6',preventiva:'#8B5CF6'};
@@ -449,9 +449,9 @@ async function telaLavagem(){
 }
 async function concLeveTudo(){
   const gid=getGid();
-  const{data:leve}=await sb.from('checklist_lavagem').select('id').eq('garagem_id',gid).eq('data',hoje()).eq('tipo_lavagem','leve').eq('status','pendente');
+  const{data:leve}=await sb.from('checklist_lavagem').select('id').eq('garagem_id',gid).eq('tipo_lavagem','leve').eq('status','pendente');
   if(!leve?.length){toast('Nada pendente','err');return;}
-  const{error}=await sb.from('checklist_lavagem').update({status:'executado',hora_executado:new Date().toISOString(),executado_por:S.perfil?.nome}).eq('garagem_id',gid).eq('data',hoje()).eq('tipo_lavagem','leve').eq('status','pendente');
+  const{error}=await sb.from('checklist_lavagem').update({status:'executado',hora_executado:new Date().toISOString(),executado_por:S.perfil?.nome}).eq('garagem_id',gid).eq('tipo_lavagem','leve').eq('status','pendente');
   if(error){toast('Erro: '+error.message,'err');return;}
   toast('✅ Leve concluída — '+leve.length+' veículos');telaLavagem();
 }
@@ -506,7 +506,7 @@ const CK_PAT_P=['Chassis limpo','Cockpit limpo'];
 let _pid='',_pck={};
 async function telaPatio(){
   const gid=getGid();
-  const{data:lista}=await sb.from('checklist_lavagem').select('*').eq('garagem_id',gid).eq('data',hoje()).eq('status','executado').order('prefixo');
+  const{data:lista}=await sb.from('checklist_lavagem').select('*').eq('garagem_id',gid).eq('status','executado').order('prefixo');
   if(!lista?.length){render(`<div class="empty"><div class="empty-ic">✅</div><div style="font-weight:700;font-size:16px;margin-bottom:8px">Tudo validado!</div></div>`);return}
   const pend=lista.filter(l=>!l.validado_patio),val=lista.filter(l=>l.validado_patio);
   const TIPO_PAT={pesada:'🟡 Pesada',media:'🔵 Média',leve:'🟢 Leve',simples:'💧 Simples',preventiva:'🟣 Preventiva'};
@@ -6368,36 +6368,64 @@ async function buscarEscalaRecolha(prefixo){
 // LAVAGEM PESADA (Líder Pátio)
 // Fluxo: Líder monta plano → Lavador confirma → Líder vistoria
 // ══════════════════════════════════════════════════════════
-let _lpData=(()=>{try{return sessionStorage.getItem('jtp_lpData')||hoje();}catch(e){return hoje();}})();
 let _lpFiltro='todos';
-function setLpData(d){_lpData=d;try{sessionStorage.setItem('jtp_lpData',d);}catch(e){}}
 
-async function telaLavPesada(){
-  const gid=getGid();
-  const data=_lpData;
-  const baseSemana=new Date(data+'T12:00:00');
-  const dow=baseSemana.getDay();
+// Calcula, para a semana corrente (segunda a domingo contendo dataRef), quem já lavou/vistoriou
+// e há quantos dias cada prefixo não lava (usando hora_executado — sobrevive ao arquivamento,
+// diferente de status/data que podem ficar presos numa data antiga).
+async function calcSemanaLavagem(gid,dataRef){
+  const base=new Date(dataRef+'T12:00:00');
+  const dow=base.getDay();
   const offset=(dow+6)%7; // segunda-feira como início
-  const semanaIni=new Date(baseSemana);semanaIni.setDate(baseSemana.getDate()-offset);
+  const semanaIni=new Date(base);semanaIni.setDate(base.getDate()-offset);
   const semanaFim=new Date(semanaIni);semanaFim.setDate(semanaIni.getDate()+7);
   const semanaIniStr=semanaIni.toISOString().split('T')[0];
   const semanaFimStr=semanaFim.toISOString().split('T')[0];
-  
-  // Carregar plano do dia + frota (com ultima_lavagem) + preventivas do dia
-  // Filtra cancelado/arquivado diretamente na query — não depende de filtro JS
-  const[{data:plano},{data:frota},{data:prevHoje},{data:vistoriasSemana}]=await Promise.all([
-    sb.from('checklist_lavagem').select('*').eq('garagem_id',gid).eq('data',data)
+  const semanaIniISO=semanaIni.toISOString(),semanaFimISO=semanaFim.toISOString();
+
+  const[{data:hist},{data:vistoriasSemana}]=await Promise.all([
+    sb.from('checklist_lavagem').select('prefixo,hora_executado,validado_patio,validado_em')
+      .eq('garagem_id',gid).not('hora_executado','is',null)
+      .order('hora_executado',{ascending:false}).limit(2000),
+    sb.from('vistoria_lavagem').select('prefixo,created_at,aprovado').eq('garagem_id',gid).eq('aprovado',true)
+      .gte('created_at',semanaIniISO).lt('created_at',semanaFimISO),
+  ]);
+
+  const lavadosSemanaSet=new Set();
+  const vistoriadosSemanaSet=new Set();
+  const diasSemMap={};
+  (hist||[]).forEach(r=>{
+    if(!r.prefixo||!r.hora_executado) return;
+    if(diasSemMap[r.prefixo]===undefined){
+      diasSemMap[r.prefixo]=Math.max(0,Math.round((base-new Date(r.hora_executado))/86400000));
+    }
+    if(r.hora_executado>=semanaIniISO&&r.hora_executado<semanaFimISO) lavadosSemanaSet.add(r.prefixo);
+    if(r.validado_patio&&r.validado_em&&r.validado_em>=semanaIniISO&&r.validado_em<semanaFimISO) vistoriadosSemanaSet.add(r.prefixo);
+  });
+  (vistoriasSemana||[]).forEach(v=>{if(v.prefixo)vistoriadosSemanaSet.add(v.prefixo);});
+
+  return{semanaIni,semanaFim,semanaIniStr,semanaFimStr,lavadosSemanaSet,vistoriadosSemanaSet,diasSemMap};
+}
+
+async function telaLavPesada(){
+  const gid=getGid();
+  const data=hoje();
+
+  // Plano ativo = qualquer linha não cancelada/arquivada, sem depender de data exata
+  // (evita o acúmulo antigo em que pendências ficavam presas numa data velha)
+  const[{data:plano},{data:frota},{data:prevHoje},semana]=await Promise.all([
+    sb.from('checklist_lavagem').select('*').eq('garagem_id',gid)
       .not('status','in','("cancelado","arquivado")').order('prefixo'),
     sb.from('frota').select('prefixo,modelo,ultima_lavagem').eq('garagem_id',gid).order('prefixo'),
     sb.from('soltura_2_10').select('prefixo').eq('garagem_id',gid).eq('data',data),
-    sb.from('vistoria_lavagem').select('prefixo,created_at,aprovado').eq('garagem_id',gid).eq('aprovado',true)
-      .gte('created_at',semanaIni.toISOString()).lt('created_at',semanaFim.toISOString()),
+    calcSemanaLavagem(gid,data),
   ]);
-  
+  const{semanaIni,semanaFim,lavadosSemanaSet,vistoriadosSemanaSet,diasSemMap}=semana;
+
   window._lavLista=plano||[];
   const lista=window._lavLista;
   const prevSet=new Set((prevHoje||[]).map(p=>p.prefixo));
-  
+
   const total=lista.length;
   const lavados=lista.filter(l=>l.status==='executado').length;
   const vistoriados=lista.filter(l=>l.validado_patio).length;
@@ -6414,19 +6442,12 @@ async function telaLavPesada(){
   const frotaMap={};
   (frota||[]).forEach(v=>{frotaMap[v.prefixo]=v;});
   const totalFrota=(frota||[]).length;
-  const lavadosSemanaSet=new Set();
-  (frota||[]).forEach(v=>{
-    if(v.ultima_lavagem&&v.ultima_lavagem>=semanaIniStr&&v.ultima_lavagem<semanaFimStr) lavadosSemanaSet.add(v.prefixo);
-  });
-  lista.forEach(l=>{if(l.status==='executado'||l.validado_patio)lavadosSemanaSet.add(l.prefixo);});
-  const vistoriadosSemanaSet=new Set();
-  (vistoriasSemana||[]).forEach(v=>{if(v.prefixo)vistoriadosSemanaSet.add(v.prefixo);});
-  lista.forEach(l=>{if(l.validado_patio)vistoriadosSemanaSet.add(l.prefixo);});
   const lavadosSemana=lavadosSemanaSet.size;
   const vistoriadosSemana=vistoriadosSemanaSet.size;
   const planoMap={};
   lista.forEach(l=>{planoMap[l.prefixo]=l;});
-  const naoLavadosSemana=(frota||[]).filter(v=>!lavadosSemanaSet.has(v.prefixo));
+  const naoLavadosSemana=(frota||[]).filter(v=>!lavadosSemanaSet.has(v.prefixo))
+    .sort((a,b)=>(diasSemMap[b.prefixo]??9999)-(diasSemMap[a.prefixo]??9999));
   const faltamLavar=Math.max(0,totalFrota-lavadosSemana);
   const faltamVistoriar=Math.max(0,totalFrota-vistoriadosSemana);
   const pctSemLav=totalFrota?Math.round(lavadosSemana/totalFrota*100):0;
@@ -6438,9 +6459,8 @@ async function telaLavPesada(){
     const lavado=r.status==='executado';
     const vistoriado=r.validado_patio;
     const emPrev=prevSet.has(r.prefixo);
-    const ultLav=frotaMap[r.prefixo]?.ultima_lavagem;
-    const diasSem=ultLav?Math.max(0,Math.round((new Date(data+'T12:00:00')-new Date(ultLav+'T12:00:00'))/86400000)):null;
-    const ultTxt=vistoriado?'Limpo hoje':ultLav?(diasSem===0?'Lavado hoje':diasSem===1?'Última lavagem: 1 dia':'Última lavagem: '+diasSem+' dias'):'Sem histórico';
+    const diasSem=diasSemMap[r.prefixo];
+    const ultTxt=vistoriado?'Limpo hoje':diasSem!==undefined?(diasSem===0?'Lavado hoje':diasSem===1?'Última lavagem: 1 dia':'Última lavagem: '+diasSem+' dias'):'Sem histórico';
     
     let statusCor='var(--text3)';
     let statusTxt='⏳ Aguardando';
@@ -6463,7 +6483,7 @@ async function telaLavPesada(){
         :r.tipo_lavagem==='simples'?'<span style="font-size:9px;background:#3B82F618;border:1px solid #3B82F640;color:var(--blue);border-radius:4px;padding:1px 6px;font-weight:700">SIMPLES</span>':'')
       +'</div>'
       +'<div class="vcard-sub">'+statusTxt+(r.executado_por?' · '+r.executado_por.split(' ')[0]:'')+'</div>'
-      +'<div class="vcard-sub" style="font-size:10px;color:'+(vistoriado?'var(--green)':ultLav?'var(--text3)':'var(--amber)')+'">'+ultTxt+'</div>'
+      +'<div class="vcard-sub" style="font-size:10px;color:'+(vistoriado?'var(--green)':diasSem!==undefined?'var(--text3)':'var(--amber)')+'">'+ultTxt+'</div>'
       +(r.validado_por?'<div class="vcard-sub" style="color:var(--green);font-size:10px">✅ Vistoria: '+r.validado_por.split(' ')[0]+(r.validado_em?' '+new Date(r.validado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'')+'</div>':'')
       +'</div>'
       +'<div style="display:flex;flex-direction:column;align-items:center;gap:4px">'
@@ -6474,9 +6494,8 @@ async function telaLavPesada(){
   const mkCardNaoLavadoSemana=function(v){
     const r=planoMap[v.prefixo];
     if(r) return mkCardLav(r);
-    const ultLav=v.ultima_lavagem;
-    const diasSem=ultLav?Math.max(0,Math.round((new Date(data+'T12:00:00')-new Date(ultLav+'T12:00:00'))/86400000)):null;
-    const hist=ultLav?(diasSem===1?'Última lavagem: 1 dia':'Última lavagem: '+diasSem+' dias'):'Sem histórico';
+    const diasSem=diasSemMap[v.prefixo];
+    const hist=diasSem!==undefined?(diasSem===0?'Lavado hoje':diasSem===1?'Última lavagem: 1 dia':'Última lavagem: '+diasSem+' dias'):'Sem histórico';
     return '<div class="vcard" onclick="addLavagemSemana(\''+v.prefixo+'\')" style="background:var(--surface2);border-left:3px solid var(--red)">'
       +'<div style="flex:1">'
       +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
@@ -6508,7 +6527,10 @@ async function telaLavPesada(){
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
     +'<div><div style="font-weight:800;font-size:17px">🚿 Lavagem</div>'
     +'<div style="font-size:11px;color:var(--text3)">'+dataFmt+'</div></div>'
+    +'<div style="display:flex;gap:6px">'
+    +'<button onclick="abrirRelatorioLavagem()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">📊</button>'
     +'<button onclick="telaLavPesada()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text3);font-size:12px;font-family:inherit;cursor:pointer">🔄</button>'
+    +'</div>'
     +'</div>'
     +'<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px">'
     +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-size:11px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:1px">Meta semanal da frota</div><div style="font-size:11px;color:var(--text3)">'+semanaLbl+'</div></div>'
@@ -6573,7 +6595,7 @@ async function addLavagemSemana(prefixo){
   const {error}=await sb.from('checklist_lavagem').insert([{
     garagem_id:gid,
     prefixo:prefixo,
-    data:_lpData,
+    data:hoje(),
     tipo_lavagem:'pesada',
     status:'pendente',
     turno:S.turno||'dia',
@@ -6586,19 +6608,19 @@ async function addLavagemSemana(prefixo){
 async function fecharTurnoLavagem(){
   const gid=getGid();
   const{data:plano}=await sb.from('checklist_lavagem').select('*')
-    .eq('garagem_id',gid).eq('data',_lpData)
+    .eq('garagem_id',gid)
     .not('status','in','("cancelado","arquivado")')
     .order('prefixo');
   const lista=plano||[];
 
   if(!lista.length){
-    toast('Nenhum plano ativo para fechar — já foi arquivado ou não há lavagens hoje','err');
+    toast('Nenhum plano ativo para fechar — não há lavagens pendentes','err');
     return;
   }
   const lavados=lista.filter(l=>l.status==='executado').length;
   const vistoriados=lista.filter(l=>l.validado_patio).length;
   const pct=lista.length>0?Math.round(vistoriados/lista.length*100):0;
-  const dataFmt=new Date(_lpData+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'});
+  const dataFmt=new Date(hoje()+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'});
   const nFP=lista.filter(l=>l.tipo_lavagem==='pesada'||l.tipo_lavagem==='preventiva').length;
   const nFM=lista.filter(l=>l.tipo_lavagem==='media'||l.tipo_lavagem==='simples').length;
   const nFL=lista.filter(l=>l.tipo_lavagem==='leve').length;
@@ -6631,40 +6653,24 @@ async function fecharTurnoLavagem(){
 async function confirmarFechamentoLavagem(){
   const gid=getGid();
   const obs=document.getElementById('obs-lav-turno')?.value?.trim()||null;
+  const dataRef=hoje();
 
   const btn=document.querySelector('#shbody button:last-child');
   if(btn){btn.disabled=true;btn.textContent='Fechando...';}
 
-  // Busca plano do dia (inclui todos os status para ter o total real)
+  // Plano ativo = tudo que não é cancelado/arquivado (sem depender de data — item 1-B)
   const{data:plano,error:errPlano}=await sb.from('checklist_lavagem').select('*')
-    .eq('garagem_id',gid).eq('data',_lpData);
+    .eq('garagem_id',gid).not('status','in','("cancelado","arquivado")');
 
-  if(errPlano||!plano?.length){
-    // Se não achar por _lpData, tenta hoje
-    const{data:planoHoje}=await sb.from('checklist_lavagem').select('*')
-      .eq('garagem_id',gid).eq('data',hoje());
-    if(!planoHoje?.length){
-      toast('❌ Nenhum plano encontrado para fechar','err');
-      if(btn){btn.disabled=false;btn.textContent='Tentar novamente';}
-      return;
-    }
-    // Usa hoje como referência
-    window._lpDataReal=hoje();
-  } else {
-    window._lpDataReal=_lpData;
+  if(errPlano){
+    toast('❌ Erro ao buscar plano: '+errPlano.message,'err');
+    if(btn){btn.disabled=false;btn.textContent='Tentar novamente';}
+    return;
   }
-
-  const lista=(plano?.length?plano:[]).filter(l=>l.status!=='arquivado');
-  const dataRef=window._lpDataReal||_lpData;
-
+  const lista=plano||[];
   if(!lista.length){
-    // Já foi arquivado — só avança a data
-    const amanha=new Date(dataRef+'T12:00:00');
-    amanha.setDate(amanha.getDate()+1);
-    setLpData(amanha.toISOString().split('T')[0]);
-    closeSheet(true);
-    toast('ℹ️ Plano já arquivado — avançando para o próximo turno');
-    telaLavPesada();
+    toast('ℹ️ Nenhum plano ativo para fechar','err');
+    if(btn){btn.disabled=false;btn.textContent='Tentar novamente';}
     return;
   }
 
@@ -6697,37 +6703,21 @@ async function confirmarFechamentoLavagem(){
     }catch(e){console.warn('[frota ultima_lavagem]',e.message);}
   }
 
-  // PASSO 3 — Arquivar checklist do dia (CRÍTICO — tela deve limpar)
-  const ids=lista.map(l=>l.id).filter(Boolean);
-  let arquivado=false;
-
-  // Tenta por IDs primeiro (mais preciso)
-  if(ids.length){
-    const{error:e1}=await sb.from('checklist_lavagem')
-      .update({status:'arquivado'}).in('id',ids);
-    if(!e1){ arquivado=true; }
-    else console.warn('[lav] update por ID falhou:',e1.message);
+  // PASSO 3 — Arquivar só quem chegou num estado terminal (executado/não_realizado).
+  // Quem ainda está pendente NÃO é arquivado — continua aparecendo até ser lavado
+  // ou removido do plano, em vez de sumir escondido atrás de um "fechamento".
+  const idsTerminal=lista.filter(l=>l.status==='executado'||l.status==='nao_realizado').map(l=>l.id).filter(Boolean);
+  if(idsTerminal.length){
+    const{error:eArq}=await sb.from('checklist_lavagem').update({status:'arquivado'}).in('id',idsTerminal);
+    if(eArq){
+      toast('⚠️ Fechamento registrado, mas não foi possível arquivar o histórico — verifique permissões (RLS)','err');
+      console.warn('[lav] arquivar falhou:',eArq.message);
+    }
   }
 
-  // Fallback: arquiva por garagem+data
-  if(!arquivado){
-    const{error:e2}=await sb.from('checklist_lavagem')
-      .update({status:'arquivado'}).eq('garagem_id',gid).eq('data',dataRef);
-    if(!e2){ arquivado=true; }
-    else console.warn('[lav] arquivado por data falhou:',e2.message);
-  }
-
-  if(!arquivado){
-    toast('⚠️ Não foi possível arquivar o plano — verifique permissões (RLS)','err');
-  }
-
-  // Avança a data para o próximo dia independente de erro
-  const amanha=new Date(dataRef+'T12:00:00');
-  amanha.setDate(amanha.getDate()+1);
-  setLpData(amanha.toISOString().split('T')[0]);
-
+  const pendentes=lista.length-idsTerminal.length;
   closeSheet(true);
-  toast('✅ Turno fechado! '+lavados+'/'+lista.length+' lavados');
+  toast('✅ Turno fechado! '+lavados+'/'+lista.length+' lavados'+(pendentes?' · '+pendentes+' seguem pendentes':''));
   telaLavPesada();
 }
 
@@ -6868,7 +6858,7 @@ async function confirmarVistoriaPesada(id){
       garagem_id:gid,
       checklist_id:id,
       prefixo:window._vckPrefixo,
-      data:_lpData||hoje(),
+      data:hoje(),
       itens_total:CK_VISTORIA_PESADA.length,
       itens_ok,
       reprovado_itens:0,
@@ -6902,7 +6892,7 @@ async function reprovarVistoriaPesada(id){
       garagem_id:gid,
       checklist_id:id,
       prefixo:window._vckPrefixo,
-      data:_lpData||hoje(),
+      data:hoje(),
       itens_total:CK_VISTORIA_PESADA.length,
       itens_ok:CK_VISTORIA_PESADA.filter((_,i)=>window._vck[i]).length,
       reprovado_itens:CK_VISTORIA_PESADA.filter((_,i)=>!window._vck[i]).length,
@@ -6948,11 +6938,13 @@ async function removerDoPlano(){
 
 async function abrirMontarPlano(){
   const gid=getGid();
-  const [frotaRes,jaNoPlanoRes,prevRes,histRes]=await Promise.all([
+  const dataHoje=hoje();
+  const [frotaRes,jaNoPlanoRes,prevRes,histRes,semana]=await Promise.all([
     sb.from('frota').select('prefixo,modelo,ultima_lavagem').eq('garagem_id',gid).order('prefixo'),
-    sb.from('checklist_lavagem').select('prefixo,tipo_lavagem').eq('garagem_id',gid).eq('data',_lpData).not('status','in','("cancelado","arquivado")'),
-    sb.from('programacao_preventiva').select('prefixo').eq('garagem_id',gid).eq('data_programada',_lpData).neq('status','concluido'),
+    sb.from('checklist_lavagem').select('prefixo,tipo_lavagem').eq('garagem_id',gid).not('status','in','("cancelado","arquivado")'),
+    sb.from('programacao_preventiva').select('prefixo').eq('garagem_id',gid).eq('data_programada',dataHoje).neq('status','concluido'),
     sb.from('checklist_lavagem').select('prefixo,data,tipo_lavagem').eq('garagem_id',gid).in('tipo_lavagem',['pesada','preventiva','media','simples']).order('data',{ascending:false}).limit(1600),
+    calcSemanaLavagem(gid,dataHoje),
   ]);
   const frota=frotaRes.data||[];
   const jaMap={};(jaNoPlanoRes.data||[]).forEach(r=>jaMap[r.prefixo]=r.tipo_lavagem);
@@ -6964,12 +6956,25 @@ async function abrirMontarPlano(){
     if(!map[h.prefixo]) map[h.prefixo]=h.data;
   });
 
+  const{lavadosSemanaSet,diasSemMap}=semana;
   const frota_livre=frota.filter(v=>!jaMap[v.prefixo]);
+
+  // Sugestão: quem ainda não lavou essa semana entra primeiro, mais atrasado no topo
+  // (nunca lavado = mais urgente que qualquer um com histórico)
+  const urgencia=(v)=>diasSemMap[v.prefixo]??99999;
+  frota_livre.sort((a,b)=>{
+    const aFalta=!lavadosSemanaSet.has(a.prefixo),bFalta=!lavadosSemanaSet.has(b.prefixo);
+    if(aFalta!==bFalta) return aFalta?-1:1;
+    return urgencia(b)-urgencia(a);
+  });
+  const naoLavados=frota_livre.filter(v=>!lavadosSemanaSet.has(v.prefixo));
+
   const META_PESADA=7;
   const META_MEDIA=18;
 
-  window._planoPesada=new Set();
-  window._planoMedia=new Set();
+  window._planoPesada=new Set(naoLavados.slice(0,META_PESADA).map(v=>v.prefixo));
+  window._planoMedia=new Set(naoLavados.slice(META_PESADA,META_PESADA+META_MEDIA).map(v=>v.prefixo));
+  window._planoSugeridos=new Set(naoLavados.map(v=>v.prefixo));
   window._planoFrota=frota_livre;
   window._planoJaMap=jaMap;
   window._planoPrevSet=prevSet;
@@ -6986,13 +6991,15 @@ async function abrirMontarPlano(){
     const selP=window._planoPesada.has(v.prefixo);
     const selM=window._planoMedia.has(v.prefixo);
     const emPrev=window._planoPrevSet.has(v.prefixo);
+    const sugerido=window._planoSugeridos.has(v.prefixo);
     const tagPrev=emPrev?'<span style="font-size:9px;background:#8B5CF618;border:1px solid #8B5CF640;color:#8B5CF6;border-radius:4px;padding:1px 5px;font-weight:700">PREV</span>':'';
+    const tagSug=sugerido?'<span style="font-size:9px;background:#EF444418;border:1px solid #EF444440;color:var(--red);border-radius:4px;padding:1px 5px;font-weight:700">SUGERIDO — NÃO LAVOU NA SEMANA</span>':'';
     const mkChk=(sel,cor,label,tipo)=>'<div onclick="togPlano(\''+v.prefixo+'\',\''+tipo+'\')" style="display:flex;align-items:center;gap:6px;cursor:pointer">'
       +'<div style="width:20px;height:20px;border-radius:5px;border:2px solid '+(sel?cor:'var(--border)')+';background:'+(sel?cor:'transparent')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#0B1220;font-size:12px;font-weight:900">'+(sel?'✓':'')+'</div>'
       +'<span style="font-size:12px;font-weight:700;color:'+(sel?cor:'var(--text3)')+'">'+label+'</span>'
       +'</div>';
     return '<div data-prefixo="'+v.prefixo+'" style="padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;margin-bottom:6px">'
-      +'<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:4px"><span style="font-family:\'DM Mono\',monospace;font-weight:700;font-size:15px;color:var(--text)">'+v.prefixo+'</span>'+tagPrev+'</div>'
+      +'<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:4px"><span style="font-family:\'DM Mono\',monospace;font-weight:700;font-size:15px;color:var(--text)">'+v.prefixo+'</span>'+tagPrev+tagSug+'</div>'
       +'<div style="font-size:10px;color:var(--text3);margin-bottom:8px">🟡 Última pesada: '+fmtData(window._planoUltPesada[v.prefixo])+' · 🔵 Última simples: '+fmtData(window._planoUltMedia[v.prefixo])+'</div>'
       +'<div style="display:flex;gap:18px">'+mkChk(selP,'var(--amber)','Pesada','pesada')+mkChk(selM,'var(--blue)','Simples','media')+'</div>'
       +'</div>';
@@ -7015,7 +7022,7 @@ async function abrirMontarPlano(){
   window._renderListaPlano=renderPlano;
 
   openSheet('🚿 Montar Plano do Dia',
-    '<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Marque Pesada ou Simples para cada veículo. Quem não for marcado não entra no plano de hoje.</div>'
+    '<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Os veículos marcados <strong style="color:var(--red)">SUGERIDO</strong> ainda não lavaram essa semana e já vêm pré-marcados — desmarque ou adicione outros livremente. Quem não ficar marcado não entra no plano de hoje.</div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">'
     +'<div id="kpi-p" style="font-size:11px;color:var(--amber);font-weight:700;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 4px;text-align:center"></div>'
     +'<div id="kpi-m" style="font-size:11px;color:var(--blue);font-weight:700;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 4px;text-align:center"></div>'
@@ -7049,8 +7056,8 @@ async function confirmarPlano(){
   const mediaList=[...window._planoMedia];
 
   const rows=[
-    ...pesadaList.map(prefixo=>({garagem_id:gid,prefixo,data:_lpData,tipo_lavagem:'pesada',status:'pendente',turno:S.turno||'dia'})),
-    ...mediaList.map(prefixo=>({garagem_id:gid,prefixo,data:_lpData,tipo_lavagem:'media',status:'pendente',turno:S.turno||'dia'})),
+    ...pesadaList.map(prefixo=>({garagem_id:gid,prefixo,data:hoje(),tipo_lavagem:'pesada',status:'pendente',turno:S.turno||'dia'})),
+    ...mediaList.map(prefixo=>({garagem_id:gid,prefixo,data:hoje(),tipo_lavagem:'media',status:'pendente',turno:S.turno||'dia'})),
   ];
 
   if(!rows.length){toast('Nenhum veículo para salvar','err');if(btn){btn.disabled=false;btn.textContent='Confirmar plano';}return;}
@@ -7063,6 +7070,184 @@ async function confirmarPlano(){
   telaLavPesada();
 }
 
+// ── RELATÓRIO DE LAVAGEM (Líder de Pátio) ─────────────────
+async function abrirRelatorioLavagem(){
+  const gid=getGid();
+  const dataHoje=hoje();
+  const garagem=S.garagens?.find(g=>g.id===gid);
+  const garaGemNome=garagem?.nome||'Porto Velho';
+
+  const[{data:planoHoje},{data:frota},semana,{data:fechamentos}]=await Promise.all([
+    sb.from('checklist_lavagem').select('*').eq('garagem_id',gid).not('status','in','("cancelado","arquivado")').order('prefixo'),
+    sb.from('frota').select('prefixo').eq('garagem_id',gid),
+    calcSemanaLavagem(gid,dataHoje),
+    sb.from('fechamento_lavagem').select('*').eq('garagem_id',gid).order('created_at',{ascending:false}).limit(15),
+  ]);
+
+  const lista=planoHoje||[];
+  const totalFrota=(frota||[]).length;
+  const{lavadosSemanaSet,vistoriadosSemanaSet,diasSemMap}=semana;
+  const lavadosSemana=lavadosSemanaSet.size;
+  const vistoriadosSemana=vistoriadosSemanaSet.size;
+  const pctSemLav=totalFrota?Math.round(lavadosSemana/totalFrota*100):0;
+  const atrasados=(frota||[]).filter(v=>!lavadosSemanaSet.has(v.prefixo))
+    .sort((a,b)=>(diasSemMap[b.prefixo]??99999)-(diasSemMap[a.prefixo]??99999));
+
+  window._relLavHoje=lista;
+  window._relLavAtrasados=atrasados;
+  window._relLavFechamentos=fechamentos||[];
+  window._relLavKpi={totalFrota,lavadosSemana,vistoriadosSemana,pctSemLav,garaGemNome,dataHoje};
+
+  const TIPO_LBL={pesada:'🟡 Pesada',media:'🔵 Média',leve:'🟢 Leve',simples:'💧 Simples',preventiva:'🟣 Preventiva'};
+  const rowsHoje=lista.length?lista.map(r=>{
+    const hora=r.hora_executado?new Date(r.hora_executado).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'—';
+    const liberado=r.validado_patio?'✅ Liberado':(r.status==='executado'?'⏳ Aguard. vistoria':'—');
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--surface2);border-radius:8px;margin-bottom:5px">'
+      +'<div><div style="font-family:\'DM Mono\',monospace;font-weight:700;font-size:13px">'+r.prefixo+'</div>'
+      +'<div style="font-size:10px;color:var(--text3)">'+(TIPO_LBL[r.tipo_lavagem]||r.tipo_lavagem)+' · '+hora+(r.executado_por?' · '+r.executado_por.split(' ')[0]:'')+'</div></div>'
+      +'<div style="font-size:11px;font-weight:700;color:'+(r.validado_patio?'var(--green)':r.status==='executado'?'var(--blue)':'var(--text3)')+'">'+liberado+'</div>'
+      +'</div>';
+  }).join(''):'<div style="font-size:12px;color:var(--text3);text-align:center;padding:10px">Nenhum veículo no plano</div>';
+
+  const rowsAtrasados=atrasados.length?atrasados.slice(0,20).map(v=>{
+    const d=diasSemMap[v.prefixo];
+    const txt=d===undefined?'Sem histórico':d+' dia(s)';
+    return '<div style="display:flex;justify-content:space-between;padding:6px 10px;background:#EF444410;border-radius:8px;margin-bottom:4px;font-size:12px">'
+      +'<span style="font-family:\'DM Mono\',monospace;font-weight:700">'+v.prefixo+'</span>'
+      +'<span style="color:var(--red)">'+txt+'</span></div>';
+  }).join(''):'<div style="font-size:12px;color:var(--green);text-align:center;padding:10px;font-weight:700">✅ Toda a frota lavou essa semana</div>';
+
+  const rowsFech=(fechamentos||[]).length?fechamentos.map(f=>{
+    const dt=f.data?f.data.split('-').reverse().join('/'):'—';
+    return '<div style="display:flex;justify-content:space-between;padding:8px 10px;background:var(--surface2);border-radius:8px;margin-bottom:5px;font-size:12px">'
+      +'<span>'+dt+' · '+(f.responsavel_nome||'—')+'</span>'
+      +'<span style="font-weight:700">'+f.total_lavados+'/'+f.total_planejados+' · '+(f.pct_vistoriados??0)+'% vist.</span></div>';
+  }).join(''):'<div style="font-size:12px;color:var(--text3);text-align:center;padding:10px">Nenhum fechamento registrado ainda</div>';
+
+  openSheet('📊 Relatório de Lavagem',
+    '<div style="font-size:11px;color:var(--text3);margin-bottom:12px">'+garaGemNome+' · '+dataHoje.split('-').reverse().join('/')+'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px">'
+    +'<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center"><div style="font-family:\'DM Mono\',monospace;font-size:18px;font-weight:900;color:var(--blue)">'+lavadosSemana+'/'+totalFrota+'</div><div style="font-size:9px;color:var(--text3)">LAVADOS SEMANA</div></div>'
+    +'<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center"><div style="font-family:\'DM Mono\',monospace;font-size:18px;font-weight:900;color:'+(pctSemLav>=100?'var(--green)':'var(--amber)')+'">'+pctSemLav+'%</div><div style="font-size:9px;color:var(--text3)">% DA FROTA</div></div>'
+    +'</div>'
+    +'<div class="sl" style="margin-top:0">Hoje ('+lista.length+')</div>'+rowsHoje
+    +'<div class="sl">Atrasados na semana ('+atrasados.length+')</div>'+rowsAtrasados
+    +'<div class="sl">Últimos fechamentos</div>'+rowsFech
+    +'<button onclick="enviarRelatorioLavagem()" style="width:100%;margin-top:12px;padding:14px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">📄 Gerar PDF / Enviar WhatsApp</button>'
+  );
+}
+
+async function enviarRelatorioLavagem(){
+  const WPP_GROUP_LAV='120363427489152994@g.us'; // mesmo grupo dos demais relatórios (soltura, fechamentos)
+  const{totalFrota,lavadosSemana,vistoriadosSemana,pctSemLav,garaGemNome,dataHoje}=window._relLavKpi||{};
+  const lista=window._relLavHoje||[];
+  const atrasados=window._relLavAtrasados||[];
+  const fechamentos=window._relLavFechamentos||[];
+  const dataFmt=dataHoje.split('-').reverse().join('/');
+
+  const B='border:1px solid #333;';
+  const BH='border:1px solid #333;background:#555;color:#fff;font-weight:900;';
+  const TIPO_LBL={pesada:'Pesada',media:'Média',leve:'Leve',simples:'Simples',preventiva:'Preventiva'};
+
+  const rowsHoje=lista.map(r=>{
+    const hora=r.hora_executado?new Date(r.hora_executado).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'—';
+    const liberado=r.validado_patio?'Liberado':(r.status==='executado'?'Aguard. vistoria':'Pendente');
+    return `<tr>
+      <td style="${B}padding:3px 5px;font-family:monospace;font-weight:700;font-size:10px">${r.prefixo}</td>
+      <td style="${B}padding:3px 5px;font-size:10px">${TIPO_LBL[r.tipo_lavagem]||r.tipo_lavagem||'—'}</td>
+      <td style="${B}padding:3px 5px;text-align:center;font-size:10px">${hora}</td>
+      <td style="${B}padding:3px 5px;font-size:10px">${r.executado_por||'—'}</td>
+      <td style="${B}padding:3px 5px;text-align:center;font-size:10px">${liberado}</td>
+    </tr>`;
+  }).join('');
+
+  const rowsAtras=atrasados.slice(0,40).map(v=>`<tr><td style="${B}padding:3px 5px;font-family:monospace;font-weight:700;font-size:10px">${v.prefixo}</td></tr>`).join('');
+
+  const rowsFech=fechamentos.map(f=>{
+    const dt=f.data?f.data.split('-').reverse().join('/'):'—';
+    return `<tr>
+      <td style="${B}padding:3px 5px;font-size:10px">${dt}</td>
+      <td style="${B}padding:3px 5px;font-size:10px">${f.responsavel_nome||'—'}</td>
+      <td style="${B}padding:3px 5px;text-align:center;font-size:10px">${f.total_lavados}/${f.total_planejados}</td>
+      <td style="${B}padding:3px 5px;text-align:center;font-size:10px">${f.pct_vistoriados??0}%</td>
+    </tr>`;
+  }).join('');
+
+  const html=`<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+  body{font-family:Arial,sans-serif;font-size:10px;color:#000;margin:0;padding:10px}
+  @media print{
+    .no-print{display:none!important}
+    body{padding:0;margin:0}
+    @page{margin:8mm;size:A4 portrait}
+  }
+  table{border-collapse:collapse;width:100%}
+  th,td{font-size:10px}
+  tr:nth-child(even){background:#f9f9f9}
+</style></head><body>
+<div class="no-print" style="position:sticky;top:0;background:#1e293b;padding:8px 12px;display:flex;gap:8px;align-items:center;z-index:999;margin:-10px -10px 10px -10px">
+  <span style="color:#fff;font-size:12px;font-weight:700">📄 JTP — Relatório de Lavagem</span>
+  <button onclick="window.print()" style="margin-left:auto;padding:6px 16px;background:#3B82F6;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">🖨️ Salvar PDF</button>
+</div>
+
+  <div style="text-align:center;border:2.5px solid #000;padding:6px;margin-bottom:5px;background:#fff">
+    <div style="font-size:13px;font-weight:900;letter-spacing:1px">GRUPO JTP  │  OPERAÇÃO GARAGEM  │  Relatório de Lavagem</div>
+  </div>
+
+  <table style="margin-bottom:4px">
+    <tr>
+      <td style="${B}padding:3px 6px"><strong>Data:</strong> ${dataFmt}</td>
+      <td style="${B}padding:3px 6px"><strong>Garagem:</strong> ${garaGemNome}</td>
+      <td style="${B}padding:3px 6px"><strong>Responsável:</strong> ${S.perfil?.nome||'—'}</td>
+    </tr>
+  </table>
+
+  <div style="font-weight:900;background:#555;color:#fff;border:1.5px solid #111;padding:3px 8px;margin-bottom:2px">■ RESUMO DA SEMANA</div>
+  <table style="margin-bottom:6px">
+    <tr>
+      <td style="${B}padding:4px 8px;background:#f0fdf4"><strong>Lavados:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900">${lavadosSemana}/${totalFrota}</span></td>
+      <td style="${B}padding:4px 8px;background:#fffbeb"><strong>Vistoriados:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900">${vistoriadosSemana}/${totalFrota}</span></td>
+      <td style="${B}padding:4px 8px;background:#fef2f2"><strong>% da frota:</strong> <span style="font-family:monospace;font-size:12px;font-weight:900">${pctSemLav}%</span></td>
+    </tr>
+  </table>
+
+  <div style="font-weight:900;background:#555;color:#fff;border:1.5px solid #111;padding:3px 8px;margin-bottom:2px">■ LAVADOS HOJE (${lista.length})</div>
+  <table style="margin-bottom:6px">
+    <thead><tr>
+      <th style="${BH}padding:3px">PREFIXO</th><th style="${BH}padding:3px">TIPO</th><th style="${BH}padding:3px">HORA</th><th style="${BH}padding:3px">LAVADOR</th><th style="${BH}padding:3px">STATUS</th>
+    </tr></thead>
+    <tbody>${rowsHoje||'<tr><td colspan="5" style="'+B+'padding:6px;text-align:center">Nenhum veículo</td></tr>'}</tbody>
+  </table>
+
+  <div style="font-weight:900;background:#555;color:#fff;border:1.5px solid #111;padding:3px 8px;margin-bottom:2px">■ NÃO LAVADOS NA SEMANA (${atrasados.length})</div>
+  <table style="margin-bottom:6px">
+    <tbody>${rowsAtras||'<tr><td style="'+B+'padding:6px;text-align:center">Toda a frota já lavou essa semana</td></tr>'}</tbody>
+  </table>
+
+  <div style="font-weight:900;background:#555;color:#fff;border:1.5px solid #111;padding:3px 8px;margin-bottom:2px">■ ÚLTIMOS FECHAMENTOS</div>
+  <table>
+    <thead><tr><th style="${BH}padding:3px">DATA</th><th style="${BH}padding:3px">RESPONSÁVEL</th><th style="${BH}padding:3px">LAVADOS</th><th style="${BH}padding:3px">% VISTORIA</th></tr></thead>
+    <tbody>${rowsFech||'<tr><td colspan="4" style="'+B+'padding:6px;text-align:center">Nenhum fechamento registrado</td></tr>'}</tbody>
+  </table>
+
+  <div style="margin-top:10px;display:flex;justify-content:space-between;font-size:9px;color:#666">
+    <span>Gerado em: ${new Date().toLocaleString('pt-BR',{timeZone:'America/Manaus'})}</span>
+    <span>JTP Transportes · Operação Garagem</span>
+  </div>
+</body></html>`;
+
+  try{
+    const msg=`🚿 *RELATÓRIO DE LAVAGEM — JTP*\n📍 ${garaGemNome} · ${dataFmt}\n\n📅 Semana: ${lavadosSemana}/${totalFrota} lavados (${pctSemLav}%) · ${vistoriadosSemana}/${totalFrota} vistoriados\n🚿 Hoje: ${lista.filter(r=>r.status==='executado').length}/${lista.length} lavados\n⚠️ ${atrasados.length} veículo(s) sem lavar essa semana\n\n_${S.perfil?.nome||'Líder de Pátio'}_`;
+    await fetch('https://evolution-api-production-8d56.up.railway.app/message/sendText/jtp-garagem',{
+      method:'POST',headers:{'Content-Type':'application/json','apikey':'4289AC11F437-43AD-96D7-9F27C2735696'},
+      body:JSON.stringify({number:WPP_GROUP_LAV,options:{delay:0},textMessage:{text:msg}}),
+    });
+  }catch(e){console.warn('[wpp lavagem]',e.message);} // falha silenciosa — não bloqueia o PDF
+
+  const nomeArq='JTP_Lavagem_'+dataHoje.replace(/-/g,'')+'_'+garaGemNome.replace(/\s/g,'_')+'.pdf';
+  downloadPDF(html,nomeArq);
+}
 
 
 // ══════════════════════════════════════════════════════════════════════
