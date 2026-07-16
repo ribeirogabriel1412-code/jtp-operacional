@@ -18794,7 +18794,11 @@ async function _instrViagens(gid,back,tabBar){
   const dias=S._instrVDias||7;
   const busca=(S._instrVBusca||'').trim().toUpperCase();
   const carroSeL=S._instrVCarro||null;
-  const dataMin=new Date(Date.now()-dias*86400000).toISOString().slice(0,10);
+  const dataDe=S._instrVDataDe||null;
+  const dataAte=S._instrVDataAte||null;
+  const custom=!!(dataDe&&dataAte);
+  const dataMin=custom?dataDe:new Date(Date.now()-dias*86400000).toISOString().slice(0,10);
+  const dataMax=custom?dataAte:null;
   const hojeEsc=new Date().toISOString().slice(0,10);
 
   if(!S._instrMonitoresCache||S._instrMonitoresCacheGid!==gid){
@@ -18826,13 +18830,18 @@ async function _instrViagens(gid,back,tabBar){
   hojeEscala=S._instrUltimaMonCache.hEsc;
 
   // Cache por período — evita re-query ao digitar na busca
-  if(!S._instrVRows||S._instrVRowsDias!==dias||S._instrVRowsGid!==gid){
+  const rangeKey=custom?`${dataMin}_${dataMax}`:`${dias}`;
+  if(!S._instrVRows||S._instrVRowsRange!==rangeKey||S._instrVRowsGid!==gid){
     setMain(`${secTitle('🎯','Escala — Viagens CITTATI',back)}<div class="filtros">${tabBar}</div><div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando dados...</div>`);
-    const rows=await _sbFetchAll(()=>sb.from('viagens_resumo')
-      .select('data,linha,veiculo,motorista_cod,viagens_programadas,viagens_realizadas,updated_at')
-      .eq('garagem_id',gid).gte('data',dataMin).order('data').order('id'));
+    const rows=await _sbFetchAll(()=>{
+      let q=sb.from('viagens_resumo')
+        .select('data,linha,veiculo,motorista_cod,viagens_programadas,viagens_realizadas,updated_at')
+        .eq('garagem_id',gid).gte('data',dataMin);
+      if(dataMax) q=q.lte('data',dataMax);
+      return q.order('data').order('id');
+    });
     S._instrVRows=rows||[];
-    S._instrVRowsDias=dias;
+    S._instrVRowsRange=rangeKey;
     S._instrVRowsGid=gid;
     const uts=(rows||[]).map(r=>r.updated_at).filter(Boolean).sort();
     S._instrVUltimoSync=uts.length?uts[uts.length-1]:null;
@@ -18951,8 +18960,19 @@ async function _instrViagens(gid,back,tabBar){
   const carros=Object.keys(byVL).sort();
 
   const periodoBar=[7,15,30,60].map(d=>
-    `<button class="filtro-btn${dias===d?' active':''}" onclick="S._instrVDias=${d};S._instrVRows=null;S._instrVCarro=null;renderFerrInstrutor('viagens')">${d} dias</button>`
+    `<button class="filtro-btn${(!custom&&dias===d)?' active':''}" onclick="S._instrVDias=${d};S._instrVDataDe=null;S._instrVDataAte=null;S._instrVRows=null;S._instrVCarro=null;renderFerrInstrutor('viagens')">${d} dias</button>`
   ).join('');
+
+  const rangeBar=`<div style="display:flex;gap:6px;align-items:center">
+    <input type="date" id="instr-v-de" value="${dataDe||''}" class="fi" style="padding:5px 8px;font-size:12px;width:140px"
+      onchange="S._instrVDataDe=this.value;S._instrVRows=null;S._instrVCarro=null;renderFerrInstrutor('viagens')">
+    <button onclick="document.getElementById('instr-v-de').showPicker()" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer">📅</button>
+    <span style="color:var(--text4);font-size:12px">até</span>
+    <input type="date" id="instr-v-ate" value="${dataAte||''}" class="fi" style="padding:5px 8px;font-size:12px;width:140px"
+      onchange="S._instrVDataAte=this.value;S._instrVRows=null;S._instrVCarro=null;renderFerrInstrutor('viagens')">
+    <button onclick="document.getElementById('instr-v-ate').showPicker()" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer">📅</button>
+    ${custom?`<button onclick="S._instrVDataDe=null;S._instrVDataAte=null;S._instrVRows=null;S._instrVCarro=null;renderFerrInstrutor('viagens')" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--text4);cursor:pointer;font-size:12px">✕</button>`:''}
+  </div>`;
 
   // Colmeia de motoristas
   function colmeia(motObj,totalProg){
@@ -19174,6 +19194,7 @@ async function _instrViagens(gid,back,tabBar){
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
       <span style="font-size:11px;color:var(--text4);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;white-space:nowrap">🔄 Atualizado: ${ultimaSync}</span>
       <div style="display:flex;gap:4px">${periodoBar}</div>
+      ${rangeBar}
     </div>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px">
       <input id="instr-v-busca" class="fi" placeholder="🔍 Buscar por linha (ex: 110) ou veículo (ex: 02.275)..."
@@ -19184,7 +19205,7 @@ async function _instrViagens(gid,back,tabBar){
     </div>
     <div>${resultHtml}</div>
     <div style="margin-top:12px;font-size:11px;color:var(--text4);text-align:center">
-      📡 CITTATI/JSON_VIAGENS · ${vg.length} registros · últimos ${dias} dias
+      📡 CITTATI/JSON_VIAGENS · ${vg.length} registros · ${custom?`de ${dataDe.split('-').reverse().join('/')} até ${dataAte.split('-').reverse().join('/')}`:`últimos ${dias} dias`}
     </div>
   `);
 }
