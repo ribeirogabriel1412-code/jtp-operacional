@@ -1658,7 +1658,7 @@ async function renderAlmoxPainelLider(){
     // Acurácia do Inventário Rotativo hoje = % de itens com dupla contagem que bateram entre dois almoxarifes
     sb.from('almoxo_inventario_turno').select('req_id,qtd_fisica,almoxarife_id,almoxarife_nome,nome_item,cod_sap').eq('garagem_id',gid).eq('turno_data',hojeIso).not('req_id','is',null),
     // Acurácia da Baixa Rotação hoje = média do físico/sistema já calculado na contagem
-    sb.from('almoxo_baixa_rotacao_contagem').select('acuracia').eq('garagem_id',gid).eq('turno_data',hojeIso).not('acuracia','is',null),
+    sb.from('almoxo_baixa_rotacao_contagem').select('acuracia,qtd_sistema,qtd_fisica,almoxarife_nome,almoxo_baixa_rotacao_itens(nome_item,cod_sap)').eq('garagem_id',gid).eq('turno_data',hojeIso).not('acuracia','is',null),
     // Notas lançadas pela portaria ainda sem entrada dada pelo almox
     sb.from('portaria_recebimento').select('*').eq('garagem_id',gid).eq('status','pendente').order('created_at',{ascending:true}),
     // Notas registradas pela portaria hoje (qualquer status) -- pra medir % já tratado pelo líder
@@ -1688,6 +1688,7 @@ async function renderAlmoxPainelLider(){
   const rotDivergentes=Object.entries(rotPorReq).filter(([,g])=>Object.keys(g).length>1&&new Set(Object.values(g)).size>1).map(([reqId])=>rotInfoPorReq[reqId]);
   const acurBaixaRotVals=(baixaRotHojeRaw||[]).map(r=>parseFloat(r.acuracia)).filter(v=>!isNaN(v));
   const acurBaixaRot=acurBaixaRotVals.length?Math.round(acurBaixaRotVals.reduce((s,v)=>s+v,0)/acurBaixaRotVals.length):null;
+  const baixaRotDivergentes=(baixaRotHojeRaw||[]).filter(r=>r.acuracia!=null&&parseFloat(r.acuracia)<100);
   window._almoxPerfisCache=perfisAlmox||[];
   const abaAtiva=S._almoxPainelAba||'painel';
   const tabs=`
@@ -1769,6 +1770,17 @@ async function renderAlmoxPainelLider(){
       <div style="text-align:right;font-size:12px;color:var(--red)">${valsStr}</div>
     </div>`;
   }).join('');
+  const baixaRotDivergRows=baixaRotDivergentes.map(r=>{
+    const item=r.almoxo_baixa_rotacao_itens||{};
+    return`<div style="display:flex;justify-content:space-between;align-items:center;gap:14px;padding:10px 14px;border-bottom:1px solid var(--border2);font-size:12px">
+      <div>
+        <div style="font-weight:700;color:var(--text)">${safe(item.nome_item||'—')}</div>
+        ${item.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber)">${safe(item.cod_sap)}</div>`:''}
+        <div style="font-size:10px;color:var(--text3)">${safe(r.almoxarife_nome||'—')}</div>
+      </div>
+      <div style="text-align:right;font-size:12px;color:var(--red)">Sistema: <b style="color:var(--text)">${r.qtd_sistema??'—'}</b> <span style="color:var(--text4)">vs</span> Físico: <b style="color:var(--text)">${r.qtd_fisica??'—'}</b> <b>(${parseFloat(r.acuracia)}%)</b></div>
+    </div>`;
+  }).join('');
   const quadroRows=(quadro||[]).map(q=>{
     const nome=q.perfis?.nome||'—';
     const cargo=q.perfis?.cargo||'';
@@ -1799,6 +1811,11 @@ async function renderAlmoxPainelLider(){
     ${secTitle('⚠️',`Dupla Contagem — Itens Divergentes Hoje (${rotDivergentes.length})`)}
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:20px">
       ${rotDivergRows}
+    </div>`:''}
+    ${baixaRotDivergentes.length?`
+    ${secTitle('⚠️',`Baixa Rotação — Itens Divergentes Hoje (${baixaRotDivergentes.length})`)}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:20px">
+      ${baixaRotDivergRows}
     </div>`:''}
     ${secTitle('📥',`Notas da Portaria — Aguardando Entrada (${(portariaPendentes||[]).length})`)}
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:20px">
