@@ -18855,29 +18855,47 @@ async function _instrViagens(gid,back,tabBar){
     S._instrVUltimoSync=uts.length?uts[uts.length-1]:null;
   }
 
-  // Km/L do carro (Oracle VW_LANCAMENTOABASTECIMENTO) -- SEMPRE na janela
-  // completa de 60 dias (o maximo que o sync_kml_detalhado.ps1 mantem),
-  // INDEPENDENTE do filtro 7/15/30/60 selecionado na tela. Pedido do Daniel
-  // 2026-07-14: em janela curta (7 dias), o veiculo pode ter so 1-2 ciclos de
-  // abastecimento; descartando o 1o (regra abaixo) pode sobrar so um registro
-  // degenerado -- ex: 02.007 teve so 1km/8.29L de reabastecimento complementar
-  // ("topping off" 6h30 depois do anterior) e isso sozinho virou 0.12km/l.
-  // Com a janela completa esse tipo de ciclo curto se dilui entre os demais
-  // e o numero fica estavel nao importa qual filtro de dias esta selecionado.
+  // Km/L do carro (Oracle VW_LANCAMENTOABASTECIMENTO) -- por padrao (filtros
+  // 7/15/30/60 dias) SEMPRE na janela completa de 60 dias (o maximo que o
+  // sync_kml_detalhado.ps1 mantem), INDEPENDENTE do filtro selecionado.
+  // Pedido do Daniel 2026-07-14: em janela curta (7 dias), o veiculo pode ter
+  // so 1-2 ciclos de abastecimento; descartando o 1o (regra abaixo) pode
+  // sobrar so um registro degenerado -- ex: 02.007 teve so 1km/8.29L de
+  // reabastecimento complementar ("topping off" 6h30 depois do anterior) e
+  // isso sozinho virou 0.12km/l. Com a janela completa esse tipo de ciclo
+  // curto se dilui entre os demais e o numero fica estavel.
+  // EXCECAO: quando o usuario escolhe um intervalo customizado (de/ate), o
+  // objetivo e validar contra relatorios externos (ex: CTAPLUS) que somam
+  // exatamente o periodo pedido sem descartar nada -- nesse caso usamos o
+  // intervalo exato e sem descarte, pra bater com a fonte externa.
   // Nao repartimos por motorista aqui (testado e descartado: atribuicao por
   // dia+viagem ficava incompleta quando faltava abastecimento nalgum dia).
-  if(!S._instrVKml||S._instrVKmlGid!==gid){
-    const dataMinKml=new Date(Date.now()-60*86400000).toISOString().slice(0,10);
+  const kmlRangeKey=custom?`c_${dataMin}_${dataMax}`:'60d';
+  if(!S._instrVKml||S._instrVKmlGid!==gid||S._instrVKmlRange!==kmlRangeKey){
+    const dataMinKml=custom?dataMin:new Date(Date.now()-60*86400000).toISOString().slice(0,10);
+    const dataMaxKml=custom?dataMax:null;
     const[kmlRows,recRows,abastRows]=await Promise.all([
-      _sbFetchAll(()=>sb.from('instrutor_kml_detalhado')
-        .select('veiculo,data,km_percorrido,litros,hodometro_final')
-        .eq('garagem_id',gid).gte('data',dataMinKml).order('data').order('id')),
-      _sbFetchAll(()=>sb.from('recolha_checklist')
-        .select('prefixo,data_recolha,km_hodometro')
-        .eq('garagem_id',gid).gte('data_recolha',dataMinKml).not('km_hodometro','is',null)),
-      _sbFetchAll(()=>sb.from('abastecimento_checklist')
-        .select('prefixo,data,km_hodometro')
-        .eq('garagem_id',gid).gte('data',dataMinKml).not('km_hodometro','is',null)),
+      _sbFetchAll(()=>{
+        let q=sb.from('instrutor_kml_detalhado')
+          .select('veiculo,data,km_percorrido,litros,hodometro_final')
+          .eq('garagem_id',gid).gte('data',dataMinKml);
+        if(dataMaxKml) q=q.lte('data',dataMaxKml);
+        return q.order('data').order('id');
+      }),
+      _sbFetchAll(()=>{
+        let q=sb.from('recolha_checklist')
+          .select('prefixo,data_recolha,km_hodometro')
+          .eq('garagem_id',gid).gte('data_recolha',dataMinKml).not('km_hodometro','is',null);
+        if(dataMaxKml) q=q.lte('data_recolha',dataMaxKml);
+        return q;
+      }),
+      _sbFetchAll(()=>{
+        let q=sb.from('abastecimento_checklist')
+          .select('prefixo,data,km_hodometro')
+          .eq('garagem_id',gid).gte('data',dataMinKml).not('km_hodometro','is',null);
+        if(dataMaxKml) q=q.lte('data',dataMaxKml);
+        return q;
+      }),
     ]);
 
     // Km/L por veiculo: SEMPRE SUM(km)/SUM(litros), nunca media das medias.
@@ -18887,6 +18905,9 @@ async function _instrViagens(gid,back,tabBar){
     // Validado em 2026-07-05 contra planilha oficial (CTAPLUS): sem descartar,
     // 02.188 dava 1.55 km/l (oficial 1.35); descartando o 1o registro bateu
     // exato (772km/569.80L = 1.35) e o mesmo pro 02.203 (1177km/640.31L=1.84).
+    // No intervalo customizado NAO descartamos (validado 2026-07-16 contra
+    // relatorio externo pro periodo 01/07-13/07: 02.237 bateu exato, 2100km/
+    // 1013.26L=2.07, sem descarte).
     const porVeiculo={};
     (kmlRows||[]).forEach(r=>{
       if(!porVeiculo[r.veiculo]) porVeiculo[r.veiculo]=[];
@@ -18895,7 +18916,7 @@ async function _instrViagens(gid,back,tabBar){
     S._instrVKml={};
     Object.entries(porVeiculo).forEach(([v,lista])=>{
       const ordenada=lista.slice().sort((a,b)=>a.data<b.data?-1:a.data>b.data?1:0);
-      const validos=ordenada.length>1?ordenada.slice(1):ordenada;
+      const validos=custom?ordenada:(ordenada.length>1?ordenada.slice(1):ordenada);
       const km=validos.reduce((s,r)=>s+(r.km_percorrido||0),0);
       const lt=validos.reduce((s,r)=>s+(r.litros||0),0);
       S._instrVKml[v]=lt>0?km/lt:null;
@@ -18936,6 +18957,7 @@ async function _instrViagens(gid,back,tabBar){
       S._instrVDiverg[v]={diverge:pior>LIMIAR_DIVERG,diffRec,diffAb,dataRef:ultimo.data};
     });
     S._instrVKmlGid=gid;
+    S._instrVKmlRange=kmlRangeKey;
   }
   const vg=S._instrVRows;
   const kmlPorVeiculo=S._instrVKml||{};
