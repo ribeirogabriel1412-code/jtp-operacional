@@ -1648,28 +1648,27 @@ async function renderAlmoxPainelLider(){
   const tz=opTimezone(gid);
   const iniHoje=opDateTimeISO(hojeIso,'00:00',tz);
   const fimHoje=opDateTimeISO(opAddDays(hojeIso,1),'00:00',tz);
-  const[{data:ruas},{data:divs},{data:quadro},{data:perfisAlmox},{data:saidaRaw},{data:entradaRaw},{data:rotHojeRaw},{data:baixaRotHojeRaw},{data:portariaPendentes},{data:portariaConferidasHoje}]=await Promise.all([
+  const[{data:ruas},{data:divs},{data:quadro},{data:perfisAlmox},{data:saidaRaw},{data:rotHojeRaw},{data:baixaRotHojeRaw},{data:portariaPendentes},{data:portariaHojeRaw}]=await Promise.all([
     sb.from('almoxo_ruas').select('*').eq('garagem_id',gid).eq('ativo',true).order('nome'),
     sb.from('almoxo_divergencias').select('*').eq('garagem_id',gid).eq('status','aberta').order('detectado_em',{ascending:false}),
     sb.from('almoxo_quadro_turno').select('*,perfis(nome,cargo)').eq('garagem_id',gid).order('hora_entrada'),
     sb.from('perfis').select('id,nome,cargo').eq('garagem_id',gid).in('cargo',['almoxarifado','lider_almoxarifado','lider_suprimentos']).order('nome'),
     // Saída = itens entregues (separado/comprado) hoje, com valor unitário já resolvido na confirmação
     sb.from('requisicoes_compra').select('qtd_entregue,quantidade,valor_estimado').eq('garagem_id',gid).in('status',['separado','comprado']).gte('entregue_em',iniHoje).lt('entregue_em',fimHoje),
-    // Entrada = recebimentos de NF classificados pelo líder no Inventário Rotativo (Cruzar SAP x PRAXIO)
-    sb.from('almoxo_inventario_tratativas').select('qtd_recebida,nota_fiscal').eq('garagem_id',gid).eq('tipo','recebimento').eq('turno_data',hojeIso),
     // Acurácia do Inventário Rotativo hoje = % de itens com dupla contagem que bateram entre dois almoxarifes
     sb.from('almoxo_inventario_turno').select('req_id,qtd_fisica,almoxarife_id').eq('garagem_id',gid).eq('turno_data',hojeIso).not('req_id','is',null),
     // Acurácia da Baixa Rotação hoje = média do físico/sistema já calculado na contagem
     sb.from('almoxo_baixa_rotacao_contagem').select('acuracia').eq('garagem_id',gid).eq('turno_data',hojeIso).not('acuracia','is',null),
     // Notas lançadas pela portaria ainda sem entrada dada pelo almox
     sb.from('portaria_recebimento').select('*').eq('garagem_id',gid).eq('status','pendente').order('created_at',{ascending:true}),
-    // Notas da portaria já confirmadas hoje -- soma no mesmo indicador de Entrada
-    sb.from('portaria_recebimento').select('id').eq('garagem_id',gid).eq('status','conferido').gte('conferido_em',iniHoje).lt('conferido_em',fimHoje)
+    // Notas registradas pela portaria hoje (qualquer status) -- pra medir % já tratado pelo líder
+    sb.from('portaria_recebimento').select('id,status').eq('garagem_id',gid).gte('created_at',iniHoje).lt('created_at',fimHoje)
   ]);
   const saidaQtd=(saidaRaw||[]).reduce((s,r)=>s+(parseFloat(r.qtd_entregue||r.quantidade)||0),0);
   const saidaValor=(saidaRaw||[]).reduce((s,r)=>s+(parseFloat(r.qtd_entregue||r.quantidade)||0)*(parseFloat(r.valor_estimado)||0),0);
-  const entradaQtd=(entradaRaw||[]).reduce((s,r)=>s+(parseFloat(r.qtd_recebida)||0),0);
-  const entradaNFs=new Set((entradaRaw||[]).map(r=>r.nota_fiscal).filter(Boolean)).size+(portariaConferidasHoje||[]).length;
+  const totalPortariaHoje=(portariaHojeRaw||[]).length;
+  const tratadasPortariaHoje=(portariaHojeRaw||[]).filter(r=>r.status==='conferido').length;
+  const pctTratadoPortaria=totalPortariaHoje?Math.round(100*tratadasPortariaHoje/totalPortariaHoje):null;
   window._portariaPendentesCache=portariaPendentes||[];
   // Dupla contagem hoje: agrupa por req_id, pega 1 contagem por almoxarife distinto,
   // acurácia = % de grupos com 2+ contadores cujos valores bateram
@@ -1776,7 +1775,7 @@ async function renderAlmoxPainelLider(){
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:20px">
       ${kpi('Divergências abertas',divTodas.length,0,'',divTodas.length>0,0)}
       ${kpi(`Saída hoje (${fmtMoneyBR(saidaValor)})`,saidaQtd,undefined,'un',false,0)}
-      ${kpi(`Entrada hoje (${entradaNFs} NF)`,entradaQtd,undefined,'un',false,0)}
+      ${pctTratadoPortaria!=null?kpi(`Entrada Portaria hoje (${tratadasPortariaHoje}/${totalPortariaHoje})`,pctTratadoPortaria,100,'%',false,0):kpi('Entrada Portaria hoje','—',undefined,'',false,0)}
       ${acurRotativo!=null?kpi('Acurácia Rotativo (dupla contagem)',acurRotativo,95,'%',false,0):kpi('Acurácia Rotativo (dupla contagem)','—',undefined,'',false,0)}
       ${acurBaixaRot!=null?kpi('Acurácia Baixa Rotação hoje',acurBaixaRot,95,'%',false,0):kpi('Acurácia Baixa Rotação hoje','—',undefined,'',false,0)}
     </div>
@@ -3300,19 +3299,25 @@ function supMapCheckpointDB(r,perfisPorCargo){
 function supDueDate(data,hora){
   return new Date(`${data}T${hora}:00-04:00`);
 }
-// Janela única do dia operacional inteiro (08:00 do dia -> 08:00 do dia seguinte),
-// cobrindo dia e noite juntos — painel deixou de separar por turno na tela.
+// Janela única do dia calendário (00:00 -> 00:00 do dia seguinte), cobrindo dia e noite
+// juntos — painel deixou de separar por turno na tela.
+// IMPORTANTE: aqui NÃO empurramos horários de madrugada (ex: 04:20) para o dia seguinte.
+// As ferramentas reais (checklist_equipamentos/3.4, fechamento_turno_garagem/2.1,
+// previsibilidade_26, soltura_2_10, e jtpRegistrarEnvio na maioria dos tipos) gravam a
+// data usando hoje() puro (data literal do momento do envio), sem recuar pro dia anterior
+// de madrugada — só 3.3 e, parcialmente, 2.4/2.6 usam dataOperacionalAtual() com recuo.
+// Tratar tudo como "recua de madrugada" foi o que causou o bug: um 3.4 enviado às 12:36
+// contra um prazo "04:00" virava, por engano, prazo do dia SEGUINTE às 04:00 (16h+ no
+// futuro) e aparecia como "no prazo" quando na verdade estava horas atrasado.
 function supJanelaAuditoria(data,gid=getGid()){
   const tz=opTimezone(gid);
   const fim=opAddDays(data,1);
-  return {data,ini:opDateTimeISO(data,'08:00',tz),fim:opDateTimeISO(fim,'08:00',tz),dtIni:new Date(opDateTimeISO(data,'08:00',tz)),dtFim:new Date(opDateTimeISO(fim,'08:00',tz)),label:'Dia operacional 08:00–08:00'};
+  return {data,ini:opDateTimeISO(data,'00:00',tz),fim:opDateTimeISO(fim,'00:00',tz),dtIni:new Date(opDateTimeISO(data,'00:00',tz)),dtFim:new Date(opDateTimeISO(fim,'00:00',tz)),label:'Dia 00:00–23:59'};
 }
 function supDueDateAuditoria(data,hora,gid=getGid()){
   const tz=opTimezone(gid);
   const janela=supJanelaAuditoria(data,gid);
-  const dataPrazo=String(hora)<'08:00'?opAddDays(data,1):data;
-  const iso=opDateTimeISO(dataPrazo,hora,tz);
-  const dt=new Date(iso);
+  const dt=new Date(opDateTimeISO(data,hora,tz));
   if(dt<janela.dtIni)return janela.dtIni;
   if(dt>janela.dtFim)return janela.dtFim;
   return dt;
@@ -3364,8 +3369,14 @@ function supFindRotinaEnvio(a,ctx){
   if(a.tipo==='3.3'){
     const turnoItem=supTurnoItem(a);
     const rodadaNum=a.rodada?Number(a.rodada):null;
+    // A ronda 3.3 é uma das poucas ferramentas que grava a data com recuo de madrugada
+    // (ronda33DataPadrao usa dataOperacionalAtual) — uma ronda das 03:00 pode ficar
+    // gravada com data=ontem. Por isso ctx.ck33 já vem de uma consulta alargada
+    // (ontem+hoje) — aqui filtramos pelo timestamp real (supRowDentroJanela), não pela
+    // coluna "data", pra não confundir com uma ronda de ontem que sobrou no lote.
     const base=(ctx.ck33||[]).filter(r=>{
       if(r.turno&&r.turno!==turnoItem)return false;
+      if(!supRowDentroJanela(r,janela))return false;
       if(!rodadaNum)return true;
       if(r.rodada!=null)return Number(r.rodada)===rodadaNum;
       return Object.keys(r.dados?.respostas||{}).some(k=>k.startsWith('r'+rodadaNum+'_'));
@@ -3771,9 +3782,10 @@ async function renderSupervisao(gidFiltro=null){
   const gid=gidFiltro||(isDiret?(S.garagens[0]?.id):S.perfil?.garagem_id)||(S.garagens[0]?.id);
   const garagem=S.garagens.find(g=>g.id===gid);
   const tz=opTimezone(gid);
-  // Data auto-recalculada a cada carregamento (segue o dia operacional real, 08:00-08:00).
+  // Data auto-recalculada a cada carregamento = data calendário literal de hoje (sem recuar
+  // de madrugada), pra bater com como a maioria das ferramentas grava data_evento/data.
   // Só fica "presa" numa data se o usuário escolher manualmente no seletor (S._supDataManual).
-  const data=(S._supDataManual&&S._supData)?S._supData:dataOperacionalAtual('noite',tz);
+  const data=(S._supDataManual&&S._supData)?S._supData:opISODate(new Date(),tz);
   S._supData=data;
   const janela=supJanelaAuditoria(data,gid);
   const agora=new Date();
@@ -3827,7 +3839,7 @@ async function renderSupervisao(gidFiltro=null){
     sb.from('relatorios_gerados').select('*').eq('garagem_id',gid).eq('data_evento',data),
     sb.from('checklist_38').select('*').eq('garagem_id',gid).eq('data',data),
     sb.from('requisicoes_compra').select('*').eq('garagem_id',gid).eq('data',dataValet).neq('status','cancelado').order('criado_em',{ascending:true}),
-    sb.from('checklist_33').select('*').eq('garagem_id',gid).eq('data',data),
+    sb.from('checklist_33').select('*').eq('garagem_id',gid).gte('data',opAddDays(data,-1)).lte('data',data),
     sb.from('checklist_equipamentos').select('*').eq('garagem_id',gid).eq('data',data).order('criado_em',{ascending:false}),
     sb.from('previsibilidade_26').select('*').eq('garagem_id',gid).eq('data',data),
     sb.from('abastecimento_checklist').select('*').eq('garagem_id',gid).eq('data',data),
@@ -3953,7 +3965,7 @@ async function renderSupervisao(gidFiltro=null){
     </tr>`;
   }).join('');
   const rotinaHtml=renderSupervisaoRotina(data,{gid,janela,relatorios:rels,ck33,ck34,libs38,fechGaragem,fechPCM,fech24:fech24Data||[],prev26,valetamentos:valetLista,abastecimento,fechAbastecimento,soltura:soltura||[],fechLiderPCM:fechLiderPCMData||[],ind212:ind212Data||[],sos218:sos218Data||[]});
-  const janelaTxt=`${janela.dtIni.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:tz})} até ${janela.dtFim.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:tz})}`;
+  const janelaTxt=janela.label;
 
   setMain(`
     <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
