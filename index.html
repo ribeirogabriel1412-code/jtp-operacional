@@ -1656,7 +1656,7 @@ async function renderAlmoxPainelLider(){
     // Saída = itens entregues (separado/comprado) hoje, com valor unitário já resolvido na confirmação
     sb.from('requisicoes_compra').select('qtd_entregue,quantidade,valor_estimado').eq('garagem_id',gid).in('status',['separado','comprado']).gte('entregue_em',iniHoje).lt('entregue_em',fimHoje),
     // Acurácia do Inventário Rotativo hoje = % de itens com dupla contagem que bateram entre dois almoxarifes
-    sb.from('almoxo_inventario_turno').select('req_id,qtd_fisica,almoxarife_id').eq('garagem_id',gid).eq('turno_data',hojeIso).not('req_id','is',null),
+    sb.from('almoxo_inventario_turno').select('req_id,qtd_fisica,almoxarife_id,almoxarife_nome,nome_item,cod_sap').eq('garagem_id',gid).eq('turno_data',hojeIso).not('req_id','is',null),
     // Acurácia da Baixa Rotação hoje = média do físico/sistema já calculado na contagem
     sb.from('almoxo_baixa_rotacao_contagem').select('acuracia').eq('garagem_id',gid).eq('turno_data',hojeIso).not('acuracia','is',null),
     // Notas lançadas pela portaria ainda sem entrada dada pelo almox
@@ -1673,13 +1673,19 @@ async function renderAlmoxPainelLider(){
   // Dupla contagem hoje: agrupa por req_id, pega 1 contagem por almoxarife distinto,
   // acurácia = % de grupos com 2+ contadores cujos valores bateram
   const rotPorReq={};
+  const rotInfoPorReq={};
   (rotHojeRaw||[]).forEach(r=>{
     if(!r.req_id)return;
     if(!rotPorReq[r.req_id])rotPorReq[r.req_id]={};
-    if(r.almoxarife_id&&!(r.almoxarife_id in rotPorReq[r.req_id]))rotPorReq[r.req_id][r.almoxarife_id]=parseFloat(r.qtd_fisica);
+    if(!rotInfoPorReq[r.req_id])rotInfoPorReq[r.req_id]={nome_item:r.nome_item,cod_sap:r.cod_sap,contagens:{}};
+    if(r.almoxarife_id&&!(r.almoxarife_id in rotPorReq[r.req_id])){
+      rotPorReq[r.req_id][r.almoxarife_id]=parseFloat(r.qtd_fisica);
+      rotInfoPorReq[r.req_id].contagens[r.almoxarife_id]={nome:r.almoxarife_nome||'—',qtd:parseFloat(r.qtd_fisica)};
+    }
   });
   const gruposDupla=Object.values(rotPorReq).filter(g=>Object.keys(g).length>1);
   const acurRotativo=gruposDupla.length?Math.round(100*gruposDupla.filter(g=>new Set(Object.values(g)).size===1).length/gruposDupla.length):null;
+  const rotDivergentes=Object.entries(rotPorReq).filter(([,g])=>Object.keys(g).length>1&&new Set(Object.values(g)).size>1).map(([reqId])=>rotInfoPorReq[reqId]);
   const acurBaixaRotVals=(baixaRotHojeRaw||[]).map(r=>parseFloat(r.acuracia)).filter(v=>!isNaN(v));
   const acurBaixaRot=acurBaixaRotVals.length?Math.round(acurBaixaRotVals.reduce((s,v)=>s+v,0)/acurBaixaRotVals.length):null;
   window._almoxPerfisCache=perfisAlmox||[];
@@ -1753,6 +1759,16 @@ async function renderAlmoxPainelLider(){
   }).join('');
   // ── Quadro de Turnos ─────────────────────────────────────────────
   const safe=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const rotDivergRows=rotDivergentes.map(item=>{
+    const valsStr=Object.values(item.contagens).map(c=>`${safe(c.nome)}: <b style="color:var(--text)">${c.qtd}</b>`).join(' <span style="color:var(--text4)">vs</span> ');
+    return`<div style="display:flex;justify-content:space-between;align-items:center;gap:14px;padding:10px 14px;border-bottom:1px solid var(--border2);font-size:12px">
+      <div>
+        <div style="font-weight:700;color:var(--text)">${safe(item.nome_item||'—')}</div>
+        ${item.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber)">${safe(item.cod_sap)}</div>`:''}
+      </div>
+      <div style="text-align:right;font-size:12px;color:var(--red)">${valsStr}</div>
+    </div>`;
+  }).join('');
   const quadroRows=(quadro||[]).map(q=>{
     const nome=q.perfis?.nome||'—';
     const cargo=q.perfis?.cargo||'';
@@ -1779,6 +1795,11 @@ async function renderAlmoxPainelLider(){
       ${acurRotativo!=null?kpi('Acurácia Rotativo (dupla contagem)',acurRotativo,95,'%',false,0):kpi('Acurácia Rotativo (dupla contagem)','—',undefined,'',false,0)}
       ${acurBaixaRot!=null?kpi('Acurácia Baixa Rotação hoje',acurBaixaRot,95,'%',false,0):kpi('Acurácia Baixa Rotação hoje','—',undefined,'',false,0)}
     </div>
+    ${rotDivergentes.length?`
+    ${secTitle('⚠️',`Dupla Contagem — Itens Divergentes Hoje (${rotDivergentes.length})`)}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:20px">
+      ${rotDivergRows}
+    </div>`:''}
     ${secTitle('📥',`Notas da Portaria — Aguardando Entrada (${(portariaPendentes||[]).length})`)}
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:20px">
       ${(portariaPendentes||[]).length?`
@@ -10520,6 +10541,7 @@ async function renderFerrPCM(aba='painel'){
 
   const tabs=`<div class="filtros">
     <button class="filtro-btn${aba==='painel'?' active':''}" onclick="renderFerrPCM('painel')">📊 Painel</button>
+    <button class="filtro-btn${aba==='sos_plantao'?' active':''}" onclick="renderFerrPCM('sos_plantao')">🆘 SOS Plantão</button>
     <button class="filtro-btn${aba==='req_compra'?' active':''}" onclick="renderFerrPCM('req_compra')">📦 Valetamento</button>
     <button class="filtro-btn${aba==='ind212'?' active':''}" onclick="renderFerrPCM('ind212')">📊 2.12 / 2.14 Indicadores</button>
     <button class="filtro-btn${aba==='consolidado'?' active':''}" onclick="renderFerrPCM('consolidado')">📋 2.6 - Custo</button>
@@ -10543,6 +10565,9 @@ async function renderFerrPCM(aba='painel'){
   }
   if(aba==='os_turno'){
     return await renderFerrOsTurno(S._osTurnoData||null,back,tabs);
+  }
+  if(aba==='sos_plantao'){
+    return await renderFerrPCMSos(back,tabs,gid);
   }
   if(aba==='passagem_turno'){
     return await renderPassagemTurnoPCM(back,tabs,gid);
@@ -20538,6 +20563,62 @@ async function _pcmValidarPeca(id,checked){
   }).eq('id',id);
   if(error){toast('Erro ao validar: '+error.message,'err');return;}
   toast(checked?'✅ Peça validada!':'Validação removida');
+}
+
+async function renderFerrPCMSos(back,tabs,gid){
+  const{data:lista}=await sb.from('plantao_sos').select('*').eq('garagem_id',gid).order('created_at',{ascending:false}).limit(200);
+  window._pcmSosLista=lista||[];
+  const abertos=window._pcmSosLista.filter(s=>s.status==='aberto');
+  const encerrados=window._pcmSosLista.filter(s=>s.status!=='aberto');
+
+  const TIPO_COR={sos:'var(--red)',ra:'var(--blue)'};
+  const TIPO_LBL={sos:'SOS',ra:'RA'};
+  const DECISAO_LBL={segue_rodando:'Segue rodando',troca_carro:'Troca de carro',troca_motorista:'Troca de motorista',aciona_pcm:'Aciona PCM',outro:'Outro'};
+  const fmtDt=iso=>iso?new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+
+  const cardSos=s=>{
+    const cor=TIPO_COR[s.tipo]||'var(--red)';
+    const tratado=!!s.tratativa_pcm;
+    return`<div style="border:1px solid ${s.status==='aberto'&&!tratado?'#EF444440':'var(--border)'};border-radius:12px;padding:16px;margin-bottom:12px;background:var(--surface)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:10px;font-weight:800;color:#fff;background:${cor};padding:2px 8px;border-radius:6px">${TIPO_LBL[s.tipo]||'SOS'}</span>
+          <span style="font-family:'DM Mono',monospace;font-weight:800;font-size:15px">${escHtml(s.prefixo||'—')}</span>
+          <span style="font-size:11px;font-weight:700;color:${s.status==='aberto'?'var(--red)':'var(--text3)'}">${s.status==='aberto'?'ABERTO':'ENCERRADO'}</span>
+        </div>
+        <span style="font-size:11px;color:var(--text3)">${fmtDt(s.created_at)}</span>
+      </div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:6px">${escHtml(s.motorista||'—')}${s.linha?' · '+escHtml(s.linha):''}${s.km?' · KM '+escHtml(s.km):''} · registrado por ${escHtml(s.plantao_nome||'—')}</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:6px"><b>Problema:</b> ${escHtml(s.problema||'—')}</div>
+      ${s.decisao?`<div style="font-size:12px;color:var(--text3);margin-bottom:6px"><b>Decisão do plantão:</b> ${DECISAO_LBL[s.decisao]||s.decisao}${s.decisao_detalhe?' — '+escHtml(s.decisao_detalhe):''}</div>`:''}
+      ${s.resolucao?`<div style="font-size:12px;color:var(--text3);margin-bottom:6px"><b>Resolução do plantão:</b> ${escHtml(s.resolucao)}</div>`:''}
+      <label class="fl" style="margin-top:4px">Tratativa PCM</label>
+      <textarea id="pcmsos-trat-${s.id}" placeholder="Entendimento da manutenção sobre esse SOS/RA..." rows="2" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;font-family:inherit;resize:vertical">${escHtml(s.tratativa_pcm||'')}</textarea>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;flex-wrap:wrap;gap:6px">
+        <span style="font-size:11px;color:${tratado?'var(--green)':'var(--text3)'}">${tratado?'✅ Tratado por '+escHtml(s.tratativa_pcm_por||'—')+' · '+fmtDt(s.tratativa_pcm_em):'Ainda sem tratativa do PCM'}</span>
+        <button onclick="salvarTratativaPCM('${s.id}')" style="padding:8px 14px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-size:12px;font-weight:700;cursor:pointer">💬 Salvar tratativa</button>
+      </div>
+    </div>`;
+  };
+
+  setMain(`${back}${tabs}
+    ${secTitle('🆘','SOS / RA do Plantão')}
+    <div style="font-size:13px;font-weight:800;color:var(--red);margin-bottom:10px">Abertos · ${abertos.length}</div>
+    ${abertos.length?abertos.map(cardSos).join(''):'<div style="font-size:13px;color:var(--text4);text-align:center;padding:16px 0">Nenhum SOS/RA aberto</div>'}
+    <div style="font-size:13px;font-weight:800;color:var(--text3);margin:18px 0 10px">Encerrados (últimos 200) · ${encerrados.length}</div>
+    ${encerrados.length?encerrados.map(cardSos).join(''):'<div style="font-size:13px;color:var(--text4);text-align:center;padding:16px 0">Nenhum SOS/RA encerrado</div>'}
+  `);
+}
+
+async function salvarTratativaPCM(id){
+  const val=document.getElementById('pcmsos-trat-'+id)?.value?.trim();
+  if(!val){toast('Escreva a tratativa antes de salvar','err');return;}
+  const{error}=await sb.from('plantao_sos').update({
+    tratativa_pcm:val,tratativa_pcm_por:S.perfil?.nome||null,tratativa_pcm_em:new Date().toISOString(),
+  }).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('✅ Tratativa registrada!');
+  renderFerrPCM('sos_plantao');
 }
 
 async function renderFerrOsTurno(dataRef=null,backArg='',tabsArg=''){
