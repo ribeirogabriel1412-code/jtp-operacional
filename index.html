@@ -3376,10 +3376,25 @@ function supRowDentroJanela(row,janela){
   const dt=new Date(t);
   return dt>=janela.dtIni&&dt<=janela.dtFim;
 }
-// Casa, em ordem cronológica, os checkpoints do dia com os eventos reais registrados via
-// jtpRegistrarEnvio (relatorios_gerados) do mesmo tipo — resolve o caso de mais de um horário
-// do mesmo tipo no mesmo dia (ex: 3 checkpoints "2.4"): o 1º checkpoint casa com o 1º evento
-// registrado, o 2º com o 2º, etc. Vira a fonte prioritária pros tipos que já chamam
+function supNorm(s){return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();}
+// Bate o nome de quem enviou (preenchido_por_nome) contra a lista de responsáveis do
+// checkpoint (resp, "Fulano, Beltrano") — substring nos dois sentidos pra aceitar tanto
+// nome completo quanto só o primeiro nome.
+function supRespBate(respCsv,nomeEvento){
+  if(!nomeEvento)return false;
+  const alvo=supNorm(nomeEvento);
+  if(!alvo)return false;
+  return String(respCsv||'').split(',').map(supNorm).filter(Boolean)
+    .some(r=>alvo.includes(r)||r.includes(alvo));
+}
+// Casa os checkpoints do dia com os eventos reais registrados via jtpRegistrarEnvio
+// (relatorios_gerados) do mesmo tipo. Dois passos:
+// 1) Por responsável — se o nome de quem enviou (preenchido_por_nome) bate com o(s)
+//    responsável(is) cadastrado(s) do checkpoint E só existe UM evento livre que bate,
+//    é casamento certo (não depende de ordem).
+// 2) Ordem cronológica — reserva pro que sobrar (responsável é um pool compartilhado sem
+//    como distinguir, nome não bateu, ou ambiguidade): 1º checkpoint restante casa com o
+//    1º evento restante, etc. Vira a fonte prioritária pros tipos que já chamam
 // jtpRegistrarEnvio no botão real de finalizar — as tabelas de rascunho deixam de decidir status.
 // 3.3 e 2.12/2.14 com área ficam de fora daqui porque têm sinal próprio de conclusão por setor.
 function supCasarEventosPorTipo(itens,relatorios){
@@ -3393,8 +3408,20 @@ function supCasarEventosPorTipo(itens,relatorios){
     const checkpoints=porTipo[tipo].slice().sort((x,y)=>String(x.hora||'').localeCompare(String(y.hora||'')));
     const eventos=(relatorios||[]).filter(r=>String(r.tipo||'')===tipo)
       .slice().sort((x,y)=>String(supRowTime(x)||'').localeCompare(String(supRowTime(y)||'')));
-    checkpoints.forEach((a,i)=>{
-      match[a.id]=eventos[i]?{row:eventos[i],quando:supRowTime(eventos[i]),fonte:'Supervisão (registro automático)'}:null;
+    const eventosLivres=eventos.slice();
+    const pendentes=[];
+    checkpoints.forEach(a=>{
+      const candidatos=eventosLivres.filter(ev=>supRespBate(a.resp,ev.preenchido_por_nome));
+      if(candidatos.length===1){
+        const ev=candidatos[0];
+        match[a.id]={row:ev,quando:supRowTime(ev),fonte:'Supervisão (por responsável)'};
+        eventosLivres.splice(eventosLivres.indexOf(ev),1);
+      }else{
+        pendentes.push(a);
+      }
+    });
+    pendentes.forEach((a,i)=>{
+      match[a.id]=eventosLivres[i]?{row:eventosLivres[i],quando:supRowTime(eventosLivres[i]),fonte:'Supervisão (registro automático)'}:null;
     });
   });
   return match;
