@@ -1,5 +1,12 @@
 // ── Helpers de cargo, data e UI (desktop) ─────────────────
 
+// Wrapper de escrita Supabase — garante toast de erro em insert/update/upsert que antes falhavam em silêncio
+async function sbw(promise,label){
+  const {error}=await promise;
+  if(error){toast('Erro ao salvar'+(label?' ('+label+')':'')+': '+error.message,'err');console.error('[sbw]',label,error);}
+  return error;
+}
+
 // Cargo helpers
 const cargo=()=>S.perfil?.cargo;
 const isAdmin=()=>S.perfil?.is_admin;

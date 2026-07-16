@@ -1,0 +1,60 @@
+﻿2026-07-15 16:32:08 === Fechamento diario do Plantao ===
+2026-07-15 16:32:09 1 garagem(ns) encontrada(s).
+2026-07-15 16:32:09 -- Garagem Porto Velho (aaaaaaaa-0001-0000-0000-000000000001) -- fechando 2026-07-14 (tz=SA Western Standard Time)
+2026-07-15 16:32:10 Nada lancado em 2026-07-14 -- sem fechamento a gerar pra essa garagem.
+2026-07-15 16:32:10 === Fim do fechamento ===
+2026-07-15 16:34:56 === Fechamento diario do Plantao ===
+2026-07-15 16:38:40 === Fechamento diario do Plantao ===
+2026-07-15 16:38:42 1 garagem(ns) encontrada(s).
+2026-07-15 16:38:42 -- Garagem Porto Velho (aaaaaaaa-0001-0000-0000-000000000001) -- fechando 2026-07-14 (tz=SA Western Standard Time)
+2026-07-15 16:38:42 Nada lancado em 2026-07-14 -- sem fechamento a gerar pra essa garagem.
+2026-07-15 16:38:42 === Fim do fechamento ===
+2026-07-15 16:43:33 === Fechamento diario do Plantao ===
+2026-07-15 16:43:34 1 garagem(ns) encontrada(s).
+2026-07-15 16:43:34 -- Garagem Porto Velho (aaaaaaaa-0001-0000-0000-000000000001) -- fechando 2026-07-14 (tz=SA Western Standard Time)
+2026-07-15 16:43:34 DEBUG uri dobras: https://yxwxcxdegkvjvwchemsm.supabase.co/rest/v1/plantao_dobras?garagem_id=eq.aaaaaaaa-0001-0000-0000-000000000001&data=eq.2026-07-14&select=*
+2026-07-15 16:43:34 DEBUG dobras retornou 0 linha(s)
+2026-07-15 16:43:34 DEBUG absenteismo retornou 0 linha(s)
+2026-07-15 16:43:35 DEBUG sos retornou 0 linha(s)
+2026-07-15 16:43:35 DEBUG trocas retornou 0 linha(s)
+2026-07-15 16:43:35 Nada lancado em 2026-07-14 -- sem fechamento a gerar pra essa garagem.
+2026-07-15 16:43:35 === Fim do fechamento ===
+2026-07-15 16:47:43 === Fechamento diario do Plantao ===
+2026-07-15 16:47:45 1 garagem(ns) encontrada(s).
+2026-07-15 16:47:45 -- Garagem Porto Velho (aaaaaaaa-0001-0000-0000-000000000001) -- fechando 2026-07-14 (tz=SA Western Standard Time)
+2026-07-15 16:47:45 DEBUG uri dobras: https://yxwxcxdegkvjvwchemsm.supabase.co/rest/v1/plantao_dobras?garagem_id=eq.aaaaaaaa-0001-0000-0000-000000000001&data=eq.2026-07-14&select=*
+2026-07-15 16:47:45 DEBUG dobras retornou 2 linha(s)
+2026-07-15 16:47:45 DEBUG absenteismo retornou 8 linha(s)
+2026-07-15 16:47:46 DEBUG sos retornou 2 linha(s)
+2026-07-15 16:47:46 DEBUG trocas retornou 3 linha(s)
+2026-07-15 16:47:47 ERRO ao gravar fechamento_plantao: O servidor remoto retornou um erro: (404) Não Localizado.
+2026-07-15 16:47:47 === Fim do fechamento ===
+2026-07-15 16:49:10 === Fechamento diario do Plantao ===
+2026-07-15 16:49:11 1 garagem(ns) encontrada(s).
+2026-07-15 16:49:36 === Fechamento diario do Plantao ===
+2026-07-15 16:49:37 1 garagem(ns) encontrada(s).
+2026-07-15 16:49:37 -- Garagem Porto Velho (aaaaaaaa-0001-0000-0000-000000000001) -- fechando 2026-07-14 (tz=SA Western Standard Time)
+2026-07-15 16:49:37 DEBUG uri dobras: https://yxwxcxdegkvjvwchemsm.supabase.co/rest/v1/plantao_dobras?garagem_id=eq.aaaaaaaa-0001-0000-0000-000000000001&data=eq.2026-07-14&select=*
+2026-07-15 16:49:37 DEBUG dobras retornou 2 linha(s)
+2026-07-15 16:49:37 DEBUG absenteismo retornou 8 linha(s)
+2026-07-15 16:49:37 DEBUG sos retornou 2 linha(s)
+2026-07-15 16:49:38 DEBUG trocas retornou 3 linha(s)
+2026-07-15 16:49:38 Fechamento gravado: 2 dobra(s), 8 falta(s), 2 SOS (0 nao resolvido(s)), 3 troca(s).
+2026-07-15 16:49:40 PDF nao foi gerado (Edge rodou mas o arquivo nao apareceu)
+2026-07-15 16:49:41 ERRO ao enviar texto pro WhatsApp: O servidor remoto retornou um erro: (404) Não Localizado.
+2026-07-15 16:49:41 === Fim do fechamento ===
+2026-07-15 16:52:01 === Fechamento diario do Plantao ===
+2026-07-15 16:52:03 1 garagem(ns) encontrada(s).
+2026-07-15 16:52:03 -- Garagem Porto Velho (aaaaaaaa-0001-0000-0000-000000000001) -- fechando 2026-07-14 (tz=SA Western Standard Time)
+2026-07-15 16:52:03 DEBUG uri dobras: https://yxwxcxdegkvjvwchemsm.supabase.co/rest/v1/plantao_dobras?garagem_id=eq.aaaaaaaa-0001-0000-0000-000000000001&data=eq.2026-07-14&select=*
+2026-07-15 16:52:03 DEBUG dobras retornou 2 linha(s)
+2026-07-15 16:52:04 DEBUG absenteismo retornou 8 linha(s)
+2026-07-15 16:52:04 DEBUG sos retornou 2 linha(s)
+2026-07-15 16:52:04 DEBUG trocas retornou 3 linha(s)
+2026-07-15 16:52:05 Fechamento gravado: 2 dobra(s), 8 falta(s), 2 SOS (0 nao resolvido(s)), 3 troca(s).
+2026-07-15 16:52:09 PDF gerado: C:\Users\gabriel.ribeiro\AppData\Local\Temp\JTP_Fechamento_Plantao_20260714_Garagem_Porto_Velho.pdf
+2026-07-15 16:52:10 ERRO ao enviar texto pro WhatsApp: O servidor remoto retornou um erro: (404) Não Localizado.
+2026-07-15 16:52:10 DEBUG resposta do servidor: 
+2026-07-15 16:52:10 AVISO -- envio do PDF por WhatsApp falhou (endpoint nao testado ainda neste projeto): O servidor remoto retornou um erro: (404) Não Localizado.
+2026-07-15 16:52:10 DEBUG resposta do servidor: 
+2026-07-15 16:52:10 === Fim do fechamento ===

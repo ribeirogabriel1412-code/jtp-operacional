@@ -48,7 +48,7 @@ Ordem de construção é a ordem da tabela — cada linha depende da anterior.
 | 1 | Relatório de Liberação de Veículo (PCM preenche ao fechar OS: checklist + mão de obra + peças) | 🔴 | — | Desenhar tela + tabela nova |
 | 2 | Histórico do carro no SOS (plantão vê OS/avarias/KM ao abrir SOS) | 🔴 | Item 1 | — |
 | 3 | Painel Estado da Frota (disponível · avaria · manutenção · prev. agendada · lavagem pendente) | 🔴 | — (independente) | Pode iniciar em paralelo |
-| 4 | Painel diário de lavagem (programado vs confirmado vs pendente) | 🔴 | — (independente, já sinalizado como simples) | **Candidato a vitória rápida** |
+| 4 | Painel diário de lavagem (programado vs confirmado vs pendente) | 🟢 | — | Concluído em 2026-07-15 — ciclo semanal, sugestão dinâmica, relatório PDF/WhatsApp. Deploy revisado com Daniel. |
 | 5 | Visual indisponível no pátio (prazo de retorno + preventiva agendada) | 🔴 | Item 3 | — |
 | 6 | Fase 4 sync PRAXIO — `praxio_os_itens`, resolver 401 (GRANT Supabase) | 🔴 | — | Rodar GRANT pendente no Supabase |
 
@@ -100,8 +100,27 @@ Acurácia PRAXIO×SAP, IUP financeiro, garantia de peças, inventário rotativo,
 
 ---
 
+## Trilha 6 — Painel de Supervisão (checkpoints e sinalização)
+
+Surgiu de um bug relatado (3.3 marcado como enviado sem ninguém confirmar) que revelou um problema estrutural maior: a maioria dos checkpoints usava "existe uma linha na tabela de rascunho" como sinal de conclusão, em vez de um evento explícito de finalização.
+
+| Item | Status | Observação |
+|---|---|---|
+| Fonte única de verdade (`relatorios_gerados` via `jtpRegistrarEnvio`) prioritária sobre tabelas de rascunho | 🟢 | Cobre 2.1, 2.4, 2.6, 2.10, 2.18, 3.4, Abastecimento, Lavagem — casamento ordinal por horário quando há mais de um checkpoint do mesmo tipo no dia |
+| Bug do 3.3 (enviado sem confirmar setor) | 🟢 | `supFindRotinaEnvio` não considera mais "linha existe" como "enviado" |
+| 2.12/2.14 dividido por área (PCM / Operação / Suprimentos) | 🟢 | Indicadores novos de Operação e Suprimentos criados; cada área confirma a própria parte |
+| Lista de 25 checkpoints migrada pra tabela `supervisao_checkpoints` (Supabase) | 🟢 | Array fixo `SUPERVISAO_ROTINA` mantido como fallback de segurança, não apagado |
+| **Checkpoints do turno noite** | 🔴 | Daniel identificou que faltam (mesmos documentos, exceto 2.12/2.14 e 4.1 5W2H) — falta ele passar horários/responsáveis |
+| **Remover toggle Dia/Noite do painel** | 🟡 | Implementado 2026-07-16: painel único, janela de prazo virou o dia operacional inteiro (08:00→08:00 do dia seguinte), casamento de eventos parou de filtrar por turno. Corrigiu também bug de cache (`S._supData`/`S._supTurno` ficavam presos num dia antigo se a tela ficasse aberta durante a virada do dia). Aguardando Daniel confirmar em uso real |
+
+**Próxima ação:** Daniel testar o painel único e confirmar que os relatórios já enviados aparecem corretos; depois trazer horários/responsáveis do turno noite.
+
+---
+
 ## Log de decisões
 
 | Data | O que mudou | Motivo |
 |---|---|---|
 | 2026-07-12 | Roadmap criado, consolidando plano completo (24/06), backlog Fase 2 (22/06→09/07) e motores de análise (04/07→05/07) numa ordem única priorizada | Daniel pediu plano estratégico único e dinâmico em vez de memórias fragmentadas por assunto |
+| 2026-07-15 | Trilha 1 item 4 (painel de lavagem) concluído; Trilha 6 criada (Painel de Supervisão) com correção de bug estrutural + 2.12/2.14 por área + migração pra tabela | Bug relatado no 3.3 revelou problema maior; virou sessão de redesenho de arquitetura, não só correção pontual — ficaram 2 pendentes (checkpoints noite, remover toggle turno) esperando input do Daniel |
+| 2026-07-16 | Trilha 6: toggle Dia/Noite removido do Painel de Supervisão; janela virou o dia operacional inteiro; corrigido bug de cache que travava o painel num dia antigo | Larissa reportou relatórios visivelmente entregues (prints de WhatsApp) aparecendo como "não enviado"/atrasado no painel — causa raiz era `S._supData`/`S._supTurno` presos num dia anterior quando a tela ficava aberta durante a virada do dia operacional |

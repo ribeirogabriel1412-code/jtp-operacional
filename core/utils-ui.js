@@ -1,5 +1,12 @@
 // ── Funções de interface (UI) ──────────────────────────────
 
+// Wrapper de escrita Supabase — garante toast de erro em insert/update/upsert que antes falhavam em silêncio
+async function sbw(promise,label){
+  const {error}=await promise;
+  if(error){toast('Erro ao salvar'+(label?' ('+label+')':'')+': '+error.message,'err');console.error('[sbw]',label,error);}
+  return error;
+}
+
 function toast(msg,tipo='ok',dur=2200){
   const t=document.getElementById('toast');
   t.textContent=msg;

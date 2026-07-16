@@ -1653,7 +1653,7 @@ async function _renderOS(){
     else if(action==='salvar-st'){
       var st=document.getElementById('sel-st-os')&&document.getElementById('sel-st-os').value;
       if(!st) return;
-      await sb.from('ocorrencias_22').update({status:st}).eq('id',ocId);
+      await sbw(sb.from('ocorrencias_22').update({status:st}).eq('id',ocId),'ocorrencias_22');
       toast(st==='liberado'?'✅ Liberado!':'✅ Atualizado!');
       if(st==='liberado'){closeSheet(true);telaOficina();return;}
       document.getElementById('shbody').onclick=null;
@@ -1665,8 +1665,8 @@ async function _renderOS(){
     }
     else if(action==='enviar-pcm'){
       if(!confirm('Enviar checklist de liberação para aprovação do PCM?')) return;
-      await sb.from('checklist_liberacao').update({submetido:true,submetido_por:S.perfil&&S.perfil.nome,submetido_em:new Date().toISOString()}).eq('ocorrencia_id',ocId);
-      await sb.from('ocorrencias_22').update({status:'aguardando_aprovacao',updated_at:new Date().toISOString()}).eq('id',ocId);
+      await sbw(sb.from('checklist_liberacao').update({submetido:true,submetido_por:S.perfil&&S.perfil.nome,submetido_em:new Date().toISOString()}).eq('ocorrencia_id',ocId),'checklist_liberacao');
+      await sbw(sb.from('ocorrencias_22').update({status:'aguardando_aprovacao',updated_at:new Date().toISOString()}).eq('id',ocId),'ocorrencias_22');
       toast('📤 Enviado ao PCM');
       document.getElementById('shbody').onclick=null;
       await _renderOS();
@@ -1899,7 +1899,7 @@ async function salvarOS38Oficina(){
     horas_trabalhadas:parseInt(document.getElementById('mob-hc-horas')?.value||0)||0,
     registrado_por:S.perfil&&S.perfil.nome||null,
     updated_at:new Date().toISOString()};
-  await sb.from('os_hc').upsert(hcPayload,{onConflict:'ocorrencia_id'});
+  await sbw(sb.from('os_hc').upsert(hcPayload,{onConflict:'ocorrencia_id'}),'os_hc');
   if(_OS38.qual&&Object.keys(_OS38.qualDirty||{}).length){
     var okQual=await salvarQual38Oficina(true);
     if(!okQual) return;
@@ -2009,7 +2009,7 @@ function _editarPessoas(ocId,atual){
     } else if(el.dataset.action==='conf-pessoas'){
       shbody.onclick=null;
       var qtd=window._qtdPessoas||0;
-      await sb.from('ocorrencias_22').update({manutentores:qtd}).eq('id',ocId);
+      await sbw(sb.from('ocorrencias_22').update({manutentores:qtd}).eq('id',ocId),'ocorrencias_22');
       toast('✅ '+qtd+' pessoa'+(qtd!==1?'s':''));
       await _renderOS();
     }
@@ -2128,8 +2128,8 @@ async function abrirOS(ocId){
 async function salvarSt(ocId){
   const st=document.getElementById('sel-st')?.value;
   if(!st) return;
-  await sb.from('ocorrencias_22').update({status:st,updated_at:new Date().toISOString()}).eq('id',ocId);
-  if(st==='liberado'){const{data:oc}=await sb.from('ocorrencias_22').select('veiculo_id').eq('id',ocId).single();if(oc?.veiculo_id)await sb.from('frota').update({status:'disponivel'}).eq('id',oc.veiculo_id);}
+  await sbw(sb.from('ocorrencias_22').update({status:st,updated_at:new Date().toISOString()}).eq('id',ocId),'ocorrencias_22');
+  if(st==='liberado'){const{data:oc}=await sb.from('ocorrencias_22').select('veiculo_id').eq('id',ocId).single();if(oc?.veiculo_id)await sbw(sb.from('frota').update({status:'disponivel'}).eq('id',oc.veiculo_id),'frota');}
   closeSheet(true);toast(st==='liberado'?'✅ Liberado!':'✅ Atualizado!');telaOficina();
 }
 async function abrirSetor(ocId,setor){
@@ -2168,7 +2168,7 @@ async function togCk(itemId,tipo,ocId,setor){
   if(tipo==='v'){const n=!it.verificado;p={verificado:n,verificado_por:n?S.perfil?.nome:null,verificado_em:n?new Date().toISOString():null};if(!n)p={...p,trocado:false};}
   else if(tipo==='t'){if(!it.verificado)return;const n=!it.trocado;p={trocado:n,trocado_por:n?S.perfil?.nome:null,trocado_em:n?new Date().toISOString():null};}
   else if(tipo==='nsa'){const n=!it.nao_se_aplica;p={nao_se_aplica:n,verificado:n,trocado:n,verificado_por:n?S.perfil?.nome:null,trocado_por:n?S.perfil?.nome:null,verificado_em:n?new Date().toISOString():null,trocado_em:n?new Date().toISOString():null};}
-  await sb.from('checklist_liberacao').update(p).eq('id',itemId);
+  await sbw(sb.from('checklist_liberacao').update(p).eq('id',itemId),'checklist_liberacao');
   abrirSetor(ocId,setor);
 }
 function abrirNovaOS(){
@@ -2199,7 +2199,7 @@ async function criarOS(){
   const num=`2.2/${String(a.getDate()).padStart(2,'0')}${String(a.getMonth()+1).padStart(2,'0')}${String(a.getFullYear()).slice(2)}-${String(a.getHours()).padStart(2,'0')}${String(a.getMinutes()).padStart(2,'0')}/${sigla}`;
   const{error}=await sb.from('ocorrencias_22').insert({garagem_id:gid,veiculo_id:vei?.id||null,prefixo,tipo,mecanico:mecanico||null,numero:num,status:'em_manutencao',hora_entrada:new Date().toISOString(),aberto_por:S.perfil?.id,aberto_por_nome:S.perfil?.nome});
   if(error){toast('Erro: '+error.message,'err');return}
-  if(vei?.id) await sb.from('frota').update({status:'manutencao'}).eq('id',vei.id);
+  if(vei?.id) await sbw(sb.from('frota').update({status:'manutencao'}).eq('id',vei.id),'frota');
   closeSheet(true);toast('✅ OS aberta!');telaOficina();
 }
 
@@ -3036,7 +3036,7 @@ async function almoxMobSalvarEntrega(id){
       const qtd=parseFloat(r.qtd_entregue||r.quantidade)||1;
       return s+preco*qtd;
     },0);
-    if(novoTotal>0) await sb.from('ocorrencias_22').update({custo_previsto:novoTotal}).eq('id',ocId);
+    if(novoTotal>0) await sbw(sb.from('ocorrencias_22').update({custo_previsto:novoTotal}).eq('id',ocId),'ocorrencias_22');
   }
   // Inventário rotativo: grava qtd física se preenchida no campo WMS
   if(wmsFis!==null&&!isNaN(wmsFis)&&codEntregue){
@@ -5334,7 +5334,7 @@ async function salvarRecolha(horarioRef=''){
 
   // Marca frota disponível se OK
   if(status==='recebido'&&veiId){
-    await sb.from('frota').update({status:'disponivel'}).eq('id',veiId);
+    await sbw(sb.from('frota').update({status:'disponivel'}).eq('id',veiId),'frota');
   }
 
   // Marca recolhido na soltura_2_10 da data de soltura
