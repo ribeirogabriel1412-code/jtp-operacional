@@ -1497,7 +1497,7 @@ async function renderAlmoxPainelLider(){
   const fimPeriodo=opDateTimeISO(opAddDays(dataFim,1),'00:00',tz);
   const fmtDataBR=iso=>{const[,m,d]=String(iso).split('-');return `${d}/${m}`;};
   const periodoTxt=dataIni===dataFim?(dataIni===hojeIso?'hoje':fmtDataBR(dataIni)):`${fmtDataBR(dataIni)}–${fmtDataBR(dataFim)}`;
-  const[{data:divs},{data:quadro},{data:perfisAlmox},{data:saidaRaw},{data:rotHojeRaw},{data:baixaRotHojeRaw},{data:portariaPendentes},{data:portariaHojeRaw},{data:tratativasRaw}]=await Promise.all([
+  const[{data:divs},{data:quadro},{data:perfisAlmox},{data:saidaRaw},{data:rotHojeRaw},{data:baixaRotHojeRaw},{data:portariaPendentes},{data:portariaHojeRaw},{data:tratativasRaw},{data:sapEpocaRaw}]=await Promise.all([
     sb.from('almoxo_divergencias').select('*').eq('garagem_id',gid).eq('status','aberta').order('detectado_em',{ascending:false}),
     sb.from('almoxo_quadro_turno').select('*,perfis(nome,cargo)').eq('garagem_id',gid).order('hora_entrada'),
     sb.from('perfis').select('id,nome,cargo').eq('garagem_id',gid).in('cargo',['almoxarifado','lider_almoxarifado','lider_suprimentos']).order('nome'),
@@ -1513,10 +1513,17 @@ async function renderAlmoxPainelLider(){
     sb.from('portaria_recebimento').select('id,status').eq('garagem_id',gid).gte('created_at',iniPeriodo).lt('created_at',fimPeriodo),
     // Tratativas já classificadas pelo líder na Conferência SAP x PRAXIO -- usa
     // pra saber se um item da Dupla Contagem já foi tratado (mesma cod_sap+turno_data)
-    sb.from('almoxo_inventario_tratativas').select('*').eq('garagem_id',gid).gte('turno_data',dataIni).lte('turno_data',dataFim)
+    sb.from('almoxo_inventario_tratativas').select('*').eq('garagem_id',gid).gte('turno_data',dataIni).lte('turno_data',dataFim),
+    // Saldo SAP "da época" -- só existe gravado quando o líder rodou a
+    // Conferência SAP x PRAXIO e salvou o desvio (confSalvarDivergenciasAbertas).
+    // Não filtra por status: mesmo divergência já encerrada guarda o saldo que
+    // valia naquele momento, pra referência aqui na Dupla Contagem.
+    sb.from('almoxo_divergencias').select('cod_sap,qtd_sap').eq('garagem_id',gid).eq('origem','rotativo').not('qtd_sap','is',null)
   ]);
   const tratMap={};
   (tratativasRaw||[]).forEach(t=>{tratMap[confNormCod(t.cod_sap)+'|'+(t.turno_data||'')]=t;});
+  const sapEpocaMap={};
+  (sapEpocaRaw||[]).forEach(d=>{sapEpocaMap[confNormCod(d.cod_sap)]=d.qtd_sap;});
   const saidaQtd=(saidaRaw||[]).reduce((s,r)=>s+(parseFloat(r.qtd_entregue||r.quantidade)||0),0);
   const saidaValor=(saidaRaw||[]).reduce((s,r)=>s+(parseFloat(r.qtd_entregue||r.quantidade)||0)*(parseFloat(r.valor_estimado)||0),0);
   const totalPortariaHoje=(portariaHojeRaw||[]).length;
@@ -1545,7 +1552,8 @@ async function renderAlmoxPainelLider(){
   const rotDivergentes=Object.entries(rotPorReq).filter(([,g])=>Object.keys(g).length>1&&new Set(Object.values(g)).size>1).map(([reqId])=>{
     const item=rotInfoPorReq[reqId];
     const trat=tratMap[confNormCod(item.cod_sap)+'|'+(item.turno_data||'')]||null;
-    return{...item,trat};
+    const saldoSap=item.cod_sap!=null?(sapEpocaMap[confNormCod(item.cod_sap)]??null):null;
+    return{...item,trat,saldoSap};
   });
   const acurBaixaRotVals=(baixaRotHojeRaw||[]).map(r=>parseFloat(r.acuracia)).filter(v=>!isNaN(v));
   const acurBaixaRot=acurBaixaRotVals.length?Math.round(acurBaixaRotVals.reduce((s,v)=>s+v,0)/acurBaixaRotVals.length):null;
@@ -1635,6 +1643,7 @@ async function renderAlmoxPainelLider(){
       <div>
         <div style="font-weight:700;color:var(--text)">${safe(item.nome_item||'—')}</div>
         ${item.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber)">${safe(item.cod_sap)}</div>`:''}
+        <div style="font-size:10px;color:var(--text3);margin-top:2px">SAP (época): <b style="color:var(--text2);font-family:'DM Mono',monospace">${item.saldoSap??'—'}</b></div>
       </div>
       <div style="text-align:right;font-size:12px;color:var(--red)">${valsStr}</div>
       <div style="text-align:right;flex-shrink:0">${statusHtml}</div>
