@@ -1497,7 +1497,7 @@ async function renderAlmoxPainelLider(){
   const fimPeriodo=opDateTimeISO(opAddDays(dataFim,1),'00:00',tz);
   const fmtDataBR=iso=>{const[,m,d]=String(iso).split('-');return `${d}/${m}`;};
   const periodoTxt=dataIni===dataFim?(dataIni===hojeIso?'hoje':fmtDataBR(dataIni)):`${fmtDataBR(dataIni)}–${fmtDataBR(dataFim)}`;
-  const[{data:divs},{data:quadro},{data:perfisAlmox},{data:saidaRaw},{data:rotHojeRaw},{data:baixaRotHojeRaw},{data:portariaPendentes},{data:portariaHojeRaw},{data:tratativasRaw},{data:sapEpocaRaw}]=await Promise.all([
+  const[{data:divs},{data:quadro},{data:perfisAlmox},{data:saidaRaw},{data:rotHojeRaw},{data:baixaRotHojeRaw},{data:portariaPendentes},{data:portariaHojeRaw},{data:tratativasRaw},{data:divergRotativoRaw}]=await Promise.all([
     sb.from('almoxo_divergencias').select('*').eq('garagem_id',gid).eq('status','aberta').order('detectado_em',{ascending:false}),
     sb.from('almoxo_quadro_turno').select('*,perfis(nome,cargo)').eq('garagem_id',gid).order('hora_entrada'),
     sb.from('perfis').select('id,nome,cargo').eq('garagem_id',gid).in('cargo',['almoxarifado','lider_almoxarifado','lider_suprimentos']).order('nome'),
@@ -1511,19 +1511,17 @@ async function renderAlmoxPainelLider(){
     sb.from('portaria_recebimento').select('*').eq('garagem_id',gid).eq('status','pendente').order('created_at',{ascending:true}),
     // Notas registradas pela portaria no período (qualquer status) -- pra medir % já tratado pelo líder
     sb.from('portaria_recebimento').select('id,status').eq('garagem_id',gid).gte('created_at',iniPeriodo).lt('created_at',fimPeriodo),
-    // Tratativas já classificadas pelo líder na Conferência SAP x PRAXIO -- usa
-    // pra saber se um item da Dupla Contagem já foi tratado (mesma cod_sap+turno_data)
+    // Tratativas classificadas pelo líder na Conferência SAP x PRAXIO (recebimento/
+    // contagem errada/desvio) -- enriquece o detalhe de quem já foi tratado
     sb.from('almoxo_inventario_tratativas').select('*').eq('garagem_id',gid).gte('turno_data',dataIni).lte('turno_data',dataFim),
-    // Saldo SAP "da época" -- só existe gravado quando o líder rodou a
-    // Conferência SAP x PRAXIO e salvou o desvio (confSalvarDivergenciasAbertas).
-    // Não filtra por status: mesmo divergência já encerrada guarda o saldo que
-    // valia naquele momento, pra referência aqui na Dupla Contagem.
-    sb.from('almoxo_divergencias').select('cod_sap,qtd_sap').eq('garagem_id',gid).eq('origem','rotativo').not('qtd_sap','is',null)
+    // Divergências Físico(Rotativo) x SAP: geradas quando o líder sobe a
+    // Conferência SAP x PRAXIO e cruza com o Inventário Rotativo
+    // (confSalvarDivergenciasAbertas). Traz aberta + encerrada pra mostrar
+    // status de tratamento, não só o que ainda falta.
+    sb.from('almoxo_divergencias').select('*').eq('garagem_id',gid).eq('origem','rotativo').order('detectado_em',{ascending:false}).limit(100)
   ]);
   const tratMap={};
   (tratativasRaw||[]).forEach(t=>{tratMap[confNormCod(t.cod_sap)+'|'+(t.turno_data||'')]=t;});
-  const sapEpocaMap={};
-  (sapEpocaRaw||[]).forEach(d=>{sapEpocaMap[confNormCod(d.cod_sap)]=d.qtd_sap;});
   const saidaQtd=(saidaRaw||[]).reduce((s,r)=>s+(parseFloat(r.qtd_entregue||r.quantidade)||0),0);
   const saidaValor=(saidaRaw||[]).reduce((s,r)=>s+(parseFloat(r.qtd_entregue||r.quantidade)||0)*(parseFloat(r.valor_estimado)||0),0);
   const totalPortariaHoje=(portariaHojeRaw||[]).length;
@@ -1545,19 +1543,14 @@ async function renderAlmoxPainelLider(){
   });
   const gruposDupla=Object.values(rotPorReq).filter(g=>Object.keys(g).length>1);
   const acurRotativo=gruposDupla.length?Math.round(100*gruposDupla.filter(g=>new Set(Object.values(g)).size===1).length/gruposDupla.length):null;
-  // Tratada = já existe uma tratativa classificada pelo líder na Conferência
-  // SAP x PRAXIO pra esse mesmo cod_sap+turno_data (recebimento, contagem
-  // errada corrigida ou desvio formalizado) -- traz esse dado pra cá em vez
-  // de deixar a lista sempre "pendente" pra sempre.
-  const rotDivergentes=Object.entries(rotPorReq).filter(([,g])=>Object.keys(g).length>1&&new Set(Object.values(g)).size>1).map(([reqId])=>{
-    const item=rotInfoPorReq[reqId];
-    const trat=tratMap[confNormCod(item.cod_sap)+'|'+(item.turno_data||'')]||null;
-    const saldoSap=item.cod_sap!=null?(sapEpocaMap[confNormCod(item.cod_sap)]??null):null;
-    return{...item,trat,saldoSap};
-  });
   const acurBaixaRotVals=(baixaRotHojeRaw||[]).map(r=>parseFloat(r.acuracia)).filter(v=>!isNaN(v));
   const acurBaixaRot=acurBaixaRotVals.length?Math.round(acurBaixaRotVals.reduce((s,v)=>s+v,0)/acurBaixaRotVals.length):null;
   const baixaRotDivergentes=(baixaRotHojeRaw||[]).filter(r=>r.acuracia!=null&&parseFloat(r.acuracia)<100);
+  // Cruzamento SAP x PRAXIO já processado pelo líder e cruzado com o Inventário
+  // Rotativo (confSalvarDivergenciasAbertas) -- compara o Físico
+  // contado contra o saldo do SAP no momento em que a conferência rodou.
+  const TRAT_LB_PAINEL={recebimento:'📦 Recebimento',contagem_errada:'✏️ Recontagem',desvio:'⚠️ Desvio formalizado'};
+  const sapPraxioDivergentes=(divergRotativoRaw||[]);
   window._almoxPerfisCache=perfisAlmox||[];
   const abaAtiva=S._almoxPainelAba||'painel';
   const tabs=`
@@ -1629,23 +1622,25 @@ async function renderAlmoxPainelLider(){
   }).join('');
   // ── Quadro de Turnos ─────────────────────────────────────────────
   const safe=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  const TRAT_LB_PAINEL={recebimento:'📦 Recebimento',contagem_errada:'✏️ Recontagem',desvio:'⚠️ Desvio formalizado'};
-  const rotDivergRows=rotDivergentes.map(item=>{
-    const valsStr=Object.values(item.contagens).map(c=>`${safe(c.nome)}: <b style="color:var(--text)">${c.qtd}</b>`).join(' <span style="color:var(--text4)">vs</span> ');
-    const t=item.trat;
-    let detalhe='';
-    if(t?.tipo==='recebimento')detalhe=`NF ${safe(t.nota_fiscal||'—')} · +${t.qtd_recebida??'—'}`;
-    else if(t?.tipo==='contagem_errada')detalhe=`Corrigido p/ ${t.qtd_corrigida??'—'}`;
-    const statusHtml=t
-      ?`<span style="background:#00C48C20;color:var(--green);border:1px solid #00C48C50;border-radius:99px;padding:2px 8px;font-size:10px;font-weight:900;white-space:nowrap">✅ ${TRAT_LB_PAINEL[t.tipo]||t.tipo}</span>${detalhe?`<div style="font-size:10px;color:var(--text3);margin-top:3px">${detalhe}</div>`:''}`
-      :`<span style="background:#F59E0B20;color:var(--amber);border:1px solid #F59E0B50;border-radius:99px;padding:2px 8px;font-size:10px;font-weight:900;white-space:nowrap">⏳ Pendente</span><div style="margin-top:4px"><button onclick="S._almoxPainelAba='conf';renderAlmoxPainelLider()" style="border:none;background:none;color:var(--blue);font-size:10px;font-weight:700;cursor:pointer;text-decoration:underline;padding:0">Tratar na Conferência →</button></div>`;
+  // Cruzamento SAP x PRAXIO (Físico do Rotativo x saldo SAP) -- status vem do
+  // próprio registro (status=aberta/encerrada), enriquecido com a tratativa
+  // classificada na Conferência quando existir.
+  const sapPraxioRows=sapPraxioDivergentes.map(d=>{
+    const acur=d.acuracia!=null?parseFloat(d.acuracia):null;
+    const tratativa=d.detectado_em?tratMap[confNormCod(d.cod_sap)+'|'+String(d.detectado_em).slice(0,10)]:null;
+    let detalhe=d.obs_resolucao||'';
+    if(!detalhe&&tratativa?.tipo==='recebimento')detalhe=`NF ${safe(tratativa.nota_fiscal||'—')} · +${tratativa.qtd_recebida??'—'}`;
+    else if(!detalhe&&tratativa?.tipo==='contagem_errada')detalhe=`Corrigido p/ ${tratativa.qtd_corrigida??'—'}`;
+    const tratada=d.status==='encerrada';
+    const statusHtml=tratada
+      ?`<span style="background:#00C48C20;color:var(--green);border:1px solid #00C48C50;border-radius:99px;padding:2px 8px;font-size:10px;font-weight:900;white-space:nowrap">✅ ${tratativa?TRAT_LB_PAINEL[tratativa.tipo]||'Tratada':'Tratada'}</span>${detalhe?`<div style="font-size:10px;color:var(--text3);margin-top:3px">${safe(detalhe)}</div>`:''}`
+      :`<span style="background:#F59E0B20;color:var(--amber);border:1px solid #F59E0B50;border-radius:99px;padding:2px 8px;font-size:10px;font-weight:900;white-space:nowrap">⏳ Pendente</span><div style="margin-top:4px"><button onclick="S._almoxPainelAba='recontagem';renderAlmoxPainelLider()" style="border:none;background:none;color:var(--blue);font-size:10px;font-weight:700;cursor:pointer;text-decoration:underline;padding:0">Recontar →</button></div>`;
     return`<div style="display:flex;justify-content:space-between;align-items:center;gap:14px;padding:10px 14px;border-bottom:1px solid var(--border2);font-size:12px">
       <div>
-        <div style="font-weight:700;color:var(--text)">${safe(item.nome_item||'—')}</div>
-        ${item.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber)">${safe(item.cod_sap)}</div>`:''}
-        <div style="font-size:10px;color:var(--text3);margin-top:2px">SAP (época): <b style="color:var(--text2);font-family:'DM Mono',monospace">${item.saldoSap??'—'}</b></div>
+        <div style="font-weight:700;color:var(--text)">${safe(d.nome_item||'—')}</div>
+        ${d.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber)">${safe(d.cod_sap)}</div>`:''}
+        <div style="font-size:10px;color:var(--text3);margin-top:2px">SAP: <b style="color:var(--text2);font-family:'DM Mono',monospace">${d.qtd_sap??'—'}</b> <span style="color:var(--text4)">vs</span> Físico: <b style="color:var(--text2);font-family:'DM Mono',monospace">${d.qtd_fisica??'—'}</b>${acur!=null?` · <b style="color:${acur>=95?'var(--green)':acur>=80?'var(--amber)':'var(--red)'}">${acur}%</b>`:''}</div>
       </div>
-      <div style="text-align:right;font-size:12px;color:var(--red)">${valsStr}</div>
       <div style="text-align:right;flex-shrink:0">${statusHtml}</div>
     </div>`;
   }).join('');
@@ -1702,10 +1697,10 @@ async function renderAlmoxPainelLider(){
       ${acurBaixaRot!=null?kpi('Acurácia Baixa Rotação',acurBaixaRot,95,'%',false,0):kpi('Acurácia Baixa Rotação','—',undefined,'',false,0)}
     </div>
     <div style="font-size:11px;color:var(--text4);margin:-14px 0 16px">Período selecionado: <b style="color:var(--text3)">${periodoTxt}</b></div>
-    ${rotDivergentes.length?`
-    ${secTitle('⚠️',`Dupla Contagem — Itens Divergentes (${rotDivergentes.length})`)}
+    ${sapPraxioDivergentes.length?`
+    ${secTitle('🔍',`Cruzamento SAP × PRAXIO — Itens Divergentes (${sapPraxioDivergentes.length})`,`<span style="font-size:11px;color:var(--text3);font-weight:400">Físico do Inventário Rotativo × saldo SAP no momento da Conferência</span>`)}
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:20px">
-      ${rotDivergRows}
+      ${sapPraxioRows}
     </div>`:''}
     ${baixaRotDivergentes.length?`
     ${secTitle('⚠️',`Baixa Rotação — Itens Divergentes (${baixaRotDivergentes.length})`)}
