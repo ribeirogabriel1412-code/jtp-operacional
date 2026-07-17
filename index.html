@@ -303,10 +303,8 @@ tr:hover td{background:#1F293780}
         <button class="sub-btn" onclick="navToSub('ferr-ctrl')">✅ Controle Soltura</button>
         <button class="sub-btn" onclick="navToSub('ferr-almox')">📦 Kits / Valetamento</button>
         <button class="sub-btn" onclick="navToSub('ferr-almox-painel')">📊 Painel do Líder</button>
-        <button class="sub-btn" onclick="navToSub('ferr-almox-acuracia')">📈 Acurácia</button>
         <button class="sub-btn" onclick="navToSub('ferr-almox-compras')">🛒 Pedidos de Compra</button>
         <button class="sub-btn" onclick="navToSub('ferr-almox-iup')">💰 IUP</button>
-        <button class="sub-btn" onclick="navToSub('ferr-almox-conf')">🔍 Conferência SAP x PRAXIO</button>
         <button class="sub-btn" onclick="navToSub('ferr-lubri')">🛢️ Relatório Lubrificação</button>
       </div>
       <div class="nav-section" id="sec-instrutor" style="display:none">Instrução / Monitoria</div>
@@ -1000,7 +998,7 @@ function navToSub(sub){
   S.subtela=sub;
   document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes(sub))b.classList.add('active')});
-  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-218':renderFerr218,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-almox-painel':renderAlmoxPainelLider,'ferr-almox-compras':renderAlmoxCompras,'ferr-almox-iup':renderAlmoxIUP,'ferr-almox-acuracia':renderAlmoxAcuracia,'ferr-almox-conf':renderAlmoxConferenciaSapPraxio,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'ferr-lubri':renderFerrLubri,'ferr-instrutor':renderFerrInstrutor,'ferr-monitor':renderFerrMonitor};
+  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-218':renderFerr218,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-almox-painel':renderAlmoxPainelLider,'ferr-almox-compras':renderAlmoxCompras,'ferr-almox-iup':renderAlmoxIUP,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'ferr-lubri':renderFerrLubri,'ferr-instrutor':renderFerrInstrutor,'ferr-monitor':renderFerrMonitor};
   if(map[sub]) map[sub]();
 }
 
@@ -1457,17 +1455,6 @@ async function renderAlmoxarifado(){
 
 // ── ALMOXARIFADO: helpers e novas telas ──────────────────────────────────────
 
-function almoxTabNav(tab,isLider){
-  const s=t=>`cursor:pointer;padding:8px 16px;border-radius:8px;font-family:'DM Sans',sans-serif;font-weight:800;font-size:13px;border:1px solid ${tab===t?'var(--blue)':'var(--border)'};${tab===t?'background:var(--blue);color:#fff':'background:var(--surface2);color:var(--text3)'}`;
-  const b=(t,ic,lb)=>`<button onclick="S._almoxTab='${t}';renderAlmoxarifado()" style="${s(t)}">${ic} ${lb}</button>`;
-  return`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">
-    ${b('kits','📦','Kits / Valetamento')}
-    ${b('inventario','📋','Inventários')}
-    ${isLider?b('painel','📊','Painel do Líder'):''}
-    ${isLider?b('compras','🛒','Pedidos de Compra'):''}
-  </div>`;
-}
-
 function almoxPainelBuscarPeriodo(){
   const ini=document.getElementById('almox-painel-data-ini')?.value;
   const fim=document.getElementById('almox-painel-data-fim')?.value;
@@ -1486,7 +1473,10 @@ async function renderAlmoxPainelLider(){
   const gid=getGid();
   setMain(`<div class="loading"><div class="spinner"></div></div>`);
   const isLider=['lider_suprimentos','lider_almoxarifado'].includes(S.perfil?.cargo)||S.perfil?.is_admin;
-  if(!isLider){setMain(`<div class="empty">Acesso restrito ao Líder</div>`);return;}
+  // Acurácia é visível a um público mais amplo (herdado da antiga tela própria) --
+  // as outras abas (Painel/SAP x PRAXIO/Recontagem) continuam só pro líder.
+  const podeVerAcuracia=isLider||['coordenador','supervisor','diretoria','gerente_garagem'].includes(S.perfil?.cargo);
+  if(!podeVerAcuracia){setMain(`<div class="empty">Acesso restrito ao Líder</div>`);return;}
   const hojeIso=hoje();
   const tz=opTimezone(gid);
   // Período do painel -- por padrão é "hoje", mas o líder pode escolher outro
@@ -1559,7 +1549,10 @@ async function renderAlmoxPainelLider(){
       <button onclick="S._almoxPainelAba='painel';renderAlmoxPainelLider()" style="cursor:pointer;padding:6px 18px;border-radius:20px;font-family:inherit;font-size:12px;font-weight:800;border:1px solid ${abaAtiva==='painel'?'var(--blue)':'var(--border)'};background:${abaAtiva==='painel'?'var(--blue)':'var(--surface2)'};color:${abaAtiva==='painel'?'#fff':'var(--text3)'}">📊 Painel</button>
       <button onclick="S._almoxPainelAba='conf';renderAlmoxPainelLider()" style="cursor:pointer;padding:6px 18px;border-radius:20px;font-family:inherit;font-size:12px;font-weight:800;border:1px solid ${abaAtiva==='conf'?'var(--blue)':'var(--border)'};background:${abaAtiva==='conf'?'var(--blue)':'var(--surface2)'};color:${abaAtiva==='conf'?'#fff':'var(--text3)'}">🔍 SAP x PRAXIO</button>
       <button onclick="S._almoxPainelAba='recontagem';renderAlmoxPainelLider()" style="cursor:pointer;padding:6px 18px;border-radius:20px;font-family:inherit;font-size:12px;font-weight:800;border:1px solid ${abaAtiva==='recontagem'?'var(--blue)':'var(--border)'};background:${abaAtiva==='recontagem'?'var(--blue)':'var(--surface2)'};color:${abaAtiva==='recontagem'?'#fff':'var(--text3)'}">🔁 Recontagem de Hoje</button>
+      <button onclick="S._almoxPainelAba='acuracia';renderAlmoxPainelLider()" style="cursor:pointer;padding:6px 18px;border-radius:20px;font-family:inherit;font-size:12px;font-weight:800;border:1px solid ${abaAtiva==='acuracia'?'var(--blue)':'var(--border)'};background:${abaAtiva==='acuracia'?'var(--blue)':'var(--surface2)'};color:${abaAtiva==='acuracia'?'#fff':'var(--text3)'}">📈 Acurácia</button>
     </div>`;
+  if(abaAtiva==='acuracia'){await renderAlmoxAcuraciaTab(gid,tabs);return;}
+  if(!isLider){setMain(`${secTitle('📊','Painel do Líder — Almoxarifado')}${tabs}<div class="empty">Acesso restrito ao Líder</div>`);return;}
   if(abaAtiva==='recontagem'){await renderAlmoxRecontagem(gid,tabs);return;}
   if(abaAtiva==='conf'){
     setMain(`
@@ -2567,12 +2560,8 @@ async function renderAlmoxIUP(){
 
 // ── Devolução de Peças ────────────────────────────────────────────────────────
 // ── ALMOXARIFADO: Painel de Acurácia ─────────────────────────────────────────
-async function renderAlmoxAcuracia(){
-  const gid=getGid();
-  setMain(`<div class="loading"><div class="spinner"></div></div>`);
-  const cargosAcesso=['lider_suprimentos','lider_almoxarifado','coordenador','supervisor','diretoria','gerente_garagem'];
-  const temAcesso=cargosAcesso.includes(S.perfil?.cargo)||S.perfil?.is_admin;
-  if(!temAcesso){setMain(`<div class="empty">Acesso restrito ao Líder de Suprimentos, Coordenador e Supervisor</div>`);return;}
+async function renderAlmoxAcuraciaTab(gid,tabs){
+  setMain(`${secTitle('📊','Painel do Líder — Almoxarifado')}${tabs}<div style="text-align:center;padding:40px;color:var(--text4)">⏳ Carregando...</div>`);
   const dias=S._acurDias||30;
   const almoxFiltro=S._acurAlmox||'todos';
   const dataCorte=new Date();
@@ -2625,13 +2614,13 @@ async function renderAlmoxAcuracia(){
   // Seletor de período
   const seletorDias=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;align-items:center">
     <span style="font-size:12px;font-weight:700;color:var(--text3)">Período:</span>
-    ${[7,15,30,60].map(d=>`<button onclick="S._acurDias=${d};renderAlmoxAcuracia()" style="cursor:pointer;padding:6px 14px;border-radius:7px;font-size:12px;font-weight:800;font-family:'DM Sans',sans-serif;border:1px solid ${dias===d?'var(--blue)':'var(--border)'};${dias===d?'background:var(--blue);color:#fff':'background:var(--surface2);color:var(--text3)'}">Últimos ${d}d</button>`).join('')}
+    ${[7,15,30,60].map(d=>`<button onclick="S._acurDias=${d};renderAlmoxPainelLider()" style="cursor:pointer;padding:6px 14px;border-radius:7px;font-size:12px;font-weight:800;font-family:'DM Sans',sans-serif;border:1px solid ${dias===d?'var(--blue)':'var(--border)'};${dias===d?'background:var(--blue);color:#fff':'background:var(--surface2);color:var(--text3)'}">Últimos ${d}d</button>`).join('')}
     <span style="font-size:12px;font-weight:700;color:var(--text3);margin-left:8px">Almoxarife:</span>
-    <select onchange="S._acurAlmox=this.value;renderAlmoxAcuracia()" style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 10px;font-size:12px;font-family:'DM Sans',sans-serif">
+    <select onchange="S._acurAlmox=this.value;renderAlmoxPainelLider()" style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 10px;font-size:12px;font-family:'DM Sans',sans-serif">
       <option value="todos" ${almoxFiltro==='todos'?'selected':''}>Todos</option>
       ${(perfisAlmox||[]).map(p=>`<option value="${p.id}" ${almoxFiltro===p.id?'selected':''}>${safe(p.nome)}</option>`).join('')}
     </select>
-    <button onclick="renderAlmoxAcuracia()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:7px 14px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">🔄</button>
+    <button onclick="renderAlmoxPainelLider()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:7px 14px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">🔄</button>
   </div>`;
   // Tabela de confronto
   const hdrGrid='display:grid;grid-template-columns:1fr 130px 130px 100px 100px;gap:8px;align-items:center';
@@ -2684,8 +2673,8 @@ async function renderAlmoxAcuracia(){
     </div>`;
   }).join('');
   setMain(`
-    ${secTitle('📈','Acurácia — Inventários Almoxarifado')}
-    <button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>
+    ${secTitle('📈','Painel do Líder — Almoxarifado')}
+    ${tabs}
     ${seletorDias}
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:24px">
       ${kpiCard('Acurácia Rotativo',acurRotMedia!=null?acurRotMedia+'%':'—',`${rotComAcur.length} contagem(ns)`,acurRotMedia!=null&&acurRotMedia<95)}
@@ -4077,13 +4066,11 @@ function renderFerramentas(){
     'ferr-lav-lavador':'Sua lista de lavagem do dia. Marque cada carro ao concluir.',
     'ferr-ctrl':'Status consolidado da oficina e do pátio. Liberado = pronto para soltura.',
     'ferr-almox':'Cestos de valetamento agrupados por carro. Almoxarifado codifica, separa, nega ou atualiza chegada.',
-    'ferr-almox-painel':'Visão consolidada do Líder de Almoxarifado: solicitações, metas e performance do turno.',
+    'ferr-almox-painel':'Painel do Líder de Almoxarifado: divergências, Cruzamento SAP x PRAXIO, Recontagem de Hoje e Acurácia — tudo em abas.',
     'ferr-almox-compras':'Acompanhamento de pedidos de compra: status, FUP com a Matriz e prazo de entrega.',
     'ferr-almox-iup':'Dashboard financeiro de peças: custo total por veículo e tipo de OS. Fonte PRAXIO.',
-    'ferr-almox-acuracia':'Painel de acurácia dos inventários: confronto entre a contagem de quem separou e a conferência cega do turno seguinte.',
     'ferr-211':'Todos os veículos parados com tempo, status e previsão. Alerta automático de vencimento.',
     'ferr-212':'Disponibilidade, MTTR, OS por tipo e ranking de mecânicos. Atualizado em tempo real.',
-    'ferr-almox-conf':'Motor comparativo SAP x PRAXIO: carregue os arquivos, processe no browser e grave apenas os desvios no sistema.',
   };
 
   const tools=FERRAMENTAS_DEF.filter(f=>temAcessoFerr(f.id)&&f.id!=='ferr-lav-lavador'||isLavador()&&f.id==='ferr-lav-lavador');
@@ -4130,8 +4117,6 @@ function atualizarSubmenuFerramentas(){
     'ferr-almox-painel':'📊 Painel do Líder',
     'ferr-almox-compras':'🛒 Pedidos de Compra',
     'ferr-almox-iup':'💰 IUP',
-    'ferr-almox-acuracia':'📈 Acurácia',
-    'ferr-almox-conf':'🔍 Conferência SAP x PRAXIO',
   };
   const subFerr=document.getElementById('sub-ferr');
   if(!subFerr) return;
@@ -4141,56 +4126,6 @@ function atualizarSubmenuFerramentas(){
     const match=onclick.match(/'(ferr-[^']+)'/);
     if(match) btn.style.display=temAcessoFerr(match[1])?'':'none';
   });
-}
-
-// ── CONFERÊNCIA SAP x PRAXIO — motor browser-side ──────────
-function renderAlmoxConferenciaSapPraxio(){
-  const cargo=S.perfil?.cargo;
-  const podeGravar=['lider_almoxarifado','lider_suprimentos'].includes(cargo)||S.perfil?.is_admin;
-  setMain(`
-    ${secTitle('🔍','Conferência SAP x PRAXIO')}
-    <button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>
-    <div class="info-blue info-banner" style="margin-bottom:16px">📌 Os arquivos são processados diretamente no navegador. Apenas os itens com desvio são gravados no sistema.</div>
-
-    <!-- Upload -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
-        <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">📊 Arquivo SAP (Excel)</div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:8px">Relatório: <em>Valor do Estoque por Dia e Filial</em></div>
-        <input type="file" id="conf-sap-file" accept=".xlsx,.xls" style="display:none" onchange="confSapFileChanged(this)">
-        <button class="btn-sec" onclick="document.getElementById('conf-sap-file').click()" style="width:100%">📁 Selecionar arquivo SAP</button>
-        <div id="conf-sap-status" style="margin-top:8px;font-size:11px;color:var(--text4)">Nenhum arquivo selecionado</div>
-      </div>
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
-        <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">📋 Arquivo PRAXIO (CSV)</div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:8px">Relatório: <em>Posição de Estoque</em></div>
-        <input type="file" id="conf-praxio-file" accept=".csv,.CSV" style="display:none" onchange="confPraxioFileChanged(this)">
-        <button class="btn-sec" onclick="document.getElementById('conf-praxio-file').click()" style="width:100%">📁 Selecionar arquivo PRAXIO</button>
-        <div id="conf-praxio-status" style="margin-top:8px;font-size:11px;color:var(--text4)">Nenhum arquivo selecionado</div>
-      </div>
-    </div>
-
-    <!-- Diagnóstico de código -->
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <span style="font-size:11px;color:var(--text3);font-weight:700;white-space:nowrap">🔍 Verificar código no PRAXIO:</span>
-      <input id="conf-diag-cod" type="text" placeholder="Ex: 30027329" onkeydown="if(event.key==='Enter')confBuscarCodigo()" style="font-family:'DM Mono',monospace;padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;width:130px;outline:none">
-      <button onclick="confBuscarCodigo()" class="btn-sec" style="padding:5px 12px;font-size:11px">Buscar</button>
-      <div id="conf-diag-res" style="font-size:11px;color:var(--text3);flex:1;min-width:180px;max-height:80px;overflow-y:auto"></div>
-    </div>
-
-    <div style="display:flex;gap:10px;align-items:center;margin-bottom:20px">
-      <button id="conf-proc-btn" class="btn-success" onclick="confProcessar()" disabled style="min-width:160px">⚙️ Processar</button>
-      <button id="conf-save-btn" class="btn-add" onclick="confSalvarSupabase()" disabled style="min-width:200px;display:none">💾 Salvar Desvios no Sistema</button>
-      <span id="conf-save-status" style="font-size:12px;color:var(--text3)"></span>
-    </div>
-
-    <!-- Resultados -->
-    <div id="conf-resultado"></div>
-  `);
-  window._confSapData=null;
-  window._confPraxioData=null;
-  window._confDesvios=null;
-  window._confDataRef=null;
 }
 
 // Normaliza código: remove espaços, tabs e chars invisíveis para comparação segura
