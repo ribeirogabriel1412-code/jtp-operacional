@@ -488,6 +488,7 @@ tr:hover td{background:#1F293780}
 
 <!-- Modal Saída 2.10 -->
 <div class="modal-ov" id="modal-alm" style="display:none" onclick="if(event.target===this)closeM('modal-alm')"><div class="modal" style="max-width:560px;max-height:88vh;overflow-y:auto"><div class="modal-title"><span id="modal-alm-title">Almoxarifado</span><button class="btn-x" onclick="closeM('modal-alm')">✕</button></div><div id="modal-alm-body"></div></div></div>
+<div class="modal-ov" id="modal-r33" style="display:none" onclick="if(event.target===this)closeM('modal-r33')"><div class="modal" style="max-width:520px;max-height:88vh;overflow-y:auto"><div class="modal-title"><span id="modal-r33-title">👣 3.3</span><button class="btn-x" onclick="closeM('modal-r33')">✕</button></div><div id="modal-r33-body"></div></div></div>
 <div class="modal-ov" id="modal-saida" style="display:none" onclick="if(event.target===this)closeM('modal-saida')">
   <div class="modal" style="max-width:440px">
     <div class="modal-title">
@@ -4142,9 +4143,9 @@ async function renderFerrOpFechamento(){
   const[{data:abList},{data:avList},{data:sosList},{data:trocasList},{data:dobrasList},{data:absList},{data:lavList}]=await Promise.all([
     sb.from('abastecimento_checklist').select('prefixo,horario').eq('garagem_id',gid).eq('data',dRef),
     sb.from('avarias_recolha').select('id,prefixo,status,itens_nok,data_recolha,plantao_nome,horario_real').eq('garagem_id',gid).eq('data_recolha',dRef),
-    sb.from('plantao_sos').select('id,tipo,prefixo,motorista,linha,km,problema,status,decisao,decisao_detalhe,resolucao,plantao_nome,tratativa_pcm,tratativa_pcm_por,created_at').eq('garagem_id',gid).eq('data',dRef).order('created_at',{ascending:false}),
-    sb.from('plantao_trocas').select('tipo,prefixo,linha,original,substituto,motivo,created_at').eq('garagem_id',gid).eq('data',dRef).order('created_at',{ascending:false}),
-    sb.from('plantao_dobras').select('motorista,prefixo,linha,motivo,created_at').eq('garagem_id',gid).eq('data',dRef).order('created_at',{ascending:false}),
+    sb.from('plantao_sos').select('id,tipo,prefixo,motorista,linha,km,problema,status,decisao,decisao_detalhe,resolucao,plantao_nome,tratativa_pcm,tratativa_pcm_por,tratativa_pcm_em,created_at').eq('garagem_id',gid).eq('data',dRef).order('created_at',{ascending:false}),
+    sb.from('plantao_trocas').select('id,tipo,prefixo,linha,original,substituto,motivo,tratativa,tratativa_por,tratativa_em,created_at').eq('garagem_id',gid).eq('data',dRef).order('created_at',{ascending:false}),
+    sb.from('plantao_dobras').select('id,motorista,prefixo,linha,motivo,tratativa,tratativa_por,tratativa_em,created_at').eq('garagem_id',gid).eq('data',dRef).order('created_at',{ascending:false}),
     sb.from('plantao_absenteismo').select('motorista,prefixo,linha,motivo,cobertura,created_at').eq('garagem_id',gid).eq('data',dRef).order('created_at',{ascending:false}),
     sb.from('checklist_lavagem').select('status,tipo_lavagem,prefixo,validado_patio').eq('garagem_id',gid).eq('data',dRef).not('status','in','("cancelado","arquivado")'),
   ]);
@@ -4178,6 +4179,18 @@ async function renderFerrOpFechamento(){
 
   const empty=(msg)=>`<div style="font-size:13px;color:var(--text4);text-align:center;padding:16px 0;background:var(--surface);border:1px dashed var(--border);border-radius:10px">${msg}</div>`;
 
+  const tratBlock=(tabela,id,val,por,em,idPrefix)=>{
+    const elId=`${idPrefix}-${id}`;
+    return`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border2)">
+      <label class="fl" style="margin-bottom:4px">Tratativa</label>
+      <textarea id="${elId}" placeholder="O que foi feito / combinado sobre isso..." rows="2" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;font-family:inherit;resize:vertical">${escHtml(val||'')}</textarea>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;flex-wrap:wrap;gap:6px">
+        <span style="font-size:11px;color:${val?'var(--green)':'var(--text3)'}">${val?'✅ '+escHtml(por||'—')+(em?' · '+new Date(em).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''):'Sem tratativa registrada'}</span>
+        <button onclick="opFechSalvarTrat('${tabela}','${id}','${elId}')" style="padding:6px 12px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-size:11px;font-weight:700;cursor:pointer">💬 Salvar</button>
+      </div>
+    </div>`;
+  };
+
   const TIPO_SOS_LBL={sos:'SOS',ra:'RA'};
   const DECISAO_LBL={segue_rodando:'Segue rodando',troca_carro:'Troca de carro',troca_motorista:'Troca de motorista',aciona_pcm:'Aciona PCM',outro:'Outro'};
   const sosCards=sos.map(s=>{
@@ -4194,7 +4207,7 @@ async function renderFerrOpFechamento(){
       <div style="font-size:12px;color:var(--text3);margin-bottom:4px">${escHtml(s.motorista||'—')}${s.linha?' · '+escHtml(s.linha):''} · registrado por ${escHtml(s.plantao_nome||'—')}</div>
       <div style="font-size:13px;color:var(--text2)"><b>Problema:</b> ${escHtml(s.problema||'—')}</div>
       ${s.decisao?`<div style="font-size:12px;color:var(--text3);margin-top:4px"><b>Decisão do plantão:</b> ${DECISAO_LBL[s.decisao]||s.decisao}${s.decisao_detalhe?' — '+escHtml(s.decisao_detalhe):''}</div>`:''}
-      ${s.tratativa_pcm?`<div style="font-size:12px;color:var(--text3);margin-top:4px"><b>Tratativa PCM:</b> ${escHtml(s.tratativa_pcm)}${s.tratativa_pcm_por?' — '+escHtml(s.tratativa_pcm_por):''}</div>`:''}
+      ${tratBlock('plantao_sos',s.id,s.tratativa_pcm,s.tratativa_pcm_por,s.tratativa_pcm_em,'op-trat-sos')}
     </div>`;
   }).join('');
 
@@ -4212,6 +4225,7 @@ async function renderFerrOpFechamento(){
       <span style="font-size:10px;font-weight:700;color:var(--amber);background:#F59E0B20;padding:2px 8px;border-radius:20px">${PLANTAO_DOBRA_MOTIVO[r.motivo]||r.motivo||'—'}</span>
     </div>
     <div style="font-size:11px;color:var(--text3)">${r.prefixo?escHtml(r.prefixo)+' · ':''}${r.linha?escHtml(r.linha):''}</div>
+    ${tratBlock('plantao_dobras',r.id,r.tratativa,r.tratativa_por,r.tratativa_em,'op-trat-dobra')}
   </div>`).join('');
 
   const trocaCard=(t)=>{
@@ -4225,6 +4239,7 @@ async function renderFerrOpFechamento(){
       </div>
       <div style="font-size:10px;color:var(--text4);margin-bottom:2px">${t.linha?escHtml(t.linha):''}</div>
       <div style="font-size:12px;color:var(--text3)">${escHtml(t.original||'—')} → ${escHtml(t.substituto||'—')}</div>
+      ${tratBlock('plantao_trocas',t.id,t.tratativa,t.tratativa_por,t.tratativa_em,'op-trat-troca')}
     </div>`;
   };
 
@@ -4303,6 +4318,26 @@ function opFechNav(delta){
   const novo=opAddDays(cur,delta);
   if(novo>hoje())return;
   S._opFechData=novo;
+  renderFerrOpFechamento();
+}
+
+const OP_FECH_TRAT_CAMPOS={
+  plantao_sos:{campo:'tratativa_pcm',por:'tratativa_pcm_por',em:'tratativa_pcm_em'},
+  plantao_trocas:{campo:'tratativa',por:'tratativa_por',em:'tratativa_em'},
+  plantao_dobras:{campo:'tratativa',por:'tratativa_por',em:'tratativa_em'},
+};
+async function opFechSalvarTrat(tabela,id,elId){
+  const val=document.getElementById(elId)?.value?.trim();
+  if(!val){toast('Escreva a tratativa antes de salvar','err');return;}
+  const cfg=OP_FECH_TRAT_CAMPOS[tabela];
+  if(!cfg)return;
+  const payload={};
+  payload[cfg.campo]=val;
+  payload[cfg.por]=S.perfil?.nome||null;
+  payload[cfg.em]=new Date().toISOString();
+  const{error}=await sb.from(tabela).update(payload).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast('✅ Tratativa registrada!');
   renderFerrOpFechamento();
 }
 
@@ -15058,6 +15093,9 @@ async function ck33BuscarRec(gid,data,turno,rodada){
   const found=(nullRecs||[]).find(r=>Object.keys(r.dados?.respostas||{}).some(k=>k.startsWith(pref)))||null;
   return{data:found,error:null};
 }
+function ronda33StatusBtnsHtml(selecionado){
+  return ['ok','nok','na'].map(v=>{const ativo=selecionado===v;return `<button type="button" onclick="document.getElementById('r33m-status').value='${v}';document.querySelectorAll('[data-r33mst]').forEach(b=>{b.style.borderColor='var(--border)';b.style.background='var(--surface2)';b.style.color='var(--text)'});this.style.borderColor='var(--blue)';this.style.background='#2563EB18';this.style.color='var(--blue)'" data-r33mst style="flex:1;padding:12px;border-radius:9px;border:1px solid ${ativo?'var(--blue)':'var(--border)'};background:${ativo?'#2563EB18':'var(--surface2)'};color:${ativo?'var(--blue)':'var(--text)'};font-weight:900;font-family:inherit;cursor:pointer">${v.toUpperCase()}</button>`;}).join('');
+}
 async function editarItemRonda33Site(rodada,itemId){
   const ref=ronda33BuscaItemSite(itemId);
   if(!ref){toast('Item não encontrado','err');return;}
@@ -15066,17 +15104,37 @@ async function editarItemRonda33Site(rodada,itemId){
   const atual=await ck33BuscarRec(gid,data,turno,rodada);
   if(atual.error){toast('Erro: '+atual.error.message,'err');return;}
   const rec=atual.data||{dados:{respostas:{},resumos:{}}};
+  const anterior=rec.dados?.respostas?.[itemId]||{};
+  document.getElementById('modal-r33-title').innerHTML=`👣 ${escHtml(ref.setor.nome)}`;
+  document.getElementById('modal-r33-body').innerHTML=`
+    <div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:14px">${escHtml(ref.it[1])}</div>
+    <label class="campo-label">Status</label>
+    <div style="display:flex;gap:8px;margin:6px 0 16px">${ronda33StatusBtnsHtml(anterior.status||'')}</div>
+    <input type="hidden" id="r33m-status" value="${escHtml(anterior.status||'')}">
+    <label class="campo-label">Registro do líder / evidência</label>
+    <textarea id="r33m-obs" class="fi" rows="4" style="width:100%;margin-top:6px;resize:vertical">${escHtml(ronda33RegistroLider(anterior))}</textarea>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
+      <button class="btn-sec" onclick="closeM('modal-r33')">Cancelar</button>
+      <button class="btn-success" onclick="salvarEditarLider33(${rodada},'${itemId}')">💾 Salvar</button>
+    </div>`;
+  document.getElementById('modal-r33').style.display='flex';
+}
+async function salvarEditarLider33(rodada,itemId){
+  const status=(document.getElementById('r33m-status')?.value||'').trim().toLowerCase();
+  if(!['ok','nok','na',''].includes(status)){toast('Status inválido','err');return;}
+  const obs=(document.getElementById('r33m-obs')?.value||'').trim();
+  const gid=getGid(), data=S._r33Data||ronda33DataPadrao(), turno=S._r33Turno||S.turno||turnoOperacionalAtual();
+  const atual=await ck33BuscarRec(gid,data,turno,rodada);
+  if(atual.error){toast('Erro: '+atual.error.message,'err');return;}
+  const rec=atual.data||{dados:{respostas:{},resumos:{}}};
   const dados=rec.dados||{respostas:{},resumos:{}};
   dados.respostas=dados.respostas||{};
   const anterior=dados.respostas[itemId]||{};
-  const status=(prompt(`Status do item:\n${ref.it[1]}\n\nDigite: ok, nok ou na`,anterior.status||'')||'').trim().toLowerCase();
-  if(!['ok','nok','na',''].includes(status)){toast('Status inválido. Use ok, nok ou na','err');return;}
-  const obs=prompt('Registro do líder / evidência:',ronda33RegistroLider(anterior)||'');
-  if(obs===null)return;
-  dados.respostas[itemId]={...anterior,status,obs:obs.trim(),registro_lider:obs.trim(),por:S.perfil?.nome||anterior.por||'',cargo:S.perfil?.cargo||anterior.cargo||'',em:new Date().toISOString()};
+  dados.respostas[itemId]={...anterior,status,obs,registro_lider:obs,por:S.perfil?.nome||anterior.por||'',cargo:S.perfil?.cargo||anterior.cargo||'',em:new Date().toISOString()};
   const payload={garagem_id:gid,data,turno,rodada,dados,status:'em_andamento',preenchido_por:S.perfil?.nome||null,preenchido_em:new Date().toISOString()};
   const res=rec.id?await sb.from('checklist_33').update(payload).eq('id',rec.id):await sb.from('checklist_33').upsert(payload,{onConflict:'garagem_id,data,turno,rodada'});
   if(res.error){toast('Erro: '+res.error.message,'err');return;}
+  closeM('modal-r33');
   toast('Item atualizado');renderFerr33();
 }
 async function gerarRelatorio33(){
@@ -15202,6 +15260,37 @@ async function submeterSetor33(setor,rodada,data,turno,gid){
   renderFerr33();
 }
 async function salvarVerificacao33(rodada,itemId,valor){
+  if(!valor){await ronda33PersistirVerificacao(rodada,itemId,false,'');return;}
+  const gid=getGid(), data=S._r33Data||ronda33DataPadrao(), turno=S._r33Turno||S.turno||turnoOperacionalAtual();
+  const atual=await ck33BuscarRec(gid,data,turno,rodada);
+  if(atual.error){toast('Erro: '+atual.error.message,'err');return;}
+  const rec=atual.data||{dados:{respostas:{},resumos:{}}};
+  const anterior=rec.dados?.respostas?.[itemId]||{};
+  const ref=ronda33BuscaItemSite(itemId);
+  const pergunta=anterior.status==='nok'?'Resposta / tratativa do coordenador para este NOK':'Observação de validação do coordenador/supervisor';
+  document.getElementById('modal-r33-title').innerHTML=`✔️ Tratar / validar`;
+  document.getElementById('modal-r33-body').innerHTML=`
+    <div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:6px">${escHtml(ref?.it?.[1]||'')}</div>
+    <div style="margin-bottom:14px;display:flex;align-items:center;gap:8px">${ronda33Badge(anterior.status)}<span style="color:var(--text3);font-size:12px">${escHtml(ronda33RegistroLider(anterior)||'Sem registro do líder')}</span></div>
+    <label class="campo-label">${pergunta}</label>
+    <textarea id="r33m-trat" class="fi" rows="4" style="width:100%;margin-top:6px;resize:vertical">${escHtml(ronda33TratativaCoord(anterior))}</textarea>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
+      <button class="btn-sec" onclick="closeM('modal-r33')">Cancelar</button>
+      <button class="btn-success" onclick="confirmarVerificacao33(${rodada},'${itemId}')">✔️ Validar</button>
+    </div>`;
+  document.getElementById('modal-r33').style.display='flex';
+}
+async function confirmarVerificacao33(rodada,itemId){
+  const tratativa=(document.getElementById('r33m-trat')?.value||'').trim();
+  const gid=getGid(), data=S._r33Data||ronda33DataPadrao(), turno=S._r33Turno||S.turno||turnoOperacionalAtual();
+  const atual=await ck33BuscarRec(gid,data,turno,rodada);
+  if(atual.error){toast('Erro: '+atual.error.message,'err');return;}
+  const anterior=atual.data?.dados?.respostas?.[itemId]||{};
+  if(anterior.status==='nok'&&!tratativa){toast('NOK precisa da resposta/tratativa do coordenador para validar','err');return;}
+  closeM('modal-r33');
+  await ronda33PersistirVerificacao(rodada,itemId,true,tratativa);
+}
+async function ronda33PersistirVerificacao(rodada,itemId,valor,tratativa){
   const gid=getGid(), data=S._r33Data||ronda33DataPadrao(), turno=S._r33Turno||S.turno||turnoOperacionalAtual();
   const atual=await ck33BuscarRec(gid,data,turno,rodada);
   if(atual.error){toast('Erro: '+atual.error.message,'err');return;}
@@ -15209,14 +15298,6 @@ async function salvarVerificacao33(rodada,itemId,valor){
   const dados=rec.dados||{respostas:{},resumos:{}};
   dados.respostas=dados.respostas||{};
   const anterior=dados.respostas[itemId]||{};
-  let tratativa=ronda33TratativaCoord(anterior);
-  if(valor){
-    const pergunta=anterior.status==='nok'?'Resposta / tratativa do coordenador para este NOK:':'Observação de validação do coordenador/supervisor:';
-    const txt=prompt(pergunta,tratativa||'');
-    if(txt===null)return;
-    tratativa=txt.trim();
-    if(anterior.status==='nok'&&!tratativa){toast('NOK precisa da resposta/tratativa do coordenador para validar','err');return;}
-  }
   const quemTratou=valor?(S.perfil?.nome||null):anterior.tratativa_por;
   const quandoTratou=valor?new Date().toISOString():anterior.tratativa_em;
   dados.respostas[itemId]={
@@ -20195,9 +20276,11 @@ async function _pcmValidarPeca(id,checked){
 
 async function renderFerrPCMSos(back,tabs,gid){
   const{data:lista}=await sb.from('plantao_sos').select('*').eq('garagem_id',gid).order('created_at',{ascending:false}).limit(200);
+  const porData=(a,b)=>new Date(b.created_at)-new Date(a.created_at);
   window._pcmSosLista=lista||[];
-  const abertos=window._pcmSosLista.filter(s=>s.status==='aberto');
-  const encerrados=window._pcmSosLista.filter(s=>s.status!=='aberto');
+  // Fica pendente pro PCM até ter tratativa salva, mesmo que o plantão já tenha encerrado o SOS/RA
+  const pendentes=window._pcmSosLista.filter(s=>!s.tratativa_pcm).sort(porData);
+  const tratados=window._pcmSosLista.filter(s=>!!s.tratativa_pcm).sort(porData);
 
   const TIPO_COR={sos:'var(--red)',ra:'var(--blue)'};
   const TIPO_LBL={sos:'SOS',ra:'RA'};
@@ -20207,7 +20290,7 @@ async function renderFerrPCMSos(back,tabs,gid){
   const cardSos=s=>{
     const cor=TIPO_COR[s.tipo]||'var(--red)';
     const tratado=!!s.tratativa_pcm;
-    return`<div style="border:1px solid ${s.status==='aberto'&&!tratado?'#EF444440':'var(--border)'};border-radius:12px;padding:16px;margin-bottom:12px;background:var(--surface)">
+    return`<div style="border:1px solid ${!tratado?'#EF444440':'var(--border)'};border-radius:12px;padding:16px;margin-bottom:12px;background:var(--surface)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:10px;font-weight:800;color:#fff;background:${cor};padding:2px 8px;border-radius:6px">${TIPO_LBL[s.tipo]||'SOS'}</span>
@@ -20231,10 +20314,10 @@ async function renderFerrPCMSos(back,tabs,gid){
 
   setMain(`${back}${tabs}
     ${secTitle('🆘','SOS / RA do Plantão')}
-    <div style="font-size:13px;font-weight:800;color:var(--red);margin-bottom:10px">Abertos · ${abertos.length}</div>
-    ${abertos.length?abertos.map(cardSos).join(''):'<div style="font-size:13px;color:var(--text4);text-align:center;padding:16px 0">Nenhum SOS/RA aberto</div>'}
-    <div style="font-size:13px;font-weight:800;color:var(--text3);margin:18px 0 10px">Encerrados (últimos 200) · ${encerrados.length}</div>
-    ${encerrados.length?encerrados.map(cardSos).join(''):'<div style="font-size:13px;color:var(--text4);text-align:center;padding:16px 0">Nenhum SOS/RA encerrado</div>'}
+    <div style="font-size:13px;font-weight:800;color:var(--red);margin-bottom:10px">Pendentes de tratativa PCM · ${pendentes.length}</div>
+    ${pendentes.length?pendentes.map(cardSos).join(''):'<div style="font-size:13px;color:var(--text4);text-align:center;padding:16px 0">Nenhum SOS/RA pendente</div>'}
+    <div style="font-size:13px;font-weight:800;color:var(--text3);margin:18px 0 10px">Tratados pelo PCM (últimos 200) · ${tratados.length}</div>
+    ${tratados.length?tratados.map(cardSos).join(''):'<div style="font-size:13px;color:var(--text4);text-align:center;padding:16px 0">Nenhum SOS/RA tratado ainda</div>'}
   `);
 }
 
