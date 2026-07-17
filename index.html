@@ -4073,7 +4073,7 @@ function renderFerramentas(){
     'ferr-almox-iup':'Dashboard financeiro de peças: custo total por veículo e tipo de OS. Fonte PRAXIO.',
     'ferr-211':'Todos os veículos parados com tempo, status e previsão. Alerta automático de vencimento.',
     'ferr-212':'Disponibilidade, MTTR, OS por tipo e ranking de mecânicos. Atualizado em tempo real.',
-    'ferr-op-fechamento':'Consolidado do turno do plantão por dia: SOS/RA, faltas, trocas de carro e motorista, dobras, lavagem e recolha/abastecimento.',
+    'ferr-op-fechamento':'Consolidado do turno do plantão por dia: SOS/RA, faltas, trocas de carro e motorista, dobras, lavagem e abastecimento.',
   };
 
   const tools=FERRAMENTAS_DEF.filter(f=>temAcessoFerr(f.id)&&f.id!=='ferr-lav-lavador'||isLavador()&&f.id==='ferr-lav-lavador');
@@ -4139,8 +4139,7 @@ async function renderFerrOpFechamento(){
   const dRef=S._opFechData||opAddDays(hoje(),-1);
   S._opFechData=dRef;
 
-  const[{data:recList},{data:abList},{data:avList},{data:sosList},{data:trocasList},{data:dobrasList},{data:absList},{data:lavList}]=await Promise.all([
-    sb.from('recolha_checklist').select('prefixo,horario_real,status,linha,tabela,motorista').eq('garagem_id',gid).eq('data_recolha',dRef),
+  const[{data:abList},{data:avList},{data:sosList},{data:trocasList},{data:dobrasList},{data:absList},{data:lavList}]=await Promise.all([
     sb.from('abastecimento_checklist').select('prefixo,horario').eq('garagem_id',gid).eq('data',dRef),
     sb.from('avarias_recolha').select('id,prefixo,status,itens_nok,data_recolha,plantao_nome,horario_real').eq('garagem_id',gid).eq('data_recolha',dRef),
     sb.from('plantao_sos').select('id,tipo,prefixo,motorista,linha,km,problema,status,decisao,decisao_detalhe,resolucao,plantao_nome,tratativa_pcm,tratativa_pcm_por,created_at').eq('garagem_id',gid).eq('data',dRef).order('created_at',{ascending:false}),
@@ -4150,7 +4149,7 @@ async function renderFerrOpFechamento(){
     sb.from('checklist_lavagem').select('status,tipo_lavagem,prefixo,validado_patio').eq('garagem_id',gid).eq('data',dRef).not('status','in','("cancelado","arquivado")'),
   ]);
 
-  const rec=recList||[],ab=abList||[],av=avList||[],sos=sosList||[],trocas=trocasList||[],dobras=dobrasList||[],abs_=absList||[],lav=lavList||[];
+  const ab=abList||[],av=avList||[],sos=sosList||[],trocas=trocasList||[],dobras=dobrasList||[],abs_=absList||[],lav=lavList||[];
 
   const PLANTAO_ABS_MOTIVO={falta_injustificada:'Falta injustificada',atestado:'Atestado',atraso:'Atraso',outro:'Outro'};
   const PLANTAO_DOBRA_MOTIVO={cobertura_falta:'Cobertura de falta',reforco:'Reforço',outro:'Outro'};
@@ -4158,7 +4157,7 @@ async function renderFerrOpFechamento(){
   const PLANTAO_TROCA_CARRO_MOTIVO={quebra_avaria:'Quebra/Avaria',preventiva:'Preventiva',acidente:'Acidente',outro:'Outro'};
   const PLANTAO_TROCA_MOT_MOTIVO={falta:'Falta',atraso:'Atraso',acidente:'Acidente',outro:'Outro'};
 
-  const totRec=rec.length,totAb=ab.length,totAv=av.length;
+  const totAb=ab.length,totAv=av.length;
   const totSos=sos.length,sosAbertos=sos.filter(s=>s.status==='aberto').length;
   const trocaCarro=trocas.filter(t=>t.tipo==='carro'),trocaMot=trocas.filter(t=>t.tipo==='motorista');
   const totDobras=dobras.length,totFaltas=abs_.length;
@@ -4236,18 +4235,6 @@ async function renderFerrOpFechamento(){
     <span style="font-size:11px;font-weight:700;color:${l.status==='executado'?'var(--green)':'var(--red)'}">${l.status==='executado'?'✅ Lavado'+(l.validado_patio?' · 🏆':''):'❌ Não realizado'}</span>
   </div>`).join('');
 
-  const abMap={};ab.forEach(a=>{abMap[a.prefixo]=a;});
-  const vehicleSet=[...new Set(rec.map(r=>r.prefixo))].sort();
-  const recCards=vehicleSet.map(p=>{
-    const r=rec.find(x=>x.prefixo===p);
-    const a=abMap[p];
-    return`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 12px;border-bottom:1px solid var(--border2);gap:8px;flex-wrap:wrap">
-      <span style="font-family:'DM Mono',monospace;font-weight:700;font-size:13px">${escHtml(p)}${r?.status==='avaria'?' <span style="color:var(--red)">⚠️</span>':''}</span>
-      <span style="font-size:11px;color:var(--text3)">${r?.linha?escHtml(r.linha)+' · ':''}${escHtml(r?.motorista||'—')}</span>
-      <span style="font-size:11px;color:var(--text3)">🔑 ${r?.horario_real||'—'} ${a?'· ⛽ '+a.horario:'· ⛽ pendente'}</span>
-    </div>`;
-  }).join('');
-
   const avCards=av.map(a=>{
     const cor=a.status==='em_analise'?'var(--amber)':a.status==='resolvido'?'var(--green)':'var(--red)';
     const nok=(a.itens_nok||[]);
@@ -4274,7 +4261,6 @@ async function renderFerrOpFechamento(){
     </div>
 
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px">
-      ${kpi('🔑','Recolhas',totRec)}
       ${kpi('⛽','Abastecimentos',totAb)}
       ${kpi('🚿','Lavados',lavT?lavE+'/'+lavT:'—',lavE===lavT&&lavT>0?'var(--green)':'var(--blue)')}
       ${kpi('⚠️','Avarias',totAv,totAv?'var(--red)':'var(--green)')}
@@ -4301,9 +4287,6 @@ async function renderFerrOpFechamento(){
 
     ${secH('🚿','Lavagem',lavT?lavE+'/'+lavT+' executados':null,lavE===lavT&&lavT>0?'var(--green)':'var(--blue)')}
     ${lavT?`<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">${lavCards}</div>`:empty('Sem programação de lavagem neste dia')}
-
-    ${secH('🔑','Recolha & Abastecimento',vehicleSet.length?vehicleSet.length+' veículo(s)':null,null)}
-    ${vehicleSet.length?`<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">${recCards}</div>`:empty('Nenhuma recolha registrada neste dia')}
 
     ${secH('⚠️','Avarias na Recolha',totAv||null,'var(--red)')}
     ${avCards||empty('Nenhuma avaria registrada neste dia')}
