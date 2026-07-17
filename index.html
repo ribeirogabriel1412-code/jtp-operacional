@@ -294,6 +294,7 @@ tr:hover td{background:#1F293780}
         <button class="sub-btn" onclick="navToSub('ferr-22')">🔧 Painel do Manutentor</button>
         <button class="sub-btn" onclick="navToSub('ferr-211')">🔴 2.11 Carros Indisponíveis</button>
         <button class="sub-btn" onclick="navToSub('ferr-218')">🆘 2.18 SOS Recolha</button>
+        <button class="sub-btn" onclick="navToSub('ferr-op-fechamento')">📊 Fechamento do Plantão</button>
         <button class="sub-btn" onclick="navToSub('ferr-212')">📊 2.12 Indicadores Técnicos</button>
         <button class="sub-btn" onclick="navToSub('ferr-lav')">🧼 3.2 Checklist Lavagem</button>
         <button class="sub-btn" onclick="navToSub('ferr-33')">👣 3.3 Ronda Operacional</button>
@@ -998,7 +999,7 @@ function navToSub(sub){
   S.subtela=sub;
   document.querySelectorAll('.sub-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.sub-btn').forEach(b=>{if(b.getAttribute('onclick')?.includes(sub))b.classList.add('active')});
-  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-218':renderFerr218,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-almox-painel':renderAlmoxPainelLider,'ferr-almox-compras':renderAlmoxCompras,'ferr-almox-iup':renderAlmoxIUP,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'ferr-lubri':renderFerrLubri,'ferr-instrutor':renderFerrInstrutor,'ferr-monitor':renderFerrMonitor};
+  const map={'ferr-210':renderFerr210,'ferr-22':renderFerr22,'ferr-pcm':renderFerrPCM,'ferr-prev':renderFerrPrev,'ferr-211':renderFerr211,'ferr-212':renderFerr212,'ferr-218':renderFerr218,'ferr-op-fechamento':renderFerrOpFechamento,'ferr-lav':renderFerrLav,'ferr-lav-lavador':renderFerrLavLavador,'ferr-rotina':renderFerrRotina,'ferr-ctrl':renderFerrCtrl,'ferr-almox':renderAlmoxarifado,'ferr-almox-painel':renderAlmoxPainelLider,'ferr-almox-compras':renderAlmoxCompras,'ferr-almox-iup':renderAlmoxIUP,'ferr-33':renderFerr33,'ferr-21':renderFerr21,'ferr-26':renderFerr26,'ferr-lubri':renderFerrLubri,'ferr-instrutor':renderFerrInstrutor,'ferr-monitor':renderFerrMonitor};
   if(map[sub]) map[sub]();
 }
 
@@ -2897,6 +2898,7 @@ const SUPERVISAO_ROTINA=[
   {id:'r34_2000',doc:'3.4 - Relatório de ativos',ferr:'SITE',hora:'20:00',resp:'Wadalla',cargo:'Assistente PCM',tipo:'3.4'},
   {id:'r22_corretivas_2300',doc:'2.2 - Priorização Corretivas',ferr:'WHATSAPP',hora:'23:00',resp:'Natan',cargo:'Líder PCM',tipo:'2.2'},
   {id:'r218_sos_demanda',doc:'2.18 - Relatório de S.O.S',ferr:'WHATSAPP',hora:'--',resp:'Gabriel / Wadalla',cargo:'Assistente PCM',tipo:'2.18',sobDemanda:true},
+  {id:'rinvalmox_1000',doc:'Conferência SAP x PRAXIO — Inventário Almoxarifado',ferr:'SITE',hora:'10:00',resp:'Líder de Suprimentos',cargo:'Líder de Suprimentos',tipo:'inv_almox'},
 ];
 // Array acima é o fallback de segurança — a fonte real vira a tabela supervisao_checkpoints
 // (Supabase). renderSupervisao() resolve e reatribui esta variável a cada carregamento; se a
@@ -4071,6 +4073,7 @@ function renderFerramentas(){
     'ferr-almox-iup':'Dashboard financeiro de peças: custo total por veículo e tipo de OS. Fonte PRAXIO.',
     'ferr-211':'Todos os veículos parados com tempo, status e previsão. Alerta automático de vencimento.',
     'ferr-212':'Disponibilidade, MTTR, OS por tipo e ranking de mecânicos. Atualizado em tempo real.',
+    'ferr-op-fechamento':'Consolidado do turno do plantão por dia: SOS/RA, faltas, trocas de carro e motorista, dobras, lavagem e recolha/abastecimento.',
   };
 
   const tools=FERRAMENTAS_DEF.filter(f=>temAcessoFerr(f.id)&&f.id!=='ferr-lav-lavador'||isLavador()&&f.id==='ferr-lav-lavador');
@@ -4117,6 +4120,7 @@ function atualizarSubmenuFerramentas(){
     'ferr-almox-painel':'📊 Painel do Líder',
     'ferr-almox-compras':'🛒 Pedidos de Compra',
     'ferr-almox-iup':'💰 IUP',
+    'ferr-op-fechamento':'📊 Fechamento do Plantão',
   };
   const subFerr=document.getElementById('sub-ferr');
   if(!subFerr) return;
@@ -4126,6 +4130,197 @@ function atualizarSubmenuFerramentas(){
     const match=onclick.match(/'(ferr-[^']+)'/);
     if(match) btn.style.display=temAcessoFerr(match[1])?'':'none';
   });
+}
+
+// ── FECHAMENTO DO PLANTÃO — consolidado por dia para o Líder Operacional ──
+async function renderFerrOpFechamento(){
+  const gid=getGid();
+  setMain(`<div class="loading"><div class="spinner"></div></div>`);
+  const dRef=S._opFechData||opAddDays(hoje(),-1);
+  S._opFechData=dRef;
+
+  const[{data:recList},{data:abList},{data:avList},{data:sosList},{data:trocasList},{data:dobrasList},{data:absList},{data:lavList}]=await Promise.all([
+    sb.from('recolha_checklist').select('prefixo,horario_real,status,linha,tabela,motorista').eq('garagem_id',gid).eq('data_recolha',dRef),
+    sb.from('abastecimento_checklist').select('prefixo,horario').eq('garagem_id',gid).eq('data',dRef),
+    sb.from('avarias_recolha').select('id,prefixo,status,itens_nok,data_recolha,plantao_nome,horario_real').eq('garagem_id',gid).eq('data_recolha',dRef),
+    sb.from('plantao_sos').select('id,tipo,prefixo,motorista,linha,km,problema,status,decisao,decisao_detalhe,resolucao,plantao_nome,tratativa_pcm,tratativa_pcm_por,created_at').eq('garagem_id',gid).eq('data',dRef).order('created_at',{ascending:false}),
+    sb.from('plantao_trocas').select('tipo,prefixo,linha,original,substituto,motivo,created_at').eq('garagem_id',gid).eq('data',dRef).order('created_at',{ascending:false}),
+    sb.from('plantao_dobras').select('motorista,prefixo,linha,motivo,created_at').eq('garagem_id',gid).eq('data',dRef).order('created_at',{ascending:false}),
+    sb.from('plantao_absenteismo').select('motorista,prefixo,linha,motivo,cobertura,created_at').eq('garagem_id',gid).eq('data',dRef).order('created_at',{ascending:false}),
+    sb.from('checklist_lavagem').select('status,tipo_lavagem,prefixo,validado_patio').eq('garagem_id',gid).eq('data',dRef).not('status','in','("cancelado","arquivado")'),
+  ]);
+
+  const rec=recList||[],ab=abList||[],av=avList||[],sos=sosList||[],trocas=trocasList||[],dobras=dobrasList||[],abs_=absList||[],lav=lavList||[];
+
+  const PLANTAO_ABS_MOTIVO={falta_injustificada:'Falta injustificada',atestado:'Atestado',atraso:'Atraso',outro:'Outro'};
+  const PLANTAO_DOBRA_MOTIVO={cobertura_falta:'Cobertura de falta',reforco:'Reforço',outro:'Outro'};
+  const PLANTAO_COBERTURA={reserva:'Reserva',dobra:'Dobra',sem_cobertura:'Sem cobertura'};
+  const PLANTAO_TROCA_CARRO_MOTIVO={quebra_avaria:'Quebra/Avaria',preventiva:'Preventiva',acidente:'Acidente',outro:'Outro'};
+  const PLANTAO_TROCA_MOT_MOTIVO={falta:'Falta',atraso:'Atraso',acidente:'Acidente',outro:'Outro'};
+
+  const totRec=rec.length,totAb=ab.length,totAv=av.length;
+  const totSos=sos.length,sosAbertos=sos.filter(s=>s.status==='aberto').length;
+  const trocaCarro=trocas.filter(t=>t.tipo==='carro'),trocaMot=trocas.filter(t=>t.tipo==='motorista');
+  const totDobras=dobras.length,totFaltas=abs_.length;
+  const lavE=lav.filter(l=>l.status==='executado').length,lavT=lav.length;
+
+  const dataLbl=new Date(dRef+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
+  const ehHoje=dRef===hoje();
+
+  const kpi=(icon,label,val,cor)=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;text-align:center">
+    <div style="font-size:20px;margin-bottom:4px">${icon}</div>
+    <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:800;color:${cor||'var(--text)'}">${val}</div>
+    <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px">${label}</div>
+  </div>`;
+
+  const secH=(icon,titulo,badge,cor)=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:24px 0 12px">
+    <div style="font-size:15px;font-weight:800;display:flex;align-items:center;gap:8px">${icon} ${titulo}${badge?`<span style="font-size:11px;font-weight:700;color:${cor||'var(--text3)'};background:${cor||'var(--text3)'}20;padding:2px 10px;border-radius:20px">${badge}</span>`:''}</div>
+  </div>`;
+
+  const empty=(msg)=>`<div style="font-size:13px;color:var(--text4);text-align:center;padding:16px 0;background:var(--surface);border:1px dashed var(--border);border-radius:10px">${msg}</div>`;
+
+  const TIPO_SOS_LBL={sos:'SOS',ra:'RA'};
+  const DECISAO_LBL={segue_rodando:'Segue rodando',troca_carro:'Troca de carro',troca_motorista:'Troca de motorista',aciona_pcm:'Aciona PCM',outro:'Outro'};
+  const sosCards=sos.map(s=>{
+    const cor=s.status==='aberto'?'var(--red)':'var(--text3)';
+    return`<div style="border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:10px;background:var(--surface)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:6px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:10px;font-weight:800;color:#fff;background:var(--red);padding:2px 8px;border-radius:6px">${TIPO_SOS_LBL[s.tipo]||'SOS'}</span>
+          <span style="font-family:'DM Mono',monospace;font-weight:800;font-size:14px">${escHtml(s.prefixo||'—')}</span>
+          <span style="font-size:11px;font-weight:700;color:${cor}">${s.status==='aberto'?'ABERTO':'ENCERRADO'}</span>
+        </div>
+        <span style="font-size:11px;color:var(--text3)">${s.created_at?new Date(s.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):''}</span>
+      </div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:4px">${escHtml(s.motorista||'—')}${s.linha?' · '+escHtml(s.linha):''} · registrado por ${escHtml(s.plantao_nome||'—')}</div>
+      <div style="font-size:13px;color:var(--text2)"><b>Problema:</b> ${escHtml(s.problema||'—')}</div>
+      ${s.decisao?`<div style="font-size:12px;color:var(--text3);margin-top:4px"><b>Decisão do plantão:</b> ${DECISAO_LBL[s.decisao]||s.decisao}${s.decisao_detalhe?' — '+escHtml(s.decisao_detalhe):''}</div>`:''}
+      ${s.tratativa_pcm?`<div style="font-size:12px;color:var(--text3);margin-top:4px"><b>Tratativa PCM:</b> ${escHtml(s.tratativa_pcm)}${s.tratativa_pcm_por?' — '+escHtml(s.tratativa_pcm_por):''}</div>`:''}
+    </div>`;
+  }).join('');
+
+  const absCards=abs_.map(r=>`<div style="border-left:3px solid var(--red);background:var(--surface2);border-radius:10px;padding:12px 14px;margin-bottom:8px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+      <span style="font-weight:700;font-size:13px">${escHtml(r.motorista||'—')}</span>
+      <span style="font-size:10px;font-weight:700;color:var(--red);background:#EF444420;padding:2px 8px;border-radius:20px">${PLANTAO_ABS_MOTIVO[r.motivo]||r.motivo||'—'}</span>
+    </div>
+    <div style="font-size:11px;color:var(--text3)">${r.prefixo?escHtml(r.prefixo)+' · ':''}${r.linha?escHtml(r.linha)+' · ':''}Cobertura: ${PLANTAO_COBERTURA[r.cobertura]||r.cobertura||'—'}</div>
+  </div>`).join('');
+
+  const dobrasCards=dobras.map(r=>`<div style="border-left:3px solid var(--amber);background:var(--surface2);border-radius:10px;padding:12px 14px;margin-bottom:8px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+      <span style="font-weight:700;font-size:13px">${escHtml(r.motorista||'—')}</span>
+      <span style="font-size:10px;font-weight:700;color:var(--amber);background:#F59E0B20;padding:2px 8px;border-radius:20px">${PLANTAO_DOBRA_MOTIVO[r.motivo]||r.motivo||'—'}</span>
+    </div>
+    <div style="font-size:11px;color:var(--text3)">${r.prefixo?escHtml(r.prefixo)+' · ':''}${r.linha?escHtml(r.linha):''}</div>
+  </div>`).join('');
+
+  const trocaCard=(t)=>{
+    const isCarro=t.tipo==='carro';
+    const cor=isCarro?'var(--blue)':'#8B5CF6';
+    const motivoLbl=isCarro?(PLANTAO_TROCA_CARRO_MOTIVO[t.motivo]||t.motivo):(PLANTAO_TROCA_MOT_MOTIVO[t.motivo]||t.motivo);
+    return`<div style="border-left:3px solid ${cor};background:var(--surface2);border-radius:10px;padding:12px 14px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+        <span style="font-family:'DM Mono',monospace;font-weight:800;font-size:13px">${escHtml(t.prefixo||'—')}</span>
+        <span style="font-size:10px;font-weight:700;color:${cor};background:${cor}20;padding:2px 8px;border-radius:20px">${isCarro?'CARRO':'MOTORISTA'}${motivoLbl?' · '+motivoLbl:''}</span>
+      </div>
+      <div style="font-size:10px;color:var(--text4);margin-bottom:2px">${t.linha?escHtml(t.linha):''}</div>
+      <div style="font-size:12px;color:var(--text3)">${escHtml(t.original||'—')} → ${escHtml(t.substituto||'—')}</div>
+    </div>`;
+  };
+
+  const TIPO_LAV_LBL={pesada:'🟡 Pesada',media:'🔵 Média',leve:'🟢 Leve',simples:'💧 Simples',preventiva:'🟣 Preventiva'};
+  const lavCards=lav.map(l=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border2)">
+    <span style="font-family:'DM Mono',monospace;font-weight:700;font-size:13px">${escHtml(l.prefixo)}</span>
+    <span style="font-size:11px;color:var(--text3)">${TIPO_LAV_LBL[l.tipo_lavagem]||l.tipo_lavagem||''}</span>
+    <span style="font-size:11px;font-weight:700;color:${l.status==='executado'?'var(--green)':'var(--red)'}">${l.status==='executado'?'✅ Lavado'+(l.validado_patio?' · 🏆':''):'❌ Não realizado'}</span>
+  </div>`).join('');
+
+  const abMap={};ab.forEach(a=>{abMap[a.prefixo]=a;});
+  const vehicleSet=[...new Set(rec.map(r=>r.prefixo))].sort();
+  const recCards=vehicleSet.map(p=>{
+    const r=rec.find(x=>x.prefixo===p);
+    const a=abMap[p];
+    return`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 12px;border-bottom:1px solid var(--border2);gap:8px;flex-wrap:wrap">
+      <span style="font-family:'DM Mono',monospace;font-weight:700;font-size:13px">${escHtml(p)}${r?.status==='avaria'?' <span style="color:var(--red)">⚠️</span>':''}</span>
+      <span style="font-size:11px;color:var(--text3)">${r?.linha?escHtml(r.linha)+' · ':''}${escHtml(r?.motorista||'—')}</span>
+      <span style="font-size:11px;color:var(--text3)">🔑 ${r?.horario_real||'—'} ${a?'· ⛽ '+a.horario:'· ⛽ pendente'}</span>
+    </div>`;
+  }).join('');
+
+  const avCards=av.map(a=>{
+    const cor=a.status==='em_analise'?'var(--amber)':a.status==='resolvido'?'var(--green)':'var(--red)';
+    const nok=(a.itens_nok||[]);
+    return`<div style="border-left:3px solid ${cor};background:var(--surface2);border-radius:10px;padding:12px 14px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+        <span style="font-family:'DM Mono',monospace;font-weight:800;font-size:13px">${escHtml(a.prefixo)}</span>
+        <span style="font-size:10px;font-weight:700;color:${cor};background:${cor}20;padding:2px 8px;border-radius:20px">${(a.status||'').replace('_',' ').toUpperCase()}</span>
+      </div>
+      ${nok.length?`<div style="font-size:11px;color:var(--text3)">${escHtml(nok.slice(0,5).join(', '))}${nok.length>5?' +'+(nok.length-5):''}</div>`:''}
+      <div style="font-size:10px;color:var(--text4);margin-top:3px">${escHtml(a.plantao_nome||'')}${a.horario_real?' · '+a.horario_real:''}</div>
+    </div>`;
+  }).join('');
+
+  setMain(`
+    ${secTitle('📊','Fechamento do Plantão')}
+    <button class="btn-back" onclick="renderFerramentas()">← Ferramentas</button>
+    <div style="display:flex;align-items:center;gap:10px;margin:14px 0 20px;flex-wrap:wrap">
+      <button onclick="opFechNav(-1)" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-size:13px">◀</button>
+      <input type="date" id="op-fech-data" value="${dRef}" max="${hoje()}" onchange="opFechSetData(this.value)" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;font-size:13px">
+      <button onclick="document.getElementById('op-fech-data').showPicker()" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;font-size:13px">📅</button>
+      <button onclick="opFechNav(1)" ${ehHoje?'disabled':''} style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:${ehHoje?'not-allowed':'pointer'};font-size:13px;opacity:${ehHoje?'0.4':'1'}">▶</button>
+      <span style="font-size:13px;color:var(--text3);text-transform:capitalize">${dataLbl}</span>
+      <button onclick="opFechSetData('${opAddDays(hoje(),-1)}')" style="margin-left:auto;padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-size:12px;font-weight:700">↩ Ontem</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px">
+      ${kpi('🔑','Recolhas',totRec)}
+      ${kpi('⛽','Abastecimentos',totAb)}
+      ${kpi('🚿','Lavados',lavT?lavE+'/'+lavT:'—',lavE===lavT&&lavT>0?'var(--green)':'var(--blue)')}
+      ${kpi('⚠️','Avarias',totAv,totAv?'var(--red)':'var(--green)')}
+      ${kpi('🆘','SOS',totSos,sosAbertos?'var(--red)':(totSos?'var(--amber)':'var(--green)'))}
+      ${kpi('🔄','Trocas',trocas.length,trocas.length?'var(--blue)':undefined)}
+      ${kpi('🔁','Dobras',totDobras,totDobras?'var(--amber)':undefined)}
+      ${kpi('😴','Faltas',totFaltas,totFaltas?'var(--red)':'var(--green)')}
+    </div>
+
+    ${secH('🆘','SOS / RA do Plantão',totSos?totSos+(sosAbertos?' · '+sosAbertos+' aberto(s)':''):null,sosAbertos?'var(--red)':'var(--text3)')}
+    ${sosCards||empty('Nenhum SOS/RA registrado neste dia')}
+
+    ${secH('😴','Faltas (Absenteísmo)',totFaltas||null,'var(--red)')}
+    ${absCards||empty('Nenhuma falta registrada neste dia')}
+
+    ${secH('🔄','Trocas de Carro',trocaCarro.length||null,'var(--blue)')}
+    ${trocaCarro.map(trocaCard).join('')||empty('Nenhuma troca de carro neste dia')}
+
+    ${secH('🔄','Trocas de Motorista',trocaMot.length||null,'#8B5CF6')}
+    ${trocaMot.map(trocaCard).join('')||empty('Nenhuma troca de motorista neste dia')}
+
+    ${secH('🔁','Dobras',totDobras||null,'var(--amber)')}
+    ${dobrasCards||empty('Nenhuma dobra registrada neste dia')}
+
+    ${secH('🚿','Lavagem',lavT?lavE+'/'+lavT+' executados':null,lavE===lavT&&lavT>0?'var(--green)':'var(--blue)')}
+    ${lavT?`<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">${lavCards}</div>`:empty('Sem programação de lavagem neste dia')}
+
+    ${secH('🔑','Recolha & Abastecimento',vehicleSet.length?vehicleSet.length+' veículo(s)':null,null)}
+    ${vehicleSet.length?`<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">${recCards}</div>`:empty('Nenhuma recolha registrada neste dia')}
+
+    ${secH('⚠️','Avarias na Recolha',totAv||null,'var(--red)')}
+    ${avCards||empty('Nenhuma avaria registrada neste dia')}
+  `);
+}
+
+function opFechSetData(iso){
+  if(!iso)return;
+  S._opFechData=iso;
+  renderFerrOpFechamento();
+}
+function opFechNav(delta){
+  const cur=S._opFechData||opAddDays(hoje(),-1);
+  const novo=opAddDays(cur,delta);
+  if(novo>hoje())return;
+  S._opFechData=novo;
+  renderFerrOpFechamento();
 }
 
 // Normaliza código: remove espaços, tabs e chars invisíveis para comparação segura
@@ -4747,7 +4942,19 @@ async function confSalvarDivergenciasAbertas(){
   const gid=getGid();
   const rotDesvios=(window._confRotItens||[]).filter(d=>d.temDesvio);
   const baixaDesvios=(window._confBaixaRotItens||[]).filter(b=>b.acuracia!=null&&parseFloat(b.acuracia)<100);
-  if(!rotDesvios.length&&!baixaDesvios.length){toast('Nenhum desvio pra salvar nessa janela','err');return;}
+  // Data/turno da conferência -- usados pro registro de conformidade no Painel
+  // de Supervisão (checkpoint 'inv_almox'), independente de ter achado desvio ou não.
+  const dataRefSup=window._confRotDataRef||window._confDataRef||hoje();
+  const tz=opTimezone(gid);
+  const turnoSup=turnoOperacionalAtual(tz);
+  if(!rotDesvios.length&&!baixaDesvios.length){
+    // Sem desvio também é conformidade -- o líder rodou a conferência e não
+    // achou nada errado. Registra no Supervisão do mesmo jeito, só não mexe
+    // em almoxo_divergencias (não tem o que salvar lá).
+    await jtpRegistrarEnvio('inv_almox',dataRefSup,turnoSup);
+    toast('✅ Conferência sem divergências — registrado no Painel de Supervisão');
+    return;
+  }
 
   const{data:abertas,error:errBusca}=await sb.from('almoxo_divergencias').select('id,cod_sap,origem').eq('garagem_id',gid).eq('status','aberta').in('origem',['rotativo','baixa_rotacao']);
   if(errBusca){toast('Erro ao conferir divergências existentes: '+errBusca.message,'err');return;}
@@ -4778,6 +4985,7 @@ async function confSalvarDivergenciasAbertas(){
     const{error}=await sb.from('almoxo_divergencias').insert(novos);
     if(error){toast('Erro ao salvar: '+error.message,'err');return;}
   }
+  await jtpRegistrarEnvio('inv_almox',dataRefSup,turnoSup);
   toast(`✅ ${novos.length} nova(s) + ${atualizar.length} atualizada(s) em Divergências Abertas!`);
 }
 
@@ -15281,6 +15489,7 @@ const INDICADORES_212=[
   {id:'rod_pneu',nome:'Rodagem pneus km',meta:'',tipo:'maior',area:'pcm'},
   {id:'op_pontualidade',nome:'Pontualidade',meta:'100',tipo:'maior',metaFixa:true,area:'operacao'},
   {id:'op_cumpr_partida',nome:'Cumprimento de Partida',meta:'100',tipo:'maior',metaFixa:true,area:'operacao'},
+  {id:'op_soltura_frota',nome:'Verificação de Soltura de Frota',meta:'100',tipo:'maior',metaFixa:true,area:'operacao'},
   {id:'op_hora_extra',nome:'Hora Extra',meta:'0',tipo:'menor',metaFixa:true,area:'operacao'},
   {id:'sup_acur_inv_rotativo',nome:'Acuracidade Inventário Rotativo',meta:'100',tipo:'maior',metaFixa:true,area:'suprimentos'},
   {id:'sup_acur_inv_baixa_saida',nome:'Acuracidade Inventário de Baixa/Saída',meta:'100',tipo:'maior',metaFixa:true,area:'suprimentos'},
