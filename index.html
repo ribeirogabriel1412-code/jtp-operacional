@@ -1639,6 +1639,20 @@ async function renderAlmoxInventario(){
   }
 }
 
+function almoxPainelBuscarPeriodo(){
+  const ini=document.getElementById('almox-painel-data-ini')?.value;
+  const fim=document.getElementById('almox-painel-data-fim')?.value;
+  if(!ini||!fim)return;
+  if(ini>fim){toast('Data inicial não pode ser depois da final','err');return;}
+  S._almoxPainelDataIni=ini;
+  S._almoxPainelDataFim=fim;
+  renderAlmoxPainelLider();
+}
+function almoxPainelHoje(){
+  S._almoxPainelDataIni=null;
+  S._almoxPainelDataFim=null;
+  renderAlmoxPainelLider();
+}
 async function renderAlmoxPainelLider(){
   const gid=getGid();
   setMain(`<div class="loading"><div class="spinner"></div></div>`);
@@ -1646,23 +1660,29 @@ async function renderAlmoxPainelLider(){
   if(!isLider){setMain(`<div class="empty">Acesso restrito ao Líder</div>`);return;}
   const hojeIso=hoje();
   const tz=opTimezone(gid);
-  const iniHoje=opDateTimeISO(hojeIso,'00:00',tz);
-  const fimHoje=opDateTimeISO(opAddDays(hojeIso,1),'00:00',tz);
+  // Período do painel -- por padrão é "hoje", mas o líder pode escolher outro
+  // intervalo (De/Até) pra ver os mesmos KPIs de dias/semanas anteriores.
+  const dataIni=S._almoxPainelDataIni||hojeIso;
+  const dataFim=S._almoxPainelDataFim||hojeIso;
+  const iniPeriodo=opDateTimeISO(dataIni,'00:00',tz);
+  const fimPeriodo=opDateTimeISO(opAddDays(dataFim,1),'00:00',tz);
+  const fmtDataBR=iso=>{const[,m,d]=String(iso).split('-');return `${d}/${m}`;};
+  const periodoTxt=dataIni===dataFim?(dataIni===hojeIso?'hoje':fmtDataBR(dataIni)):`${fmtDataBR(dataIni)}–${fmtDataBR(dataFim)}`;
   const[{data:ruas},{data:divs},{data:quadro},{data:perfisAlmox},{data:saidaRaw},{data:rotHojeRaw},{data:baixaRotHojeRaw},{data:portariaPendentes},{data:portariaHojeRaw}]=await Promise.all([
     sb.from('almoxo_ruas').select('*').eq('garagem_id',gid).eq('ativo',true).order('nome'),
     sb.from('almoxo_divergencias').select('*').eq('garagem_id',gid).eq('status','aberta').order('detectado_em',{ascending:false}),
     sb.from('almoxo_quadro_turno').select('*,perfis(nome,cargo)').eq('garagem_id',gid).order('hora_entrada'),
     sb.from('perfis').select('id,nome,cargo').eq('garagem_id',gid).in('cargo',['almoxarifado','lider_almoxarifado','lider_suprimentos']).order('nome'),
-    // Saída = itens entregues (separado/comprado) hoje, com valor unitário já resolvido na confirmação
-    sb.from('requisicoes_compra').select('qtd_entregue,quantidade,valor_estimado').eq('garagem_id',gid).in('status',['separado','comprado']).gte('entregue_em',iniHoje).lt('entregue_em',fimHoje),
-    // Acurácia do Inventário Rotativo hoje = % de itens com dupla contagem que bateram entre dois almoxarifes
-    sb.from('almoxo_inventario_turno').select('req_id,qtd_fisica,almoxarife_id,almoxarife_nome,nome_item,cod_sap').eq('garagem_id',gid).eq('turno_data',hojeIso).not('req_id','is',null),
-    // Acurácia da Baixa Rotação hoje = média do físico/sistema já calculado na contagem
-    sb.from('almoxo_baixa_rotacao_contagem').select('acuracia,qtd_sistema,qtd_fisica,almoxarife_nome,almoxo_baixa_rotacao_itens(nome_item,cod_sap)').eq('garagem_id',gid).eq('turno_data',hojeIso).not('acuracia','is',null),
+    // Saída = itens entregues (separado/comprado) no período, com valor unitário já resolvido na confirmação
+    sb.from('requisicoes_compra').select('qtd_entregue,quantidade,valor_estimado').eq('garagem_id',gid).in('status',['separado','comprado']).gte('entregue_em',iniPeriodo).lt('entregue_em',fimPeriodo),
+    // Acurácia do Inventário Rotativo no período = % de itens com dupla contagem que bateram entre dois almoxarifes
+    sb.from('almoxo_inventario_turno').select('req_id,qtd_fisica,almoxarife_id,almoxarife_nome,nome_item,cod_sap').eq('garagem_id',gid).gte('turno_data',dataIni).lte('turno_data',dataFim).not('req_id','is',null),
+    // Acurácia da Baixa Rotação no período = média do físico/sistema já calculado na contagem
+    sb.from('almoxo_baixa_rotacao_contagem').select('acuracia,qtd_sistema,qtd_fisica,almoxarife_nome,almoxo_baixa_rotacao_itens(nome_item,cod_sap)').eq('garagem_id',gid).gte('turno_data',dataIni).lte('turno_data',dataFim).not('acuracia','is',null),
     // Notas lançadas pela portaria ainda sem entrada dada pelo almox
     sb.from('portaria_recebimento').select('*').eq('garagem_id',gid).eq('status','pendente').order('created_at',{ascending:true}),
-    // Notas registradas pela portaria hoje (qualquer status) -- pra medir % já tratado pelo líder
-    sb.from('portaria_recebimento').select('id,status').eq('garagem_id',gid).gte('created_at',iniHoje).lt('created_at',fimHoje)
+    // Notas registradas pela portaria no período (qualquer status) -- pra medir % já tratado pelo líder
+    sb.from('portaria_recebimento').select('id,status').eq('garagem_id',gid).gte('created_at',iniPeriodo).lt('created_at',fimPeriodo)
   ]);
   const saidaQtd=(saidaRaw||[]).reduce((s,r)=>s+(parseFloat(r.qtd_entregue||r.quantidade)||0),0);
   const saidaValor=(saidaRaw||[]).reduce((s,r)=>s+(parseFloat(r.qtd_entregue||r.quantidade)||0)*(parseFloat(r.valor_estimado)||0),0);
@@ -1797,23 +1817,39 @@ async function renderAlmoxPainelLider(){
     </div>`;
   }).join('');
   const fmtMoneyBR=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0});
+  const periodoSeletor=`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
+    <span style="font-size:12px;font-weight:700;color:var(--text3)">Período:</span>
+    <div style="display:flex;align-items:center;gap:4px">
+      <input type="date" id="almox-painel-data-ini" value="${dataIni}" style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 8px;font-size:12px;font-family:'DM Mono',monospace">
+      <button onclick="document.getElementById('almox-painel-data-ini').showPicker()" style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:6px 8px;cursor:pointer;font-size:12px">📅</button>
+    </div>
+    <span style="color:var(--text3);font-size:12px">até</span>
+    <div style="display:flex;align-items:center;gap:4px">
+      <input type="date" id="almox-painel-data-fim" value="${dataFim}" style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 8px;font-size:12px;font-family:'DM Mono',monospace">
+      <button onclick="document.getElementById('almox-painel-data-fim').showPicker()" style="background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:6px 8px;cursor:pointer;font-size:12px">📅</button>
+    </div>
+    <button onclick="almoxPainelBuscarPeriodo()" class="btn-sec" style="padding:6px 14px;font-size:12px">🔍 Buscar</button>
+    ${(dataIni!==hojeIso||dataFim!==hojeIso)?`<button onclick="almoxPainelHoje()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text3);border-radius:7px;padding:6px 12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">↺ Hoje</button>`:''}
+  </div>`;
   setMain(`
     ${secTitle('📊','Painel do Líder — Almoxarifado')}
     ${tabs}
+    ${periodoSeletor}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:20px">
       ${kpi('Divergências abertas',divTodas.length,0,'',divTodas.length>0,0)}
-      ${kpi(`Saída hoje (${fmtMoneyBR(saidaValor)})`,saidaQtd,undefined,'un',false,0)}
-      ${pctTratadoPortaria!=null?kpi(`Entrada Portaria hoje (${tratadasPortariaHoje}/${totalPortariaHoje})`,pctTratadoPortaria,100,'%',false,0):kpi('Entrada Portaria hoje','—',undefined,'',false,0)}
+      ${kpi(`Saída (${fmtMoneyBR(saidaValor)})`,saidaQtd,undefined,'un',false,0)}
+      ${pctTratadoPortaria!=null?kpi(`Entrada Portaria (${tratadasPortariaHoje}/${totalPortariaHoje})`,pctTratadoPortaria,100,'%',false,0):kpi('Entrada Portaria','—',undefined,'',false,0)}
       ${acurRotativo!=null?kpi('Acurácia Rotativo (dupla contagem)',acurRotativo,95,'%',false,0):kpi('Acurácia Rotativo (dupla contagem)','—',undefined,'',false,0)}
-      ${acurBaixaRot!=null?kpi('Acurácia Baixa Rotação hoje',acurBaixaRot,95,'%',false,0):kpi('Acurácia Baixa Rotação hoje','—',undefined,'',false,0)}
+      ${acurBaixaRot!=null?kpi('Acurácia Baixa Rotação',acurBaixaRot,95,'%',false,0):kpi('Acurácia Baixa Rotação','—',undefined,'',false,0)}
     </div>
+    <div style="font-size:11px;color:var(--text4);margin:-14px 0 16px">Período selecionado: <b style="color:var(--text3)">${periodoTxt}</b></div>
     ${rotDivergentes.length?`
-    ${secTitle('⚠️',`Dupla Contagem — Itens Divergentes Hoje (${rotDivergentes.length})`)}
+    ${secTitle('⚠️',`Dupla Contagem — Itens Divergentes (${rotDivergentes.length})`)}
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:20px">
       ${rotDivergRows}
     </div>`:''}
     ${baixaRotDivergentes.length?`
-    ${secTitle('⚠️',`Baixa Rotação — Itens Divergentes Hoje (${baixaRotDivergentes.length})`)}
+    ${secTitle('⚠️',`Baixa Rotação — Itens Divergentes (${baixaRotDivergentes.length})`)}
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:20px">
       ${baixaRotDivergRows}
     </div>`:''}
