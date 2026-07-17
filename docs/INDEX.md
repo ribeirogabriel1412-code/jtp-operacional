@@ -84,7 +84,7 @@
 | Documento | Arquivo | Última atualização | Status |
 |-----------|---------|-------------------|--------|
 | Arquitetura do App | [sistema/arquitetura.md](sistema/arquitetura.md) | — | ⏳ pendente |
-| Mapa do Banco (espelho) | [sistema/mapa-banco.md](sistema/mapa-banco.md) | — | ⏳ pendente |
+| Mapa do Banco (espelho) | [sistema/mapa-banco.md](sistema/mapa-banco.md) | 2026-07-17 | ✅ gerado |
 
 ---
 
@@ -94,3 +94,4 @@
 |------|------------|-----------|
 | 2026-06-21 | Estrutura criada | /jtp-doc (setup inicial) |
 | 2026-06-21 | POP + Fluxograma de Lavagem gerados | /jtp-doc lavagem |
+| 2026-07-17 | Mapa do Banco gerado (83 tabelas × módulo, cruzado com scripts CREATE TABLE) | Claude (fora do /jtp-doc, a pedido do Gabriel) |
