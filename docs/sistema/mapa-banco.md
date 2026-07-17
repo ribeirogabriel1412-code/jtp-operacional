@@ -55,12 +55,12 @@
 
 | Tabela | Script | Usada em |
 |---|---|---|
-| `almoxo_ruas` | ⚠️ **sem script** | cadastro de ruas do almoxarifado (WMS — Catálogo) |
-| `almoxo_rua_responsavel` | ⚠️ **sem script** | responsável por rua/turno (WMS — Catálogo) |
-| `almoxo_itens` | ⚠️ **sem script** | catálogo de itens por rua (WMS — Catálogo) |
+| ~~`almoxo_ruas`~~ | 🗑️ **descontinuada 2026-07-17** | cadastro de ruas; só existia pra suportar o processo de inventário por rua. Tela "WMS — Catálogo" (`renderAlmoxWMS`) removida do index.html (menu, rota `ferr-almox-wms` e função). Drop em `scripts/dropar_almoxo_inventario_rua.sql` |
+| ~~`almoxo_rua_responsavel`~~ | 🗑️ **descontinuada 2026-07-17** | responsável (almoxarife) por rua — só existia pra saber quem contava cada rua. Removida junto com `almoxo_ruas` |
+| `almoxo_itens` | ⚠️ **sem script** | catálogo de itens — **mantida por decisão explícita**, mas sem nenhuma tela do app usando (perdeu a única UI, que era dentro do WMS removido). Dados preservados no banco, órfã de FK com `almoxo_ruas` |
 | ~~`almoxo_inventario_rua`~~ | 🗑️ **descontinuada 2026-07-17** | contagem "Inventário da Rua" removida do index.html; drop em `scripts/dropar_almoxo_inventario_rua.sql` |
-| `almoxo_inventario_turno` | ⚠️ **sem script** | inventário por turno |
-| `almoxo_inventario_t1` | ⚠️ **sem script** | inventário (variante T1) |
+| `almoxo_inventario_turno` | ⚠️ **sem script** | Inventário Rotativo — contagem física por almoxarife (self-check + conferência cega do turno seguinte); fonte real da dupla contagem, RLS reabilitado em `scripts/fix_rls_almoxo_inventario_turno.sql` |
+| ~~`almoxo_inventario_t1`~~ | 🗑️ **nunca existiu no banco — removida do código em 2026-07-17** | tabela nunca foi criada no Supabase; a tela desktop "Inventário T-1" (`renderAlmoxInventario`) que apontava pra ela nunca gravou nada de verdade. Removida do index.html (tela, rota `ferr-almox-inv`, botão, permissões em `core/desktop-config.js`) e das referências mortas no Painel de Acurácia e no Cruzamento SAP × PRAXIO, que passaram a usar a dupla contagem real de `almoxo_inventario_turno` (mesmo `req_id`, dois `almoxarife_id` diferentes) |
 | `almoxo_inventario_tratativas` | `scripts/criar_almoxo_inventario_tratativas.sql` | tratativas de divergência de inventário |
 | `almoxo_divergencias` | ⚠️ **sem script** | divergências gerais do almoxarifado |
 | `almoxo_quadro_turno` | ⚠️ **sem script** | quadro/escala de turno do almoxarifado |
@@ -69,7 +69,7 @@
 | `almoxo_baixa_rotacao_itens` | `scripts/create_baixa_rotacao.sql` | KPI de baixa rotação — itens |
 | `almoxo_wms_enderecos` | `scripts/importar_wms_porto_velho.sql` | endereços WMS (Porto Velho) |
 | `almox_conferencia_sap_praxio` | `scripts/criar_almox_conferencia_sap_praxio.sql` | conferência cruzada SAP × PRAXIO |
-| `almox_devolucoes` | ⚠️ **sem script** | devoluções de peças/itens |
+| ~~`almox_devolucoes`~~ | 🗑️ **descontinuada 2026-07-17** | processo de devolução de peças removido do index.html (`renderAlmoxDevolucao` + menu `ferr-almox-dev`). Drop em `scripts/dropar_almox_devolucoes.sql`. Obs.: fallback antigo do app criava essa tabela com RLS desligado + GRANT ALL pra anon — verificar se já foi rodado em produção |
 | `divergencias_pecas_praxio` | `scripts/criar_divergencias_pecas.sql` | divergências de peças vindas do PRAXIO |
 
 ## 6. Portaria
