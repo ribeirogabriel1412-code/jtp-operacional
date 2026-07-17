@@ -1497,21 +1497,26 @@ async function renderAlmoxPainelLider(){
   const fimPeriodo=opDateTimeISO(opAddDays(dataFim,1),'00:00',tz);
   const fmtDataBR=iso=>{const[,m,d]=String(iso).split('-');return `${d}/${m}`;};
   const periodoTxt=dataIni===dataFim?(dataIni===hojeIso?'hoje':fmtDataBR(dataIni)):`${fmtDataBR(dataIni)}–${fmtDataBR(dataFim)}`;
-  const[{data:divs},{data:quadro},{data:perfisAlmox},{data:saidaRaw},{data:rotHojeRaw},{data:baixaRotHojeRaw},{data:portariaPendentes},{data:portariaHojeRaw}]=await Promise.all([
+  const[{data:divs},{data:quadro},{data:perfisAlmox},{data:saidaRaw},{data:rotHojeRaw},{data:baixaRotHojeRaw},{data:portariaPendentes},{data:portariaHojeRaw},{data:tratativasRaw}]=await Promise.all([
     sb.from('almoxo_divergencias').select('*').eq('garagem_id',gid).eq('status','aberta').order('detectado_em',{ascending:false}),
     sb.from('almoxo_quadro_turno').select('*,perfis(nome,cargo)').eq('garagem_id',gid).order('hora_entrada'),
     sb.from('perfis').select('id,nome,cargo').eq('garagem_id',gid).in('cargo',['almoxarifado','lider_almoxarifado','lider_suprimentos']).order('nome'),
     // Saída = itens entregues (separado/comprado) no período, com valor unitário já resolvido na confirmação
     sb.from('requisicoes_compra').select('qtd_entregue,quantidade,valor_estimado').eq('garagem_id',gid).in('status',['separado','comprado']).gte('entregue_em',iniPeriodo).lt('entregue_em',fimPeriodo),
     // Acurácia do Inventário Rotativo no período = % de itens com dupla contagem que bateram entre dois almoxarifes
-    sb.from('almoxo_inventario_turno').select('req_id,qtd_fisica,almoxarife_id,almoxarife_nome,nome_item,cod_sap').eq('garagem_id',gid).gte('turno_data',dataIni).lte('turno_data',dataFim).not('req_id','is',null),
+    sb.from('almoxo_inventario_turno').select('req_id,qtd_fisica,almoxarife_id,almoxarife_nome,nome_item,cod_sap,turno_data').eq('garagem_id',gid).gte('turno_data',dataIni).lte('turno_data',dataFim).not('req_id','is',null),
     // Acurácia da Baixa Rotação no período = média do físico/sistema já calculado na contagem
     sb.from('almoxo_baixa_rotacao_contagem').select('acuracia,qtd_sistema,qtd_fisica,almoxarife_nome,almoxo_baixa_rotacao_itens(nome_item,cod_sap)').eq('garagem_id',gid).gte('turno_data',dataIni).lte('turno_data',dataFim).not('acuracia','is',null),
     // Notas lançadas pela portaria ainda sem entrada dada pelo almox
     sb.from('portaria_recebimento').select('*').eq('garagem_id',gid).eq('status','pendente').order('created_at',{ascending:true}),
     // Notas registradas pela portaria no período (qualquer status) -- pra medir % já tratado pelo líder
-    sb.from('portaria_recebimento').select('id,status').eq('garagem_id',gid).gte('created_at',iniPeriodo).lt('created_at',fimPeriodo)
+    sb.from('portaria_recebimento').select('id,status').eq('garagem_id',gid).gte('created_at',iniPeriodo).lt('created_at',fimPeriodo),
+    // Tratativas já classificadas pelo líder na Conferência SAP x PRAXIO -- usa
+    // pra saber se um item da Dupla Contagem já foi tratado (mesma cod_sap+turno_data)
+    sb.from('almoxo_inventario_tratativas').select('*').eq('garagem_id',gid).gte('turno_data',dataIni).lte('turno_data',dataFim)
   ]);
+  const tratMap={};
+  (tratativasRaw||[]).forEach(t=>{tratMap[confNormCod(t.cod_sap)+'|'+(t.turno_data||'')]=t;});
   const saidaQtd=(saidaRaw||[]).reduce((s,r)=>s+(parseFloat(r.qtd_entregue||r.quantidade)||0),0);
   const saidaValor=(saidaRaw||[]).reduce((s,r)=>s+(parseFloat(r.qtd_entregue||r.quantidade)||0)*(parseFloat(r.valor_estimado)||0),0);
   const totalPortariaHoje=(portariaHojeRaw||[]).length;
@@ -1525,7 +1530,7 @@ async function renderAlmoxPainelLider(){
   (rotHojeRaw||[]).forEach(r=>{
     if(!r.req_id)return;
     if(!rotPorReq[r.req_id])rotPorReq[r.req_id]={};
-    if(!rotInfoPorReq[r.req_id])rotInfoPorReq[r.req_id]={nome_item:r.nome_item,cod_sap:r.cod_sap,contagens:{}};
+    if(!rotInfoPorReq[r.req_id])rotInfoPorReq[r.req_id]={nome_item:r.nome_item,cod_sap:r.cod_sap,turno_data:r.turno_data,contagens:{}};
     if(r.almoxarife_id&&!(r.almoxarife_id in rotPorReq[r.req_id])){
       rotPorReq[r.req_id][r.almoxarife_id]=parseFloat(r.qtd_fisica);
       rotInfoPorReq[r.req_id].contagens[r.almoxarife_id]={nome:r.almoxarife_nome||'—',qtd:parseFloat(r.qtd_fisica)};
@@ -1533,7 +1538,15 @@ async function renderAlmoxPainelLider(){
   });
   const gruposDupla=Object.values(rotPorReq).filter(g=>Object.keys(g).length>1);
   const acurRotativo=gruposDupla.length?Math.round(100*gruposDupla.filter(g=>new Set(Object.values(g)).size===1).length/gruposDupla.length):null;
-  const rotDivergentes=Object.entries(rotPorReq).filter(([,g])=>Object.keys(g).length>1&&new Set(Object.values(g)).size>1).map(([reqId])=>rotInfoPorReq[reqId]);
+  // Tratada = já existe uma tratativa classificada pelo líder na Conferência
+  // SAP x PRAXIO pra esse mesmo cod_sap+turno_data (recebimento, contagem
+  // errada corrigida ou desvio formalizado) -- traz esse dado pra cá em vez
+  // de deixar a lista sempre "pendente" pra sempre.
+  const rotDivergentes=Object.entries(rotPorReq).filter(([,g])=>Object.keys(g).length>1&&new Set(Object.values(g)).size>1).map(([reqId])=>{
+    const item=rotInfoPorReq[reqId];
+    const trat=tratMap[confNormCod(item.cod_sap)+'|'+(item.turno_data||'')]||null;
+    return{...item,trat};
+  });
   const acurBaixaRotVals=(baixaRotHojeRaw||[]).map(r=>parseFloat(r.acuracia)).filter(v=>!isNaN(v));
   const acurBaixaRot=acurBaixaRotVals.length?Math.round(acurBaixaRotVals.reduce((s,v)=>s+v,0)/acurBaixaRotVals.length):null;
   const baixaRotDivergentes=(baixaRotHojeRaw||[]).filter(r=>r.acuracia!=null&&parseFloat(r.acuracia)<100);
@@ -1608,14 +1621,23 @@ async function renderAlmoxPainelLider(){
   }).join('');
   // ── Quadro de Turnos ─────────────────────────────────────────────
   const safe=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const TRAT_LB_PAINEL={recebimento:'📦 Recebimento',contagem_errada:'✏️ Recontagem',desvio:'⚠️ Desvio formalizado'};
   const rotDivergRows=rotDivergentes.map(item=>{
     const valsStr=Object.values(item.contagens).map(c=>`${safe(c.nome)}: <b style="color:var(--text)">${c.qtd}</b>`).join(' <span style="color:var(--text4)">vs</span> ');
+    const t=item.trat;
+    let detalhe='';
+    if(t?.tipo==='recebimento')detalhe=`NF ${safe(t.nota_fiscal||'—')} · +${t.qtd_recebida??'—'}`;
+    else if(t?.tipo==='contagem_errada')detalhe=`Corrigido p/ ${t.qtd_corrigida??'—'}`;
+    const statusHtml=t
+      ?`<span style="background:#00C48C20;color:var(--green);border:1px solid #00C48C50;border-radius:99px;padding:2px 8px;font-size:10px;font-weight:900;white-space:nowrap">✅ ${TRAT_LB_PAINEL[t.tipo]||t.tipo}</span>${detalhe?`<div style="font-size:10px;color:var(--text3);margin-top:3px">${detalhe}</div>`:''}`
+      :`<span style="background:#F59E0B20;color:var(--amber);border:1px solid #F59E0B50;border-radius:99px;padding:2px 8px;font-size:10px;font-weight:900;white-space:nowrap">⏳ Pendente</span><div style="margin-top:4px"><button onclick="S._almoxPainelAba='conf';renderAlmoxPainelLider()" style="border:none;background:none;color:var(--blue);font-size:10px;font-weight:700;cursor:pointer;text-decoration:underline;padding:0">Tratar na Conferência →</button></div>`;
     return`<div style="display:flex;justify-content:space-between;align-items:center;gap:14px;padding:10px 14px;border-bottom:1px solid var(--border2);font-size:12px">
       <div>
         <div style="font-weight:700;color:var(--text)">${safe(item.nome_item||'—')}</div>
         ${item.cod_sap?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber)">${safe(item.cod_sap)}</div>`:''}
       </div>
       <div style="text-align:right;font-size:12px;color:var(--red)">${valsStr}</div>
+      <div style="text-align:right;flex-shrink:0">${statusHtml}</div>
     </div>`;
   }).join('');
   const baixaRotDivergRows=baixaRotDivergentes.map(r=>{
