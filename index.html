@@ -13408,7 +13408,8 @@ function prevBuildEscalaFromSelecoes(){
   }
   const dias=prevDiasSemana();
   const fillSlots=(selSet,tipo,capDia)=>{
-    const veics=[...selSet].map(pref=>p.porPrefixo?.get(pref)).filter(Boolean).sort(prevOrdenarPreventiva);
+    const mapaTipo=new Map((tipo==='pesada'?p.pesadas:tipo==='leve'?p.leves:p.todos).map(c=>[c.prefixo,c]));
+    const veics=[...selSet].map(pref=>mapaTipo.get(pref)).filter(Boolean).sort(prevOrdenarPreventiva);
     const porDia=prevAtribuirDias(veics,dias,capDia,tipo);
     porDia.forEach((lista,dia)=>{
       // Sem limite de slot aqui: quando a semana tem mais veículos que a capacidade
@@ -13436,7 +13437,8 @@ function prevBuildEscalaFromSelecoes(){
 function prevMiniSemana(selSet,tipo,capDia){
   const p=prevGerarPropostas();
   const dias=prevDiasSemana();
-  const veics=[...selSet].map(pref=>p.porPrefixo?.get(pref)).filter(Boolean).sort(prevOrdenarPreventiva);
+  const mapaTipo=new Map((tipo==='pesada'?p.pesadas:tipo==='leve'?p.leves:p.todos).map(c=>[c.prefixo,c]));
+  const veics=[...selSet].map(pref=>mapaTipo.get(pref)).filter(Boolean).sort(prevOrdenarPreventiva);
   const porDia=prevAtribuirDias(veics,dias,capDia,tipo);
   const cor=tipo==='pesada'?'var(--orange)':tipo==='leve'?'var(--green)':'var(--purple)';
   const borderCor=tipo==='pesada'?'rgba(249,115,22,.3)':tipo==='leve'?'rgba(0,196,140,.3)':'rgba(139,92,246,.3)';
